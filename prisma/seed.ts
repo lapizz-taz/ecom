@@ -47,11 +47,11 @@ async function main() {
   if (admins === 0) {
     if (!email || !password) {
       console.log("⚠️  No admin user yet. Set ADMIN_EMAIL and ADMIN_INITIAL_PASSWORD and re-run `npm run db:seed` (or use `npm run admin:create`).");
-    } else if (password.length < 12) {
-      console.log("⚠️  ADMIN_INITIAL_PASSWORD must be at least 12 characters — admin not created.");
+    } else if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+      console.log("⚠️  ADMIN_INITIAL_PASSWORD needs 12+ characters with upper-case, lower-case and a number — admin not created.");
     } else {
       await prisma.adminUser.create({ data: { email, name: "Owner", role: "ADMIN", passwordHash: await bcrypt.hash(password, 12) } });
-      console.log(`✅ Admin user created: ${email} (remove ADMIN_INITIAL_PASSWORD from your environment now)`);
+      console.log(`✅ Admin user created: ${email} (you can now remove ADMIN_INITIAL_PASSWORD from your environment)`);
     }
   }
   console.log(`✅ Seed complete — ${created} knowledge entries created.`);

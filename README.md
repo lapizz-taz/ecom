@@ -227,10 +227,10 @@ Notes: replies are free-form text inside WhatsApp's **24-hour customer-service w
 
 ## 9. Deploy to Vercel
 
-1. Push this repository to GitHub and **Import** it in Vercel (framework: Next.js; defaults are fine — `vercel-build` runs `prisma generate && prisma migrate deploy && next build`).
+1. Push this repository to GitHub and **Import** it in Vercel (framework: Next.js; defaults are fine — `vercel-build` runs `prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build`; the seed is idempotent and never overwrites dashboard edits).
 2. *Settings → Environment Variables*: add every variable from `.env.example` that you use (Production + Preview). `APP_URL` = your production URL.
 3. Deploy. Open `https://YOUR-DOMAIN/api/health`: `"ok": true` means database and session secret are fine; otherwise `problem` says exactly which setting to fix (it never shows values).
-4. **Create your admin login** — open `https://YOUR-DOMAIN/setup` (or just try to sign in; the login page links there). Paste the value of `NEXTAUTH_SECRET` as the *setup key*, choose your password, and sign in at `/login`. The setup page only works while no admin exists. *(Alternative from a computer: `npm run db:seed` with `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD`; the seed also loads the knowledge-base starter entries — without it, add FAQs/policies in the dashboard.)*
+4. **Admin login** — if `ADMIN_EMAIL` and `ADMIN_INITIAL_PASSWORD` are set in Vercel, the build creates that admin account (and loads the knowledge-base starter entries) automatically on the first deploy — just sign in at `/login`, then remove `ADMIN_INITIAL_PASSWORD` from Vercel. Otherwise open `https://YOUR-DOMAIN/setup`, paste the value of `NEXTAUTH_SECRET` as the *setup key* and choose a password (works only while no admin exists).
 5. Configure the Meta and WhatsApp webhooks with your production domain (§7, §8).
 6. **Cron**: `vercel.json` schedules `/api/cron/maintenance` daily (Hobby plan limit). Vercel sends `Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set. On Pro, change the schedule to every 10 minutes (`*/10 * * * *`) for faster retry of failed deliveries; or call the endpoint from any external scheduler with that header.
 7. Function duration: webhook routes declare `maxDuration = 60` s (AI processing runs after the 200 response).

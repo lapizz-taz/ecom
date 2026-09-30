@@ -16,7 +16,7 @@
     "db:studio": "prisma studio",
     "admin:create": "tsx scripts/create-admin.ts",
     "postinstall": "prisma generate",
-    "vercel-build": "prisma generate && prisma migrate deploy && next build"
+    "vercel-build": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build"
   },
   "engines": {
     "node": ">=20.9.0"
