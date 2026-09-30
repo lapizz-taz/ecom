@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  // Build-time facts discovered by scripts/vercel-build.ts (see src/lib/dbUrl.ts).
+  // Only the pooler HOST and a status code are inlined — never credentials.
+  env: {
+    ISO_DB_POOLER_HOST: process.env.ISO_DB_POOLER_HOST ?? "",
+    ISO_DB_SETUP_STATUS: process.env.ISO_DB_SETUP_STATUS ?? "",
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

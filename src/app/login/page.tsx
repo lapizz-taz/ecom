@@ -6,6 +6,7 @@ interface Health {
   ok: boolean;
   adminExists: boolean;
   problem: string | null;
+  problems?: string[];
 }
 
 function LoginForm() {
@@ -52,7 +53,11 @@ function LoginForm() {
       {health?.problem && (
         <div className="card" style={{ borderColor: "var(--red)" }}>
           <strong className="error">Setup needed</strong>
-          <p className="small" style={{ margin: "6px 0 0" }}>{health.problem}</p>
+          {(health.problems?.length ? health.problems : [health.problem]).map((p) => (
+            <p key={p} className="small" style={{ margin: "6px 0 0" }}>
+              {p}
+            </p>
+          ))}
         </div>
       )}
       {health && !health.problem && !health.adminExists && (

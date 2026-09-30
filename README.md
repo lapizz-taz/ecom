@@ -158,15 +158,14 @@ Other scripts: `npm test`, `npm run typecheck`, `npm run build`, `npm run admin:
 ## 5. Database setup (Supabase)
 
 1. Create a project at supabase.com (region: Singapore `ap-southeast-1` is closest to Bangladesh).
-2. **Project Settings → Database → Connection string**:
-   - `DATABASE_URL` = **Transaction pooler** URI (port **6543**) + `?pgbouncer=true&connection_limit=1`
-   - `DIRECT_URL` = **Direct connection / Session** URI (port **5432**)
-3. Apply the schema and seed (from your computer, with those two variables in `.env`):
+2. Give the app the connection — **either** option:
+   - **Shortcut (recommended on Vercel):** set `SUPABASE_PROJECT_REF` (the id in your project URL), `SUPABASE_REGION` (e.g. `ap-southeast-1`) and `SUPABASE_DB_PASSWORD` (Project Settings → Database → *Reset database password* → copy). The build finds your project's shared-pooler host (`aws-<n>-<region>.pooler.supabase.com`), composes both connection URLs, and bakes only the host into the build — never the password. If discovery ever fails, also set `SUPABASE_POOLER_HOST` to the host shown under **Connect**.
+   - **Explicit URLs:** from **Connect**: `DATABASE_URL` = **Transaction pooler** URI (port **6543**) + `?pgbouncer=true&connection_limit=1`; `DIRECT_URL` = **Session pooler** URI (port **5432**). Explicit URLs win when set.
+3. Deploy. On Vercel, `vercel-build` applies pending migrations and the idempotent seed on every deploy. From your own computer (explicit URLs in `.env`):
    ```bash
    npx prisma migrate deploy
    npm run db:seed
    ```
-   (On Vercel, `vercel-build` also runs `prisma migrate deploy` automatically on every deploy; only pending migrations are applied.)
 
 Any PostgreSQL works (Neon, Vercel Postgres, RDS). With a non-pooled database set `DIRECT_URL` equal to `DATABASE_URL`.
 
