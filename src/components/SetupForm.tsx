@@ -1,0 +1,53 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+export function SetupForm({ expectedEmail }: { expectedEmail: string | null }) {
+  const router = useRouter();
+  const [setupKey, setSetupKey] = useState("");
+  const [email, setEmail] = useState(expectedEmail ?? "");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (password !== confirm) return setError("Passwords don't match.");
+    setBusy(true);
+    const res = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setupKey, email, password }),
+    });
+    setBusy(false);
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return setError(j.details?.join("; ") ?? j.error ?? "Setup failed");
+    router.replace("/login?setup=done");
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <p className="small muted">
+        Create the owner (ADMIN) account. This page stops working once an admin exists.
+      </p>
+      <label htmlFor="key">Setup key</label>
+      <input id="key" type="password" autoComplete="off" value={setupKey} onChange={(e) => setSetupKey(e.target.value)} required />
+      <p className="small muted" style={{ margin: "4px 0 0" }}>
+        Paste the exact value of <code>NEXTAUTH_SECRET</code> from Vercel → your project → Settings → Environment Variables.
+      </p>
+      <label htmlFor="email">Your email</label>
+      <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} readOnly={Boolean(expectedEmail)} required />
+      <label htmlFor="pw">Choose a password</label>
+      <input id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      <p className="small muted" style={{ margin: "4px 0 0" }}>At least 12 characters, with an upper-case letter, a lower-case letter and a number.</p>
+      <label htmlFor="pw2">Repeat password</label>
+      <input id="pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+      {error && <p className="error">{error}</p>}
+      <div style={{ marginTop: 16 }}>
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Creating…" : "Create admin account"}</button>
+      </div>
+    </form>
+  );
+}

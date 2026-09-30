@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, apiError, clientIp, sessionCookieOptions, signSession, verifyPassword } from "@/lib/auth";
 import { LIMITS, rateLimit } from "@/lib/security/rateLimit";
 import { logger } from "@/lib/logger";
+import { describeProblem, getSetupStatus } from "@/lib/setup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,14 @@ export async function POST(req: Request) {
     const origin = req.headers.get("origin");
     const host = req.headers.get("host");
     if (origin && host && new URL(origin).host !== host) return NextResponse.json({ error: "Cross-origin request blocked" }, { status: 403 });
+
+    // Explain configuration problems instead of failing with a generic error.
+    const status = await getSetupStatus();
+    const problem = describeProblem(status);
+    if (problem) return NextResponse.json({ error: problem }, { status: 503 });
+    if (!status.adminExists) {
+      return NextResponse.json({ error: "No admin account exists yet.", setup: true }, { status: 409 });
+    }
 
     const body = schema.parse(await req.json());
     const byIp = await rateLimit(`login-ip:${ip}`, LIMITS.loginPerIp15m.limit, LIMITS.loginPerIp15m.window);
@@ -35,7 +44,9 @@ export async function POST(req: Request) {
     await prisma.auditLog.create({ data: { actor: user.email, action: "auth.login", detail: { ip } } });
     const token = await signSession({ sub: user.id, email: user.email, role: user.role });
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
+    // Only mark the cookie Secure on HTTPS — otherwise browsers silently drop it (e.g. `npm start` over http).
+    const https = new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
+    res.cookies.set(SESSION_COOKIE, token, { ...sessionCookieOptions, secure: https });
     return res;
   } catch (err) {
     return apiError(err);

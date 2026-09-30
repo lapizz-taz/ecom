@@ -229,8 +229,8 @@ Notes: replies are free-form text inside WhatsApp's **24-hour customer-service w
 
 1. Push this repository to GitHub and **Import** it in Vercel (framework: Next.js; defaults are fine — `vercel-build` runs `prisma generate && prisma migrate deploy && next build`).
 2. *Settings → Environment Variables*: add every variable from `.env.example` that you use (Production + Preview). `APP_URL` = your production URL.
-3. Deploy. Check `https://YOUR-DOMAIN/api/health` returns `{"ok":true}`.
-4. Seed once (from your computer with the production `DATABASE_URL`/`DIRECT_URL`): `npm run db:seed`, then delete `ADMIN_INITIAL_PASSWORD`.
+3. Deploy. Open `https://YOUR-DOMAIN/api/health`: `"ok": true` means database and session secret are fine; otherwise `problem` says exactly which setting to fix (it never shows values).
+4. **Create your admin login** — open `https://YOUR-DOMAIN/setup` (or just try to sign in; the login page links there). Paste the value of `NEXTAUTH_SECRET` as the *setup key*, choose your password, and sign in at `/login`. The setup page only works while no admin exists. *(Alternative from a computer: `npm run db:seed` with `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD`; the seed also loads the knowledge-base starter entries — without it, add FAQs/policies in the dashboard.)*
 5. Configure the Meta and WhatsApp webhooks with your production domain (§7, §8).
 6. **Cron**: `vercel.json` schedules `/api/cron/maintenance` daily (Hobby plan limit). Vercel sends `Authorization: Bearer $CRON_SECRET` automatically when `CRON_SECRET` is set. On Pro, change the schedule to every 10 minutes (`*/10 * * * *`) for faster retry of failed deliveries; or call the endpoint from any external scheduler with that header.
 7. Function duration: webhook routes declare `maxDuration = 60` s (AI processing runs after the 200 response).
@@ -328,6 +328,18 @@ The model is replaced by a scripted model in automated tests (deterministic). Us
 - **Kill switch**: Settings → AI → uncheck *AI enabled* or *Auto-reply* — new messages then go straight to `HUMAN_REQUIRED`.
 - **Logs**: structured JSON in Vercel → Logs (secrets redacted). `LOG_LEVEL=debug` for more detail.
 - Webhook not verifying? The verify token must match exactly and the deployment must be live. Messages not arriving? Check the Page is subscribed to the app (`messages` field), the Instagram "Allow access to messages" toggle, and that the app is Live with Advanced Access.
+
+### Can't sign in?
+
+| What you see | Fix |
+|---|---|
+| "No admin account exists yet" | Click **Create the admin account** (or open `/setup`) |
+| "NEXTAUTH_SECRET is not set / too short" | Add a random value of 32+ characters in Vercel → Settings → Environment Variables, then **Redeploy** (env changes need a redeploy) |
+| "cannot connect to the database" / "tables have not been created" | Check `DATABASE_URL` / `DIRECT_URL` (correct password, pooler URL on 6543 with `?pgbouncer=true`), then redeploy |
+| "Setup key is wrong" | Paste the exact `NEXTAUTH_SECRET` value — no spaces or quotes |
+| "Invalid email or password" | Wrong password; another admin can reset it (Staff accounts), or run `npm run admin:create -- you@email ADMIN` |
+| "Too many attempts" | Wait 15 minutes (brute-force protection) |
+| Login "succeeds" but you land on /login again | You're on plain `http://` on a non-local address, or cookies are blocked — use the https Vercel URL |
 
 ## 16. Before going live — checklist
 
