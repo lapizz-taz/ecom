@@ -227,7 +227,7 @@ Notes: replies are free-form text inside WhatsApp's **24-hour customer-service w
 
 ## 9. Deploy to Vercel
 
-1. Push this repository to GitHub and **Import** it in Vercel (framework: Next.js; defaults are fine — `vercel-build` runs `prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build`; the seed is idempotent and never overwrites dashboard edits).
+1. Push this repository to GitHub and **Import** it in Vercel (framework: Next.js; defaults are fine — `vercel-build` runs `prisma generate`, then `scripts/db-setup.mjs` (migrations + idempotent seed that never overwrites dashboard edits), then `next build`). If the database settings are missing or the database can't be reached, the build still deploys and the login page / `/api/health` say exactly what to fix; if the database is reachable but a migration fails, the build stops so a broken schema never goes live.
 2. *Settings → Environment Variables*: add every variable from `.env.example` that you use (Production + Preview). `APP_URL` = your production URL.
 3. Deploy. Open `https://YOUR-DOMAIN/api/health`: `"ok": true` means database and session secret are fine; otherwise `problem` says exactly which setting to fix (it never shows values).
 4. **Admin login** — if `ADMIN_EMAIL` and `ADMIN_INITIAL_PASSWORD` are set in Vercel, the build creates that admin account (and loads the knowledge-base starter entries) automatically on the first deploy — just sign in at `/login`, then remove `ADMIN_INITIAL_PASSWORD` from Vercel. Otherwise open `https://YOUR-DOMAIN/setup`, paste the value of `NEXTAUTH_SECRET` as the *setup key* and choose a password (works only while no admin exists).

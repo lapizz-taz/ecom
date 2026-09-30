@@ -1,6 +1,12 @@
 "use client";
-import { useState, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+interface Health {
+  ok: boolean;
+  adminExists: boolean;
+  problem: string | null;
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -10,6 +16,15 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [health, setHealth] = useState<Health | null>(null);
+
+  // Surface configuration problems up front instead of after a failed sign-in.
+  useEffect(() => {
+    fetch("/api/health", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((h: Health) => setHealth(h))
+      .catch(() => setHealth(null));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +49,19 @@ function LoginForm() {
       <div className="brand">
         Isolation<small>Staff console</small>
       </div>
+      {health?.problem && (
+        <div className="card" style={{ borderColor: "var(--red)" }}>
+          <strong className="error">Setup needed</strong>
+          <p className="small" style={{ margin: "6px 0 0" }}>{health.problem}</p>
+        </div>
+      )}
+      {health && !health.problem && !health.adminExists && (
+        <div className="card">
+          <strong>No admin account yet</strong>
+          <p className="small" style={{ margin: "6px 0 10px" }}>Create the owner account first.</p>
+          <a className="btn primary" href="/setup">Create the admin account</a>
+        </div>
+      )}
       <label htmlFor="email">Email</label>
       <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <label htmlFor="password">Password</label>
