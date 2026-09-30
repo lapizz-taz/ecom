@@ -138,7 +138,7 @@ All variables are documented in [`.env.example`](.env.example).
 
 ## 4. Local setup
 
-Requirements: Node.js ≥ 20.9, PostgreSQL 14+.
+Requirements: Node.js 22, PostgreSQL 14+.
 
 ```bash
 git clone <this repo> && cd ecom
