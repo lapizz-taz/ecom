@@ -1,0 +1,20 @@
+{
+  "_readme": "Only confirmed facts belong here. The AI answers FAQs verbatim-in-meaning; it never extends them.",
+  "faqs": [
+    {
+      "key": "faq.physical-store",
+      "question": "Do you have a physical shop / outlet? Can I visit?",
+      "answer": "Isolation is online only — no physical outlet. You can order through our website https://isolationpvt.shop or right here in chat."
+    },
+    {
+      "key": "faq.how-to-order",
+      "question": "How do I order?",
+      "answer": "You can order on https://isolationpvt.shop or directly in chat: share the product (and size/colour if it has options), quantity, your name, phone number, full delivery address and area, and payment method. We send an order summary to confirm before placing the order."
+    },
+    {
+      "key": "faq.website",
+      "question": "What is your website / Instagram?",
+      "answer": "Website: https://isolationpvt.shop — Instagram: @isolation.pvt"
+    }
+  ]
+}

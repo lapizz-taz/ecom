@@ -1,0 +1,64 @@
+{
+  "_readme": "SEED / MOCK DATA ONLY. Used by the /test-chat mock Shopify mode and as a hint. In production Shopify is the single source of truth — live Shopify data always overrides this file.",
+  "products": [
+    {
+      "id": "gid://shopify/Product/mock-korean-double-whammy-belt",
+      "handle": "korean-double-whammy-belt",
+      "title": "Korean Double Whammy Belt",
+      "productType": "Belts",
+      "tags": ["belt", "korean", "korean-style", "y2k", "streetwear"],
+      "description": "Korean-style double belt. Bangladesh size: 115 cm.",
+      "status": "ACTIVE",
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/mock-kdwb-115",
+          "title": "115 cm",
+          "sku": "MOCK-KDWB-115",
+          "price": "799.00",
+          "compareAtPrice": null,
+          "options": [{ "name": "Size", "value": "115 cm" }],
+          "inventoryQuantity": 12,
+          "tracked": true,
+          "availableForSale": true
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/mock-test-oos",
+      "handle": "test-out-of-stock-item",
+      "title": "TEST Out-of-stock Item (mock)",
+      "productType": "Test",
+      "tags": ["test", "mock"],
+      "description": "Mock product used only in /test-chat to exercise the out-of-stock flow.",
+      "status": "ACTIVE",
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/mock-test-oos-1",
+          "title": "Default Title",
+          "sku": "MOCK-OOS",
+          "price": "500.00",
+          "compareAtPrice": null,
+          "options": [],
+          "inventoryQuantity": 0,
+          "tracked": true,
+          "availableForSale": false
+        }
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "id": "gid://shopify/Order/mock-1001",
+      "name": "#1001",
+      "phone": "01711111111",
+      "createdAt": "2026-09-20T10:00:00Z",
+      "financialStatus": "PENDING",
+      "fulfillmentStatus": "FULFILLED",
+      "cancelled": false,
+      "total": "879.00",
+      "currency": "BDT",
+      "items": [{ "title": "Korean Double Whammy Belt", "variant": "115 cm", "quantity": 1 }],
+      "tracking": [{ "company": "Mock Courier", "number": "MOCK123", "url": null }]
+    }
+  ]
+}

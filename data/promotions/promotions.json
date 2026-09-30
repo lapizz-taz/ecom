@@ -1,0 +1,4 @@
+{
+  "_readme": "Active promotions only. Empty list = no promotion running; the AI must not offer or invent discounts.",
+  "promotions": []
+}

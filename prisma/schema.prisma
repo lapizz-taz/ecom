@@ -1,0 +1,282 @@
+// Isolation AI assistant — database schema (PostgreSQL / Supabase / Neon)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Channel {
+  INSTAGRAM
+  MESSENGER
+  WHATSAPP
+  TEST
+}
+
+enum ConversationStatus {
+  AI_ACTIVE
+  HUMAN_REQUIRED
+  HUMAN_ACTIVE
+  RESOLVED
+}
+
+enum Sender {
+  CUSTOMER
+  AI
+  HUMAN
+  SYSTEM
+}
+
+enum DeliveryStatus {
+  RECEIVED
+  PENDING
+  SENT
+  FAILED
+  NOT_SENT
+}
+
+enum DraftStatus {
+  AWAITING_CONFIRMATION
+  PROCESSING
+  CONFIRMED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum AdminRole {
+  ADMIN
+  AGENT
+}
+
+enum KnowledgeCategory {
+  BRAND
+  POLICY
+  FAQ
+  PROMOTION
+  INSTRUCTION
+}
+
+/// A person. One customer can own several channel identities (IG, Messenger, WhatsApp)
+/// when identity can be safely matched (verified WhatsApp phone, or manual admin link).
+model Customer {
+  id            String        @id @default(cuid())
+  name          String?
+  phone         String?       /// normalized BD phone (01XXXXXXXXX) when verified or provided
+  phoneVerified Boolean       @default(false)
+  tags          String[]      @default([])
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  channelUsers  ChannelUser[]
+  conversations Conversation[]
+  orders        Order[]
+
+  @@index([phone])
+}
+
+/// "users" table: one row per channel identity (IGSID, PSID, WhatsApp number).
+model ChannelUser {
+  id             String         @id @default(cuid())
+  customerId     String
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel        Channel
+  externalUserId String
+  name           String?
+  username       String?
+  phone          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  conversations  Conversation[]
+
+  @@unique([channel, externalUserId])
+  @@index([customerId])
+}
+
+model Conversation {
+  id                 String             @id @default(cuid())
+  channelUserId      String
+  channelUser        ChannelUser        @relation(fields: [channelUserId], references: [id], onDelete: Cascade)
+  customerId         String
+  customer           Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel            Channel
+  externalThreadId   String?
+  status             ConversationStatus @default(AI_ACTIVE)
+  assignedTo         String?
+  language           String?
+  lastMessageAt      DateTime           @default(now())
+  lastMessagePreview String?
+  lastCustomerMessageAt DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  messages           Message[]
+  handoffs           Handoff[]
+  drafts             DraftOrder[]
+  orders             Order[]
+  toolCalls          ToolCallLog[]
+
+  @@index([status, lastMessageAt])
+  @@index([channel, lastMessageAt])
+  @@index([channelUserId])
+}
+
+model Message {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         Sender
+  message        String
+  externalId     String?        /// Meta mid / WhatsApp wamid
+  metadata       Json?
+  deliveryStatus DeliveryStatus @default(RECEIVED)
+  deliveryError  String?
+  attempts       Int            @default(0)
+  sentBy         String?        /// admin email for HUMAN messages
+  processedAt    DateTime?      /// set when the AI pipeline claimed this inbound message (exactly-once)
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([deliveryStatus])
+}
+
+/// Idempotency ledger for webhook events (Meta / WhatsApp retry & duplicate deliveries).
+model ProcessedEvent {
+  id        String   @id /// "<channel>:<external message/event id>"
+  channel   Channel
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Order collected by the AI, waiting for the customer's explicit confirmation.
+model DraftOrder {
+  id                 String       @id @default(cuid())
+  conversationId     String
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  status             DraftStatus  @default(AWAITING_CONFIRMATION)
+  payload            Json
+  subtotal           Decimal      @db.Decimal(12, 2)
+  deliveryFee        Decimal      @db.Decimal(12, 2)
+  total              Decimal      @db.Decimal(12, 2)
+  createdFromMessageId String
+  shopifyDraftId     String?
+  error              String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([conversationId, status])
+}
+
+model Order {
+  id               String        @id @default(cuid())
+  customerId       String
+  customer         Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  conversationId   String?
+  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  shopifyOrderId   String?
+  shopifyOrderName String?
+  shopifyDraftId   String?
+  status           String
+  total            Decimal?      @db.Decimal(12, 2)
+  channel          Channel?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([customerId])
+}
+
+model Handoff {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reason         String
+  detail         String?
+  createdAt      DateTime     @default(now())
+  resolvedAt     DateTime?
+  resolvedBy     String?
+
+  @@index([conversationId, resolvedAt])
+}
+
+model ToolCallLog {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  tool           String
+  input          Json
+  output         Json
+  success        Boolean
+  durationMs     Int
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([tool, createdAt])
+}
+
+/// Central business configuration (delivery charges, payment rules, AI settings...).
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+model KnowledgeEntry {
+  id        String            @id @default(cuid())
+  category  KnowledgeCategory
+  key       String            @unique
+  title     String
+  content   String
+  active    Boolean           @default(true)
+  updatedAt DateTime          @updatedAt
+  updatedBy String?
+  createdAt DateTime          @default(now())
+
+  @@index([category, active])
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  role         AdminRole @default(AGENT)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  target    String?
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AnalyticsEvent {
+  id             String   @id @default(cuid())
+  type           String
+  channel        Channel?
+  conversationId String?
+  data           Json?
+  createdAt      DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+model RateLimit {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+}

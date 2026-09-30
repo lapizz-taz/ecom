@@ -1,0 +1,87 @@
+{
+  "business": {
+    "brandName": "Isolation",
+    "website": "https://isolationpvt.shop",
+    "instagram": "@isolation.pvt",
+    "facebook": null,
+    "whatsapp": null,
+    "currency": "BDT",
+    "currencySymbol": "৳",
+    "supportContact": null,
+    "businessHours": null,
+    "onlineOnly": true
+  },
+  "delivery": {
+    "zones": [
+      {
+        "id": "dhaka",
+        "label": "Inside Dhaka",
+        "fee": 80,
+        "estimatedTime": null,
+        "areas": []
+      },
+      {
+        "id": "suburb",
+        "label": "Dhaka suburbs",
+        "fee": 100,
+        "estimatedTime": null,
+        "areas": []
+      },
+      {
+        "id": "outside_dhaka",
+        "label": "Outside Dhaka",
+        "fee": 120,
+        "estimatedTime": null,
+        "areas": []
+      }
+    ],
+    "notes": null
+  },
+  "payment": {
+    "methods": [
+      {
+        "id": "cod",
+        "label": "Cash on Delivery",
+        "enabled": true,
+        "instructions": "Pay the total amount in cash to the delivery person when you receive the parcel."
+      },
+      {
+        "id": "online",
+        "label": "Online payment",
+        "enabled": false,
+        "instructions": null
+      },
+      {
+        "id": "partial",
+        "label": "Partial advance payment",
+        "enabled": false,
+        "instructions": null
+      }
+    ],
+    "notes": null
+  },
+  "ai": {
+    "enabled": true,
+    "autoReply": true,
+    "tone": "Friendly, short, natural, confident, premium but casual — like a young Bangladeshi fashion brand rep. Sparing emojis (max one per message, often none).",
+    "languageMode": "auto",
+    "brandInstructions": "",
+    "maxReplyChars": 700,
+    "historyMessages": 20,
+    "debounceMs": 2500,
+    "allowOrderCreation": true,
+    "orderCreationMode": "complete",
+    "maxQuantityPerItem": 10,
+    "handoff": {
+      "pauseAiOnHandoff": true,
+      "onAnger": true,
+      "onRefundRequest": true,
+      "onDiscountRequest": true,
+      "onCancelRequest": true,
+      "onPaymentProblem": true,
+      "dissatisfactionThreshold": 2,
+      "notifyWebhookUrl": null,
+      "notifyEmail": null
+    }
+  }
+}

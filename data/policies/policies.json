@@ -1,0 +1,11 @@
+{
+  "_readme": "Official Isolation policies. content = null means the policy has NOT been confirmed by the owner yet; the AI will then tell customers a team member will confirm and hand off. Fill these in from the admin dashboard (Knowledge base) — do not guess.",
+  "policies": [
+    { "key": "policy.return", "title": "Return policy", "content": null },
+    { "key": "policy.exchange", "title": "Exchange policy", "content": null },
+    { "key": "policy.refund", "title": "Refund policy", "content": null },
+    { "key": "policy.cancellation", "title": "Order cancellation policy", "content": null },
+    { "key": "policy.warranty", "title": "Warranty / damaged or wrong item policy", "content": null },
+    { "key": "policy.delivery", "title": "Delivery policy", "content": "Isolation delivers across Bangladesh. Delivery charges depend on the delivery zone (inside Dhaka, Dhaka suburbs, outside Dhaka) and are listed in the delivery settings. Estimated delivery times are only stated when configured by the team." }
+  ]
+}

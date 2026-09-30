@@ -1,0 +1,32 @@
+{
+  "brandName": "Isolation",
+  "website": "https://isolationpvt.shop",
+  "instagram": "@isolation.pvt",
+  "instagramUrl": "https://www.instagram.com/isolation.pvt",
+  "facebook": null,
+  "whatsapp": null,
+  "country": "Bangladesh",
+  "currency": "BDT",
+  "currencySymbol": "৳",
+  "businessModel": "Online only. Isolation has no physical outlet/store.",
+  "hasPhysicalOutlet": false,
+  "supportContact": null,
+  "businessHours": null,
+  "description": "Bangladesh-based online fashion & accessories brand — Y2K / goth / streetwear accessories: glasses, belts, jewelry, wallet chains, fake piercings and more.",
+  "productCategories": [
+    "Chrome Hearts-style glasses",
+    "Dagger glasses",
+    "Rimless glasses",
+    "Half-frame glasses",
+    "Belts",
+    "Korean-style belts",
+    "Jewelry",
+    "Rings",
+    "Bracelets",
+    "Necklaces",
+    "Earrings",
+    "Wallet chains",
+    "Fake piercings",
+    "Other Y2K/goth accessories"
+  ]
+}
