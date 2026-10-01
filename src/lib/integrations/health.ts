@@ -46,7 +46,7 @@ async function saveCheck(service: ServiceId, r: CheckResult, actor: string) {
 
 /** Test one connection and remember the result. */
 export async function runCheck(service: ServiceId, actor: string): Promise<CheckResult> {
-  const r = await testConnection(service);
+  const r = await testConnection(service, actor);
   await saveCheck(service, r, actor);
   return r;
 }
@@ -68,7 +68,7 @@ export async function checkAllConfigured(actor: string, opts: { timeoutMs?: numb
   const previous = new Map((await prisma.integrationCheck.findMany()).map((c) => [c.service, c.ok]));
 
   const results = await Promise.all(
-    services.map(async (s) => ({ s, r: await withTimeout(testConnection(s).catch((err): CheckResult => ({ ok: false, message: (err as Error).message })), opts.timeoutMs ?? 25_000) }))
+    services.map(async (s) => ({ s, r: await withTimeout(testConnection(s, actor).catch((err): CheckResult => ({ ok: false, message: (err as Error).message })), opts.timeoutMs ?? 25_000) }))
   );
   const report = { checked: [] as ServiceId[], failed: [] as ServiceId[], skipped: [] as ServiceId[] };
   const newlyBroken: { s: ServiceId; message: string }[] = [];
@@ -105,7 +105,7 @@ export async function integrationHealth(): Promise<Record<"openai" | "shopify" |
   const e = await integrationEnv();
   const configured = configuredServices(e);
   const failing = new Set((await prisma.integrationCheck.findMany({ where: { ok: false }, select: { service: true } })).map((c) => c.service));
-  const h = (s: ServiceId): Health => (!configured[s] ? "off" : failing.has(s) ? "problem" : "ok");
+  const h = (s: ServiceId): Health => (failing.has(s) ? "problem" : !configured[s] ? "off" : "ok");
   return {
     openai: h("openai"),
     shopify: h("shopify"),

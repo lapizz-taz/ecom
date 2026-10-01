@@ -157,14 +157,18 @@ describe("connection checks and automatic webhook setup", () => {
     const calls = mockGraph({ "/999/subscriptions": { success: true }, "/55/subscribed_apps": { success: true } });
     const r = await setupWebhooks("messenger", "https://shop.example.com/", "owner@iso.test");
     expect(r.ok).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toMatchObject({
+    // The one GET is the "is this a Page token?" probe (/me/accounts) — a Page token has no Pages, so nothing is swapped.
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(calls.filter((c) => c.method === "GET").map((c) => c.url)).toEqual([expect.stringContaining("/me/accounts")]);
+    expect(posts).toHaveLength(2);
+    expect(posts[0]).toMatchObject({
       method: "POST",
       auth: "Bearer 999|test-meta-app-secret",
       body: { object: "page", callback_url: "https://shop.example.com/api/webhooks/meta", verify_token: "test-verify-token", fields: "messages,messaging_postbacks,message_echoes" },
     });
-    expect(calls[1]).toMatchObject({ method: "POST", auth: "Bearer EAApagetoken", body: { subscribed_fields: "messages,messaging_postbacks,message_echoes" } });
-    expect(await prisma.auditLog.count({ where: { action: "integrations.webhooks", target: "messenger" } })).toBe(1);
+    expect(posts[1]).toMatchObject({ method: "POST", auth: "Bearer EAApagetoken", body: { subscribed_fields: "messages,messaging_postbacks,message_echoes" } });
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "integrations.webhooks", target: "messenger" } });
+    expect(audit.detail).toMatchObject({ ok: true, steps: [{ ok: true }, { ok: true, label: "Subscribe your Facebook Page" }] });
   });
 
   it("creates a WhatsApp verify token when none exists and reports Meta's error per step", async () => {
