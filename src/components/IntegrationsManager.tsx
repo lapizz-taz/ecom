@@ -11,7 +11,7 @@ type Key =
   | "OPENAI_API_KEY" | "OPENAI_MODEL"
   | "SHOPIFY_STORE_DOMAIN" | "SHOPIFY_ACCESS_TOKEN" | "SHOPIFY_CLIENT_ID" | "SHOPIFY_CLIENT_SECRET"
   | "META_APP_ID" | "META_APP_SECRET" | "META_VERIFY_TOKEN" | "META_ACCESS_TOKEN" | "META_PAGE_ID"
-  | "INSTAGRAM_ACCESS_TOKEN" | "INSTAGRAM_ACCOUNT_ID"
+  | "INSTAGRAM_ACCESS_TOKEN" | "INSTAGRAM_ACCOUNT_ID" | "INSTAGRAM_APP_SECRET"
   | "WHATSAPP_PHONE_NUMBER_ID" | "WHATSAPP_ACCESS_TOKEN" | "WHATSAPP_VERIFY_TOKEN" | "WHATSAPP_APP_SECRET" | "WHATSAPP_BUSINESS_ACCOUNT_ID";
 
 interface FieldState { source: "dashboard" | "env" | "none"; value: string | null; hint: string | null; unreadable: boolean }
@@ -25,7 +25,7 @@ interface Snapshot {
   services: Record<ServiceId, ServiceOverview>;
   webhooks: { meta: string; whatsapp: string; baseUrl: string; public: boolean };
 }
-interface SetupResult { ok: boolean; steps: { label: string; ok: boolean; message: string }[] }
+interface SetupResult { ok: boolean; steps: { label: string; ok: boolean; manual?: boolean; message: string }[] }
 type Health = "off" | "untested" | "ok" | "problem";
 
 function healthOf(o: ServiceOverview): Health {
@@ -47,6 +47,7 @@ const EXPECT: Partial<Record<Key, [RegExp, string]>> = {
   META_PAGE_ID: [/^\d+$/, "The Page ID is only numbers"],
   INSTAGRAM_ACCESS_TOKEN: [/^(IG|EA)/, "Instagram Login tokens start with IG"],
   INSTAGRAM_ACCOUNT_ID: [/^\d+$/, "The account ID is only numbers"],
+  INSTAGRAM_APP_SECRET: [/^[0-9a-f]{32}$/i, "An app secret is 32 letters and numbers"],
   WHATSAPP_PHONE_NUMBER_ID: [/^(?!01\d{9}$|8801\d{9}$)\d+$/, "That looks like a phone number — use the Phone number ID from WhatsApp → API Setup"],
   WHATSAPP_ACCESS_TOKEN: [/^EA/, "WhatsApp access tokens start with EAA"],
   WHATSAPP_BUSINESS_ACCOUNT_ID: [/^\d+$/, "The account ID is only numbers"],
@@ -141,15 +142,19 @@ const SERVICES: ServiceDef[] = [
     tagline: "Reply to DMs sent to @isolation.pvt.",
     icon: <ChannelIcon channel="INSTAGRAM" size={20} />,
     iconBg: "#d62976",
-    note: "Instagram uses the Page token from the Messenger card — usually there's nothing to fill in here.",
+    note: "Recommended: Instagram Login — no Facebook Page or “Allow access to messages” setting needed. Fill in the token and the Instagram app secret.",
     fields: [
-      { key: "INSTAGRAM_ACCESS_TOKEN", label: "Instagram Login token", placeholder: "IG…", secret: true, optional: true, hint: "Only if you use “Instagram API with Instagram Login”." },
-      { key: "INSTAGRAM_ACCOUNT_ID", label: "Instagram account ID", optional: true },
+      { key: "INSTAGRAM_ACCESS_TOKEN", label: "Instagram token", placeholder: "IGAA…", secret: true, optional: true },
+      { key: "INSTAGRAM_APP_SECRET", label: "Instagram app secret", secret: true, optional: true, hint: "Instagram messages are signed with this, so it's needed to receive DMs." },
+      { key: "INSTAGRAM_ACCOUNT_ID", label: "Instagram account ID", optional: true, hint: "Filled in automatically when you test the connection." },
     ],
     steps: [
-      <>Make sure @isolation.pvt is a <b>Professional</b> (Business or Creator) account linked to your Facebook Page.</>,
-      <>In the Instagram app: <b>Settings → Messages and story replies → Message controls → Connected tools</b> → turn on <b>Allow access to messages</b>.</>,
-      <>Connect Messenger, then click <b>Test connection</b> here — it shows which Instagram account is linked.</>,
+      <>Make sure @isolation.pvt is a <b>Professional</b> account (Instagram → Settings → <b>Account type and tools</b> → switch to Business or Creator).</>,
+      <>In your Meta app (<a className="link" href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">developers.facebook.com <ExternalLink width={12} height={12} /></a>) open <b>Instagram → API setup with Instagram login</b>. If Instagram isn&apos;t listed, add it with <b>Add product</b>.</>,
+      <>Under <b>Generate access tokens</b> click <b>Add account</b>, log in to @isolation.pvt and allow access. Then click <b>Generate token</b> and copy it (starts with <code>IG</code>).</>,
+      <>On the same page copy the <b>Instagram app secret</b>. Paste both here and click <b>Save &amp; test</b>.</>,
+      <>Finally click <b>Set up webhooks for me</b> below and follow the one step it can&apos;t do for you. The token is renewed automatically every week.</>,
+      <span className="muted">Prefer to go through your Facebook Page instead? Leave the token empty — Instagram then uses the Messenger Page token, but you must turn on <b>Allow access to messages</b> in the Instagram app (Settings → Messages and story replies → Message controls → Connected tools).</span>,
     ],
     webhook: "instagram",
   },
@@ -456,8 +461,8 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
               {setup && (
                 <ul className="setup-steps">
                   {setup.steps.map((s, i) => (
-                    <li key={i} className={s.ok ? "ok" : "bad"}>
-                      {s.ok ? <CircleCheck width={16} height={16} /> : <CircleX width={16} height={16} />}
+                    <li key={i} className={s.ok ? "ok" : s.manual ? "todo" : "bad"}>
+                      {s.ok ? <CircleCheck width={16} height={16} /> : s.manual ? <ListChecks width={16} height={16} /> : <CircleX width={16} height={16} />}
                       <div>
                         <div className="strong small">{s.label}</div>
                         <div className="small text-2">{s.message}</div>

@@ -78,6 +78,40 @@ export async function inspectMetaToken(e: Env, token: string, kind: keyof typeof
   return { notes };
 }
 
+const MISSING_IG_APP_SECRET =
+  "Add the Instagram app secret — Instagram Login messages are signed with it. It's in your Meta app → Instagram → API setup with Instagram login.";
+
+/** graph.instagram.com call with the token as a query parameter (never logged). */
+async function igCall<T>(method: "GET" | "POST", url: string, token: string, params: Record<string, string> = {}): Promise<{ ok: boolean; data?: T; error?: string }> {
+  const u = new URL(url);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  u.searchParams.set("access_token", token);
+  try {
+    const res = await fetch(u, { method, signal: AbortSignal.timeout(10_000) });
+    const json = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; code?: number } };
+    if (res.ok && !json.error) return { ok: true, data: json };
+    return { ok: false, error: `${json.error?.message ?? `HTTP ${res.status}`}${json.error?.code ? ` (code ${json.error.code})` : ""}` };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/**
+ * Instagram Login tokens last 60 days and can be renewed any time after the first day. Renews a
+ * dashboard-saved token once it is a week old, so it never lapses (run by the daily maintenance).
+ */
+export async function refreshInstagramToken(actor: string): Promise<"refreshed" | "skipped" | { failed: string }> {
+  const row = await prisma.integrationSecret.findUnique({ where: { key: "INSTAGRAM_ACCESS_TOKEN" }, select: { updatedAt: true } });
+  if (!row || Date.now() - row.updatedAt.getTime() < 7 * 86400_000) return "skipped";
+  const e = await integrationEnv({ fresh: true });
+  if (!usesInstagramLogin(e)) return "skipped";
+  // The refresh endpoint is unversioned.
+  const r = await igCall<{ access_token?: string }>("GET", "https://graph.instagram.com/refresh_access_token", e.INSTAGRAM_ACCESS_TOKEN!, { grant_type: "ig_refresh_token" });
+  if (!r.ok || !r.data?.access_token) return { failed: r.error ?? "no token returned" };
+  await saveIntegrationValues({ INSTAGRAM_ACCESS_TOKEN: r.data.access_token }, actor);
+  return "refreshed";
+}
+
 const MISSING_APP_SECRET =
   "Add your Meta app's App ID and App secret on the Meta app card first — without the App secret, every incoming message is rejected as unverified.";
 
@@ -175,12 +209,25 @@ export async function testConnection(service: ServiceId, actor = "system"): Prom
     }
 
     case "instagram": {
-      if (!e.META_APP_ID || !e.META_APP_SECRET) return { ok: false, message: MISSING_APP_SECRET };
       if (usesInstagramLogin(e)) {
-        const r = await getJson<{ username?: string; user_id?: string }>(`${igGraph(e)}/me?fields=user_id,username`, e.INSTAGRAM_ACCESS_TOKEN!);
-        if (!r.ok) return { ok: false, message: `Instagram rejected the token: ${r.error}` };
-        return { ok: true, message: `Connected to @${r.data?.username ?? r.data?.user_id} (Instagram Login).` };
+        if (!e.INSTAGRAM_APP_SECRET) return { ok: false, message: MISSING_IG_APP_SECRET };
+        const token = e.INSTAGRAM_ACCESS_TOKEN!;
+        const r = await igCall<{ username?: string; user_id?: string }>("GET", `${igGraph(e)}/me`, token, { fields: "user_id,username" });
+        if (!r.ok) return { ok: false, message: `Instagram rejected the token: ${r.error}. Generate a new one in your Meta app → Instagram → API setup with Instagram login.` };
+        const notes: string[] = [];
+        const userId = r.data?.user_id;
+        // Remember the account ID so replies and webhook subscriptions address the right account.
+        if (userId && userId !== e.INSTAGRAM_ACCOUNT_ID) await saveIntegrationValues({ INSTAGRAM_ACCOUNT_ID: userId }, actor);
+        const subs = await igCall<{ data?: unknown[] }>("GET", `${igGraph(e)}/${userId ?? "me"}/subscribed_apps`, token);
+        if (subs.ok && !subs.data?.data?.length) {
+          notes.push("Your Instagram account isn't subscribed to webhooks yet, so DMs won't arrive. Use “Set up webhooks for me” below.");
+        }
+        if (process.env.INSTAGRAM_ACCESS_TOKEN === token) {
+          notes.push("This token comes from Vercel and expires after 60 days. Paste it here instead so it's renewed automatically.");
+        }
+        return { ok: true, message: `Connected to @${r.data?.username ?? userId} (Instagram Login).`, notes: notes.length ? notes : undefined };
       }
+      if (!e.META_APP_ID || !e.META_APP_SECRET) return { ok: false, message: MISSING_APP_SECRET };
       let swapNote: string | undefined;
       if (!e.INSTAGRAM_ACCESS_TOKEN) {
         const swap = await ensurePageToken(e, actor);
@@ -233,6 +280,8 @@ export async function testConnection(service: ServiceId, actor = "system"): Prom
 export interface SetupStep {
   label: string;
   ok: boolean;
+  /** Can't be done through the API — the message says what to do in the Meta App Dashboard. */
+  manual?: boolean;
   message: string;
 }
 
@@ -265,7 +314,8 @@ export async function setupWebhooks(service: "messenger" | "instagram" | "whatsa
   if (!isPublicHttps(baseUrl)) return fail(`Webhooks need a public https address, but this dashboard is running at ${baseUrl}. Open it from your live site (e.g. https://isolation-ai.vercel.app) and try again.`);
 
   let e = await integrationEnv({ fresh: true });
-  if (!e.META_APP_ID || !e.META_APP_SECRET) return fail("Connect your Meta app (App ID + App secret) first.");
+  const igLogin = service === "instagram" && usesInstagramLogin(e);
+  if (!igLogin && (!e.META_APP_ID || !e.META_APP_SECRET)) return fail("Connect your Meta app (App ID + App secret) first.");
 
   const tokenKey = service === "whatsapp" ? "WHATSAPP_VERIFY_TOKEN" : "META_VERIFY_TOKEN";
   if (!e[tokenKey]) {
@@ -275,23 +325,38 @@ export async function setupWebhooks(service: "messenger" | "instagram" | "whatsa
   const urls = webhookUrls(baseUrl);
   const steps: SetupStep[] = [];
 
+  const instagramDashboardStep = (extra = ""): SetupStep => ({
+    label: "Add the webhook address in your Meta app",
+    ok: false,
+    manual: true,
+    message:
+      `In your Meta app open Instagram → ${igLogin ? "API setup with Instagram login → Configure webhooks" : "Webhooks"}, paste ${urls.meta} as the Callback URL and the Verify token shown here, ` +
+      `click Verify and save, then subscribe to messages and messaging_postbacks.${extra}`,
+  });
+
+  if (igLogin) {
+    // Instagram Login: the app-level webhook is set in the App Dashboard; the account subscribes per user.
+    steps.push(instagramDashboardStep());
+    const r = await igCall<{ success?: boolean }>("POST", `${igGraph(e)}/${e.INSTAGRAM_ACCOUNT_ID ?? "me"}/subscribed_apps`, e.INSTAGRAM_ACCESS_TOKEN!, {
+      subscribed_fields: "messages,messaging_postbacks",
+    });
+    steps.push({ label: "Subscribe your Instagram account", ok: r.ok, message: r.ok ? "Instagram account subscribed to messages" : r.error ?? "failed" });
+    return finish();
+  }
+
   if (service === "messenger" || service === "instagram") {
     const object = service === "messenger" ? "page" : "instagram";
     const fields = service === "messenger" ? "messages,messaging_postbacks,message_echoes" : "messages,messaging_postbacks";
-    steps.push(
-      await post(
-        `${graph(e)}/${e.META_APP_ID}/subscriptions`,
-        appToken(e),
-        { object, callback_url: urls.meta, verify_token: e.META_VERIFY_TOKEN, fields, include_values: true },
-        "Register the webhook address with your Meta app",
-        `Meta verified ${urls.meta}`
-      )
+    const appLevel = await post(
+      `${graph(e)}/${e.META_APP_ID}/subscriptions`,
+      appToken(e),
+      { object, callback_url: urls.meta, verify_token: e.META_VERIFY_TOKEN, fields, include_values: true },
+      "Register the webhook address with your Meta app",
+      `Meta verified ${urls.meta}`
     );
-    if (service === "instagram" && usesInstagramLogin(e)) {
-      steps.push(
-        await post(`${igGraph(e)}/me/subscribed_apps`, e.INSTAGRAM_ACCESS_TOKEN!, { subscribed_fields: "messages,messaging_postbacks" }, "Subscribe your Instagram account", "Instagram account subscribed")
-      );
-    } else if (!e.META_ACCESS_TOKEN) {
+    // Meta doesn't always let apps register the Instagram webhook through the API — fall back to the dashboard.
+    steps.push(service === "instagram" && !appLevel.ok ? instagramDashboardStep(` (Meta said: ${appLevel.message})`) : appLevel);
+    if (!e.META_ACCESS_TOKEN) {
       steps.push({ label: "Subscribe your Facebook Page", ok: false, message: "Add the Page access token on the Messenger card first." });
     } else {
       const swap = await ensurePageToken(e, actor);
@@ -339,8 +404,8 @@ export async function setupWebhooks(service: "messenger" | "instagram" | "whatsa
 
   // Meta's answers are kept so a failed setup can be diagnosed later (they never contain tokens).
   async function finish() {
-    const ok = steps.every((s) => s.ok);
-    await prisma.auditLog.create({ data: { actor, action: "integrations.webhooks", target: service, detail: { ok, steps: steps.map((s) => ({ label: s.label, ok: s.ok, message: s.message.slice(0, 300) })) } } });
+    const ok = steps.every((s) => s.ok || s.manual);
+    await prisma.auditLog.create({ data: { actor, action: "integrations.webhooks", target: service, detail: { ok, steps: steps.map((s) => ({ label: s.label, ok: s.ok, manual: s.manual ?? false, message: s.message.slice(0, 300) })) } } });
     return { ok, steps };
   }
 }

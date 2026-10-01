@@ -36,6 +36,8 @@ const schema = z.object({
   META_PAGE_ID: z.string().optional(),
   INSTAGRAM_ACCESS_TOKEN: z.string().optional(),
   INSTAGRAM_ACCOUNT_ID: z.string().optional(),
+  /** "Instagram API with Instagram Login": Instagram webhooks are signed with this, not META_APP_SECRET. */
+  INSTAGRAM_APP_SECRET: z.string().optional(),
   META_GRAPH_VERSION: z.string().default("v23.0"),
 
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
