@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { LoaderCircle, TriangleAlert } from "lucide-react";
 
 export function SetupForm({ expectedEmail }: { expectedEmail: string | null }) {
   const router = useRouter();
@@ -29,25 +30,36 @@ export function SetupForm({ expectedEmail }: { expectedEmail: string | null }) {
 
   return (
     <form onSubmit={submit}>
-      <p className="small muted">
-        Create the owner (ADMIN) account. This page stops working once an admin exists.
-      </p>
-      <label htmlFor="key">Setup key</label>
-      <input id="key" type="password" autoComplete="off" value={setupKey} onChange={(e) => setSetupKey(e.target.value)} required />
-      <p className="small muted" style={{ margin: "4px 0 0" }}>
-        Paste the exact value of <code>NEXTAUTH_SECRET</code> from Vercel → your project → Settings → Environment Variables.
-      </p>
-      <label htmlFor="email">Your email</label>
-      <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} readOnly={Boolean(expectedEmail)} required />
-      <label htmlFor="pw">Choose a password</label>
-      <input id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-      <p className="small muted" style={{ margin: "4px 0 0" }}>At least 12 characters, with an upper-case letter, a lower-case letter and a number.</p>
-      <label htmlFor="pw2">Repeat password</label>
-      <input id="pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-      {error && <p className="error">{error}</p>}
-      <div style={{ marginTop: 16 }}>
-        <button className="primary" type="submit" disabled={busy}>{busy ? "Creating…" : "Create admin account"}</button>
+      <p className="small muted" style={{ marginBottom: 20 }}>This page stops working once an admin exists.</p>
+      <div className="field">
+        <label htmlFor="key">Setup key</label>
+        <input id="key" type="password" autoComplete="off" value={setupKey} onChange={(e) => setSetupKey(e.target.value)} required />
+        <p className="hint">
+          Paste the exact value of <code>NEXTAUTH_SECRET</code> from Vercel → your project → Settings → Environment Variables.
+        </p>
       </div>
+      <div className="field">
+        <label htmlFor="email">Your email</label>
+        <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} readOnly={Boolean(expectedEmail)} required />
+      </div>
+      <div className="field">
+        <label htmlFor="pw">Choose a password</label>
+        <input id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <p className="hint">At least 12 characters, with an upper-case letter, a lower-case letter and a number.</p>
+      </div>
+      <div className="field">
+        <label htmlFor="pw2">Repeat password</label>
+        <input id="pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+      </div>
+      {error && (
+        <p className="feedback err" role="alert" style={{ marginTop: 14 }}>
+          <TriangleAlert width={15} height={15} aria-hidden /> {error}
+        </p>
+      )}
+      <button className="btn-primary btn-block" type="submit" disabled={busy} style={{ marginTop: 22, height: 42 }}>
+        {busy && <LoaderCircle width={16} height={16} className="spin" aria-hidden />}
+        {busy ? "Creating…" : "Create admin account"}
+      </button>
     </form>
   );
 }
