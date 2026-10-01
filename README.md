@@ -136,6 +136,8 @@ Only these things genuinely require you. **Never share passwords or 2FA codes wi
 
 All variables are documented in [`.env.example`](.env.example).
 
+**Easier: connect rows 4–7 from the dashboard.** Once you can sign in, open *Dashboard → Integrations* (admins only). Each service has step-by-step instructions, fields to paste the keys into, a **Save & test** button that confirms the connection (e.g. shows your Page name or Shopify store), and for Messenger, Instagram and WhatsApp a **Set up webhooks for me** button that registers the callback URL with your Meta app and subscribes your Page / account. Keys entered there are encrypted (AES-256-GCM, key derived from `NEXTAUTH_SECRET`) before they're stored in the database, are never shown again (only their last 4 characters), take effect immediately without a redeploy, and override the environment variable of the same name. If you ever change `NEXTAUTH_SECRET`, keys saved on the dashboard can no longer be read and must be pasted again — the Integrations page tells you which.
+
 ## 4. Local setup
 
 Requirements: Node.js 22, PostgreSQL 14+.
@@ -281,6 +283,7 @@ Preview deployments share the environment variables you assign to *Preview* — 
 - **Knowledge base** — policies, FAQs, promotions, brand facts, extra AI instructions.
 - **Settings** — delivery charges/times/areas, payment methods & instructions, AI on/off, auto-reply, tone, language behaviour, order-creation mode, handoff triggers & notifications, business info.
 - **Analytics** — conversations, messages, AI responses, handoffs (by reason), orders, conversion rate, most requested products, most common question topics, failed queries, average response time, per-channel performance. Only aggregates are stored (no message text or phone numbers); test traffic is excluded.
+- **Integrations** *(admin)* — connect OpenAI, Shopify, the Meta app, Messenger, Instagram and WhatsApp: paste keys, test each connection, copy webhook URLs and verify tokens, or let the dashboard set up the Meta webhooks. See [§3](#3-what-you-must-provide-credentials--decisions). Each service shows **Working / Problem / Not tested** with the last check time; Meta tokens are inspected for expiry, missing permissions and the wrong app; channel cards show when the last customer message arrived. The daily `/api/cron/maintenance` run re-tests every configured connection and sends a handoff-style alert (Slack/Discord webhook or email) when one stops working; the sidebar marks broken connections in red.
 - **Staff accounts** — add staff, change roles, disable, reset passwords.
 
 ## 12. Test chat

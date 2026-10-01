@@ -280,3 +280,23 @@ model RateLimit {
   windowStart DateTime
   count       Int
 }
+
+/// Integration credentials entered on the dashboard's Integrations page.
+/// Values are AES-256-GCM encrypted with a key derived from NEXTAUTH_SECRET;
+/// a dashboard value overrides the environment variable of the same name.
+model IntegrationSecret {
+  key       String   @id /// environment variable name, e.g. "OPENAI_API_KEY"
+  value     String   /// "v1.<iv>.<tag>.<ciphertext>" (base64url)
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+/// Latest connection check per integration — from the Integrations page or the daily maintenance run.
+model IntegrationCheck {
+  service   String   @id /// "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp"
+  ok        Boolean
+  message   String
+  notes     Json?    /// string[] of extra hints (expiring token, missing permissions…)
+  checkedAt DateTime @default(now())
+  checkedBy String?  /// staff email, or "maintenance"
+}

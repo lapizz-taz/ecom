@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 import { LIMITS, clientIp, rateLimit } from "./security/rateLimit";
 import { safeEqual } from "./security/signature";
+import { integrationEnv } from "./integrations";
+import type { Env } from "./env";
+
+/**
+ * Meta's verification handshake against a verify token from the dashboard or environment.
+ * Tries the cached value first, then a fresh read — Meta calls this moments after a token is
+ * saved on the Integrations page, possibly on another server instance.
+ */
+export async function verifyHandshakeFor(req: Request, pick: (e: Env) => string | undefined): Promise<Response> {
+  const first = verifyHandshake(req, pick(await integrationEnv()));
+  if (first.status === 200 || new URL(req.url).searchParams.get("hub.mode") !== "subscribe") return first;
+  return verifyHandshake(req, pick(await integrationEnv({ fresh: true })));
+}
 
 /** GET verification handshake used by Meta (Messenger / Instagram / WhatsApp). */
 export function verifyHandshake(req: Request, expectedToken: string | undefined): Response {

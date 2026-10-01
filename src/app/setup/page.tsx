@@ -1,13 +1,15 @@
 import Link from "next/link";
-import { ArrowRight, CircleCheck, TriangleAlert } from "lucide-react";
+import { ArrowRight, ChevronRight, CircleCheck, KeyRound, TriangleAlert } from "lucide-react";
 import { describeProblem, getSetupStatus } from "@/lib/setup";
 import { SetupForm } from "@/components/SetupForm";
+import { ResetPasswordForm } from "@/components/ResetPasswordForm";
 import { AuthLayout } from "@/components/AuthLayout";
 
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false, follow: false } };
 
-export default async function SetupPage() {
+export default async function SetupPage({ searchParams }: { searchParams: Promise<{ forgot?: string }> }) {
+  const forgot = (await searchParams).forgot !== undefined;
   const status = await getSetupStatus();
   const problem = describeProblem(status);
   return (
@@ -31,9 +33,16 @@ export default async function SetupPage() {
           <Link className="btn btn-primary btn-block" href="/login" style={{ height: 42 }}>
             Go to sign in <ArrowRight width={16} height={16} aria-hidden />
           </Link>
-          <p className="small muted">
-            Forgot the password? Another admin can reset it under Staff accounts, or run <code>npm run admin:create -- your@email ADMIN</code>.
-          </p>
+          <details className="card collapse" open={forgot}>
+            <summary>
+              <KeyRound width={16} height={16} className="muted" aria-hidden />
+              Forgot the password?
+              <ChevronRight width={16} height={16} className="chev" aria-hidden />
+            </summary>
+            <div className="card-body">
+              <ResetPasswordForm defaultEmail={process.env.ADMIN_EMAIL?.trim().toLowerCase() || null} />
+            </div>
+          </details>
         </div>
       ) : (
         <SetupForm expectedEmail={process.env.ADMIN_EMAIL?.trim().toLowerCase() || null} />

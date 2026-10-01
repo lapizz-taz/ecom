@@ -13,13 +13,18 @@ export async function notifyHandoff(args: {
   reason: string;
   customerName: string | null;
 }) {
-  const e = env();
-  const base = e.APP_URL?.replace(/\/$/, "") ?? "";
+  const base = env().APP_URL?.replace(/\/$/, "") ?? "";
   const link = `${base}/admin/conversations/${args.conversationId}`;
   const text = `🔔 Isolation: human needed (${args.reason.replace(/_/g, " ")}) — ${args.channel.toLowerCase()}${
     args.customerName ? ` · ${args.customerName}` : ""
   }\n${link}`;
+  await sendStaffAlert({ settings: args.settings, subject: `Isolation chat needs a human (${args.reason})`, text });
+}
 
+/** Send a short alert to the configured Slack/Discord webhook and/or notification email. */
+export async function sendStaffAlert(args: { settings: Settings; subject: string; text: string }) {
+  const e = env();
+  const { text } = args;
   const tasks: Promise<unknown>[] = [];
   const webhook = args.settings.ai.handoff.notifyWebhookUrl ?? e.HANDOFF_WEBHOOK_URL;
   if (webhook) {
@@ -39,11 +44,11 @@ export async function notifyHandoff(args: {
       fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${e.RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: e.NOTIFY_FROM_EMAIL, to: [to], subject: `Isolation chat needs a human (${args.reason})`, text }),
+        body: JSON.stringify({ from: e.NOTIFY_FROM_EMAIL, to: [to], subject: args.subject, text }),
         signal: AbortSignal.timeout(5000),
       })
     );
   }
   const results = await Promise.allSettled(tasks);
-  for (const r of results) if (r.status === "rejected") logger.warn("handoff notification failed", errorInfo(r.reason));
+  for (const r of results) if (r.status === "rejected") logger.warn("staff notification failed", errorInfo(r.reason));
 }

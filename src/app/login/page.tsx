@@ -75,6 +75,12 @@ function LoginForm() {
             </div>
           </div>
         )}
+        {params.get("reset") === "done" && !error && (
+          <div className="alert alert-good">
+            <CircleCheck width={18} height={18} aria-hidden />
+            <div className="alert-title">Password changed — sign in with your new password.</div>
+          </div>
+        )}
         {params.get("setup") === "done" && !error && (
           <div className="alert alert-good">
             <CircleCheck width={18} height={18} aria-hidden />
@@ -113,7 +119,9 @@ function LoginForm() {
           {!busy && <ArrowRight width={16} height={16} aria-hidden />}
         </button>
       </form>
-      <p className="small muted" style={{ marginTop: 22, textAlign: "center" }}>Forgot your password? Ask an admin to reset it under Staff accounts.</p>
+      <p className="small muted" style={{ marginTop: 22, textAlign: "center" }}>
+        <a className="link" href="/setup?forgot">Forgot your password?</a> Admins can reset it with the setup key; staff can ask an admin.
+      </p>
     </>
   );
 }

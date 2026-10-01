@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     const q = url.searchParams.get("q")?.slice(0, 100);
     const after = url.searchParams.get("after");
     const settings = await getSettings();
-    const shopify = getShopify(settings.business.website, "live");
+    const shopify = await getShopify(settings.business.website, "live");
     if (q) return NextResponse.json({ products: await shopify.searchProducts(q, { limit: 10 }), nextCursor: null });
     return NextResponse.json(await shopify.listProducts(25, after));
   } catch (err) {

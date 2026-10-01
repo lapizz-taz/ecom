@@ -1,5 +1,5 @@
 import type { Channel } from "@prisma/client";
-import { env } from "../env";
+import { integrationEnv } from "../integrations";
 import { graphRequest } from "./http";
 import { describeAttachments, splitMessage, type ChannelAdapter, type EchoMessage, type InboundMessage, type SendOptions, type SendResult } from "./types";
 
@@ -15,8 +15,8 @@ export class MetaAdapter implements ChannelAdapter {
     this.maxLength = channel === "INSTAGRAM" ? 1000 : 2000;
   }
 
-  private endpoint(): { base: string; token: string; path: string } {
-    const e = env();
+  private async endpoint(): Promise<{ base: string; token: string; path: string }> {
+    const e = await integrationEnv();
     if (this.channel === "INSTAGRAM" && e.INSTAGRAM_ACCESS_TOKEN) {
       const igLogin = e.INSTAGRAM_ACCESS_TOKEN.startsWith("IG");
       return {
@@ -32,7 +32,7 @@ export class MetaAdapter implements ChannelAdapter {
   async send(recipientId: string, text: string, opts: SendOptions = {}): Promise<SendResult> {
     let ep;
     try {
-      ep = this.endpoint();
+      ep = await this.endpoint();
     } catch (err) {
       return { ok: false, externalIds: [], error: (err as Error).message, retryable: false };
     }
@@ -56,7 +56,7 @@ export class MetaAdapter implements ChannelAdapter {
   async getProfile(externalUserId: string) {
     let ep;
     try {
-      ep = this.endpoint();
+      ep = await this.endpoint();
     } catch {
       return null;
     }
