@@ -29,9 +29,11 @@ interface SetupResult { ok: boolean; steps: { label: string; ok: boolean; messag
 type Health = "off" | "untested" | "ok" | "problem";
 
 function healthOf(o: ServiceOverview): Health {
+  // A failed test is shown as a problem even when keys are still missing — it says exactly what to fix.
+  if (o.check && !o.check.ok) return "problem";
   if (!o.configured) return "off";
   if (!o.check) return "untested";
-  return o.check.ok ? "ok" : "problem";
+  return "ok";
 }
 
 /** Soft format checks while typing — the server still validates what it must. */

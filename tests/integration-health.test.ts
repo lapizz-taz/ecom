@@ -119,3 +119,63 @@ describe("stored health", () => {
     expect(await prisma.integrationCheck.count()).toBe(0);
   });
 });
+
+describe("Page tokens and the Meta app secret", () => {
+  it("swaps a pasted System User token for the Page's own token", async () => {
+    await saveIntegrationValues({ META_ACCESS_TOKEN: "EAAsystemuser" }, "owner@iso.test");
+    const calls = mockFetch({
+      "/me/accounts": { data: [{ id: "4455", name: "Isolation", access_token: "EAApage4455" }] },
+      "/4455?fields=id,name": { id: "4455", name: "Isolation" },
+      "/4455/subscribed_apps": { data: [{ id: "999" }] },
+      debug_token: { data: { is_valid: true, app_id: "999", expires_at: 0, scopes: ["pages_messaging", "pages_manage_metadata"] } },
+    });
+    const r = await testConnection("messenger", "owner@iso.test");
+    expect(r).toMatchObject({ ok: true, message: 'Connected to the Facebook Page "Isolation".' });
+    expect(r.notes?.[0]).toMatch(/swapped for the Page access token of "Isolation"/);
+    const e = await integrationEnv({ fresh: true });
+    expect(e.META_ACCESS_TOKEN).toBe("EAApage4455");
+    expect(e.META_PAGE_ID).toBe("4455");
+    // Everything after the swap uses the Page token.
+    expect(calls.find((c) => c.url.includes("/4455?fields=id,name"))).toBeTruthy();
+  });
+
+  it("asks which Page to use when the token manages several, and explains a token with no Pages", async () => {
+    await saveIntegrationValues({ META_ACCESS_TOKEN: "EAAsystemuser" }, "owner@iso.test");
+    mockFetch({ "/me/accounts": { data: [{ id: "1", name: "Isolation", access_token: "a" }, { id: "2", name: "Isolation Outlet", access_token: "b" }] } });
+    expect((await testConnection("messenger")).message).toMatch(/several Pages.*Isolation \(1\), Isolation Outlet \(2\)/);
+
+    vi.restoreAllMocks();
+    mockFetch({ "/me/accounts": { data: [] } });
+    expect((await testConnection("messenger")).message).toMatch(/doesn't manage any Facebook Page/);
+    expect((await integrationEnv({ fresh: true })).META_ACCESS_TOKEN).toBe("EAAsystemuser"); // nothing swapped
+  });
+
+  it("fails channel checks clearly when the App secret is missing", async () => {
+    const secret = process.env.META_APP_SECRET;
+    delete process.env.META_APP_SECRET;
+    resetEnvCache();
+    try {
+      await saveIntegrationValues({ META_ACCESS_TOKEN: "EAApage", WHATSAPP_PHONE_NUMBER_ID: "1234567890", WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+      const spy = vi.spyOn(globalThis, "fetch");
+      for (const s of ["messenger", "instagram", "whatsapp"] as const) {
+        expect(await testConnection(s)).toMatchObject({ ok: false, message: expect.stringMatching(/App secret/) });
+      }
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      process.env.META_APP_SECRET = secret;
+    }
+  });
+
+  it("warns when the WhatsApp ID doesn't return a phone number", async () => {
+    await saveIntegrationValues({ WHATSAPP_PHONE_NUMBER_ID: "777", WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+    mockFetch({ "/777?fields": { id: "777" }, debug_token: { data: { is_valid: true, app_id: "999", expires_at: 0, scopes: ["whatsapp_business_messaging", "whatsapp_business_management"] } } });
+    const r = await testConnection("whatsapp");
+    expect(r.ok).toBe(true);
+    expect(r.notes?.[0]).toMatch(/didn't return a phone number/);
+  });
+
+  it("shows a failed check as a problem in the sidebar even before everything is configured", async () => {
+    await prisma.integrationCheck.create({ data: { service: "whatsapp", ok: false, message: "App secret missing" } });
+    expect((await integrationHealth()).whatsapp).toBe("problem");
+  });
+});

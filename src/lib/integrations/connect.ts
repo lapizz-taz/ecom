@@ -78,9 +78,35 @@ export async function inspectMetaToken(e: Env, token: string, kind: keyof typeof
   return { notes };
 }
 
-export async function testConnection(service: ServiceId): Promise<CheckResult> {
+const MISSING_APP_SECRET =
+  "Add your Meta app's App ID and App secret on the Meta app card first — without the App secret, every incoming message is rejected as unverified.";
+
+/**
+ * The Send API needs a *Page* access token. The token Business Settings → System users → "Generate new
+ * token" gives you is a System User token: it can manage Pages but can't send as one. Swap it for the
+ * managed Page's own token (which inherits "never expires") and remember the Page ID.
+ */
+export async function ensurePageToken(e: Env, actor: string): Promise<{ e: Env; note?: string; error?: string }> {
+  if (!e.META_ACCESS_TOKEN) return { e };
+  const r = await getJson<{ data?: { id: string; name: string; access_token?: string }[] }>(`${graph(e)}/me/accounts?fields=id,name,access_token&limit=100`, e.META_ACCESS_TOKEN);
+  if (!r.ok) return { e }; // Page tokens have no Pages of their own; any other problem shows up in the normal check
+  const pages = r.data?.data ?? [];
+  const list = pages.map((p) => `${p.name} (${p.id})`).join(", ");
+  if (!pages.length) {
+    return { e, error: "This is a System User (or personal) token, not a Page token, and it doesn't manage any Facebook Page. In Business Settings → System users → Assign assets, give it your Page with full control, then generate the token again." };
+  }
+  const pick = e.META_PAGE_ID ? pages.find((p) => p.id === e.META_PAGE_ID) : pages.length === 1 ? pages[0] : undefined;
+  if (!pick) {
+    return { e, error: e.META_PAGE_ID ? `This token doesn't manage the Page ${e.META_PAGE_ID}. It manages: ${list}. Put the right Page ID in the Page ID box.` : `This token manages several Pages — put the Page ID of the one to use in the Page ID box: ${list}.` };
+  }
+  if (!pick.access_token) return { e, error: `Meta didn't give out a token for "${pick.name}". Generate the token with pages_show_list, and assign the Page to the System User with full control.` };
+  await saveIntegrationValues({ META_ACCESS_TOKEN: pick.access_token, META_PAGE_ID: pick.id }, actor);
+  return { e: await integrationEnv({ fresh: true }), note: `You pasted a System User token, so it was swapped for the Page access token of "${pick.name}" automatically.` };
+}
+
+export async function testConnection(service: ServiceId, actor = "system"): Promise<CheckResult> {
   // Fresh read so a value saved a moment ago (possibly on another server instance) is used.
-  const e = await integrationEnv({ fresh: true });
+  let e = await integrationEnv({ fresh: true });
   switch (service) {
     case "openai": {
       if (!e.OPENAI_API_KEY) return { ok: false, message: "Add your OpenAI API key first." };
@@ -130,12 +156,17 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
 
     case "messenger": {
       if (!e.META_ACCESS_TOKEN) return { ok: false, message: "Add the Page access token first." };
+      if (!e.META_APP_ID || !e.META_APP_SECRET) return { ok: false, message: MISSING_APP_SECRET };
+      const swap = await ensurePageToken(e, actor);
+      if (swap.error) return { ok: false, message: swap.error };
+      e = swap.e;
+      if (!e.META_ACCESS_TOKEN) return { ok: false, message: "Add the Page access token first." };
       const page = e.META_PAGE_ID ?? "me";
       const r = await getJson<{ id: string; name?: string }>(`${graph(e)}/${page}?fields=id,name`, e.META_ACCESS_TOKEN);
       if (!r.ok) return { ok: false, message: `Meta rejected the Page token: ${r.error}` };
       const token = await inspectMetaToken(e, e.META_ACCESS_TOKEN, "messenger");
       if (token.invalid) return { ok: false, message: token.invalid };
-      const notes = [...token.notes];
+      const notes = [...(swap.note ? [swap.note] : []), ...token.notes];
       const subs = await getJson<{ data?: { id: string }[] }>(`${graph(e)}/${page}/subscribed_apps`, e.META_ACCESS_TOKEN);
       if (subs.ok && e.META_APP_ID && !subs.data?.data?.some((a) => a.id === e.META_APP_ID)) {
         notes.push("This Page isn't subscribed to your app's webhooks yet, so messages won't arrive. Use “Set up webhooks for me” below.");
@@ -144,10 +175,18 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
     }
 
     case "instagram": {
+      if (!e.META_APP_ID || !e.META_APP_SECRET) return { ok: false, message: MISSING_APP_SECRET };
       if (usesInstagramLogin(e)) {
         const r = await getJson<{ username?: string; user_id?: string }>(`${igGraph(e)}/me?fields=user_id,username`, e.INSTAGRAM_ACCESS_TOKEN!);
         if (!r.ok) return { ok: false, message: `Instagram rejected the token: ${r.error}` };
         return { ok: true, message: `Connected to @${r.data?.username ?? r.data?.user_id} (Instagram Login).` };
+      }
+      let swapNote: string | undefined;
+      if (!e.INSTAGRAM_ACCESS_TOKEN) {
+        const swap = await ensurePageToken(e, actor);
+        if (swap.error) return { ok: false, message: swap.error };
+        e = swap.e;
+        swapNote = swap.note;
       }
       const token = e.INSTAGRAM_ACCESS_TOKEN ?? e.META_ACCESS_TOKEN;
       if (!token) return { ok: false, message: "Connect Messenger first — Instagram uses the same Page token." };
@@ -160,11 +199,13 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
       if (!ig) return { ok: false, message: "This Facebook Page has no Instagram professional account linked. Link your Instagram professional account to the Page in Meta Business Suite, then test again." };
       const inspected = await inspectMetaToken(e, token, "instagram");
       if (inspected.invalid) return { ok: false, message: inspected.invalid };
-      return { ok: true, message: `Connected to @${ig.username ?? ig.id} through your Facebook Page.`, notes: inspected.notes.length ? inspected.notes : undefined };
+      const igNotes = [...(swapNote ? [swapNote] : []), ...inspected.notes];
+      return { ok: true, message: `Connected to @${ig.username ?? ig.id} through your Facebook Page.`, notes: igNotes.length ? igNotes : undefined };
     }
 
     case "whatsapp": {
       if (!e.WHATSAPP_PHONE_NUMBER_ID || !e.WHATSAPP_ACCESS_TOKEN) return { ok: false, message: "Add the Phone number ID and access token first." };
+      if (!(e.WHATSAPP_APP_SECRET ?? e.META_APP_SECRET)) return { ok: false, message: MISSING_APP_SECRET };
       const r = await getJson<{ display_phone_number?: string; verified_name?: string }>(
         `${graph(e)}/${e.WHATSAPP_PHONE_NUMBER_ID}?fields=display_phone_number,verified_name`,
         e.WHATSAPP_ACCESS_TOKEN
@@ -174,10 +215,14 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
       const sameApp = !e.WHATSAPP_APP_SECRET || e.WHATSAPP_APP_SECRET === e.META_APP_SECRET;
       const inspected = sameApp ? await inspectMetaToken(e, e.WHATSAPP_ACCESS_TOKEN, "whatsapp") : { notes: [] };
       if (inspected.invalid) return { ok: false, message: inspected.invalid };
+      const waNotes = [...inspected.notes];
+      if (!r.data?.display_phone_number) {
+        waNotes.unshift("Meta didn't return a phone number for this ID. Check it's the Phone number ID from WhatsApp → API Setup (not the WhatsApp Business Account ID), and that the token has whatsapp_business_management.");
+      }
       return {
         ok: true,
         message: `Connected to ${r.data?.display_phone_number ?? "your number"}${r.data?.verified_name ? ` (${r.data.verified_name})` : ""}.`,
-        notes: inspected.notes.length ? inspected.notes : undefined,
+        notes: waNotes.length ? waNotes : undefined,
       };
     }
   }
@@ -249,10 +294,17 @@ export async function setupWebhooks(service: "messenger" | "instagram" | "whatsa
     } else if (!e.META_ACCESS_TOKEN) {
       steps.push({ label: "Subscribe your Facebook Page", ok: false, message: "Add the Page access token on the Messenger card first." });
     } else {
+      const swap = await ensurePageToken(e, actor);
+      if (swap.note) steps.push({ label: "Use your Page's token", ok: true, message: swap.note });
+      if (swap.error) {
+        steps.push({ label: "Subscribe your Facebook Page", ok: false, message: swap.error });
+        return finish();
+      }
+      e = swap.e;
       steps.push(
         await post(
           `${graph(e)}/${e.META_PAGE_ID ?? "me"}/subscribed_apps`,
-          e.META_ACCESS_TOKEN,
+          e.META_ACCESS_TOKEN ?? "",
           { subscribed_fields: "messages,messaging_postbacks,message_echoes" },
           "Subscribe your Facebook Page",
           "Page subscribed to messages"
@@ -283,6 +335,12 @@ export async function setupWebhooks(service: "messenger" | "instagram" | "whatsa
     }
   }
 
-  await prisma.auditLog.create({ data: { actor, action: "integrations.webhooks", target: service, detail: { ok: steps.every((s) => s.ok) } } });
-  return { ok: steps.every((s) => s.ok), steps };
+  return finish();
+
+  // Meta's answers are kept so a failed setup can be diagnosed later (they never contain tokens).
+  async function finish() {
+    const ok = steps.every((s) => s.ok);
+    await prisma.auditLog.create({ data: { actor, action: "integrations.webhooks", target: service, detail: { ok, steps: steps.map((s) => ({ label: s.label, ok: s.ok, message: s.message.slice(0, 300) })) } } });
+    return { ok, steps };
+  }
 }
