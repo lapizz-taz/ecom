@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, ChartColumn, FlaskConical, Menu, MessagesSquare, Package, Plug, Settings, ShoppingBag, UserCog, Users, X, type LucideIcon } from "lucide-react";
+import { BookOpen, Bot, ChartColumn, FlaskConical, Menu, MessagesSquare, Package, Plug, Settings, ShoppingBag, UserCog, Users, X, type LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/ui";
 import { LogoutButton } from "@/components/LogoutButton";
 
@@ -14,8 +14,11 @@ const INTEGRATION_LABELS: Record<string, string> = {
   meta: "Messenger",
   instagram: "Instagram",
   whatsapp: "WhatsApp",
+  orders: "Order platform",
   notifications: "Alerts",
 };
+/** Only listed once set up — most shops don't use them. */
+const OPTIONAL_INTEGRATIONS = new Set(["orders"]);
 
 function isActive(pathname: string, href: string) {
   if (href === "/admin") return pathname === "/admin" || pathname.startsWith("/admin/conversations");
@@ -45,6 +48,7 @@ export function ShellFrame(props: {
       label: "Workspace",
       items: [
         { href: "/admin", label: "Inbox", icon: MessagesSquare, badge: props.needsHuman },
+        { href: "/admin/agent", label: "AI sales agent", icon: Bot },
         { href: "/admin/customers", label: "Customers", icon: Users },
         { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
         { href: "/admin/products", label: "Products & stock", icon: Package },
@@ -69,7 +73,7 @@ export function ShellFrame(props: {
       ],
     });
   }
-  const integrationEntries = Object.entries(props.integrations);
+  const integrationEntries = Object.entries(props.integrations).filter(([k, v]) => !(OPTIONAL_INTEGRATIONS.has(k) && v === "off"));
   const connected = integrationEntries.filter(([, v]) => v === "ok").length;
   const problems = integrationEntries.filter(([, v]) => v === "problem").length;
 

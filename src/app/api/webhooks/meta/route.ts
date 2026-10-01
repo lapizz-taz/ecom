@@ -4,6 +4,7 @@ import { logger, errorInfo } from "@/lib/logger";
 import { verifyMetaSignature } from "@/lib/security/signature";
 import { parseMetaWebhook } from "@/lib/channels/meta";
 import { processConversation, receiveEcho, receiveInbound } from "@/lib/conversation/service";
+import { retryDueForwards } from "@/lib/orders/forward";
 import { MAX_WEBHOOK_BYTES, verifyHandshakeFor, webhookIpLimit } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
@@ -60,11 +61,13 @@ export async function POST(req: Request) {
   // 5–10. Respond to Meta immediately; run the AI after the response is sent.
   if (toProcess.length) {
     after(async () => {
-      await Promise.all(
-        toProcess.map((p) =>
+      await Promise.all([
+        ...toProcess.map((p) =>
           processConversation(p.conversationId, p.messageId).catch((err) => logger.error("meta processing failed", { conversationId: p.conversationId, ...errorInfo(err) }))
-        )
-      );
+        ),
+        // Chat activity is also a chance to resend orders the order platform didn't take earlier.
+        retryDueForwards({ limit: 3 }).catch((err) => logger.warn("order forward retry failed", errorInfo(err))),
+      ]);
     });
   }
   return NextResponse.json({ status: "EVENT_RECEIVED" });

@@ -4,14 +4,46 @@ import { apiError, requireApiSession } from "@/lib/auth";
 import { describeIntegrations, integrationEnv, IntegrationValueError, isIntegrationKey, saveIntegrationValues, type IntegrationKey } from "@/lib/integrations";
 import { isPublicHttps, webhookUrls } from "@/lib/integrations/connect";
 import { servicesOverview } from "@/lib/integrations/health";
+import { prisma } from "@/lib/db";
+import { orderDestination, sampleOrderPayload } from "@/lib/orders/forward";
+import { orderLabel } from "@/lib/orders/reference";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function snapshot(req: Request) {
-  const [{ fields, status }, services] = await Promise.all([describeIntegrations(), servicesOverview()]);
-  const baseUrl = ((await integrationEnv()).APP_URL ?? new URL(req.url).origin).replace(/\/$/, "");
-  return { fields, status, services, webhooks: { ...webhookUrls(baseUrl), baseUrl, public: isPublicHttps(baseUrl) } };
+  const [{ fields, status }, services, forwards] = await Promise.all([
+    describeIntegrations(),
+    servicesOverview(),
+    prisma.orderForward.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      include: { order: { select: { id: true, shopifyOrderName: true, platformOrderId: true, status: true } } },
+    }),
+  ]);
+  const e = await integrationEnv();
+  const baseUrl = (e.APP_URL ?? new URL(req.url).origin).replace(/\/$/, "");
+  return {
+    fields,
+    status,
+    services,
+    webhooks: { ...webhookUrls(baseUrl), baseUrl, public: isPublicHttps(baseUrl) },
+    orders: {
+      destination: orderDestination(e),
+      sample: sampleOrderPayload(baseUrl),
+      recent: forwards.map((f) => ({
+        id: f.id,
+        order: orderLabel(f.order),
+        status: f.status,
+        attempts: f.attempts,
+        responseCode: f.responseCode,
+        error: f.error,
+        externalId: f.externalId,
+        createdAt: f.createdAt.toISOString(),
+        sentAt: f.sentAt?.toISOString() ?? null,
+      })),
+    },
+  };
 }
 
 /** Admin only: which integration credentials are set and where from. Secrets come back masked. */

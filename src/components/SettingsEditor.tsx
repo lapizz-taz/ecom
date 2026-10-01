@@ -10,7 +10,7 @@ function Section({ icon, title, description, children, onSave, msg }: { icon: Lu
   const [busy, setBusy] = useState(false);
   const ok = msg?.startsWith("✅");
   return (
-    <section className="card">
+    <section className="card" id={title.toLowerCase()}>
       <CardHeader icon={icon} title={title} description={description} />
       <div className="card-body">{children}</div>
       <div className="card-footer">

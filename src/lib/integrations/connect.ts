@@ -4,12 +4,13 @@ import type { Env } from "../env";
 import { graphRequest } from "../channels/http";
 import { shopifyGraphQL } from "../shopify/client";
 import { ShopifyNotConfiguredError, ShopifyUnavailableError } from "../shopify/types";
+import { orderDestination, sendTestOrder } from "../orders/forward";
 import { generateVerifyToken, integrationEnv, saveIntegrationValues } from "./index";
 
 /** "Test connection" and "Set up webhooks for me" for the dashboard's Integrations page. */
 
-export type ServiceId = "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp";
-export const SERVICE_IDS: ServiceId[] = ["openai", "shopify", "meta", "messenger", "instagram", "whatsapp"];
+export type ServiceId = "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp" | "orders";
+export const SERVICE_IDS: ServiceId[] = ["openai", "shopify", "meta", "messenger", "instagram", "whatsapp", "orders"];
 
 export interface CheckResult {
   ok: boolean;
@@ -270,6 +271,22 @@ export async function testConnection(service: ServiceId, actor = "system"): Prom
         ok: true,
         message: `Connected to ${r.data?.display_phone_number ?? "your number"}${r.data?.verified_name ? ` (${r.data.verified_name})` : ""}.`,
         notes: waNotes.length ? waNotes : undefined,
+      };
+    }
+
+    case "orders": {
+      if (!e.ORDER_WEBHOOK_URL) return { ok: false, message: "Add your order platform's address first." };
+      const r = await sendTestOrder(e);
+      if (!r.ok) return { ok: false, message: r.error ?? "The test order wasn't accepted." };
+      const notes: string[] = [];
+      if (orderDestination(e) === "shopify") notes.push("Orders are only going to Shopify right now. Choose “Order platform” or “Both” under Send orders to.");
+      if (!e.ORDER_WEBHOOK_SECRET && !e.ORDER_WEBHOOK_AUTH_VALUE) {
+        notes.push("Anyone who knows this address could send fake orders to it. Add an API key, or a signing secret your platform checks.");
+      }
+      return {
+        ok: true,
+        message: `Your platform accepted a test order (HTTP ${r.status})${r.externalId ? ` and answered with order ${r.externalId}` : ""}.`,
+        notes: notes.length ? notes : undefined,
       };
     }
   }
