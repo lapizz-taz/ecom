@@ -17,7 +17,7 @@ export function setFailSends(v: boolean) {
 export async function resetDb() {
   const tables = [
     "ToolCallLog", "Handoff", "DraftOrder", "Order", "Message", "Conversation", "ChannelUser", "Customer",
-    "ProcessedEvent", "Setting", "KnowledgeEntry", "AnalyticsEvent", "RateLimit", "AuditLog", "AdminUser", "IntegrationSecret",
+    "ProcessedEvent", "Setting", "KnowledgeEntry", "AnalyticsEvent", "RateLimit", "AuditLog", "AdminUser", "IntegrationSecret", "IntegrationCheck",
   ];
   await prisma.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t}"`).join(", ")} CASCADE`);
   clearSettingsCache();

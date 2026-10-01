@@ -140,7 +140,8 @@ describe("connection checks and automatic webhook setup", () => {
     expect(r).toMatchObject({ ok: true, message: 'Connected to the Facebook Page "Isolation".' });
     expect(r.notes?.[0]).toMatch(/isn't subscribed/);
     expect(calls[0].auth).toBe("Bearer EAApagetoken");
-    expect(calls.every((c) => !c.url.includes("EAApagetoken"))).toBe(true);
+    // Tokens travel in the Authorization header — except to /debug_token, whose API takes input_token in the query.
+    expect(calls.filter((c) => !c.url.includes("/debug_token")).every((c) => !c.url.includes("EAApagetoken"))).toBe(true);
   });
 
   it("refuses to register webhooks on a non-public address", async () => {

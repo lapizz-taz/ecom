@@ -283,7 +283,7 @@ Preview deployments share the environment variables you assign to *Preview* — 
 - **Knowledge base** — policies, FAQs, promotions, brand facts, extra AI instructions.
 - **Settings** — delivery charges/times/areas, payment methods & instructions, AI on/off, auto-reply, tone, language behaviour, order-creation mode, handoff triggers & notifications, business info.
 - **Analytics** — conversations, messages, AI responses, handoffs (by reason), orders, conversion rate, most requested products, most common question topics, failed queries, average response time, per-channel performance. Only aggregates are stored (no message text or phone numbers); test traffic is excluded.
-- **Integrations** *(admin)* — connect OpenAI, Shopify, the Meta app, Messenger, Instagram and WhatsApp: paste keys, test each connection, copy webhook URLs and verify tokens, or let the dashboard set up the Meta webhooks. See [§3](#3-what-you-must-provide-credentials--decisions).
+- **Integrations** *(admin)* — connect OpenAI, Shopify, the Meta app, Messenger, Instagram and WhatsApp: paste keys, test each connection, copy webhook URLs and verify tokens, or let the dashboard set up the Meta webhooks. See [§3](#3-what-you-must-provide-credentials--decisions). Each service shows **Working / Problem / Not tested** with the last check time; Meta tokens are inspected for expiry, missing permissions and the wrong app; channel cards show when the last customer message arrived. The daily `/api/cron/maintenance` run re-tests every configured connection and sends a handoff-style alert (Slack/Discord webhook or email) when one stops working; the sidebar marks broken connections in red.
 - **Staff accounts** — add staff, change roles, disable, reset passwords.
 
 ## 12. Test chat

@@ -3,14 +3,15 @@ import { z } from "zod";
 import { apiError, requireApiSession } from "@/lib/auth";
 import { describeIntegrations, integrationEnv, IntegrationValueError, isIntegrationKey, saveIntegrationValues, type IntegrationKey } from "@/lib/integrations";
 import { isPublicHttps, webhookUrls } from "@/lib/integrations/connect";
+import { servicesOverview } from "@/lib/integrations/health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function snapshot(req: Request) {
-  const { fields, status } = await describeIntegrations();
+  const [{ fields, status }, services] = await Promise.all([describeIntegrations(), servicesOverview()]);
   const baseUrl = ((await integrationEnv()).APP_URL ?? new URL(req.url).origin).replace(/\/$/, "");
-  return { fields, status, webhooks: { ...webhookUrls(baseUrl), baseUrl, public: isPublicHttps(baseUrl) } };
+  return { fields, status, services, webhooks: { ...webhookUrls(baseUrl), baseUrl, public: isPublicHttps(baseUrl) } };
 }
 
 /** Admin only: which integration credentials are set and where from. Secrets come back masked. */

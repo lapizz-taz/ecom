@@ -46,6 +46,16 @@ export const SECRET_KEYS: ReadonlySet<IntegrationKey> = new Set([
   "WHATSAPP_APP_SECRET",
 ]);
 
+/** The credentials each connection check depends on (used to clear stale check results). */
+export const SERVICE_KEYS: Record<"openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp", IntegrationKey[]> = {
+  openai: ["OPENAI_API_KEY", "OPENAI_MODEL"],
+  shopify: ["SHOPIFY_STORE_DOMAIN", "SHOPIFY_ACCESS_TOKEN", "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"],
+  meta: ["META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"],
+  messenger: ["META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
+  instagram: ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_ACCOUNT_ID", "META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
+  whatsapp: ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "META_APP_ID", "META_APP_SECRET"],
+};
+
 export function isIntegrationKey(k: string): k is IntegrationKey {
   return (INTEGRATION_KEYS as readonly string[]).includes(k);
 }
@@ -178,6 +188,11 @@ export async function saveIntegrationValues(patch: Partial<Record<IntegrationKey
     }
   }
   if (!changed.length) return changed;
+  // A stored "Working"/"Problem" result no longer describes the new values.
+  const affected = Object.entries(SERVICE_KEYS)
+    .filter(([, keys]) => keys.some((k) => changed.includes(k)))
+    .map(([service]) => service);
+  if (affected.length) ops.push(prisma.integrationCheck.deleteMany({ where: { service: { in: affected } } }));
   await prisma.$transaction(ops);
   // Key names only — never values.
   await prisma.auditLog.create({ data: { actor, action: "integrations.update", target: changed.join(",").slice(0, 500) } });

@@ -27,7 +27,7 @@ export function ShellFrame(props: {
   email: string;
   role: string;
   needsHuman: number;
-  integrations: Record<string, boolean>;
+  integrations: Record<string, "ok" | "problem" | "off">;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -70,7 +70,8 @@ export function ShellFrame(props: {
     });
   }
   const integrationEntries = Object.entries(props.integrations);
-  const connected = integrationEntries.filter(([, v]) => v).length;
+  const connected = integrationEntries.filter(([, v]) => v === "ok").length;
+  const problems = integrationEntries.filter(([, v]) => v === "problem").length;
 
   return (
     <div className={`app${open ? " menu-open" : ""}`}>
@@ -114,12 +115,16 @@ export function ShellFrame(props: {
               <>
                 <div className="integrations-title">
                   <span>Integrations</span>
-                  <span className="muted" style={{ fontWeight: 500 }}>{connected}/{integrationEntries.length}</span>
+                  {problems > 0 ? (
+                    <span className="error" style={{ fontWeight: 600 }}>{problems} {problems === 1 ? "problem" : "problems"}</span>
+                  ) : (
+                    <span className="muted" style={{ fontWeight: 500 }}>{connected}/{integrationEntries.length}</span>
+                  )}
                 </div>
                 <div className="integration-list">
                   {integrationEntries.map(([k, v]) => (
-                    <div key={k} className="integration" title={v ? "Connected" : "Not configured"}>
-                      <span className={`dot${v ? " on" : ""}`} />
+                    <div key={k} className="integration" title={v === "ok" ? "Connected" : v === "problem" ? "Not working — check the Integrations page" : "Not set up"}>
+                      <span className={`dot${v === "ok" ? " on" : v === "problem" ? " bad" : ""}`} />
                       {INTEGRATION_LABELS[k] ?? k}
                     </div>
                   ))}

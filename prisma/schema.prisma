@@ -290,3 +290,13 @@ model IntegrationSecret {
   updatedAt DateTime @updatedAt
   updatedBy String?
 }
+
+/// Latest connection check per integration — from the Integrations page or the daily maintenance run.
+model IntegrationCheck {
+  service   String   @id /// "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp"
+  ok        Boolean
+  message   String
+  notes     Json?    /// string[] of extra hints (expiring token, missing permissions…)
+  checkedAt DateTime @default(now())
+  checkedBy String?  /// staff email, or "maintenance"
+}

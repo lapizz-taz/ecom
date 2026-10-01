@@ -35,6 +35,49 @@ async function getJson<T>(url: string, token: string) {
   return graphRequest<T>(url, token, { method: "GET" }, 1);
 }
 
+/** Permissions each Meta token needs: [needed to reply, needed for automatic webhook setup]. */
+const META_SCOPES = {
+  messenger: ["pages_messaging", "pages_manage_metadata"],
+  instagram: ["instagram_basic", "instagram_manage_messages"],
+  whatsapp: ["whatsapp_business_messaging", "whatsapp_business_management"],
+} as const;
+
+interface TokenInfo {
+  is_valid?: boolean;
+  app_id?: string;
+  expires_at?: number;
+  scopes?: string[];
+}
+
+/**
+ * Inspects a Meta token with Graph API /debug_token (needs the App ID + secret): catches tokens that
+ * expired, will expire (short-lived tokens from the Graph Explorer), lack permissions, or belong to
+ * another app. Returns `invalid` when the token can't be used at all.
+ */
+export async function inspectMetaToken(e: Env, token: string, kind: keyof typeof META_SCOPES): Promise<{ invalid?: string; notes: string[] }> {
+  if (!e.META_APP_ID || !e.META_APP_SECRET) return { notes: [] };
+  // input_token must be a query parameter here; graphRequest never logs query strings.
+  const r = await getJson<{ data?: TokenInfo }>(`${graph(e)}/debug_token?input_token=${encodeURIComponent(token)}`, appToken(e));
+  const info = r.ok ? r.data?.data : undefined;
+  if (!info) return { notes: [] }; // can't inspect (e.g. token from another app's secret) — not a failure by itself
+  if (info.is_valid === false) return { invalid: "Meta says this token is no longer valid — it expired or was revoked. Generate a new one.", notes: [] };
+  const notes: string[] = [];
+  if (info.app_id && info.app_id !== e.META_APP_ID) {
+    notes.push(`This token was made for a different Meta app (ID ${info.app_id}), not ${e.META_APP_ID}. Generate it for your app so webhooks and replies match.`);
+  }
+  if (info.expires_at && info.expires_at > 0) {
+    const when = new Date(info.expires_at * 1000);
+    const days = Math.round((when.getTime() - Date.now()) / 86400_000);
+    notes.push(
+      `This token expires ${days <= 1 ? "within a day" : `in ${days} days`} (${when.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}). ` +
+        "Use a System User token from Business Settings — those never expire."
+    );
+  }
+  const missing = info.scopes ? META_SCOPES[kind].filter((s) => !info.scopes!.includes(s)) : [];
+  if (missing.length) notes.push(`The token is missing these permissions: ${missing.join(", ")}. Generate it again with them ticked.`);
+  return { notes };
+}
+
 export async function testConnection(service: ServiceId): Promise<CheckResult> {
   // Fresh read so a value saved a moment ago (possibly on another server instance) is used.
   const e = await integrationEnv({ fresh: true });
@@ -90,7 +133,9 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
       const page = e.META_PAGE_ID ?? "me";
       const r = await getJson<{ id: string; name?: string }>(`${graph(e)}/${page}?fields=id,name`, e.META_ACCESS_TOKEN);
       if (!r.ok) return { ok: false, message: `Meta rejected the Page token: ${r.error}` };
-      const notes: string[] = [];
+      const token = await inspectMetaToken(e, e.META_ACCESS_TOKEN, "messenger");
+      if (token.invalid) return { ok: false, message: token.invalid };
+      const notes = [...token.notes];
       const subs = await getJson<{ data?: { id: string }[] }>(`${graph(e)}/${page}/subscribed_apps`, e.META_ACCESS_TOKEN);
       if (subs.ok && e.META_APP_ID && !subs.data?.data?.some((a) => a.id === e.META_APP_ID)) {
         notes.push("This Page isn't subscribed to your app's webhooks yet, so messages won't arrive. Use “Set up webhooks for me” below.");
@@ -113,7 +158,9 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
       if (!r.ok) return { ok: false, message: `Meta rejected the token: ${r.error}` };
       const ig = r.data?.instagram_business_account;
       if (!ig) return { ok: false, message: "This Facebook Page has no Instagram professional account linked. Link your Instagram professional account to the Page in Meta Business Suite, then test again." };
-      return { ok: true, message: `Connected to @${ig.username ?? ig.id} through your Facebook Page.` };
+      const inspected = await inspectMetaToken(e, token, "instagram");
+      if (inspected.invalid) return { ok: false, message: inspected.invalid };
+      return { ok: true, message: `Connected to @${ig.username ?? ig.id} through your Facebook Page.`, notes: inspected.notes.length ? inspected.notes : undefined };
     }
 
     case "whatsapp": {
@@ -123,7 +170,15 @@ export async function testConnection(service: ServiceId): Promise<CheckResult> {
         e.WHATSAPP_ACCESS_TOKEN
       );
       if (!r.ok) return { ok: false, message: `Meta rejected the WhatsApp details: ${r.error}` };
-      return { ok: true, message: `Connected to ${r.data?.display_phone_number ?? "your number"}${r.data?.verified_name ? ` (${r.data.verified_name})` : ""}.` };
+      // A WhatsApp app with its own secret can't be inspected with the main app's credentials.
+      const sameApp = !e.WHATSAPP_APP_SECRET || e.WHATSAPP_APP_SECRET === e.META_APP_SECRET;
+      const inspected = sameApp ? await inspectMetaToken(e, e.WHATSAPP_ACCESS_TOKEN, "whatsapp") : { notes: [] };
+      if (inspected.invalid) return { ok: false, message: inspected.invalid };
+      return {
+        ok: true,
+        message: `Connected to ${r.data?.display_phone_number ?? "your number"}${r.data?.verified_name ? ` (${r.data.verified_name})` : ""}.`,
+        notes: inspected.notes.length ? inspected.notes : undefined,
+      };
     }
   }
 }
