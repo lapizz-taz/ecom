@@ -10,7 +10,8 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.string().url().optional(),
 
-  DATABASE_URL: z.string().min(1),
+  // Optional: the database may instead be configured via the Supabase shortcut (see src/lib/dbUrl.ts).
+  DATABASE_URL: z.string().min(1).optional(),
 
   NEXTAUTH_SECRET: z.string().min(32, "NEXTAUTH_SECRET must be at least 32 characters"),
   ADMIN_EMAIL: z.string().email().optional(),
