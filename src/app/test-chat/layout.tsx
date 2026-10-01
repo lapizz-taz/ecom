@@ -2,6 +2,6 @@ import { AppShell } from "@/components/shell/AppShell";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function TestChatLayout({ children }: { children: React.ReactNode }) {
   return <AppShell>{children}</AppShell>;
 }

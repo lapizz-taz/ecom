@@ -1,7 +1,8 @@
-import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
 import { requirePageSession } from "@/lib/auth";
 import { integrationStatus } from "@/lib/env";
 import { TestChat } from "@/components/TestChat";
+import { PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -9,16 +10,21 @@ export default async function TestChatPage() {
   await requirePageSession();
   const integrations = integrationStatus();
   return (
-    <div className="main">
-      <div className="row" style={{ marginBottom: 12 }}>
-        <Link href="/admin" className="small">← Dashboard</Link>
-      </div>
-      <h1>Test chat</h1>
-      <p className="small muted">
-        Runs the real AI pipeline (guards → tools → grounding check → handoff) on an internal TEST channel. Tool calls and data are visible here only — customers never see internals.
-        {!integrations.openai && <strong className="error"> OPENAI_API_KEY is not set: guard-based replies work, everything else falls back to a human handoff.</strong>}
-      </p>
+    <>
+      <PageHeader
+        title="Test chat"
+        description="Talk to the real AI pipeline (guards → tools → grounding check → handoff) on a private test channel. Customers never see these messages."
+      />
+      {!integrations.openai && (
+        <div className="alert alert-warning" style={{ marginBottom: 16 }}>
+          <TriangleAlert width={18} height={18} aria-hidden />
+          <div>
+            <div className="alert-title">OPENAI_API_KEY is not set</div>
+            <div className="alert-body small">Guard-based replies still work; everything else falls back to a human handoff. Add the key in Vercel → Settings → Environment Variables and redeploy.</div>
+          </div>
+        </div>
+      )}
       <TestChat />
-    </div>
+    </>
   );
 }

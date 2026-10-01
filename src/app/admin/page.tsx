@@ -1,13 +1,15 @@
 import Link from "next/link";
+import { Inbox, Search, X } from "lucide-react";
 import type { Channel, ConversationStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { timeAgo } from "@/lib/format";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { Avatar, CHANNEL_LABEL, ChannelIcon, EmptyState, PageHeader, STATUS_META, StatusPill, humanize } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 const CHANNELS: Channel[] = ["INSTAGRAM", "MESSENGER", "WHATSAPP", "TEST"];
-const STATUSES: ConversationStatus[] = ["AI_ACTIVE", "HUMAN_REQUIRED", "HUMAN_ACTIVE", "RESOLVED"];
+const STATUSES: ConversationStatus[] = ["HUMAN_REQUIRED", "AI_ACTIVE", "HUMAN_ACTIVE", "RESOLVED"];
 
 function filterHref(current: Record<string, string | undefined>, key: string, value?: string) {
   const p = new URLSearchParams();
@@ -38,78 +40,120 @@ export default async function ConversationsPage({ searchParams }: { searchParams
     prisma.conversation.groupBy({ by: ["status"], where: { channel: { not: "TEST" } }, _count: true }),
   ]);
   const countOf = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
+  const filtered = Boolean(channel || status || q);
 
   return (
     <>
       <AutoRefresh seconds={10} />
-      <h1>Conversations</h1>
-      <div className="stats">
-        {STATUSES.map((s) => (
-          <Link key={s} href={filterHref(sp, "status", s)} className="stat" style={{ textDecoration: "none" }}>
-            <div className="v">{countOf(s)}</div>
-            <div className="l">{s.replace("_", " ")}</div>
-          </Link>
-        ))}
+      <PageHeader
+        title="Inbox"
+        description="Every Instagram, Messenger and WhatsApp conversation in one place."
+        actions={
+          <span className="live">
+            <span className="pulse" /> Live · updates every 10s
+          </span>
+        }
+      />
+
+      <div className="stat-grid">
+        {STATUSES.map((s) => {
+          const meta = STATUS_META[s];
+          const Icon = meta.icon;
+          const n = countOf(s);
+          return (
+            <Link
+              key={s}
+              href={filterHref(sp, "status", status === s ? undefined : s)}
+              className={`stat${status === s ? " active" : ""}${s === "HUMAN_REQUIRED" && n > 0 ? " alert" : ""}`}
+              aria-current={status === s ? "true" : undefined}
+            >
+              <div className="stat-top">
+                <span className={`stat-icon tone-${meta.tone}`}>
+                  <Icon aria-hidden />
+                </span>
+                <span className="stat-label">{meta.label}</span>
+              </div>
+              <div className="stat-value num">{n}</div>
+              <div className="stat-note">{meta.hint}</div>
+            </Link>
+          );
+        })}
       </div>
-      <div className="filters">
-        <Link href={filterHref(sp, "channel")} className={!channel ? "on" : ""}>All channels</Link>
-        {CHANNELS.map((c) => (
-          <Link key={c} href={filterHref(sp, "channel", c)} className={channel === c ? "on" : ""}>
-            {c.toLowerCase()}
-          </Link>
-        ))}
-        <span style={{ width: 12 }} />
-        <Link href={filterHref(sp, "status")} className={!status ? "on" : ""}>Any status</Link>
-        {STATUSES.map((s) => (
-          <Link key={s} href={filterHref(sp, "status", s)} className={status === s ? "on" : ""}>
-            {s.replace("_", " ").toLowerCase()}
-          </Link>
-        ))}
-      </div>
-      <form className="row" style={{ marginBottom: 12 }}>
-        {channel && <input type="hidden" name="channel" value={channel} />}
-        {status && <input type="hidden" name="status" value={status} />}
-        <input name="q" defaultValue={q} placeholder="Search customer or message…" style={{ maxWidth: 320 }} />
-        <button type="submit">Search</button>
-      </form>
-      <div className="card" style={{ padding: 0 }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Customer</th>
-              <th>Channel</th>
-              <th>Last message</th>
-              <th>Status</th>
-              <th>Handled by</th>
-              <th>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {conversations.length === 0 && (
-              <tr>
-                <td colSpan={6} className="muted">No conversations yet.</td>
-              </tr>
-            )}
-            {conversations.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <Link href={`/admin/conversations/${c.id}`}>
-                    <strong>{c.customer.name ?? c.channelUser.name ?? "Unknown customer"}</strong>
-                  </Link>
-                  {c.channelUser.username && <div className="small muted">@{c.channelUser.username}</div>}
-                </td>
-                <td><span className={`badge ${c.channel}`}>{c.channel.toLowerCase()}</span></td>
-                <td className="small" style={{ maxWidth: 380 }}>{c.lastMessagePreview ?? "—"}</td>
-                <td>
-                  <span className={`badge ${c.status}`}>{c.status}</span>
-                  {c.handoffs[0] && <div className="small muted">{c.handoffs[0].reason.replace(/_/g, " ")}</div>}
-                </td>
-                <td className="small">{c.status === "AI_ACTIVE" ? "AI" : c.assignedTo ?? "Human (unassigned)"}</td>
-                <td className="small muted">{timeAgo(c.lastMessageAt)}</td>
-              </tr>
+
+      <div className="card flush">
+        <div className="toolbar" style={{ padding: "14px 16px", margin: 0, borderBottom: "1px solid var(--border)" }}>
+          <form className="search" role="search">
+            {channel && <input type="hidden" name="channel" value={channel} />}
+            {status && <input type="hidden" name="status" value={status} />}
+            <Search width={16} height={16} aria-hidden />
+            <input name="q" defaultValue={q} placeholder="Search customer or message…" aria-label="Search conversations" />
+          </form>
+          <div className="segmented" aria-label="Filter by channel">
+            <Link href={filterHref(sp, "channel")} className={!channel ? "on" : ""}>All</Link>
+            {CHANNELS.map((c) => (
+              <Link key={c} href={filterHref(sp, "channel", c)} className={channel === c ? "on" : ""}>
+                <ChannelIcon channel={c} size={14} />
+                {CHANNEL_LABEL[c]}
+              </Link>
             ))}
-          </tbody>
-        </table>
+          </div>
+          {filtered && (
+            <Link href="/admin" className="btn btn-ghost btn-sm">
+              <X width={14} height={14} aria-hidden /> Clear filters
+            </Link>
+          )}
+        </div>
+
+        {conversations.length > 0 && (
+          <div className="conv-head" style={{ borderRadius: 0 }}>
+            <span />
+            <span>Customer</span>
+            <span>Last message</span>
+            <span>Status</span>
+            <span style={{ textAlign: "right" }}>Updated</span>
+          </div>
+        )}
+        <div className="conv-list">
+          {conversations.length === 0 && (
+            <EmptyState icon={Inbox} title={filtered ? "No conversations match these filters" : "No conversations yet"}>
+              {filtered ? (
+                <Link href="/admin" className="link">Clear filters</Link>
+              ) : (
+                "Messages from Instagram, Messenger and WhatsApp will appear here as soon as customers write in."
+              )}
+            </EmptyState>
+          )}
+          {conversations.map((c) => {
+            const name = c.customer.name ?? c.channelUser.name ?? "Unknown customer";
+            const handler = c.status === "AI_ACTIVE" ? null : c.assignedTo ?? (c.status === "RESOLVED" ? null : "Unassigned");
+            return (
+              <Link key={c.id} href={`/admin/conversations/${c.id}`} className={`conv-row${c.status === "HUMAN_REQUIRED" ? " urgent" : ""}`}>
+                <Avatar name={name} />
+                <div className="conv-who">
+                  <div className="conv-name">
+                    <span className="truncate">{name}</span>
+                  </div>
+                  <div className="conv-sub">
+                    <span className={`pill ch-${c.channel}`} style={{ height: 20, padding: "0 7px" }}>
+                      <ChannelIcon channel={c.channel} size={12} />
+                      {CHANNEL_LABEL[c.channel]}
+                    </span>
+                    {c.channelUser.username && <span className="truncate">@{c.channelUser.username}</span>}
+                  </div>
+                </div>
+                <div className="conv-preview">
+                  <div className="clamp-2">{c.lastMessagePreview ?? "—"}</div>
+                  {c.handoffs[0] && <div className="conv-reason">Reason: {humanize(c.handoffs[0].reason)}</div>}
+                </div>
+                <div className="conv-status">
+                  <StatusPill status={c.status} />
+                  {handler && <div className="tiny muted truncate" style={{ marginTop: 4 }}>{handler}</div>}
+                </div>
+                <div className="conv-time">{timeAgo(c.lastMessageAt)}</div>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </>
   );
