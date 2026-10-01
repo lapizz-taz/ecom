@@ -134,11 +134,13 @@ export function ShellFrame(props: {
             );
           })()}
           <div className="user-card">
-            <Avatar name={props.email} size="sm" />
-            <div className="user-meta">
-              <div className="user-email truncate" title={props.email}>{props.email}</div>
-              <div className="tiny muted">{props.role === "ADMIN" ? "Admin" : "Agent"}</div>
-            </div>
+            <Link href="/admin/account" className="row nowrap-row" style={{ flex: 1, minWidth: 0, gap: 10 }} title="My account · change password">
+              <Avatar name={props.email} size="sm" />
+              <div className="user-meta">
+                <div className="user-email truncate">{props.email}</div>
+                <div className="tiny muted">{props.role === "ADMIN" ? "Admin" : "Agent"} · My account</div>
+              </div>
+            </Link>
             <LogoutButton />
           </div>
         </div>
