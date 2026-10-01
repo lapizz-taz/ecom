@@ -537,6 +537,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .setup-steps li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); }
 .setup-steps li.ok svg { color: var(--good); margin-top: 1px; }
 .setup-steps li.bad svg { color: var(--critical); margin-top: 1px; }
+.setup-steps li.todo { border-color: color-mix(in srgb, var(--warning) 35%, var(--border)); background: var(--warning-soft); }
+.setup-steps li.todo svg { color: var(--warning); margin-top: 1px; }
 .svc-result { padding: 16px 20px 0; }
 .svc-card.health-problem { border-color: color-mix(in srgb, var(--critical) 35%, var(--border)); }
 .svc-card.health-problem .svc-head { box-shadow: inset 3px 0 0 var(--critical-dot); }

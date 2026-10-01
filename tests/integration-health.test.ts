@@ -179,3 +179,59 @@ describe("Page tokens and the Meta app secret", () => {
     expect((await integrationHealth()).whatsapp).toBe("problem");
   });
 });
+
+describe("Instagram Login", () => {
+  it("needs the Instagram app secret, then fills in the account ID and spots a missing subscription", async () => {
+    await saveIntegrationValues({ INSTAGRAM_ACCESS_TOKEN: "IGAAtoken123" }, "owner@iso.test");
+    expect((await testConnection("instagram")).message).toMatch(/Instagram app secret/);
+
+    await saveIntegrationValues({ INSTAGRAM_APP_SECRET: "0123456789abcdef0123456789abcdef" }, "owner@iso.test");
+    const calls = mockFetch({
+      "graph.instagram.com/v23.0/me?": { user_id: "1789", username: "isolation.pvt" },
+      "/1789/subscribed_apps": { data: [] },
+    });
+    const r = await testConnection("instagram", "owner@iso.test");
+    expect(r).toMatchObject({ ok: true, message: "Connected to @isolation.pvt (Instagram Login)." });
+    expect(r.notes?.[0]).toMatch(/isn't subscribed to webhooks/);
+    expect((await integrationEnv({ fresh: true })).INSTAGRAM_ACCOUNT_ID).toBe("1789");
+    // graph.instagram.com calls carry the token as a query parameter.
+    expect(calls[0].url).toContain("access_token=IGAAtoken123");
+  });
+
+  it("accepts webhooks signed with the Instagram app secret", async () => {
+    const crypto = await import("node:crypto");
+    const { POST } = await import("@/app/api/webhooks/meta/route");
+    await saveIntegrationValues({ INSTAGRAM_APP_SECRET: "fedcba9876543210fedcba9876543210" }, "owner@iso.test");
+    const raw = JSON.stringify({ object: "instagram", entry: [] });
+    const sig = "sha256=" + crypto.createHmac("sha256", "fedcba9876543210fedcba9876543210").update(raw).digest("hex");
+    const res = await POST(new Request("http://localhost/api/webhooks/meta", { method: "POST", headers: { "x-hub-signature-256": sig, "x-forwarded-for": "8.8.8.8" }, body: raw }));
+    expect(res.status).toBe(200);
+  });
+
+  it("subscribes the Instagram account and lists the one dashboard step it can't do", async () => {
+    const { setupWebhooks } = await import("@/lib/integrations/connect");
+    await saveIntegrationValues({ INSTAGRAM_ACCESS_TOKEN: "IGAAtoken123", INSTAGRAM_APP_SECRET: "0123456789abcdef0123456789abcdef", INSTAGRAM_ACCOUNT_ID: "1789" }, "owner@iso.test");
+    const calls = mockFetch({ "/1789/subscribed_apps": { success: true } });
+    const r = await setupWebhooks("instagram", "https://shop.example.com", "owner@iso.test");
+    expect(r.ok).toBe(true);
+    expect(r.steps[0]).toMatchObject({ manual: true, message: expect.stringContaining("https://shop.example.com/api/webhooks/meta") });
+    expect(r.steps[1]).toMatchObject({ ok: true, label: "Subscribe your Instagram account" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/subscribed_fields=messages%2Cmessaging_postbacks/);
+  });
+
+  it("renews a week-old token and leaves a fresh one alone", async () => {
+    const { refreshInstagramToken } = await import("@/lib/integrations/connect");
+    await saveIntegrationValues({ INSTAGRAM_ACCESS_TOKEN: "IGAAold", INSTAGRAM_APP_SECRET: "0123456789abcdef0123456789abcdef" }, "owner@iso.test");
+    const spy = vi.spyOn(globalThis, "fetch");
+    expect(await refreshInstagramToken("maintenance")).toBe("skipped");
+    expect(spy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+
+    await prisma.integrationSecret.update({ where: { key: "INSTAGRAM_ACCESS_TOKEN" }, data: { updatedAt: new Date(Date.now() - 8 * 86400_000) } });
+    const calls = mockFetch({ "graph.instagram.com/refresh_access_token": { access_token: "IGAAnew", expires_in: 5184000 } });
+    expect(await refreshInstagramToken("maintenance")).toBe("refreshed");
+    expect(calls[0].url).toContain("grant_type=ig_refresh_token");
+    expect((await integrationEnv({ fresh: true })).INSTAGRAM_ACCESS_TOKEN).toBe("IGAAnew");
+  });
+});

@@ -23,10 +23,15 @@ export async function POST(req: Request) {
   if (raw.length > MAX_WEBHOOK_BYTES) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
   // 1. Verify the request really comes from Meta.
   const sig = req.headers.get("x-hub-signature-256");
+  // Messenger (and Page-linked Instagram) sign with the Meta app secret; "Instagram API with Instagram
+  // Login" signs with the Instagram app secret. Accept either — both belong to the same Meta app. The body
+  // is not parsed to pick one, so nothing unverified is read first.
+  const matches = (e: Awaited<ReturnType<typeof integrationEnv>>) =>
+    [e.META_APP_SECRET, e.INSTAGRAM_APP_SECRET].some((secret) => secret && verifyMetaSignature(raw, sig, secret));
   const valid =
-    verifyMetaSignature(raw, sig, (await integrationEnv()).META_APP_SECRET) ||
-    // The app secret may have just been changed on the dashboard: retry once with uncached values.
-    verifyMetaSignature(raw, sig, (await integrationEnv({ fresh: true })).META_APP_SECRET);
+    matches(await integrationEnv()) ||
+    // A secret may have just been changed on the dashboard: retry once with uncached values.
+    matches(await integrationEnv({ fresh: true }));
   if (!valid) {
     logger.warn("meta webhook signature rejected");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });

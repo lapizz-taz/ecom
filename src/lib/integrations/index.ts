@@ -25,6 +25,7 @@ export const INTEGRATION_KEYS = [
   "META_PAGE_ID",
   "INSTAGRAM_ACCESS_TOKEN",
   "INSTAGRAM_ACCOUNT_ID",
+  "INSTAGRAM_APP_SECRET",
   "WHATSAPP_PHONE_NUMBER_ID",
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_VERIFY_TOKEN",
@@ -42,6 +43,7 @@ export const SECRET_KEYS: ReadonlySet<IntegrationKey> = new Set([
   "META_APP_SECRET",
   "META_ACCESS_TOKEN",
   "INSTAGRAM_ACCESS_TOKEN",
+  "INSTAGRAM_APP_SECRET",
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_APP_SECRET",
 ]);
@@ -52,7 +54,7 @@ export const SERVICE_KEYS: Record<"openai" | "shopify" | "meta" | "messenger" | 
   shopify: ["SHOPIFY_STORE_DOMAIN", "SHOPIFY_ACCESS_TOKEN", "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"],
   meta: ["META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"],
   messenger: ["META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
-  instagram: ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_ACCOUNT_ID", "META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
+  instagram: ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_ACCOUNT_ID", "INSTAGRAM_APP_SECRET", "META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
   whatsapp: ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "META_APP_ID", "META_APP_SECRET"],
 };
 
@@ -108,7 +110,12 @@ export function statusOf(e: Env): IntegrationStatus {
     openai: Boolean(e.OPENAI_API_KEY),
     shopify: Boolean(e.SHOPIFY_STORE_DOMAIN && (e.SHOPIFY_ACCESS_TOKEN || (e.SHOPIFY_CLIENT_ID && e.SHOPIFY_CLIENT_SECRET))),
     meta: Boolean(e.META_APP_SECRET && e.META_VERIFY_TOKEN && e.META_ACCESS_TOKEN),
-    instagram: Boolean(e.META_APP_SECRET && e.META_VERIFY_TOKEN && (e.INSTAGRAM_ACCESS_TOKEN || e.META_ACCESS_TOKEN)),
+    // Instagram Login tokens (IG…) come with webhooks signed by the Instagram app secret; the
+    // Page-based route uses the Meta app secret.
+    instagram: Boolean(
+      e.META_VERIFY_TOKEN &&
+        (e.INSTAGRAM_ACCESS_TOKEN?.startsWith("IG") ? e.INSTAGRAM_APP_SECRET : e.META_APP_SECRET && (e.INSTAGRAM_ACCESS_TOKEN || e.META_ACCESS_TOKEN))
+    ),
     whatsapp: Boolean(e.WHATSAPP_PHONE_NUMBER_ID && e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_VERIFY_TOKEN && (e.WHATSAPP_APP_SECRET || e.META_APP_SECRET)),
     notifications: Boolean(e.HANDOFF_WEBHOOK_URL || e.RESEND_API_KEY),
   };

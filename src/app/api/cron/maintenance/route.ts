@@ -6,6 +6,7 @@ import { getAdapter } from "@/lib/channels";
 import { processConversation } from "@/lib/conversation/service";
 import { logger, errorInfo } from "@/lib/logger";
 import { checkAllConfigured } from "@/lib/integrations/health";
+import { refreshInstagramToken } from "@/lib/integrations/connect";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,8 @@ export const maxDuration = 60;
  * - recover inbound messages whose background processing never ran
  * - expire stale draft orders
  * - prune idempotency / rate-limit rows
- * - re-test every configured integration and alert staff about any that just stopped working
+ * - renew the Instagram Login token weekly, re-test every configured integration, and alert staff
+ *   about any that just stopped working
  */
 export async function GET(req: Request) {
   const secret = env().CRON_SECRET;
@@ -25,10 +27,14 @@ export async function GET(req: Request) {
   if (!secret || !safeEqual(auth, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Runs alongside the other jobs; each check gives up after 20 s so the run stays within its time limit.
-  const integrationChecks = checkAllConfigured("maintenance", { timeoutMs: 20_000, alert: true }).catch((err) => {
-    logger.error("integration checks failed", errorInfo(err));
-    return null;
-  });
+  // The Instagram token is renewed first so the check right after tests the new one.
+  const integrationChecks = refreshInstagramToken("maintenance")
+    .catch((err) => ({ failed: (err as Error).message }))
+    .then(async (instagramToken) => ({ instagramToken, ...(await checkAllConfigured("maintenance", { timeoutMs: 20_000, alert: true })) }))
+    .catch((err) => {
+      logger.error("integration checks failed", errorInfo(err));
+      return null;
+    });
   const report = { retried: 0, retrySucceeded: 0, recovered: 0, draftsExpired: 0, eventsPruned: 0, rateLimitsPruned: 0, integrations: null as Awaited<typeof integrationChecks> };
   const dayAgo = new Date(Date.now() - 24 * 3600_000);
 
