@@ -399,7 +399,8 @@ describe("safety", () => {
 
   it("rate-limits message floods", async () => {
     let skipped = 0;
-    for (let i = 0; i < 14; i++) {
+    // 30 > 2 × the 12/min limit, so a minute boundary mid-test still trips it.
+    for (let i = 0; i < 30; i++) {
       const r = await turn(`spam ${i}`, { user: "spammer", script: [say("ok")] });
       if (r.result.skipReason === "rate_limited" || r.result.skipReason === "human_mode") skipped++;
     }
