@@ -47,6 +47,16 @@ const schema = z.object({
   /** Only used by the dashboard's automatic webhook setup. */
   WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
 
+  /** Order platform: orders the assistant takes are sent here as JSON (dashboard → Integrations → Order platform). */
+  ORDER_WEBHOOK_URL: z.string().url().optional(),
+  /** Optional header for the platform's API key, e.g. "Authorization" or "X-API-Key", and its value. */
+  ORDER_WEBHOOK_AUTH_HEADER: z.string().optional(),
+  ORDER_WEBHOOK_AUTH_VALUE: z.string().optional(),
+  /** Signs each delivery (X-Isolation-Signature: sha256=HMAC of the body). */
+  ORDER_WEBHOOK_SECRET: z.string().optional(),
+  /** Where confirmed orders go: "shopify" (default), "platform" (the order platform only) or "both". */
+  ORDER_DESTINATION: z.string().optional(),
+
   CRON_SECRET: z.string().optional(),
   HANDOFF_WEBHOOK_URL: z.string().url().optional(),
   RESEND_API_KEY: z.string().optional(),

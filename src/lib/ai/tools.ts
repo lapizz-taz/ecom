@@ -15,6 +15,9 @@ import {
 } from "../shopify";
 import { normalizeBdPhone, phonesMatch } from "../utils/phone";
 import { rateLimit } from "../security/rateLimit";
+import { integrationEnv } from "../integrations";
+import { buildOrderPayload, deliverForward, orderDestination, queueForward, type OrderDetails } from "../orders/forward";
+import { orderReference } from "../orders/reference";
 import { isAffirmative } from "./guards";
 import type { LlmToolDef } from "./llm";
 
@@ -409,7 +412,7 @@ export const TOOLS = [
       }
 
       const shopify = requireShopify(ctx);
-      const lines: { variantId: string; title: string; variantTitle: string; quantity: number; unitPrice: number }[] = [];
+      const lines: { variantId: string; sku: string | null; title: string; variantTitle: string; quantity: number; unitPrice: number }[] = [];
       for (const item of input.items) {
         if (item.quantity > s.ai.maxQuantityPerItem) {
           return { ok: false, error: "quantity_too_large", max: s.ai.maxQuantityPerItem, instruction: "For bulk orders call request_human." };
@@ -422,6 +425,7 @@ export const TOOLS = [
         }
         lines.push({
           variantId: r.variant.id,
+          sku: r.variant.sku,
           title: r.product.title,
           variantTitle: r.variant.title === "Default Title" ? "" : r.variant.title,
           quantity: item.quantity,
@@ -484,7 +488,7 @@ export const TOOLS = [
   tool({
     name: "confirm_order",
     description:
-      "Place the order in Shopify. ONLY call after the customer explicitly confirmed the summary in their latest message.",
+      "Place the order (in Shopify and/or the shop's order platform). ONLY call after the customer explicitly confirmed the summary in their latest message.",
     parameters: {
       type: "object",
       properties: { draft_id: { type: "string" } },
@@ -511,14 +515,7 @@ export const TOOLS = [
       const lock = await prisma.draftOrder.updateMany({ where: { id: draft.id, status: "AWAITING_CONFIRMATION" }, data: { status: "PROCESSING" } });
       if (lock.count === 0) return { ok: false, error: "already_processing" };
 
-      const payload = draft.payload as {
-        lines: { variantId: string; title: string; variantTitle: string; quantity: number; unitPrice: number }[];
-        customer: { name: string; phone: string };
-        address: { address1: string; city: string };
-        zone: { id: string; label: string; fee: number };
-        paymentMethod: { id: string; label: string };
-        currency: string;
-      };
+      const payload = draft.payload as unknown as OrderDetails;
 
       const fail = async (error: string) => {
         await prisma.draftOrder.update({ where: { id: draft.id }, data: { status: "FAILED", error: error.slice(0, 500) } });
@@ -526,6 +523,58 @@ export const TOOLS = [
         ctx.state.handoff = { reason: "order_failed", detail: `Order could not be created automatically (draft ${draft.id}): ${error.slice(0, 200)}` };
         return { ok: false, error: "order_failed", instruction: "Tell the customer the order could not be completed automatically and the team will finish it. Do NOT say it is confirmed." };
       };
+
+      const e = await integrationEnv();
+      const destination = orderDestination(e);
+      const reviewRequired = s.ai.orderCreationMode === "draft";
+      const platformPayload = (order: { id: string; createdAt: Date }, shopifyOrder: { orderId: string | null; orderName: string | null } | null) =>
+        buildOrderPayload({
+          orderId: order.id,
+          createdAt: order.createdAt,
+          channel: ctx.channel,
+          conversationId: ctx.conversationId,
+          details: payload,
+          subtotal: Number(draft.subtotal),
+          deliveryFee: Number(draft.deliveryFee),
+          total: Number(draft.total),
+          shopify: shopifyOrder,
+          reviewRequired,
+          appUrl: e.APP_URL,
+        });
+
+      // Order platform only: the order is stored here and sent to the other platform (retried if it's down).
+      if (destination === "platform") {
+        try {
+          await prisma.draftOrder.update({ where: { id: draft.id }, data: { status: "CONFIRMED" } });
+          const order = await prisma.order.create({
+            data: { customerId: ctx.customerId, conversationId: ctx.conversationId, status: "platform_pending", total: draft.total, channel: ctx.channel },
+          });
+          const forward = await queueForward(order.id, platformPayload(order, null));
+          const sent = await deliverForward(forward.id, { quickRetry: true });
+          if (sent.ok && !reviewRequired) {
+            const number = sent.externalId ?? orderReference(order.id);
+            ctx.state.orderConfirmed = { orderName: number, mode: "complete" };
+            return {
+              ok: true,
+              mode: "complete",
+              order_number: number,
+              total: Number(draft.total),
+              payment: payload.paymentMethod.label,
+              instruction: "Tell the customer the order is placed, with the order number. Keep it short and warm.",
+            };
+          }
+          ctx.state.orderConfirmed = { orderName: null, mode: "draft" };
+          return {
+            ok: true,
+            mode: "draft",
+            status: "received_pending_team_review",
+            instruction: "Tell the customer their order request is received and the team will confirm it shortly. Do NOT say it is confirmed.",
+          };
+        } catch (err) {
+          logger.error("confirm_order (order platform) failed", { draftId: draft.id, ...errorInfo(err) });
+          return fail(err instanceof Error ? err.message : "unknown error");
+        }
+      }
 
       try {
         const shopify = requireShopify(ctx);
@@ -543,7 +592,7 @@ export const TOOLS = [
         if (!result.ok) return fail(result.error);
 
         await prisma.draftOrder.update({ where: { id: draft.id }, data: { status: "CONFIRMED", shopifyDraftId: result.draftId } });
-        await prisma.order.create({
+        const order = await prisma.order.create({
           data: {
             customerId: ctx.customerId,
             conversationId: ctx.conversationId,
@@ -556,6 +605,15 @@ export const TOOLS = [
           },
         });
         ctx.state.orderConfirmed = { orderName: result.orderName, mode: result.mode };
+        if (destination === "both") {
+          // The Shopify order is what the customer is told about; the copy to the order platform is retried if it fails.
+          try {
+            const forward = await queueForward(order.id, platformPayload(order, { orderId: result.orderId, orderName: result.orderName }));
+            await deliverForward(forward.id);
+          } catch (err) {
+            logger.error("order platform copy failed", { orderId: order.id, ...errorInfo(err) });
+          }
+        }
         if (result.mode === "draft") {
           return {
             ok: true,

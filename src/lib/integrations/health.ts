@@ -19,7 +19,11 @@ export const SERVICE_NAMES: Record<ServiceId, string> = {
   messenger: "Facebook Messenger",
   instagram: "Instagram",
   whatsapp: "WhatsApp",
+  orders: "Order platform",
 };
+
+/** Not re-tested automatically: a test sends a (marked) test order to the platform. */
+const MANUAL_ONLY: ReadonlySet<ServiceId> = new Set(["orders"]);
 
 /** Whether a service has everything it needs to run (the same rule the bot itself uses). */
 export function configuredServices(e: Env): Record<ServiceId, boolean> {
@@ -31,6 +35,7 @@ export function configuredServices(e: Env): Record<ServiceId, boolean> {
     messenger: s.meta,
     instagram: s.instagram,
     whatsapp: s.whatsapp,
+    orders: s.orders,
   };
 }
 
@@ -64,7 +69,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 export async function checkAllConfigured(actor: string, opts: { timeoutMs?: number; alert?: boolean } = {}) {
   const e = await integrationEnv({ fresh: true });
   const configured = configuredServices(e);
-  const services = SERVICE_IDS.filter((s) => configured[s]);
+  const services = SERVICE_IDS.filter((s) => configured[s] && !MANUAL_ONLY.has(s));
   const previous = new Map((await prisma.integrationCheck.findMany()).map((c) => [c.service, c.ok]));
 
   const results = await Promise.all(
@@ -101,7 +106,7 @@ export async function checkAllConfigured(actor: string, opts: { timeoutMs?: numb
 export type Health = "ok" | "problem" | "off";
 
 /** Sidebar status: off (not set up), problem (last check failed) or ok. */
-export async function integrationHealth(): Promise<Record<"openai" | "shopify" | "meta" | "instagram" | "whatsapp" | "notifications", Health>> {
+export async function integrationHealth(): Promise<Record<"openai" | "shopify" | "meta" | "instagram" | "whatsapp" | "orders" | "notifications", Health>> {
   const e = await integrationEnv();
   const configured = configuredServices(e);
   const failing = new Set((await prisma.integrationCheck.findMany({ where: { ok: false }, select: { service: true } })).map((c) => c.service));
@@ -112,6 +117,7 @@ export async function integrationHealth(): Promise<Record<"openai" | "shopify" |
     meta: h("messenger"),
     instagram: h("instagram"),
     whatsapp: h("whatsapp"),
+    orders: h("orders"),
     notifications: statusOf(e).notifications ? "ok" : "off",
   };
 }

@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowRight, ChevronRight, CircleAlert, CircleCheck, CircleDashed, CircleX, Copy, ExternalLink, Eye, EyeOff, History, Infinity as InfinityIcon,
-  KeyRound, ListChecks, LoaderCircle, MessagesSquare, PlugZap, RefreshCw, ShoppingBag, Sparkles, TriangleAlert, Unplug, Webhook, Wand2,
+  KeyRound, ListChecks, LoaderCircle, MessagesSquare, PlugZap, RefreshCw, Route, Send, ShoppingBag, Sparkles, TriangleAlert, Unplug, Webhook, Wand2,
 } from "lucide-react";
 import { ChannelIcon } from "@/components/ui";
 import { timeAgo } from "@/lib/format";
@@ -12,18 +12,31 @@ type Key =
   | "SHOPIFY_STORE_DOMAIN" | "SHOPIFY_ACCESS_TOKEN" | "SHOPIFY_CLIENT_ID" | "SHOPIFY_CLIENT_SECRET"
   | "META_APP_ID" | "META_APP_SECRET" | "META_VERIFY_TOKEN" | "META_ACCESS_TOKEN" | "META_PAGE_ID"
   | "INSTAGRAM_ACCESS_TOKEN" | "INSTAGRAM_ACCOUNT_ID" | "INSTAGRAM_APP_SECRET"
-  | "WHATSAPP_PHONE_NUMBER_ID" | "WHATSAPP_ACCESS_TOKEN" | "WHATSAPP_VERIFY_TOKEN" | "WHATSAPP_APP_SECRET" | "WHATSAPP_BUSINESS_ACCOUNT_ID";
+  | "WHATSAPP_PHONE_NUMBER_ID" | "WHATSAPP_ACCESS_TOKEN" | "WHATSAPP_VERIFY_TOKEN" | "WHATSAPP_APP_SECRET" | "WHATSAPP_BUSINESS_ACCOUNT_ID"
+  | "ORDER_WEBHOOK_URL" | "ORDER_WEBHOOK_AUTH_HEADER" | "ORDER_WEBHOOK_AUTH_VALUE" | "ORDER_WEBHOOK_SECRET" | "ORDER_DESTINATION";
 
 interface FieldState { source: "dashboard" | "env" | "none"; value: string | null; hint: string | null; unreadable: boolean }
-type ServiceId = "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp";
+type ServiceId = "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp" | "orders";
 interface CheckResult { ok: boolean; message: string; notes?: string[] }
 interface StoredCheck extends CheckResult { checkedAt: string; checkedBy: string | null }
 interface ServiceOverview { configured: boolean; check: StoredCheck | null; lastInbound: string | null; lastChange: { at: string; by: string | null } | null }
+interface Forward {
+  id: string;
+  order: string;
+  status: "pending" | "sent" | "failed";
+  attempts: number;
+  responseCode: number | null;
+  error: string | null;
+  externalId: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
 interface Snapshot {
   fields: Record<Key, FieldState>;
-  status: Record<"openai" | "shopify" | "meta" | "instagram" | "whatsapp" | "notifications", boolean>;
+  status: Record<"openai" | "shopify" | "meta" | "instagram" | "whatsapp" | "orders" | "notifications", boolean>;
   services: Record<ServiceId, ServiceOverview>;
   webhooks: { meta: string; whatsapp: string; baseUrl: string; public: boolean };
+  orders: { destination: "shopify" | "platform" | "both"; sample: unknown; recent: Forward[] };
 }
 interface SetupResult { ok: boolean; steps: { label: string; ok: boolean; manual?: boolean; message: string }[] }
 type Health = "off" | "untested" | "ok" | "problem";
@@ -52,8 +65,20 @@ const EXPECT: Partial<Record<Key, [RegExp, string]>> = {
   WHATSAPP_ACCESS_TOKEN: [/^EA/, "WhatsApp access tokens start with EAA"],
   WHATSAPP_BUSINESS_ACCOUNT_ID: [/^\d+$/, "The account ID is only numbers"],
   WHATSAPP_APP_SECRET: [/^[0-9a-f]{32}$/i, "An App secret is 32 letters and numbers"],
+  ORDER_WEBHOOK_URL: [/^https:\/\/[^\s/]+\.[^\s]+$/i, "Use the full address, starting with https://"],
+  ORDER_WEBHOOK_AUTH_HEADER: [/^[A-Za-z0-9-]+$/, "Only letters, numbers and dashes, like X-API-Key"],
 };
-interface FieldDef { key: Key; label: string; placeholder?: string; hint?: string; secret?: boolean; optional?: boolean }
+interface FieldDef {
+  key: Key;
+  label: string;
+  placeholder?: string;
+  hint?: string;
+  secret?: boolean;
+  optional?: boolean;
+  /** A choice instead of a text box; `defaultValue` is what applies when nothing is saved. */
+  options?: { value: string; label: string }[];
+  defaultValue?: string;
+}
 interface ServiceDef {
   id: ServiceId;
   name: string;
@@ -64,6 +89,9 @@ interface ServiceDef {
   note?: string;
   steps: ReactNode[];
   webhook?: "messenger" | "instagram" | "whatsapp";
+  /** Not needed by every shop — left out of the "x of y working" count until it's set up. */
+  optional?: boolean;
+  testLabel?: string;
 }
 
 const SERVICES: ServiceDef[] = [
@@ -177,6 +205,38 @@ const SERVICES: ServiceDef[] = [
     ],
     webhook: "whatsapp",
   },
+  {
+    id: "orders",
+    name: "Order platform",
+    tagline: "Optional — send every order the assistant takes to another order management system.",
+    icon: <Send width={19} height={19} />,
+    iconBg: "#6941c6",
+    optional: true,
+    testLabel: "Send a test order",
+    note: "Orders are sent as JSON the moment a customer confirms. If your platform doesn't answer, they're retried automatically and you get an alert.",
+    fields: [
+      { key: "ORDER_WEBHOOK_URL", label: "Order platform address (API or webhook URL)", placeholder: "https://…", secret: true },
+      {
+        key: "ORDER_DESTINATION",
+        label: "Send confirmed orders to",
+        defaultValue: "both",
+        options: [
+          { value: "both", label: "Shopify and the order platform" },
+          { value: "platform", label: "Only the order platform (not Shopify)" },
+          { value: "shopify", label: "Only Shopify (pause sending)" },
+        ],
+        hint: "Products, prices and stock still come from Shopify either way.",
+      },
+      { key: "ORDER_WEBHOOK_AUTH_HEADER", label: "API key header", placeholder: "Authorization or X-API-Key", optional: true },
+      { key: "ORDER_WEBHOOK_AUTH_VALUE", label: "API key", placeholder: "Bearer sk_… or the key itself", secret: true, optional: true },
+    ],
+    steps: [
+      <>Works with any order management system that accepts orders over the internet — through <b>its own API</b>, or a <b>webhook</b> from <a className="link" href="https://zapier.com/apps/webhook/integrations" target="_blank" rel="noreferrer">Zapier <ExternalLink width={12} height={12} /></a>, <a className="link" href="https://www.make.com/en/integrations/gateway" target="_blank" rel="noreferrer">Make <ExternalLink width={12} height={12} /></a> or n8n that adds the order where you need it.</>,
+      <>In your platform, copy the address that receives new orders (API endpoint or webhook URL). If it asks for an API key, note the <b>header name</b> it expects (often <code>Authorization</code> or <code>X-API-Key</code>) and the key.</>,
+      <>Paste them here, choose where orders should go, and click <b>Save &amp; test</b>. A sample order marked <code>&quot;test&quot;: true</code> is sent so you can map the fields.</>,
+      <>Want to be sure requests come from this dashboard? Generate a <b>signing secret</b> below and have your platform check the <code>X-Isolation-Signature</code> header.</>,
+    ],
+  },
 ];
 
 async function api<T>(method: string, path: string, body?: unknown): Promise<{ ok: boolean; data: T & { error?: string; details?: string[] } }> {
@@ -234,7 +294,7 @@ function CheckPanel({ check }: { check: StoredCheck }) {
           <div className="alert-title">{check.message}</div>
           <div className="alert-body tiny" style={{ marginTop: 2 }}>
             Checked {timeAgo(check.checkedAt)}
-            {check.checkedBy ? ` · ${check.checkedBy === "maintenance" ? "automatic daily check" : `by ${check.checkedBy}`}` : ""}
+            {check.checkedBy ? ` · ${check.checkedBy === "maintenance" ? "automatic daily check" : check.checkedBy === "order delivery" ? "from a real order" : `by ${check.checkedBy}`}` : ""}
           </div>
         </div>
       </div>
@@ -253,7 +313,7 @@ function CheckPanel({ check }: { check: StoredCheck }) {
 function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap: Snapshot; onSnapshot: (s: Snapshot) => void; refresh: () => Promise<void> }) {
   const ov = snap.services[def.id];
   const health = healthOf(ov);
-  const initial = () => Object.fromEntries(def.fields.map((f) => [f.key, f.secret ? "" : snap.fields[f.key].value ?? ""])) as Record<Key, string>;
+  const initial = () => Object.fromEntries(def.fields.map((f) => [f.key, f.secret ? "" : snap.fields[f.key].value ?? f.defaultValue ?? ""])) as Record<Key, string>;
   const [draft, setDraft] = useState<Record<Key, string>>(initial);
   const [show, setShow] = useState<Partial<Record<Key, boolean>>>({});
   const [busy, setBusy] = useState<null | "save" | "test" | "disconnect" | "webhooks" | "token">(null);
@@ -277,14 +337,14 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
     const v = draft[f.key].trim();
     if (f.secret) {
       if (v) changes[f.key] = v;
-    } else if (v !== (snap.fields[f.key].value ?? "")) {
+    } else if (v !== (snap.fields[f.key].value ?? f.defaultValue ?? "")) {
       changes[f.key] = v || null;
     }
   }
   const dirty = Object.keys(changes).length > 0;
   const savedHere = def.fields.some((f) => snap.fields[f.key].source === "dashboard");
   const tokenKey: Key = def.webhook === "whatsapp" ? "WHATSAPP_VERIFY_TOKEN" : "META_VERIFY_TOKEN";
-  const resetDraft = (s: Snapshot) => setDraft(Object.fromEntries(def.fields.map((f) => [f.key, f.secret ? "" : s.fields[f.key].value ?? ""])) as Record<Key, string>);
+  const resetDraft = (s: Snapshot) => setDraft(Object.fromEntries(def.fields.map((f) => [f.key, f.secret ? "" : s.fields[f.key].value ?? f.defaultValue ?? ""])) as Record<Key, string>);
 
   async function test() {
     setBusy("test");
@@ -373,7 +433,10 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
               {def.note && <p className="small muted" style={{ marginBottom: 14 }}>{def.note}</p>}
               {def.fields.map((f) => {
                 const st = snap.fields[f.key];
-                const placeholder = f.secret && st.hint && !st.unreadable ? `${st.source === "env" ? "Set in Vercel" : "Saved"} · ends in ${st.hint}` : f.placeholder;
+                const placeholder =
+                  f.secret && st.hint && !st.unreadable
+                    ? `${st.source === "env" ? "Set in Vercel" : "Saved"} · ${f.key === "ORDER_WEBHOOK_URL" ? st.hint : `ends in ${st.hint}`}`
+                    : f.placeholder;
                 const typed = draft[f.key].trim();
                 const expect = EXPECT[f.key];
                 const looksWrong = typed && expect && !expect[0].test(typed) ? expect[1] : null;
@@ -385,24 +448,30 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
                       </label>
                       <SourceTag f={st} />
                     </div>
-                    <div className={f.secret ? "pw-wrap" : undefined}>
-                      <input
-                        id={`${def.id}-${f.key}`}
-                        type={f.secret && !show[f.key] ? "password" : "text"}
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={draft[f.key]}
-                        placeholder={placeholder}
-                        aria-invalid={looksWrong ? true : undefined}
-                        className={looksWrong ? "warn" : undefined}
-                        onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
-                      />
-                      {f.secret && (
-                        <button type="button" onClick={() => setShow((s) => ({ ...s, [f.key]: !s[f.key] }))} aria-label={show[f.key] ? "Hide" : "Show"}>
-                          {show[f.key] ? <EyeOff width={16} height={16} /> : <Eye width={16} height={16} />}
-                        </button>
-                      )}
-                    </div>
+                    {f.options ? (
+                      <select id={`${def.id}-${f.key}`} value={draft[f.key]} onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}>
+                        {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <div className={f.secret ? "pw-wrap" : undefined}>
+                        <input
+                          id={`${def.id}-${f.key}`}
+                          type={f.secret && !show[f.key] ? "password" : "text"}
+                          autoComplete="off"
+                          spellCheck={false}
+                          value={draft[f.key]}
+                          placeholder={placeholder}
+                          aria-invalid={looksWrong ? true : undefined}
+                          className={looksWrong ? "warn" : undefined}
+                          onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                        />
+                        {f.secret && (
+                          <button type="button" onClick={() => setShow((s) => ({ ...s, [f.key]: !s[f.key] }))} aria-label={show[f.key] ? "Hide" : "Show"}>
+                            {show[f.key] ? <EyeOff width={16} height={16} /> : <Eye width={16} height={16} />}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {looksWrong ? (
                       <p className="hint warn-text"><TriangleAlert width={13} height={13} aria-hidden /> {looksWrong}</p>
                     ) : f.secret && st.hint && !st.unreadable ? (
@@ -484,12 +553,14 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
             </div>
           )}
 
+          {def.id === "orders" && <OrderPlatformExtras snap={snap} refresh={refresh} />}
+
           <div className="card-footer">
             <button className="btn-primary" onClick={save} disabled={!dirty || busy !== null}>
               {busy === "save" ? <LoaderCircle width={15} height={15} className="spin" /> : <PlugZap width={15} height={15} />} Save & test
             </button>
             <button onClick={test} disabled={busy !== null}>
-              {busy === "test" ? <LoaderCircle width={15} height={15} className="spin" /> : <RefreshCw width={15} height={15} />} Test connection
+              {busy === "test" ? <LoaderCircle width={15} height={15} className="spin" /> : <RefreshCw width={15} height={15} />} {def.testLabel ?? "Test connection"}
             </button>
             {savedHere && (
               <button className="btn-ghost btn-danger" onClick={disconnect} disabled={busy !== null}>
@@ -507,6 +578,104 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
         </>
       )}
     </section>
+  );
+}
+
+const DESTINATION_TEXT: Record<Snapshot["orders"]["destination"], string> = {
+  both: "Confirmed orders are placed in Shopify and sent to your order platform.",
+  platform: "Confirmed orders are sent only to your order platform — not to Shopify.",
+  shopify: "Orders only go to Shopify right now — nothing is sent to an order platform.",
+};
+
+const FORWARD_PILL: Record<Forward["status"], { tone: string; label: string }> = {
+  sent: { tone: "tone-good", label: "Delivered" },
+  pending: { tone: "tone-warning", label: "Retrying" },
+  failed: { tone: "tone-critical", label: "Not delivered" },
+};
+
+function OrderPlatformExtras({ snap, refresh }: { snap: Snapshot; refresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const secret = snap.fields.ORDER_WEBHOOK_SECRET.value ?? "";
+  const { destination, recent, sample } = snap.orders;
+
+  async function generate() {
+    setBusy("secret");
+    await api("POST", "/api/admin/integrations/actions", { action: "generate-token", token: "ORDER_WEBHOOK_SECRET" });
+    await refresh();
+    setBusy(null);
+  }
+
+  async function resend(id: string) {
+    setBusy(id);
+    setMessage(null);
+    const r = await api<{ ok: boolean; error: string | null }>("POST", "/api/admin/orders/forward", { forwardId: id });
+    setMessage(r.ok ? (r.data.ok ? { ok: true, text: "Delivered." } : { ok: false, text: r.data.error ?? "Still not delivered." }) : { ok: false, text: r.data.error ?? "Couldn't resend" });
+    await refresh();
+    setBusy(null);
+  }
+
+  return (
+    <div className="svc-webhook">
+      <div className="row" style={{ marginBottom: 12 }}>
+        <Route width={16} height={16} className="muted" aria-hidden />
+        <h3>Where orders go</h3>
+      </div>
+      <div className={`inbound ${destination !== "shopify" ? "seen" : ""}`}>
+        <Send width={16} height={16} aria-hidden />
+        <span>{DESTINATION_TEXT[destination]}</span>
+      </div>
+      <div className="form-grid">
+        <CopyField
+          label="Signing secret (optional)"
+          value={secret}
+          action={
+            !secret ? (
+              <button type="button" className="btn-sm" onClick={generate} disabled={busy !== null}>
+                {busy === "secret" ? <LoaderCircle width={14} height={14} className="spin" /> : <KeyRound width={14} height={14} />} Generate
+              </button>
+            ) : undefined
+          }
+        />
+        <div className="field">
+          <label>Checking a request</label>
+          <p className="small text-2" style={{ margin: 0 }}>
+            <code>X-Isolation-Signature</code> is <code>sha256=</code> plus the HMAC-SHA256 of the raw body with this secret. <code>Idempotency-Key</code> stays the same when an order is retried, so it&apos;s never added twice.
+          </p>
+        </div>
+      </div>
+      <details className="trace" style={{ marginTop: 12 }}>
+        <summary><ChevronRight width={14} height={14} /> Example of an order your platform receives</summary>
+        <div className="trace-body">
+          <pre style={{ margin: 0, maxHeight: 360, overflow: "auto" }}>{JSON.stringify(sample, null, 2)}</pre>
+        </div>
+      </details>
+
+      <div className="section-title" style={{ marginTop: 18 }}>Latest orders sent</div>
+      {recent.length === 0 ? (
+        <p className="small muted" style={{ margin: 0 }}>Nothing sent yet — orders appear here as customers confirm them.</p>
+      ) : (
+        <div className="forward-list">
+          {recent.map((f) => (
+            <div key={f.id} className="forward">
+              <span className="strong nowrap">{f.order}</span>
+              <span className={`pill ${FORWARD_PILL[f.status].tone}`}>{FORWARD_PILL[f.status].label}</span>
+              <span className="small text-2 forward-detail">
+                {f.status === "sent"
+                  ? `${f.externalId ? `Platform order ${f.externalId} · ` : ""}${timeAgo(f.sentAt ?? f.createdAt)}`
+                  : `${f.error ?? "Waiting to be sent"}${f.attempts ? ` · ${f.attempts} ${f.attempts === 1 ? "try" : "tries"}` : ""}`}
+              </span>
+              {f.status !== "sent" && (
+                <button type="button" className="btn-sm" onClick={() => resend(f.id)} disabled={busy !== null}>
+                  {busy === f.id ? <LoaderCircle width={14} height={14} className="spin" /> : <RefreshCw width={14} height={14} />} Resend
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {message && <p className={`feedback ${message.ok ? "ok" : "err"}`} role="status" style={{ marginTop: 8 }}>{message.text}</p>}
+    </div>
   );
 }
 
@@ -534,7 +703,9 @@ export function IntegrationsManager() {
   if (error) return <div className="alert alert-critical"><CircleX width={18} height={18} /><div className="alert-title">{error}</div></div>;
   if (!snap) return <div className="stack">{[0, 1, 2].map((i) => <div key={i} className="card skeleton" style={{ height: 88 }} />)}</div>;
 
-  const healths = SERVICES.map((s) => ({ def: s, health: healthOf(snap.services[s.id]) }));
+  // Optional services only count once they're set up.
+  const healths = SERVICES.map((s) => ({ def: s, health: healthOf(snap.services[s.id]) })).filter((h) => !h.def.optional || h.health !== "off");
+  const total = healths.length;
   const working = healths.filter((h) => h.health === "ok").length;
   const problems = healths.filter((h) => h.health === "problem").length;
   const configured = healths.filter((h) => h.health !== "off").length;
@@ -564,7 +735,7 @@ export function IntegrationsManager() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div className="strong" style={{ fontSize: 15 }}>
-              {working === SERVICES.length ? "Everything is connected and working" : `${working} of ${SERVICES.length} working`}
+              {working === total ? "Everything is connected and working" : `${working} of ${total} working`}
               {problems > 0 && <span className="error"> · {problems} {problems === 1 ? "problem" : "problems"}</span>}
             </div>
             <div className="small muted">Connections are re-checked automatically every day; you&apos;ll get an alert if one stops working.</div>
@@ -576,8 +747,8 @@ export function IntegrationsManager() {
             </button>
           </div>
         </div>
-        <div className="meter" role="meter" aria-valuemin={0} aria-valuemax={SERVICES.length} aria-valuenow={working} aria-label="Integrations working">
-          <div className="meter-fill" style={{ width: `${(working / SERVICES.length) * 100}%` }} />
+        <div className="meter" role="meter" aria-valuemin={0} aria-valuemax={total} aria-valuenow={working} aria-label="Integrations working">
+          <div className="meter-fill" style={{ width: `${(working / total) * 100}%` }} />
         </div>
         <div className="row" style={{ gap: 6, marginTop: 12 }}>
           {healths.map(({ def, health }) => (

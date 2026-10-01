@@ -31,6 +31,16 @@ export function KnowledgeEditor() {
   useEffect(() => {
     load();
   }, []);
+  // Links like /admin/knowledge#faq (from the AI sales agent page) open that tab.
+  useEffect(() => {
+    const onHash = () => {
+      const c = window.location.hash.slice(1).toUpperCase();
+      if (CATEGORIES.includes(c)) setCat(c);
+    };
+    onHash();
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   async function save(e: Entry) {
     setSavingId(e.id);

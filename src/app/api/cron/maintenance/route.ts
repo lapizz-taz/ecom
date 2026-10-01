@@ -7,6 +7,7 @@ import { processConversation } from "@/lib/conversation/service";
 import { logger, errorInfo } from "@/lib/logger";
 import { checkAllConfigured } from "@/lib/integrations/health";
 import { refreshInstagramToken } from "@/lib/integrations/connect";
+import { retryDueForwards } from "@/lib/orders/forward";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export const maxDuration = 60;
  * - recover inbound messages whose background processing never ran
  * - expire stale draft orders
  * - prune idempotency / rate-limit rows
+ * - resend orders the order platform didn't accept yet
  * - renew the Instagram Login token weekly, re-test every configured integration, and alert staff
  *   about any that just stopped working
  */
@@ -35,7 +37,20 @@ export async function GET(req: Request) {
       logger.error("integration checks failed", errorInfo(err));
       return null;
     });
-  const report = { retried: 0, retrySucceeded: 0, recovered: 0, draftsExpired: 0, eventsPruned: 0, rateLimitsPruned: 0, integrations: null as Awaited<typeof integrationChecks> };
+  const orderForwards = retryDueForwards({ limit: 20 }).catch((err) => {
+    logger.error("order forward retries failed", errorInfo(err));
+    return null;
+  });
+  const report = {
+    retried: 0,
+    retrySucceeded: 0,
+    recovered: 0,
+    draftsExpired: 0,
+    eventsPruned: 0,
+    rateLimitsPruned: 0,
+    orderForwards: null as Awaited<typeof orderForwards>,
+    integrations: null as Awaited<typeof integrationChecks>,
+  };
   const dayAgo = new Date(Date.now() - 24 * 3600_000);
 
   // 1. Retry failed outbound AI/human messages.
@@ -90,6 +105,7 @@ export async function GET(req: Request) {
   report.eventsPruned = (await prisma.processedEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 86400_000) } } })).count;
   report.rateLimitsPruned = (await prisma.rateLimit.deleteMany({ where: { windowStart: { lt: dayAgo } } })).count;
 
+  report.orderForwards = await orderForwards;
   report.integrations = await integrationChecks;
 
   logger.info("maintenance done", report);

@@ -5,6 +5,7 @@ import { logger, errorInfo } from "@/lib/logger";
 import { verifyMetaSignature } from "@/lib/security/signature";
 import { parseWhatsAppWebhook, WhatsAppAdapter } from "@/lib/channels/whatsapp";
 import { processConversation, receiveInbound } from "@/lib/conversation/service";
+import { retryDueForwards } from "@/lib/orders/forward";
 import { requestHandoff } from "@/lib/handoff";
 import { MAX_WEBHOOK_BYTES, verifyHandshakeFor, webhookIpLimit } from "@/lib/webhooks";
 
@@ -63,14 +64,16 @@ export async function POST(req: Request) {
   if (toProcess.length) {
     after(async () => {
       const wa = new WhatsAppAdapter();
-      await Promise.all(
-        toProcess.map(async (p) => {
+      await Promise.all([
+        ...toProcess.map(async (p) => {
           await wa.markRead(p.waId).catch(() => undefined);
           await processConversation(p.conversationId, p.messageId).catch((err) =>
             logger.error("whatsapp processing failed", { conversationId: p.conversationId, ...errorInfo(err) })
           );
-        })
-      );
+        }),
+        // Chat activity is also a chance to resend orders the order platform didn't take earlier.
+        retryDueForwards({ limit: 3 }).catch((err) => logger.warn("order forward retry failed", errorInfo(err))),
+      ]);
     });
   }
   return NextResponse.json({ status: "ok" });

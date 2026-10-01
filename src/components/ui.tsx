@@ -76,7 +76,7 @@ export function StatusPill({ status, large = false }: { status: string; large?: 
 /** Order / draft statuses coming from Shopify or the AI order flow. */
 export function OrderStatusPill({ status }: { status: string }) {
   const s = status.toUpperCase();
-  const tone = /FAIL|CANCEL|EXPIRED|REFUND/.test(s) ? "critical" : /AWAIT|PENDING|PROCESS|DRAFT|UNFULFILLED/.test(s) ? "warning" : /CONFIRM|FULFILLED|PAID|COMPLETE|DELIVERED/.test(s) ? "good" : "neutral";
+  const tone = /FAIL|CANCEL|EXPIRED|REFUND/.test(s) ? "critical" : /AWAIT|PENDING|PROCESS|DRAFT|UNFULFILLED/.test(s) ? "warning" : /CONFIRM|FULFILLED|PAID|COMPLETE|DELIVERED|SENT/.test(s) ? "good" : "neutral";
   return <span className={`pill tone-${tone}`}>{humanize(status)}</span>;
 }
 

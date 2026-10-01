@@ -31,6 +31,11 @@ export const INTEGRATION_KEYS = [
   "WHATSAPP_VERIFY_TOKEN",
   "WHATSAPP_APP_SECRET",
   "WHATSAPP_BUSINESS_ACCOUNT_ID",
+  "ORDER_WEBHOOK_URL",
+  "ORDER_WEBHOOK_AUTH_HEADER",
+  "ORDER_WEBHOOK_AUTH_VALUE",
+  "ORDER_WEBHOOK_SECRET",
+  "ORDER_DESTINATION",
 ] as const satisfies readonly (keyof Env)[];
 
 export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
@@ -46,16 +51,20 @@ export const SECRET_KEYS: ReadonlySet<IntegrationKey> = new Set([
   "INSTAGRAM_APP_SECRET",
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_APP_SECRET",
+  // Webhook URLs from Zapier, Make and the like work as passwords.
+  "ORDER_WEBHOOK_URL",
+  "ORDER_WEBHOOK_AUTH_VALUE",
 ]);
 
 /** The credentials each connection check depends on (used to clear stale check results). */
-export const SERVICE_KEYS: Record<"openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp", IntegrationKey[]> = {
+export const SERVICE_KEYS: Record<"openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp" | "orders", IntegrationKey[]> = {
   openai: ["OPENAI_API_KEY", "OPENAI_MODEL"],
   shopify: ["SHOPIFY_STORE_DOMAIN", "SHOPIFY_ACCESS_TOKEN", "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET"],
   meta: ["META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"],
   messenger: ["META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
   instagram: ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_ACCOUNT_ID", "INSTAGRAM_APP_SECRET", "META_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_ID", "META_APP_SECRET"],
   whatsapp: ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "META_APP_ID", "META_APP_SECRET"],
+  orders: ["ORDER_WEBHOOK_URL", "ORDER_WEBHOOK_AUTH_HEADER", "ORDER_WEBHOOK_AUTH_VALUE", "ORDER_WEBHOOK_SECRET"],
 };
 
 export function isIntegrationKey(k: string): k is IntegrationKey {
@@ -103,7 +112,7 @@ export async function integrationEnv(opts: { fresh?: boolean } = {}): Promise<En
   return (await load(Boolean(opts.fresh))).merged;
 }
 
-export type IntegrationStatus = Record<"openai" | "shopify" | "meta" | "instagram" | "whatsapp" | "notifications", boolean>;
+export type IntegrationStatus = Record<"openai" | "shopify" | "meta" | "instagram" | "whatsapp" | "orders" | "notifications", boolean>;
 
 export function statusOf(e: Env): IntegrationStatus {
   return {
@@ -117,6 +126,7 @@ export function statusOf(e: Env): IntegrationStatus {
         (e.INSTAGRAM_ACCESS_TOKEN?.startsWith("IG") ? e.INSTAGRAM_APP_SECRET : e.META_APP_SECRET && (e.INSTAGRAM_ACCESS_TOKEN || e.META_ACCESS_TOKEN))
     ),
     whatsapp: Boolean(e.WHATSAPP_PHONE_NUMBER_ID && e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_VERIFY_TOKEN && (e.WHATSAPP_APP_SECRET || e.META_APP_SECRET)),
+    orders: Boolean(e.ORDER_WEBHOOK_URL),
     notifications: Boolean(e.HANDOFF_WEBHOOK_URL || e.RESEND_API_KEY),
   };
 }
@@ -150,11 +160,23 @@ export async function describeIntegrations(): Promise<{ fields: Record<Integrati
     fields[k] = {
       source: fromDashboard !== undefined ? "dashboard" : fromEnv ? "env" : "none",
       value: v && !secret ? String(v) : null,
-      hint: v && secret ? String(v).slice(-4) : null,
+      hint: v && secret ? secretHint(k, String(v)) : null,
       unreadable: state.unreadable.includes(k),
     };
   }
   return { fields, status: statusOf(state.merged) };
+}
+
+/** Enough of a secret to recognise it: the last 4 characters, or the address host of a webhook URL. */
+function secretHint(key: IntegrationKey, v: string): string {
+  if (key === "ORDER_WEBHOOK_URL") {
+    try {
+      return `${new URL(v).host} …${v.slice(-4)}`;
+    } catch {
+      // fall through
+    }
+  }
+  return v.slice(-4);
 }
 
 export class IntegrationValueError extends Error {}
@@ -165,7 +187,10 @@ const NUMERIC_ID: IntegrationKey[] = ["META_APP_ID", "META_PAGE_ID", "INSTAGRAM_
 export function normalizeValue(key: IntegrationKey, raw: string): string {
   let v = raw.trim();
   if (v.length > 4096) throw new IntegrationValueError(`${key} is too long`);
-  if (/\s/.test(v)) throw new IntegrationValueError(`${key} must not contain spaces or line breaks`);
+  // An API key header value may be "Bearer <token>"; everything else is a single word.
+  if (key === "ORDER_WEBHOOK_AUTH_VALUE" ? /[\r\n\t]/.test(v) : /\s/.test(v)) {
+    throw new IntegrationValueError(`${key} must not contain ${key === "ORDER_WEBHOOK_AUTH_VALUE" ? "line breaks" : "spaces or line breaks"}`);
+  }
   if (key === "SHOPIFY_STORE_DOMAIN") {
     v = v.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
     if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(v)) {
@@ -174,6 +199,28 @@ export function normalizeValue(key: IntegrationKey, raw: string): string {
   }
   if (NUMERIC_ID.includes(key) && !/^\d+$/.test(v)) throw new IntegrationValueError(`${key} should only contain numbers`);
   if (key === "OPENAI_MODEL" && !/^[\w.:-]+$/.test(v)) throw new IntegrationValueError("That doesn't look like a model name (e.g. gpt-4.1-mini)");
+  if (key === "ORDER_WEBHOOK_URL") {
+    let u: URL;
+    try {
+      u = new URL(v);
+    } catch {
+      throw new IntegrationValueError("The order platform address must be a full URL, like https://example.com/webhooks/orders");
+    }
+    const local = /^(localhost|127\.0\.0\.1)$/.test(u.hostname) && env().NODE_ENV !== "production";
+    if (u.protocol !== "https:" && !(local && u.protocol === "http:")) {
+      throw new IntegrationValueError("The order platform address must start with https:// so orders are sent encrypted");
+    }
+  }
+  if (key === "ORDER_WEBHOOK_AUTH_HEADER") {
+    if (!/^[A-Za-z0-9-]{1,64}$/.test(v)) throw new IntegrationValueError("A header name only has letters, numbers and dashes, like Authorization or X-API-Key");
+    if (/^(host|content-type|content-length|connection|idempotency-key|x-isolation-.*)$/i.test(v)) {
+      throw new IntegrationValueError(`${v} is set automatically — use the header your platform expects for its API key`);
+    }
+  }
+  if (key === "ORDER_DESTINATION") {
+    v = v.toLowerCase();
+    if (!["shopify", "platform", "both"].includes(v)) throw new IntegrationValueError("Send orders to: shopify, platform or both");
+  }
   return v;
 }
 
@@ -205,6 +252,11 @@ export async function saveIntegrationValues(patch: Partial<Record<IntegrationKey
   await prisma.auditLog.create({ data: { actor, action: "integrations.update", target: changed.join(",").slice(0, 500) } });
   clearIntegrationCache();
   return changed;
+}
+
+/** A random secret for signing order deliveries (X-Isolation-Signature). */
+export function generateSigningSecret(): string {
+  return `whsec_${crypto.randomBytes(24).toString("hex")}`;
 }
 
 /** A random webhook verify token (letters and digits, easy to copy). */
