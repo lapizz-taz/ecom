@@ -1,4 +1,4 @@
-import { env } from "../env";
+import { integrationEnv } from "../integrations";
 import { normalizeBdPhone } from "../utils/phone";
 import { graphRequest } from "./http";
 import { describeAttachments, splitMessage, type ChannelAdapter, type InboundMessage, type SendResult } from "./types";
@@ -9,7 +9,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
   readonly maxLength = 4000;
 
   async send(to: string, text: string): Promise<SendResult> {
-    const e = env();
+    const e = await integrationEnv();
     if (!e.WHATSAPP_PHONE_NUMBER_ID || !e.WHATSAPP_ACCESS_TOKEN) {
       return { ok: false, externalIds: [], error: "WhatsApp is not configured", retryable: false };
     }
@@ -30,7 +30,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   async markRead(messageId: string): Promise<void> {
-    const e = env();
+    const e = await integrationEnv();
     if (!e.WHATSAPP_PHONE_NUMBER_ID || !e.WHATSAPP_ACCESS_TOKEN) return;
     await graphRequest(
       `https://graph.facebook.com/${e.META_GRAPH_VERSION}/${e.WHATSAPP_PHONE_NUMBER_ID}/messages`,

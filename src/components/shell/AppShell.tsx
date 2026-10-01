@@ -1,15 +1,18 @@
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/db";
 import { requirePageSession } from "@/lib/auth";
-import { integrationStatus } from "@/lib/env";
+import { integrationStatus } from "@/lib/integrations";
 import { ShellFrame } from "@/components/shell/ShellFrame";
 
 /** Signed-in console frame (sidebar + mobile drawer) shared by /admin and /test-chat. */
 export async function AppShell({ children }: { children: ReactNode }) {
   const session = await requirePageSession();
-  const needsHuman = await prisma.conversation.count({ where: { status: "HUMAN_REQUIRED", channel: { not: "TEST" } } });
+  const [needsHuman, integrations] = await Promise.all([
+    prisma.conversation.count({ where: { status: "HUMAN_REQUIRED", channel: { not: "TEST" } } }),
+    integrationStatus(),
+  ]);
   return (
-    <ShellFrame email={session.email} role={session.role} needsHuman={needsHuman} integrations={integrationStatus()}>
+    <ShellFrame email={session.email} role={session.role} needsHuman={needsHuman} integrations={integrations}>
       {children}
     </ShellFrame>
   );

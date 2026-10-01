@@ -1,19 +1,19 @@
 import { after, NextResponse } from "next/server";
-import { env } from "@/lib/env";
+import { integrationEnv } from "@/lib/integrations";
 import { prisma } from "@/lib/db";
 import { logger, errorInfo } from "@/lib/logger";
 import { verifyMetaSignature } from "@/lib/security/signature";
 import { parseWhatsAppWebhook, WhatsAppAdapter } from "@/lib/channels/whatsapp";
 import { processConversation, receiveInbound } from "@/lib/conversation/service";
 import { requestHandoff } from "@/lib/handoff";
-import { MAX_WEBHOOK_BYTES, verifyHandshake, webhookIpLimit } from "@/lib/webhooks";
+import { MAX_WEBHOOK_BYTES, verifyHandshakeFor, webhookIpLimit } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
-  return verifyHandshake(req, env().WHATSAPP_VERIFY_TOKEN);
+  return verifyHandshakeFor(req, (e) => e.WHATSAPP_VERIFY_TOKEN);
 }
 
 export async function POST(req: Request) {
@@ -21,8 +21,14 @@ export async function POST(req: Request) {
   if (limited) return limited;
   const raw = await req.text();
   if (raw.length > MAX_WEBHOOK_BYTES) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
-  const secret = env().WHATSAPP_APP_SECRET ?? env().META_APP_SECRET;
-  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), secret)) {
+  const sig = req.headers.get("x-hub-signature-256");
+  const appSecret = (e: Awaited<ReturnType<typeof integrationEnv>>) => e.WHATSAPP_APP_SECRET ?? e.META_APP_SECRET;
+  let cfg = await integrationEnv();
+  if (!verifyMetaSignature(raw, sig, appSecret(cfg))) {
+    // The app secret may have just been changed on the dashboard: retry once with uncached values.
+    cfg = await integrationEnv({ fresh: true });
+  }
+  if (!verifyMetaSignature(raw, sig, appSecret(cfg))) {
     logger.warn("whatsapp webhook signature rejected");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
@@ -33,7 +39,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = parseWhatsAppWebhook(body as Parameters<typeof parseWhatsAppWebhook>[0], env().WHATSAPP_PHONE_NUMBER_ID);
+  const parsed = parseWhatsAppWebhook(body as Parameters<typeof parseWhatsAppWebhook>[0], cfg.WHATSAPP_PHONE_NUMBER_ID);
   const toProcess: { conversationId: string; messageId: string; waId: string }[] = [];
   try {
     for (const msg of parsed.messages) {

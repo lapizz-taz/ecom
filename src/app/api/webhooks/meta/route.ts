@@ -1,10 +1,10 @@
 import { after, NextResponse } from "next/server";
-import { env } from "@/lib/env";
+import { integrationEnv } from "@/lib/integrations";
 import { logger, errorInfo } from "@/lib/logger";
 import { verifyMetaSignature } from "@/lib/security/signature";
 import { parseMetaWebhook } from "@/lib/channels/meta";
 import { processConversation, receiveEcho, receiveInbound } from "@/lib/conversation/service";
-import { MAX_WEBHOOK_BYTES, verifyHandshake, webhookIpLimit } from "@/lib/webhooks";
+import { MAX_WEBHOOK_BYTES, verifyHandshakeFor, webhookIpLimit } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export const maxDuration = 60;
 
 /** Instagram DM + Facebook Messenger webhook (object = "instagram" | "page"). */
 export async function GET(req: Request) {
-  return verifyHandshake(req, env().META_VERIFY_TOKEN);
+  return verifyHandshakeFor(req, (e) => e.META_VERIFY_TOKEN);
 }
 
 export async function POST(req: Request) {
@@ -22,7 +22,12 @@ export async function POST(req: Request) {
   const raw = await req.text();
   if (raw.length > MAX_WEBHOOK_BYTES) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
   // 1. Verify the request really comes from Meta.
-  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), env().META_APP_SECRET)) {
+  const sig = req.headers.get("x-hub-signature-256");
+  const valid =
+    verifyMetaSignature(raw, sig, (await integrationEnv()).META_APP_SECRET) ||
+    // The app secret may have just been changed on the dashboard: retry once with uncached values.
+    verifyMetaSignature(raw, sig, (await integrationEnv({ fresh: true })).META_APP_SECRET);
+  if (!valid) {
     logger.warn("meta webhook signature rejected");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }

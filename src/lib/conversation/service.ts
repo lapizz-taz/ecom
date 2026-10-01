@@ -15,7 +15,7 @@ import { getAdapter, type EchoMessage, type InboundMessage } from "../channels";
 import { requestHandoff, markHumanRepliedInInbox } from "../handoff";
 import { track } from "../analytics";
 import { normalizeBdPhone } from "../utils/phone";
-import { env } from "../env";
+import { integrationEnv } from "../integrations";
 
 /**
  * Unified, channel-independent conversation pipeline.
@@ -148,7 +148,7 @@ async function storeInbound(msg: InboundMessage): Promise<ReceiveResult> {
 
 /** A message typed by staff directly in Meta Business Suite / the Instagram app. */
 export async function receiveEcho(echo: EchoMessage): Promise<"ignored" | "stored"> {
-  const ownAppId = env().META_APP_ID;
+  const ownAppId = (await integrationEnv()).META_APP_ID;
   if (ownAppId && echo.appId === ownAppId) return "ignored"; // our own API send
   const already = await prisma.message.findFirst({ where: { externalId: echo.externalMessageId } });
   if (already) return "ignored";
@@ -281,14 +281,14 @@ export async function processConversation(conversationId: string, messageId: str
 
   let shopify: ShopifyProvider | null = null;
   try {
-    shopify = getShopify(settings.business.website, opts.shopifyMode ?? "live");
+    shopify = await getShopify(settings.business.website, opts.shopifyMode ?? "live");
   } catch {
     shopify = null; // tools will report shopify_unavailable -> safe fallback
   }
   let llm: LlmClient | null = opts.llm === undefined ? null : opts.llm;
   if (opts.llm === undefined) {
     try {
-      llm = defaultLlm();
+      llm = await defaultLlm();
     } catch {
       llm = null;
     }

@@ -2,7 +2,9 @@ import { z } from "zod";
 
 /**
  * Centralised, validated access to environment variables.
- * Secrets are ONLY read from the environment — never hard-coded.
+ * Secrets are never hard-coded. Integration credentials (OpenAI, Shopify, Meta, WhatsApp) may also be
+ * entered on the dashboard's Integrations page — read those through integrationEnv() in
+ * src/lib/integrations, which applies the dashboard values on top of this.
  * Optional integrations return `undefined` so the app can run (e.g. /test-chat in mock mode)
  * before every credential is configured.
  */
@@ -40,6 +42,8 @@ const schema = z.object({
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_APP_SECRET: z.string().optional(),
+  /** Only used by the dashboard's automatic webhook setup. */
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
 
   CRON_SECRET: z.string().optional(),
   HANDOFF_WEBHOOK_URL: z.string().url().optional(),
@@ -71,16 +75,4 @@ export function env(): Env {
 /** For tests only. */
 export function resetEnvCache() {
   cached = null;
-}
-
-export function integrationStatus() {
-  const e = env();
-  return {
-    openai: Boolean(e.OPENAI_API_KEY),
-    shopify: Boolean(e.SHOPIFY_STORE_DOMAIN && (e.SHOPIFY_ACCESS_TOKEN || (e.SHOPIFY_CLIENT_ID && e.SHOPIFY_CLIENT_SECRET))),
-    meta: Boolean(e.META_APP_SECRET && e.META_VERIFY_TOKEN && e.META_ACCESS_TOKEN),
-    instagram: Boolean(e.META_APP_SECRET && e.META_VERIFY_TOKEN && (e.INSTAGRAM_ACCESS_TOKEN || e.META_ACCESS_TOKEN)),
-    whatsapp: Boolean(e.WHATSAPP_PHONE_NUMBER_ID && e.WHATSAPP_ACCESS_TOKEN && e.WHATSAPP_VERIFY_TOKEN && (e.WHATSAPP_APP_SECRET || e.META_APP_SECRET)),
-    notifications: Boolean(e.HANDOFF_WEBHOOK_URL || e.RESEND_API_KEY),
-  };
 }

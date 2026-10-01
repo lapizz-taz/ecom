@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, ChartColumn, FlaskConical, Menu, MessagesSquare, Package, Settings, ShoppingBag, UserCog, Users, X, type LucideIcon } from "lucide-react";
+import { BookOpen, ChartColumn, FlaskConical, Menu, MessagesSquare, Package, Plug, Settings, ShoppingBag, UserCog, Users, X, type LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/ui";
 import { LogoutButton } from "@/components/LogoutButton";
 
@@ -62,6 +62,7 @@ export function ShellFrame(props: {
     groups.push({
       label: "Admin",
       items: [
+        { href: "/admin/integrations", label: "Integrations", icon: Plug },
         { href: "/admin/knowledge", label: "Knowledge base", icon: BookOpen },
         { href: "/admin/settings", label: "Settings", icon: Settings },
         { href: "/admin/users", label: "Staff accounts", icon: UserCog },
@@ -108,20 +109,30 @@ export function ShellFrame(props: {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <div className="integrations">
-            <div className="integrations-title">
-              <span>Integrations</span>
-              <span className="muted" style={{ fontWeight: 500 }}>{connected}/{integrationEntries.length}</span>
-            </div>
-            <div className="integration-list">
-              {integrationEntries.map(([k, v]) => (
-                <div key={k} className="integration" title={v ? "Connected" : "Not configured"}>
-                  <span className={`dot${v ? " on" : ""}`} />
-                  {INTEGRATION_LABELS[k] ?? k}
+          {(() => {
+            const body = (
+              <>
+                <div className="integrations-title">
+                  <span>Integrations</span>
+                  <span className="muted" style={{ fontWeight: 500 }}>{connected}/{integrationEntries.length}</span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="integration-list">
+                  {integrationEntries.map(([k, v]) => (
+                    <div key={k} className="integration" title={v ? "Connected" : "Not configured"}>
+                      <span className={`dot${v ? " on" : ""}`} />
+                      {INTEGRATION_LABELS[k] ?? k}
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+            // Admins can jump straight to the Integrations page to connect what's missing.
+            return props.role === "ADMIN" ? (
+              <Link href="/admin/integrations" className="integrations" title="Manage integrations">{body}</Link>
+            ) : (
+              <div className="integrations">{body}</div>
+            );
+          })()}
           <div className="user-card">
             <Avatar name={props.email} size="sm" />
             <div className="user-meta">

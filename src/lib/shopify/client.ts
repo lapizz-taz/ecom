@@ -1,4 +1,4 @@
-import { env } from "../env";
+import { integrationEnv } from "../integrations";
 import { logger } from "../logger";
 import { ShopifyNotConfiguredError, ShopifyUnavailableError } from "./types";
 
@@ -9,20 +9,23 @@ import { ShopifyNotConfiguredError, ShopifyUnavailableError } from "./types";
  * whose tokens expire (~24h) and are refreshed automatically here.
  */
 
-let tokenCache: { token: string; expiresAt: number } | null = null;
+// Keyed by store + client id, so connecting different credentials never reuses an old token.
+let tokenCache: { key: string; token: string; expiresAt: number } | null = null;
 
-function shopDomain(): string {
-  const d = env().SHOPIFY_STORE_DOMAIN;
+async function shopDomain(): Promise<string> {
+  const d = (await integrationEnv()).SHOPIFY_STORE_DOMAIN;
   if (!d) throw new ShopifyNotConfiguredError();
   return d.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
 async function accessToken(): Promise<string> {
-  const e = env();
+  const e = await integrationEnv();
   if (e.SHOPIFY_ACCESS_TOKEN) return e.SHOPIFY_ACCESS_TOKEN;
   if (!e.SHOPIFY_CLIENT_ID || !e.SHOPIFY_CLIENT_SECRET) throw new ShopifyNotConfiguredError();
-  if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) return tokenCache.token;
-  const res = await fetch(`https://${shopDomain()}/admin/oauth/access_token`, {
+  const domain = await shopDomain();
+  const cacheKey = `${domain}:${e.SHOPIFY_CLIENT_ID}`;
+  if (tokenCache && tokenCache.key === cacheKey && tokenCache.expiresAt > Date.now() + 60_000) return tokenCache.token;
+  const res = await fetch(`https://${domain}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -37,7 +40,7 @@ async function accessToken(): Promise<string> {
   if (!res.ok) throw new ShopifyUnavailableError(`token request failed with HTTP ${res.status}`);
   const json = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!json.access_token) throw new ShopifyUnavailableError("token response missing access_token");
-  tokenCache = { token: json.access_token, expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000 };
+  tokenCache = { key: cacheKey, token: json.access_token, expiresAt: Date.now() + (json.expires_in ?? 3600) * 1000 };
   return tokenCache.token;
 }
 
@@ -47,7 +50,7 @@ export interface GraphQLResponse<T> {
 }
 
 export async function shopifyGraphQL<T>(query: string, variables: Record<string, unknown> = {}, attempt = 0): Promise<T> {
-  const url = `https://${shopDomain()}/admin/api/${env().SHOPIFY_API_VERSION}/graphql.json`;
+  const url = `https://${await shopDomain()}/admin/api/${(await integrationEnv()).SHOPIFY_API_VERSION}/graphql.json`;
   let res: Response;
   try {
     res = await fetch(url, {

@@ -77,7 +77,7 @@ export default function ProductsPage() {
           <TriangleAlert width={18} height={18} aria-hidden />
           <div>
             <div className="alert-title">{error}</div>
-            <div className="alert-body small">Check the Shopify settings in Vercel (SHOPIFY_STORE_DOMAIN and an access token), then reload.</div>
+            <div className="alert-body small">Connect your store on the <a className="link" href="/admin/integrations#shopify">Integrations</a> page, then reload.</div>
           </div>
         </div>
       )}

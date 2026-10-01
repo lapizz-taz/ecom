@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
-import { env } from "../env";
+import { integrationEnv } from "../integrations";
 
 /** Provider-neutral chat types so the agent can be tested with a scripted model. */
 export interface LlmToolCall {
@@ -41,11 +41,12 @@ export class LlmUnavailableError extends Error {
 export class OpenAiLlm implements LlmClient {
   readonly name: string;
   private client: OpenAI;
-  constructor(private model = env().OPENAI_MODEL) {
-    const key = env().OPENAI_API_KEY;
-    if (!key) throw new LlmUnavailableError("OPENAI_API_KEY is not configured");
-    this.client = new OpenAI({ apiKey: key, timeout: env().OPENAI_TIMEOUT_MS, maxRetries: 2 });
-    this.name = `openai:${model}`;
+  private model: string;
+  constructor(opts: { apiKey: string | undefined; model: string; timeoutMs: number }) {
+    if (!opts.apiKey) throw new LlmUnavailableError("OPENAI_API_KEY is not configured");
+    this.model = opts.model;
+    this.client = new OpenAI({ apiKey: opts.apiKey, timeout: opts.timeoutMs, maxRetries: 2 });
+    this.name = `openai:${opts.model}`;
   }
 
   async complete({ messages, tools }: { messages: LlmMessage[]; tools: LlmToolDef[] }): Promise<LlmResponse> {
@@ -103,6 +104,7 @@ export class ScriptedLlm implements LlmClient {
   }
 }
 
-export function defaultLlm(): LlmClient {
-  return new OpenAiLlm();
+export async function defaultLlm(): Promise<LlmClient> {
+  const e = await integrationEnv();
+  return new OpenAiLlm({ apiKey: e.OPENAI_API_KEY, model: e.OPENAI_MODEL, timeoutMs: e.OPENAI_TIMEOUT_MS });
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { clearSettingsCache } from "@/lib/config/settings";
 import { clearKnowledgeCache } from "@/lib/knowledge";
+import { clearIntegrationCache } from "@/lib/integrations";
 import { handleInbound } from "@/lib/conversation/service";
 import { ScriptedLlm, type LlmMessage, type LlmResponse } from "@/lib/ai/llm";
 import type { ShopifyMode } from "@/lib/shopify";
@@ -16,11 +17,12 @@ export function setFailSends(v: boolean) {
 export async function resetDb() {
   const tables = [
     "ToolCallLog", "Handoff", "DraftOrder", "Order", "Message", "Conversation", "ChannelUser", "Customer",
-    "ProcessedEvent", "Setting", "KnowledgeEntry", "AnalyticsEvent", "RateLimit", "AuditLog", "AdminUser",
+    "ProcessedEvent", "Setting", "KnowledgeEntry", "AnalyticsEvent", "RateLimit", "AuditLog", "AdminUser", "IntegrationSecret",
   ];
   await prisma.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t}"`).join(", ")} CASCADE`);
   clearSettingsCache();
   clearKnowledgeCache();
+  clearIntegrationCache();
   sent.length = 0;
   failSends = false;
   setAdapterFactoryForTests((channel) => ({

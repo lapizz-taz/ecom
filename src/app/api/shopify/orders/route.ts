@@ -16,7 +16,7 @@ export async function GET(req: Request) {
       const n = normalizeOrderNumber(number);
       if (!n) return NextResponse.json({ error: "Invalid order number" }, { status: 400 });
       const settings = await getSettings();
-      const order = await getShopify(settings.business.website, "live").findOrderByName(n);
+      const order = await (await getShopify(settings.business.website, "live")).findOrderByName(n);
       await prisma.auditLog.create({ data: { actor: session.email, action: "order.lookup", target: n } });
       return NextResponse.json({ order });
     }
