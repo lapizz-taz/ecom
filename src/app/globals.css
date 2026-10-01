@@ -552,6 +552,8 @@ input.warn:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning-dot) 2
 .inbound svg { color: var(--muted); margin-top: 1px; }
 .inbound.seen { border-color: color-mix(in srgb, var(--good) 30%, var(--border)); }
 .inbound.seen svg { color: var(--good); }
+.choice-list { display: flex; flex-direction: column; gap: 6px; }
+.choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); }
 .forward-list { display: flex; flex-direction: column; gap: 6px; }
 .forward { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 12px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
 .forward-detail { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }

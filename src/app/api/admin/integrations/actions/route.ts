@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, requireApiSession } from "@/lib/auth";
 import { generateSigningSecret, generateVerifyToken, integrationEnv, saveIntegrationValues } from "@/lib/integrations";
-import { SERVICE_IDS, setupWebhooks, type ServiceId } from "@/lib/integrations/connect";
+import { registerWhatsAppNumber, SERVICE_IDS, setupWebhooks, type ServiceId } from "@/lib/integrations/connect";
 import { checkAllConfigured, runCheck } from "@/lib/integrations/health";
 
 export const runtime = "nodejs";
@@ -14,9 +14,13 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("test-all") }),
   z.object({ action: z.literal("webhooks"), service: z.enum(["messenger", "instagram", "whatsapp"]) }),
   z.object({ action: z.literal("generate-token"), token: z.enum(["META_VERIFY_TOKEN", "WHATSAPP_VERIFY_TOKEN", "ORDER_WEBHOOK_SECRET"]) }),
+  z.object({ action: z.literal("whatsapp-register"), pin: z.string().regex(/^\d{6}$/, "The PIN is 6 digits") }),
 ]);
 
-/** Admin only: test one or all connections (results are stored), set up Meta webhooks, or generate a verify token / signing secret. */
+/**
+ * Admin only: test one or all connections (results are stored), set up Meta webhooks, generate a
+ * verify token / signing secret, or register the WhatsApp number for the Cloud API.
+ */
 export async function POST(req: Request) {
   try {
     const session = await requireApiSession(req, { role: "ADMIN" });
@@ -27,6 +31,7 @@ export async function POST(req: Request) {
       const baseUrl = (await integrationEnv()).APP_URL ?? new URL(req.url).origin;
       return NextResponse.json(await setupWebhooks(body.service, baseUrl, session.email));
     }
+    if (body.action === "whatsapp-register") return NextResponse.json(await registerWhatsAppNumber(body.pin, session.email));
     await saveIntegrationValues({ [body.token]: body.token === "ORDER_WEBHOOK_SECRET" ? generateSigningSecret() : generateVerifyToken() }, session.email);
     return NextResponse.json({ ok: true });
   } catch (err) {

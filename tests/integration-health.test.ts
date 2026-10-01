@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { resetEnvCache } from "@/lib/env";
 import { clearIntegrationCache, integrationEnv, saveIntegrationValues } from "@/lib/integrations";
-import { inspectMetaToken, testConnection } from "@/lib/integrations/connect";
+import { inspectMetaToken, registerWhatsAppNumber, setupWebhooks, testConnection } from "@/lib/integrations/connect";
 import { checkAllConfigured, integrationHealth, runCheck, servicesOverview } from "@/lib/integrations/health";
 import { resetDb } from "./helpers";
 
@@ -156,27 +156,147 @@ describe("Page tokens and the Meta app secret", () => {
     resetEnvCache();
     try {
       await saveIntegrationValues({ META_ACCESS_TOKEN: "EAApage", WHATSAPP_PHONE_NUMBER_ID: "1234567890", WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
-      const spy = vi.spyOn(globalThis, "fetch");
-      for (const s of ["messenger", "instagram", "whatsapp"] as const) {
+      const calls = mockFetch({ "/1234567890?fields": { id: "1234567890", display_phone_number: "+880 1711-000000" } });
+      for (const s of ["messenger", "instagram"] as const) {
         expect(await testConnection(s)).toMatchObject({ ok: false, message: expect.stringMatching(/App secret/) });
       }
-      expect(spy).not.toHaveBeenCalled();
+      expect(calls).toHaveLength(0);
+      // WhatsApp still looks up the number first, so that part is done once the secret is added.
+      expect(await testConnection("whatsapp")).toMatchObject({ ok: false, message: expect.stringMatching(/App secret/) });
     } finally {
       process.env.META_APP_SECRET = secret;
     }
   });
 
-  it("warns when the WhatsApp ID doesn't return a phone number", async () => {
+  it("says how to fix a token that can't reach any WhatsApp number", async () => {
     await saveIntegrationValues({ WHATSAPP_PHONE_NUMBER_ID: "777", WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
     mockFetch({ "/777?fields": { id: "777" }, debug_token: { data: { is_valid: true, app_id: "999", expires_at: 0, scopes: ["whatsapp_business_messaging", "whatsapp_business_management"] } } });
     const r = await testConnection("whatsapp");
-    expect(r.ok).toBe(true);
-    expect(r.notes?.[0]).toMatch(/didn't return a phone number/);
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/Couldn't find a WhatsApp number this token can use.*Assign assets/);
   });
 
   it("shows a failed check as a problem in the sidebar even before everything is configured", async () => {
     await prisma.integrationCheck.create({ data: { service: "whatsapp", ok: false, message: "App secret missing" } });
     expect((await integrationHealth()).whatsapp).toBe("problem");
+  });
+});
+
+describe("WhatsApp: finding the number from the token", () => {
+  const NUMBER = { id: "111222333", display_phone_number: "+880 1711-000000", verified_name: "Isolation", platform_type: "CLOUD_API", status: "CONNECTED", code_verification_status: "VERIFIED" };
+  const tokenInfo = (granular?: { scope: string; target_ids?: string[] }[]) => ({
+    data: { is_valid: true, app_id: "999", expires_at: 0, scopes: ["whatsapp_business_messaging", "whatsapp_business_management"], granular_scopes: granular },
+  });
+  const assigned = tokenInfo([
+    { scope: "whatsapp_business_management", target_ids: ["555"] },
+    { scope: "whatsapp_business_messaging", target_ids: ["555"] },
+  ]);
+
+  it("fills in the Phone number ID and account ID when only the token is pasted", async () => {
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+    mockFetch({ "/555/phone_numbers": { data: [NUMBER] }, "/555?fields=name": { name: "Isolation WA" }, "/111222333?fields": NUMBER, debug_token: assigned });
+    const r = await testConnection("whatsapp", "owner@iso.test");
+    expect(r).toMatchObject({ ok: true, message: "Connected to +880 1711-000000 (Isolation). The number was found from your token and its IDs saved for you." });
+    expect(r.notes).toBeUndefined();
+    const e = await integrationEnv({ fresh: true });
+    expect(e.WHATSAPP_PHONE_NUMBER_ID).toBe("111222333");
+    expect(e.WHATSAPP_BUSINESS_ACCOUNT_ID).toBe("555");
+  });
+
+  it("replaces a phone number typed into the Phone number ID box", async () => {
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa", WHATSAPP_PHONE_NUMBER_ID: "8801711000000" }, "owner@iso.test");
+    mockFetch({ "/555/phone_numbers": { data: [NUMBER] }, "/555?fields=name": { name: "Isolation WA" }, "/111222333?fields": NUMBER, debug_token: assigned });
+    const r = await testConnection("whatsapp");
+    expect(r.ok).toBe(true);
+    expect(r.notes?.[0]).toMatch(/\(8801711000000\) isn't one of your WhatsApp numbers, so it was replaced with the ID of \+880 1711-000000/);
+    expect((await integrationEnv({ fresh: true })).WHATSAPP_PHONE_NUMBER_ID).toBe("111222333");
+  });
+
+  it("lets staff choose when the token can use several numbers", async () => {
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+    const second = { ...NUMBER, id: "444", display_phone_number: "+880 1811-000000", verified_name: "Isolation Outlet" };
+    mockFetch({ "/555/phone_numbers": { data: [NUMBER, second] }, "/555?fields=name": { name: "Isolation WA" }, debug_token: assigned });
+    const r = await testConnection("whatsapp");
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/can use 2 WhatsApp numbers/);
+    expect(r.choices).toEqual([
+      { label: "+880 1711-000000", detail: "Isolation · account “Isolation WA”", values: { WHATSAPP_PHONE_NUMBER_ID: "111222333", WHATSAPP_BUSINESS_ACCOUNT_ID: "555" } },
+      { label: "+880 1811-000000", detail: "Isolation Outlet · account “Isolation WA”", values: { WHATSAPP_PHONE_NUMBER_ID: "444", WHATSAPP_BUSINESS_ACCOUNT_ID: "555" } },
+    ]);
+    expect((await integrationEnv({ fresh: true })).WHATSAPP_PHONE_NUMBER_ID).toBeUndefined();
+  });
+
+  it("finds the account through the business when the token isn't limited to one", async () => {
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+    mockFetch({
+      "/me/businesses": { data: [{ id: "b1" }] },
+      "/b1/owned_whatsapp_business_accounts": { data: [{ id: "555" }] },
+      "/b1/client_whatsapp_business_accounts": { data: [] },
+      "/555/phone_numbers": { data: [NUMBER] },
+      "/555?fields=name": { name: "Isolation WA" },
+      "/111222333?fields": NUMBER,
+      debug_token: tokenInfo(),
+    });
+    expect((await testConnection("whatsapp")).ok).toBe(true);
+    expect((await integrationEnv({ fresh: true })).WHATSAPP_BUSINESS_ACCOUNT_ID).toBe("555");
+  });
+
+  it("saves the number even before the App secret is added", async () => {
+    const secret = process.env.META_APP_SECRET;
+    delete process.env.META_APP_SECRET;
+    resetEnvCache();
+    try {
+      await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+      mockFetch({ "/555/phone_numbers": { data: [NUMBER] }, "/555?fields=name": { name: "Isolation WA" }, "/111222333?fields": NUMBER, debug_token: assigned });
+      const r = await testConnection("whatsapp");
+      expect(r.message).toMatch(/App secret/);
+      expect(r.notes?.[0]).toMatch(/\+880 1711-000000 was found and saved/);
+      expect((await integrationEnv({ fresh: true })).WHATSAPP_PHONE_NUMBER_ID).toBe("111222333");
+    } finally {
+      process.env.META_APP_SECRET = secret;
+    }
+  });
+
+  it("explains an account without a number", async () => {
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+    mockFetch({ "/555/phone_numbers": { data: [] }, "/555?fields=name": { name: "Isolation WA" }, debug_token: assigned });
+    const r = await testConnection("whatsapp");
+    expect(r.message).toMatch(/“Isolation WA” doesn't have a phone number yet.*Add phone number/);
+    expect((await integrationEnv({ fresh: true })).WHATSAPP_BUSINESS_ACCOUNT_ID).toBe("555");
+  });
+
+  it("spots a number that still needs registering, and registers it with a PIN", async () => {
+    const pending = { ...NUMBER, platform_type: "NOT_APPLICABLE" };
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa" }, "owner@iso.test");
+    const calls = mockFetch({
+      "/111222333/register": { success: true },
+      "/555/phone_numbers": { data: [pending] },
+      "/555?fields=name": { name: "Isolation WA" },
+      "/111222333?fields": pending,
+      debug_token: assigned,
+    });
+    const r = await testConnection("whatsapp");
+    expect(r.ok).toBe(true);
+    expect(r.notes?.[0]).toMatch(/isn't registered for the WhatsApp Cloud API yet/);
+
+    const reg = await registerWhatsAppNumber("123456", "owner@iso.test");
+    expect(reg.ok).toBe(true);
+    expect(JSON.parse(calls.find((c) => c.url.includes("/register"))!.body!)).toEqual({ messaging_product: "whatsapp", pin: "123456" });
+  });
+
+  it("webhook setup finds a missing account ID by itself", async () => {
+    await saveIntegrationValues({ WHATSAPP_ACCESS_TOKEN: "EAAwa", WHATSAPP_PHONE_NUMBER_ID: "111222333" }, "owner@iso.test");
+    const calls = mockFetch({
+      "/999/subscriptions": { success: true },
+      "/555/subscribed_apps": { success: true },
+      "/555/phone_numbers": { data: [NUMBER] },
+      "/555?fields=name": { name: "Isolation WA" },
+      debug_token: assigned,
+    });
+    const r = await setupWebhooks("whatsapp", "https://shop.example.com", "owner@iso.test");
+    expect(r.ok).toBe(true);
+    expect(r.steps.map((s) => s.label)).toContain("Subscribe your WhatsApp Business Account");
+    expect(calls.some((c) => c.url.includes("/555/subscribed_apps"))).toBe(true);
   });
 });
 

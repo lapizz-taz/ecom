@@ -17,7 +17,8 @@ type Key =
 
 interface FieldState { source: "dashboard" | "env" | "none"; value: string | null; hint: string | null; unreadable: boolean }
 type ServiceId = "openai" | "shopify" | "meta" | "messenger" | "instagram" | "whatsapp" | "orders";
-interface CheckResult { ok: boolean; message: string; notes?: string[] }
+interface Choice { label: string; detail?: string; values: Partial<Record<Key, string>> }
+interface CheckResult { ok: boolean; message: string; notes?: string[]; choices?: Choice[] }
 interface StoredCheck extends CheckResult { checkedAt: string; checkedBy: string | null }
 interface ServiceOverview { configured: boolean; check: StoredCheck | null; lastInbound: string | null; lastChange: { at: string; by: string | null } | null }
 interface Forward {
@@ -192,16 +193,19 @@ const SERVICES: ServiceDef[] = [
     tagline: "Reply on your WhatsApp Business number.",
     icon: <ChannelIcon channel="WHATSAPP" size={20} />,
     iconBg: "#1fa855",
+    note: "Only the access token is needed — the Phone number ID and WhatsApp Business Account ID are found from it when you click Save & test.",
     fields: [
-      { key: "WHATSAPP_PHONE_NUMBER_ID", label: "Phone number ID", placeholder: "1234567890" },
       { key: "WHATSAPP_ACCESS_TOKEN", label: "Access token", placeholder: "EAA…", secret: true },
-      { key: "WHATSAPP_BUSINESS_ACCOUNT_ID", label: "WhatsApp Business Account ID", optional: true, hint: "Needed for automatic webhook setup." },
+      { key: "WHATSAPP_PHONE_NUMBER_ID", label: "Phone number ID", placeholder: "Found automatically", optional: true, hint: "Leave empty — it's filled in from the token. Not your phone number." },
+      { key: "WHATSAPP_BUSINESS_ACCOUNT_ID", label: "WhatsApp Business Account ID", placeholder: "Found automatically", optional: true, hint: "Leave empty — it's filled in from the token." },
       { key: "WHATSAPP_APP_SECRET", label: "App secret of a separate WhatsApp app", secret: true, optional: true, hint: "Only if WhatsApp lives in a different Meta app." },
     ],
     steps: [
-      <>In your Meta app add <b>WhatsApp</b>, connect your WhatsApp Business Account and register your business number. It can&apos;t be in use in the normal WhatsApp app.</>,
-      <>Open <b>WhatsApp → API Setup</b> and copy the <b>Phone number ID</b> and <b>WhatsApp Business Account ID</b>.</>,
-      <>In Business Settings → System users, assign the WhatsApp account and app, then generate a token with <code>whatsapp_business_messaging</code> and <code>whatsapp_business_management</code>.</>,
+      <>Add your business number to WhatsApp: open <a className="link" href="https://business.facebook.com/latest/whatsapp_manager/phone_numbers" target="_blank" rel="noreferrer">WhatsApp Manager → Phone numbers <ExternalLink width={12} height={12} /></a> and click <b>Add phone number</b> (skip this if it&apos;s already listed). The number can&apos;t stay logged in to the normal WhatsApp app.</>,
+      <>In your Meta app (<a className="link" href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">developers.facebook.com <ExternalLink width={12} height={12} /></a>) make sure WhatsApp is added — in newer apps it&apos;s under <b>Use cases → Add use case → Connect with customers through WhatsApp</b>.</>,
+      <>Go to <a className="link" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">Business Settings → System users <ExternalLink width={12} height={12} /></a>, pick (or add) a system user, click <b>Assign assets</b> and give it your <b>WhatsApp account</b> (full control) and your <b>app</b>.</>,
+      <>Click <b>Generate new token</b>, choose your app, set it to never expire, tick <code>whatsapp_business_messaging</code> <code>whatsapp_business_management</code> <code>business_management</code>, and copy it.</>,
+      <>Paste <b>only the token</b> here and click <b>Save &amp; test</b>. Your number and account are found for you — if you have several numbers, you pick one. No “API Setup” page needed.</>,
     ],
     webhook: "whatsapp",
   },
@@ -310,7 +314,7 @@ function CheckPanel({ check }: { check: StoredCheck }) {
   );
 }
 
-function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap: Snapshot; onSnapshot: (s: Snapshot) => void; refresh: () => Promise<void> }) {
+function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap: Snapshot; onSnapshot: (s: Snapshot) => void; refresh: () => Promise<Snapshot | null> }) {
   const ov = snap.services[def.id];
   const health = healthOf(ov);
   const initial = () => Object.fromEntries(def.fields.map((f) => [f.key, f.secret ? "" : snap.fields[f.key].value ?? f.defaultValue ?? ""])) as Record<Key, string>;
@@ -319,6 +323,7 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
   const [busy, setBusy] = useState<null | "save" | "test" | "disconnect" | "webhooks" | "token">(null);
   const [error, setError] = useState<string | null>(null);
   const [setup, setSetup] = useState<SetupResult | null>(null);
+  const [choices, setChoices] = useState<Choice[] | null>(null);
   const warnings = health === "ok" ? ov.check?.notes?.length ?? 0 : 0;
   const [open, setOpen] = useState(health !== "ok" || warnings > 0);
 
@@ -351,8 +356,31 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
     setError(null);
     const r = await api<CheckResult>("POST", "/api/admin/integrations/actions", { action: "test", service: def.id });
     if (!r.ok) setError(r.data.error ?? "Test failed");
-    await refresh();
+    setChoices(r.ok && r.data.choices?.length ? r.data.choices : null);
+    const fresh = await refresh();
+    // A test can fill in IDs by itself (e.g. the WhatsApp number) — show them without discarding other typing.
+    if (fresh) {
+      setDraft((d) => {
+        const next = { ...d };
+        for (const f of def.fields) if (!f.secret && fresh.fields[f.key].value !== snap.fields[f.key].value) next[f.key] = fresh.fields[f.key].value ?? f.defaultValue ?? "";
+        return next;
+      });
+    }
     setBusy(null);
+  }
+
+  async function choose(c: Choice) {
+    setBusy("save");
+    setError(null);
+    const r = await api<Snapshot>("PUT", "/api/admin/integrations", { values: c.values });
+    if (!r.ok) {
+      setBusy(null);
+      return setError(r.data.details?.join("; ") ?? r.data.error ?? "Couldn't save");
+    }
+    setChoices(null);
+    onSnapshot(r.data);
+    resetDraft(r.data);
+    await test();
   }
 
   async function save() {
@@ -422,6 +450,23 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
       {open && (
         <>
           {ov.check && <CheckPanel check={ov.check} />}
+          {choices && (
+            <div className="svc-result">
+              <div className="choice-list" role="group" aria-label="Choose one">
+                {choices.map((c) => (
+                  <div key={JSON.stringify(c.values)} className="choice">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="strong">{c.label}</div>
+                      {c.detail && <div className="small muted">{c.detail}</div>}
+                    </div>
+                    <button type="button" className="btn-primary btn-sm" onClick={() => choose(c)} disabled={busy !== null}>
+                      <CircleCheck width={14} height={14} /> Use this one
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="svc-body">
             <div className="svc-steps">
               <div className="section-title">How to get these</div>
@@ -544,12 +589,13 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
                 <summary><ChevronRight width={14} height={14} /> Prefer to do it by hand?</summary>
                 <div className="trace-body small">
                   {def.webhook === "whatsapp" ? (
-                    <>In your Meta app open <b>WhatsApp → Configuration → Webhook</b>, paste the Callback URL and Verify token, click <b>Verify and save</b>, then subscribe to the <code>messages</code> field.</>
+                    <>In your Meta app open <b>WhatsApp → Configuration</b> (newer apps: <b>Use cases → WhatsApp → Customize → Configuration</b>), paste the Callback URL and Verify token, click <b>Verify and save</b>, then subscribe to the <code>messages</code> field.</>
                   ) : (
                     <>In your Meta app open <b>{def.webhook === "instagram" ? "Instagram → Webhooks" : "Messenger → Settings → Webhooks"}</b>, paste the Callback URL and Verify token, click <b>Verify and save</b>, then subscribe to {def.webhook === "instagram" ? <><code>messages</code> and <code>messaging_postbacks</code></> : <><code>messages</code>, <code>messaging_postbacks</code> and <code>message_echoes</code></>}.</>
                   )}
                 </div>
               </details>
+              {def.webhook === "whatsapp" && <WhatsAppRegister onDone={test} />}
             </div>
           )}
 
@@ -581,6 +627,52 @@ function ServiceCard({ def, snap, onSnapshot, refresh }: { def: ServiceDef; snap
   );
 }
 
+/** Numbers added in WhatsApp Manager must be registered for the Cloud API (with a 6-digit PIN) before they work. */
+function WhatsAppRegister({ onDone }: { onDone: () => Promise<void> }) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function register() {
+    setBusy(true);
+    setResult(null);
+    const r = await api<{ ok: boolean; message: string }>("POST", "/api/admin/integrations/actions", { action: "whatsapp-register", pin });
+    setResult(r.ok ? r.data : { ok: false, message: r.data.details?.join("; ") ?? r.data.error ?? "Couldn't register" });
+    setBusy(false);
+    if (r.ok && r.data.ok) {
+      setPin("");
+      await onDone();
+    }
+  }
+
+  return (
+    <details className="trace" style={{ marginTop: 4 }}>
+      <summary><ChevronRight width={14} height={14} /> Register your number (if the test says it isn&apos;t registered)</summary>
+      <div className="trace-body small">
+        <p style={{ margin: 0 }}>
+          Numbers added in WhatsApp Manager have to be registered once before the assistant can use them. Choose a 6-digit PIN — it becomes the number&apos;s two-step verification PIN. If the
+          number already has one, enter that PIN.
+        </p>
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="6-digit PIN"
+            aria-label="6-digit PIN"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            style={{ width: 150 }}
+          />
+          <button type="button" className="btn-sm" onClick={register} disabled={busy || pin.length !== 6}>
+            {busy ? <LoaderCircle width={14} height={14} className="spin" /> : <KeyRound width={14} height={14} />} Register number
+          </button>
+        </div>
+        {result && <p className={`feedback ${result.ok ? "ok" : "err"}`} role="status" style={{ margin: 0 }}>{result.message}</p>}
+      </div>
+    </details>
+  );
+}
+
 const DESTINATION_TEXT: Record<Snapshot["orders"]["destination"], string> = {
   both: "Confirmed orders are placed in Shopify and sent to your order platform.",
   platform: "Confirmed orders are sent only to your order platform — not to Shopify.",
@@ -593,7 +685,7 @@ const FORWARD_PILL: Record<Forward["status"], { tone: string; label: string }> =
   failed: { tone: "tone-critical", label: "Not delivered" },
 };
 
-function OrderPlatformExtras({ snap, refresh }: { snap: Snapshot; refresh: () => Promise<void> }) {
+function OrderPlatformExtras({ snap, refresh }: { snap: Snapshot; refresh: () => Promise<unknown> }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const secret = snap.fields.ORDER_WEBHOOK_SECRET.value ?? "";
@@ -691,10 +783,11 @@ export function IntegrationsManager() {
   const [testingAll, setTestingAll] = useState(false);
   const [allResult, setAllResult] = useState<string | null>(null);
 
-  async function refresh() {
+  async function refresh(): Promise<Snapshot | null> {
     const r = await api<Snapshot>("GET", "/api/admin/integrations");
     if (r.ok) setSnap(r.data);
     else setError(r.data.error ?? "Couldn't load integrations");
+    return r.ok ? r.data : null;
   }
   useEffect(() => {
     refresh();

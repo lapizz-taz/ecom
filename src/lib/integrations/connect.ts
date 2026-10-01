@@ -5,7 +5,7 @@ import { graphRequest } from "../channels/http";
 import { shopifyGraphQL } from "../shopify/client";
 import { ShopifyNotConfiguredError, ShopifyUnavailableError } from "../shopify/types";
 import { orderDestination, sendTestOrder } from "../orders/forward";
-import { generateVerifyToken, integrationEnv, saveIntegrationValues } from "./index";
+import { generateVerifyToken, integrationEnv, saveIntegrationValues, type IntegrationKey } from "./index";
 
 /** "Test connection" and "Set up webhooks for me" for the dashboard's Integrations page. */
 
@@ -17,6 +17,14 @@ export interface CheckResult {
   message: string;
   /** Extra hints, e.g. missing Shopify permissions or a Page not yet subscribed to webhooks. */
   notes?: string[];
+  /** Several matches found (e.g. WhatsApp numbers) — the dashboard lets staff pick one; each saves `values`. */
+  choices?: Choice[];
+}
+
+export interface Choice {
+  label: string;
+  detail?: string;
+  values: Partial<Record<IntegrationKey, string>>;
 }
 
 const graph = (e: Env) => `https://graph.facebook.com/${e.META_GRAPH_VERSION}`;
@@ -139,6 +147,146 @@ export async function ensurePageToken(e: Env, actor: string): Promise<{ e: Env; 
   return { e: await integrationEnv({ fresh: true }), note: `You pasted a System User token, so it was swapped for the Page access token of "${pick.name}" automatically.` };
 }
 
+// ---------- WhatsApp: find the number from the token ----------
+
+const WA_NUMBER_FIELDS = "id,display_phone_number,verified_name,platform_type,status,code_verification_status";
+
+export interface WaNumber {
+  id: string;
+  display_phone_number?: string;
+  verified_name?: string;
+  /** "CLOUD_API" once registered for the Cloud API; "NOT_APPLICABLE" when it still needs registering. */
+  platform_type?: string;
+  status?: string;
+  code_verification_status?: string;
+}
+
+export interface WaAccount {
+  id: string;
+  name: string | null;
+  numbers: WaNumber[];
+}
+
+const NO_WHATSAPP_FOUND =
+  "Couldn't find a WhatsApp number this token can use. In Business Settings → System users, click Assign assets and give the system user your WhatsApp account (full control), " +
+  "then generate the token again with whatsapp_business_messaging, whatsapp_business_management and business_management ticked.";
+
+/**
+ * The WhatsApp Business Accounts and phone numbers a token can use, so nobody has to find the IDs in
+ * Meta's dashboard: the token's granular scopes name the accounts it was given; a token for a whole
+ * business lists them through the business instead.
+ */
+export async function discoverWhatsApp(e: Env, token: string): Promise<{ accounts: WaAccount[]; invalid?: string; error?: string }> {
+  const ids = new Set<string>();
+  let lastError: string | undefined;
+  // A token can inspect itself; the app token also works when the App ID + secret are saved.
+  for (const inspector of [token, ...(e.META_APP_ID && e.META_APP_SECRET ? [appToken(e)] : [])]) {
+    const r = await getJson<{ data?: { is_valid?: boolean; granular_scopes?: { scope: string; target_ids?: string[] }[] } }>(
+      `${graph(e)}/debug_token?input_token=${encodeURIComponent(token)}`,
+      inspector
+    );
+    if (!r.ok || !r.data?.data) {
+      lastError = r.error;
+      continue;
+    }
+    if (r.data.data.is_valid === false) return { accounts: [], invalid: "Meta says this WhatsApp token is no longer valid — it expired or was revoked. Generate a new one." };
+    for (const g of r.data.data.granular_scopes ?? []) if (g.scope.startsWith("whatsapp_business_")) for (const id of g.target_ids ?? []) ids.add(id);
+    break;
+  }
+  if (!ids.size) {
+    const biz = await getJson<{ data?: { id: string }[] }>(`${graph(e)}/me/businesses?fields=id&limit=25`, token);
+    if (!biz.ok) lastError = biz.error;
+    for (const b of (biz.data?.data ?? []).slice(0, 5)) {
+      for (const edge of ["owned_whatsapp_business_accounts", "client_whatsapp_business_accounts"]) {
+        const r = await getJson<{ data?: { id: string }[] }>(`${graph(e)}/${b.id}/${edge}?fields=id&limit=25`, token);
+        for (const a of r.data?.data ?? []) ids.add(a.id);
+      }
+    }
+  }
+  const accounts = await Promise.all(
+    [...ids].slice(0, 10).map(async (id): Promise<WaAccount> => {
+      const [info, numbers] = await Promise.all([
+        getJson<{ name?: string }>(`${graph(e)}/${id}?fields=name`, token),
+        getJson<{ data?: WaNumber[] }>(`${graph(e)}/${id}/phone_numbers?fields=${WA_NUMBER_FIELDS}&limit=25`, token),
+      ]);
+      if (!numbers.ok) lastError = numbers.error;
+      return { id, name: info.data?.name ?? null, numbers: numbers.data?.data ?? [] };
+    })
+  );
+  return { accounts, error: accounts.length ? undefined : lastError };
+}
+
+const numberLabel = (n: WaNumber) => n.display_phone_number ?? `number ${n.id}`;
+
+/**
+ * Makes sure the saved Phone number ID and WhatsApp Business Account ID belong to the token: fills them
+ * in when missing, replaces a wrong one (e.g. the phone number itself), or offers a choice.
+ */
+export async function resolveWhatsAppIds(
+  e: Env,
+  actor: string
+): Promise<{ e: Env; found?: string; notes: string[]; error?: string; choices?: Choice[] }> {
+  if (!e.WHATSAPP_ACCESS_TOKEN) return { e, notes: [], error: "Paste your WhatsApp access token first." };
+  const { accounts, invalid, error } = await discoverWhatsApp(e, e.WHATSAPP_ACCESS_TOKEN);
+  if (invalid) return { e, notes: [], error: invalid };
+  const all = accounts.flatMap((a) => a.numbers.map((n) => ({ n, a })));
+  if (!all.length) {
+    if (accounts.length === 1 && e.WHATSAPP_BUSINESS_ACCOUNT_ID !== accounts[0]!.id) {
+      await saveIntegrationValues({ WHATSAPP_BUSINESS_ACCOUNT_ID: accounts[0]!.id }, actor);
+    }
+    const a = accounts[0];
+    return {
+      e: accounts.length === 1 ? await integrationEnv({ fresh: true }) : e,
+      notes: [],
+      error: a
+        ? `Your WhatsApp Business Account${a.name ? ` “${a.name}”` : ""} doesn't have a phone number yet. Add your business number in WhatsApp Manager → Phone numbers → Add phone number, then test again.`
+        : `${NO_WHATSAPP_FOUND}${error ? ` (Meta said: ${error})` : ""}`,
+    };
+  }
+  const pick = all.find((x) => x.n.id === e.WHATSAPP_PHONE_NUMBER_ID) ?? (all.length === 1 ? all[0] : undefined);
+  if (!pick) {
+    return {
+      e,
+      notes: [],
+      error: `This token can use ${all.length} WhatsApp numbers — choose the one the assistant should answer on.`,
+      choices: all.map(({ n, a }) => ({
+        label: numberLabel(n),
+        detail: [n.verified_name, a.name ? `account “${a.name}”` : `account ${a.id}`].filter(Boolean).join(" · "),
+        values: { WHATSAPP_PHONE_NUMBER_ID: n.id, WHATSAPP_BUSINESS_ACCOUNT_ID: a.id },
+      })),
+    };
+  }
+  const changes: Partial<Record<IntegrationKey, string>> = {};
+  if (e.WHATSAPP_PHONE_NUMBER_ID !== pick.n.id) changes.WHATSAPP_PHONE_NUMBER_ID = pick.n.id;
+  if (e.WHATSAPP_BUSINESS_ACCOUNT_ID !== pick.a.id) changes.WHATSAPP_BUSINESS_ACCOUNT_ID = pick.a.id;
+  if (!Object.keys(changes).length) return { e, notes: [] };
+  await saveIntegrationValues(changes, actor);
+  const notes =
+    e.WHATSAPP_PHONE_NUMBER_ID && changes.WHATSAPP_PHONE_NUMBER_ID
+      ? [`The Phone number ID that was saved (${e.WHATSAPP_PHONE_NUMBER_ID}) isn't one of your WhatsApp numbers, so it was replaced with the ID of ${numberLabel(pick.n)}.`]
+      : [];
+  return { e: await integrationEnv({ fresh: true }), found: changes.WHATSAPP_PHONE_NUMBER_ID ? numberLabel(pick.n) : undefined, notes };
+}
+
+/**
+ * Numbers added in WhatsApp Manager must be registered for the Cloud API before they can send or
+ * receive. The PIN becomes (or must match) the number's two-step verification PIN.
+ */
+export async function registerWhatsAppNumber(pin: string, actor: string): Promise<{ ok: boolean; message: string }> {
+  const e = await integrationEnv({ fresh: true });
+  if (!e.WHATSAPP_PHONE_NUMBER_ID || !e.WHATSAPP_ACCESS_TOKEN) return { ok: false, message: "Save & test your WhatsApp token first, so the number is known." };
+  const r = await graphRequest<{ success?: boolean }>(
+    `${graph(e)}/${e.WHATSAPP_PHONE_NUMBER_ID}/register`,
+    e.WHATSAPP_ACCESS_TOKEN,
+    { method: "POST", body: { messaging_product: "whatsapp", pin } },
+    1
+  );
+  await prisma.auditLog.create({ data: { actor, action: "integrations.whatsapp-register", target: e.WHATSAPP_PHONE_NUMBER_ID, detail: { ok: r.ok } } });
+  return r.ok
+    ? { ok: true, message: "Your number is registered for the WhatsApp Cloud API. Keep the PIN safe — it's now the number's two-step verification PIN." }
+    : { ok: false, message: `Meta didn't register the number: ${r.error}. If the number already has two-step verification, use that PIN (WhatsApp Manager → Phone numbers → your number → Two-step verification).` };
+}
+
 export async function testConnection(service: ServiceId, actor = "system"): Promise<CheckResult> {
   // Fresh read so a value saved a moment ago (possibly on another server instance) is used.
   let e = await integrationEnv({ fresh: true });
@@ -252,24 +400,45 @@ export async function testConnection(service: ServiceId, actor = "system"): Prom
     }
 
     case "whatsapp": {
-      if (!e.WHATSAPP_PHONE_NUMBER_ID || !e.WHATSAPP_ACCESS_TOKEN) return { ok: false, message: "Add the Phone number ID and access token first." };
-      if (!(e.WHATSAPP_APP_SECRET ?? e.META_APP_SECRET)) return { ok: false, message: MISSING_APP_SECRET };
-      const r = await getJson<{ display_phone_number?: string; verified_name?: string }>(
-        `${graph(e)}/${e.WHATSAPP_PHONE_NUMBER_ID}?fields=display_phone_number,verified_name`,
-        e.WHATSAPP_ACCESS_TOKEN
-      );
-      if (!r.ok) return { ok: false, message: `Meta rejected the WhatsApp details: ${r.error}` };
+      if (!e.WHATSAPP_ACCESS_TOKEN) {
+        return { ok: false, message: "Paste your WhatsApp access token first — the Phone number ID and WhatsApp Business Account ID are then found from it automatically." };
+      }
+      const waToken = e.WHATSAPP_ACCESS_TOKEN;
+      const lookup = (phoneId: string) => getJson<WaNumber>(`${graph(e)}/${phoneId}?fields=${WA_NUMBER_FIELDS}`, waToken);
+      let r = e.WHATSAPP_PHONE_NUMBER_ID ? await lookup(e.WHATSAPP_PHONE_NUMBER_ID) : null;
+      const waNotes: string[] = [];
+      let found: string | undefined;
+      // Missing or wrong IDs (e.g. the phone number itself was pasted) are looked up from the token.
+      if (!r?.ok || !r.data?.display_phone_number || !e.WHATSAPP_BUSINESS_ACCOUNT_ID) {
+        const resolved = await resolveWhatsAppIds(e, actor);
+        if (resolved.choices) return { ok: false, message: resolved.error!, choices: resolved.choices };
+        if (resolved.error && !(r?.ok && r.data?.display_phone_number)) return { ok: false, message: resolved.error };
+        e = resolved.e;
+        found = resolved.found;
+        waNotes.push(...resolved.notes);
+        if (resolved.found || !r?.ok) r = e.WHATSAPP_PHONE_NUMBER_ID ? await lookup(e.WHATSAPP_PHONE_NUMBER_ID) : null;
+      }
+      if (!(e.WHATSAPP_APP_SECRET ?? e.META_APP_SECRET)) {
+        const progress = found ? [`Your WhatsApp number ${found} was found and saved — only the Meta app's App ID and App secret are missing now.`] : [];
+        return { ok: false, message: MISSING_APP_SECRET, notes: [...progress, ...waNotes].length ? [...progress, ...waNotes] : undefined };
+      }
+      if (!r?.ok) return { ok: false, message: `Meta rejected the WhatsApp details: ${r?.error ?? "no phone number found"}` };
       // A WhatsApp app with its own secret can't be inspected with the main app's credentials.
       const sameApp = !e.WHATSAPP_APP_SECRET || e.WHATSAPP_APP_SECRET === e.META_APP_SECRET;
-      const inspected = sameApp ? await inspectMetaToken(e, e.WHATSAPP_ACCESS_TOKEN, "whatsapp") : { notes: [] };
+      const inspected = sameApp ? await inspectMetaToken(e, waToken, "whatsapp") : { notes: [] };
       if (inspected.invalid) return { ok: false, message: inspected.invalid };
-      const waNotes = [...inspected.notes];
-      if (!r.data?.display_phone_number) {
-        waNotes.unshift("Meta didn't return a phone number for this ID. Check it's the Phone number ID from WhatsApp → API Setup (not the WhatsApp Business Account ID), and that the token has whatsapp_business_management.");
+      waNotes.push(...inspected.notes);
+      const n = r.data ?? ({} as WaNumber);
+      if (n.platform_type && n.platform_type !== "CLOUD_API") {
+        waNotes.unshift("This number isn't registered for the WhatsApp Cloud API yet, so the assistant can't send or receive on it. Use “Register your number” below with a 6-digit PIN.");
       }
+      if (n.code_verification_status && n.code_verification_status !== "VERIFIED") {
+        waNotes.unshift("This number hasn't been verified yet. In WhatsApp Manager → Phone numbers, open it and finish verification with the code Meta sends by SMS or call.");
+      }
+      if (n.status && !["CONNECTED", "PENDING"].includes(n.status)) waNotes.push(`Meta reports this number's status as “${n.status.toLowerCase().replace(/_/g, " ")}”.`);
       return {
         ok: true,
-        message: `Connected to ${r.data?.display_phone_number ?? "your number"}${r.data?.verified_name ? ` (${r.data.verified_name})` : ""}.`,
+        message: `Connected to ${n.display_phone_number ?? "your number"}${n.verified_name ? ` (${n.verified_name})` : ""}.${found ? " The number was found from your token and its IDs saved for you." : ""}`,
         notes: waNotes.length ? waNotes : undefined,
       };
     }
@@ -406,10 +575,15 @@ export async function setupWebhooks(service: "messenger" | "instagram" | "whatsa
         `Meta verified ${urls.whatsapp}`
       )
     );
+    if (e.WHATSAPP_ACCESS_TOKEN && !e.WHATSAPP_BUSINESS_ACCOUNT_ID) {
+      const resolved = await resolveWhatsAppIds(e, actor);
+      e = resolved.e;
+      if (resolved.found) steps.push({ label: "Find your WhatsApp number", ok: true, message: `Found ${resolved.found} and saved its IDs` });
+    }
     if (!e.WHATSAPP_ACCESS_TOKEN) {
       steps.push({ label: "Subscribe your WhatsApp Business Account", ok: false, message: "Add the WhatsApp access token first." });
     } else if (!e.WHATSAPP_BUSINESS_ACCOUNT_ID) {
-      steps.push({ label: "Subscribe your WhatsApp Business Account", ok: false, message: "Add your WhatsApp Business Account ID (WhatsApp → API Setup) so it can be subscribed automatically." });
+      steps.push({ label: "Subscribe your WhatsApp Business Account", ok: false, message: "Couldn't find your WhatsApp Business Account from the token. Click Test connection on this card — it says what's missing." });
     } else {
       steps.push(
         await post(`${graph(e)}/${e.WHATSAPP_BUSINESS_ACCOUNT_ID}/subscribed_apps`, e.WHATSAPP_ACCESS_TOKEN, {}, "Subscribe your WhatsApp Business Account", "WhatsApp Business Account subscribed")
