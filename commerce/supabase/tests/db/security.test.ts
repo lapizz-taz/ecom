@@ -103,6 +103,22 @@ describe('privilege escalation', () => {
       await expectError(db, `select public.grant_owner('x@example.com')`, [], /permission denied/)
     }))
 
+  it('limits delegated user managers to roles at or below their own rank', () =>
+    inTx(async (db) => {
+      const owner = await createStaff(db, 'OWNER')
+      const manager = await createStaff(db, 'MANAGER')
+      const admin = await createStaff(db, 'ADMIN')
+      const staff = await createStaff(db, 'VIEWER')
+      await asUser(db, owner)
+      await db.query(`insert into public.role_permissions(role_id, permission_id)
+        select r.id, p.id from public.roles r, public.permissions p where r.code = 'MANAGER' and p.code = 'users.manage'`)
+      await asUser(db, manager)
+      await db.query(`select public.admin_set_user_role($1, 'ORDER_MANAGER')`, [staff])
+      await db.query(`select public.admin_set_user_role($1, 'MANAGER')`, [staff])
+      await expectError(db, `select public.admin_set_user_role($1, 'ADMIN')`, [staff], /above your own/)
+      await expectError(db, `select public.admin_set_user_role($1, 'VIEWER', false)`, [admin], /higher role/)
+    }))
+
   it('keeps at least one active owner', () =>
     inTx(async (db) => {
       await asSystem(db)

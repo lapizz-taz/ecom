@@ -475,6 +475,7 @@ declare
   v_role public.roles;
   v_profile public.profiles;
   v_my_role text := public.current_role_code();
+  v_my_rank int;
 begin
   perform public.require_permission('users.manage');
 
@@ -493,6 +494,17 @@ begin
     if exists (select 1 from public.profiles p join public.roles r on r.id = p.role_id
                where p.id = p_user_id and r.code = 'OWNER') and v_my_role <> 'OWNER' then
       raise exception 'PERMISSION_DENIED: only an owner can modify another owner' using errcode = '42501';
+    end if;
+    -- Whoever holds users.manage can only hand out, or take away, roles up to their own rank.
+    if v_my_role <> 'OWNER' then
+      v_my_rank := coalesce((select rank from public.roles where code = v_my_role), 0);
+      if v_role.rank > v_my_rank then
+        raise exception 'PERMISSION_DENIED: you cannot grant a role above your own' using errcode = '42501';
+      end if;
+      if exists (select 1 from public.profiles p join public.roles r on r.id = p.role_id
+                 where p.id = p_user_id and r.rank > v_my_rank) then
+        raise exception 'PERMISSION_DENIED: you cannot change someone with a higher role than yours' using errcode = '42501';
+      end if;
     end if;
   end if;
 
