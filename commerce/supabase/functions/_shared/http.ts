@@ -1,6 +1,10 @@
 import { env } from './env.ts'
+import { functionName, logEvent } from './monitoring.ts'
 
 export class HttpError extends Error {
+  /** The underlying failure, kept for the logs and never sent to the client. */
+  internal?: unknown
+
   constructor(
     public readonly status: number,
     message: string,
@@ -68,8 +72,9 @@ export function fromDbError(error: { message?: string; code?: string; details?: 
   if (error?.code === '42501' || /permission denied/i.test(message)) {
     return new HttpError(403, 'You do not have permission to do that', 'PERMISSION_DENIED')
   }
-  console.error('Unhandled database error', error)
-  return new HttpError(500, 'Something went wrong. Please try again.', 'INTERNAL')
+  const failure = new HttpError(500, 'Something went wrong. Please try again.', 'INTERNAL')
+  failure.internal = error
+  return failure
 }
 
 export function handle(handler: (req: Request) => Promise<Response>): (req: Request) => Promise<Response> {
@@ -79,9 +84,20 @@ export function handle(handler: (req: Request) => Promise<Response>): (req: Requ
       return await handler(req)
     } catch (error) {
       if (error instanceof HttpError) {
+        if (error.status >= 500) {
+          const cause = error.internal as { message?: string } | undefined
+          void logEvent({
+            level: 'ERROR', category: 'FUNCTION', source: functionName(req),
+            message: cause?.message ?? `${error.code}: ${error.message}`, error: error.internal ?? error,
+            context: { status: error.status, code: error.code, method: req.method },
+          })
+        }
         return json(req, { error: { code: error.code, message: error.message, details: error.details } }, error.status)
       }
-      console.error('Unhandled error', error)
+      void logEvent({
+        level: 'ERROR', category: 'FUNCTION', source: functionName(req),
+        message: error instanceof Error ? error.message : 'Unhandled error', error, context: { method: req.method },
+      })
       return json(req, { error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' } }, 500)
     }
   }

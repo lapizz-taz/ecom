@@ -101,7 +101,9 @@ export class CourierHistoryProvider implements FraudProvider {
       return summary
     } catch (error) {
       if ((error as Error).name === 'AbortError') throw new Error('Courier history service timed out')
-      throw error
+      if (error instanceof TypeError) throw new Error('Could not reach the courier history service')
+      // Never let the key (it travels in the query string) reach a log or a person.
+      throw new Error(String((error as Error).message ?? error).split(this.config.apiKey).join('[redacted]'))
     } finally {
       clearTimeout(timer)
     }

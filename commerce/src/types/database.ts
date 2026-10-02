@@ -2977,6 +2977,51 @@ export type Database = {
         }
         Relationships: []
       }
+      system_logs: {
+        Row: {
+          id: number
+          level: string
+          category: string
+          source: string
+          message: string
+          context: Json
+          fingerprint: string | null
+          occurrences: number
+          last_seen_at: string
+          resolved_at: string | null
+          resolved_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          level: string
+          category: string
+          source: string
+          message: string
+          context?: Json
+          fingerprint?: string | null
+          occurrences?: number
+          last_seen_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          level?: string
+          category?: string
+          source?: string
+          message?: string
+          context?: Json
+          fingerprint?: string | null
+          occurrences?: number
+          last_seen_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       inventory_overview: {
@@ -3551,6 +3596,12 @@ export type Database = {
           p_primary_id?: string
         }
         Returns: undefined
+      }
+      admin_resolve_system_logs: {
+        Args: {
+          p_ids: number[]
+        }
+        Returns: number
       }
       admin_save_fraud_rule: {
         Args: {
@@ -4139,6 +4190,13 @@ export type Database = {
       is_staff: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      log_client_error: {
+        Args: {
+          p_message: string
+          p_context?: Json
+        }
+        Returns: undefined
       }
       mark_labels_printed: {
         Args: {

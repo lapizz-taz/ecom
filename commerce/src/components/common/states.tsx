@@ -31,7 +31,7 @@ export function EmptyState({ icon, title, description, action, className }: { ic
 export function ErrorState({ error, onRetry, className }: { error: unknown; onRetry?: () => void; className?: string }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-4 py-12 text-center', className)} role="alert">
-      <div className="rounded-full bg-red-50 p-3 text-red-600 dark:bg-red-950"><AlertTriangle className="size-5" /></div>
+      <div className="rounded-full bg-red-50 p-3 text-red-600"><AlertTriangle className="size-5" /></div>
       <p className="font-medium">Could not load this</p>
       <p className="max-w-sm text-sm text-muted-foreground">{toUserMessage(error)}</p>
       {onRetry && (

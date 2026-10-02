@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  BadgePercent, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, Factory, LayoutDashboard, LogOut, Megaphone, Menu,
+  Activity, BadgePercent, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, Factory, LayoutDashboard, LogOut, Megaphone, Menu,
   Package, ScanBarcode, ScrollText, Search, Settings, ShieldAlert, ShoppingCart, Truck, UserCog, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
+import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -27,78 +28,96 @@ interface NavItem {
   children?: Array<{ label: string; to: string; permission?: string }>
 }
 
-const NAV: NavItem[] = [
-  { label: 'Dashboard', to: '/admin', icon: <LayoutDashboard />, permission: 'dashboard.view' },
+interface NavSection {
+  label?: string
+  items: NavItem[]
+}
+
+/** One level of nesting at most; sections keep the list scannable. */
+const NAV: NavSection[] = [
   {
-    label: 'Orders', to: '/admin/orders', icon: <ShoppingCart />, permission: 'orders.view',
-    children: [
-      { label: 'All orders', to: '/admin/orders' },
-      { label: 'Pending', to: '/admin/orders?tab=pending' },
-      { label: 'Confirmed', to: '/admin/orders?tab=confirmed' },
-      { label: 'Processing', to: '/admin/orders?tab=processing' },
-      { label: 'Ready to ship', to: '/admin/orders?tab=ready' },
-      { label: 'Shipped', to: '/admin/orders?tab=shipped' },
-      { label: 'Delivered', to: '/admin/orders?tab=delivered' },
-      { label: 'Cancelled', to: '/admin/orders?tab=cancelled' },
-      { label: 'Returned', to: '/admin/orders?tab=returned' },
-      { label: 'Failed delivery', to: '/admin/orders?tab=failed' },
-      { label: 'Possible duplicates', to: '/admin/orders?tab=duplicates' },
-      { label: 'Fraud / Review', to: '/admin/orders/fraud', permission: 'fraud.view' },
+    items: [{ label: 'Dashboard', to: '/admin', icon: <LayoutDashboard />, permission: 'dashboard.view' }],
+  },
+  {
+    label: 'Operations',
+    items: [
+      {
+        label: 'Orders', to: '/admin/orders', icon: <ShoppingCart />, permission: 'orders.view',
+        children: [
+          { label: 'All orders', to: '/admin/orders' },
+          { label: 'To confirm', to: '/admin/orders?tab=pending' },
+          { label: 'Processing', to: '/admin/orders?tab=processing' },
+          { label: 'Shipped', to: '/admin/orders?tab=shipped' },
+          { label: 'Returns', to: '/admin/orders?tab=returned' },
+          { label: 'Possible duplicates', to: '/admin/orders?tab=duplicates' },
+          { label: 'Fraud review', to: '/admin/orders/fraud', permission: 'fraud.view' },
+        ],
+      },
+      {
+        label: 'Fulfilment', to: '/admin/scan', icon: <ScanBarcode />, permission: 'orders.fulfill',
+        children: [
+          { label: 'Scan parcels', to: '/admin/scan' },
+          { label: 'Labels to print', to: '/admin/orders?tab=to_print' },
+        ],
+      },
+      { label: 'Customers', to: '/admin/customers', icon: <Users />, permission: 'customers.view' },
+      { label: 'Couriers', to: '/admin/couriers', icon: <Truck />, permission: 'couriers.view' },
     ],
   },
   {
-    label: 'Fulfilment', to: '/admin/scan', icon: <ScanBarcode />, permission: 'orders.fulfill',
-    children: [
-      { label: 'Scan parcels', to: '/admin/scan' },
-      { label: 'Labels to print', to: '/admin/orders?tab=to_print' },
-      { label: 'Ready to ship', to: '/admin/orders?tab=ready' },
-    ],
-  },
-  { label: 'Products', to: '/admin/products', icon: <Package />, permission: 'products.view' },
-  {
-    label: 'Inventory', to: '/admin/inventory', icon: <Warehouse />, permission: 'inventory.view',
-    children: [
-      { label: 'Stock overview', to: '/admin/inventory' },
-      { label: 'Low stock', to: '/admin/inventory?status=LOW_STOCK' },
-      { label: 'Out of stock', to: '/admin/inventory?status=OUT_OF_STOCK' },
-      { label: 'Stock movements', to: '/admin/inventory/movements' },
-      { label: 'Stock adjustments', to: '/admin/inventory/adjustments' },
-      { label: 'Purchases', to: '/admin/purchases', permission: 'purchases.view' },
+    label: 'Catalog',
+    items: [
+      { label: 'Products', to: '/admin/products', icon: <Package />, permission: 'products.view' },
+      {
+        label: 'Inventory', to: '/admin/inventory', icon: <Warehouse />, permission: 'inventory.view',
+        children: [
+          { label: 'Stock', to: '/admin/inventory' },
+          { label: 'Movements', to: '/admin/inventory/movements' },
+          { label: 'Adjustments', to: '/admin/inventory/adjustments' },
+          { label: 'Purchases', to: '/admin/purchases', permission: 'purchases.view' },
+        ],
+      },
+      { label: 'Production', to: '/admin/production', icon: <Factory />, permission: 'production.view' },
     ],
   },
   {
-    label: 'Production', to: '/admin/production', icon: <Factory />, permission: 'production.view',
-    children: [
-      { label: 'Production queue', to: '/admin/production' },
-      { label: 'In production', to: '/admin/production?status=IN_PRODUCTION' },
-      { label: 'Quality check', to: '/admin/production?status=QUALITY_CHECK' },
-      { label: 'Ready', to: '/admin/production?status=READY' },
-    ],
-  },
-  { label: 'Customers', to: '/admin/customers', icon: <Users />, permission: 'customers.view' },
-  { label: 'Couriers', to: '/admin/couriers', icon: <Truck />, permission: 'couriers.view' },
-  {
-    label: 'Finance', to: '/admin/finance', icon: <Wallet />, permission: 'finance.view',
-    children: [
-      { label: 'Overview', to: '/admin/finance' },
-      { label: 'Income', to: '/admin/finance/income' },
-      { label: 'Expenses', to: '/admin/finance/expenses' },
-      { label: 'Refunds', to: '/admin/finance/refunds' },
-      { label: 'Profit & Loss', to: '/admin/finance/profit-loss' },
-      { label: 'Cash flow', to: '/admin/finance/cash-flow' },
+    label: 'Growth',
+    items: [
+      {
+        label: 'Marketing', to: '/admin/marketing', icon: <Megaphone />, permission: 'marketing.view',
+        children: [
+          { label: 'Campaigns & ad spend', to: '/admin/marketing' },
+          { label: 'Coupons', to: '/admin/coupons', permission: 'coupons.manage' },
+        ],
+      },
     ],
   },
   {
-    label: 'Marketing', to: '/admin/marketing', icon: <Megaphone />, permission: 'marketing.view',
-    children: [
-      { label: 'Campaigns & ad spend', to: '/admin/marketing' },
-      { label: 'Coupons', to: '/admin/coupons', permission: 'coupons.manage' },
+    label: 'Business',
+    items: [
+      {
+        label: 'Finance', to: '/admin/finance', icon: <Wallet />, permission: 'finance.view',
+        children: [
+          { label: 'Overview', to: '/admin/finance' },
+          { label: 'Income', to: '/admin/finance/income' },
+          { label: 'Expenses', to: '/admin/finance/expenses' },
+          { label: 'Refunds', to: '/admin/finance/refunds' },
+          { label: 'Profit & loss', to: '/admin/finance/profit-loss' },
+          { label: 'Cash flow', to: '/admin/finance/cash-flow' },
+        ],
+      },
+      { label: 'Reports', to: '/admin/reports', icon: <BarChart3 />, permission: 'reports.view' },
     ],
   },
-  { label: 'Reports', to: '/admin/reports', icon: <BarChart3 />, permission: 'reports.view' },
-  { label: 'Settings', to: '/admin/settings', icon: <Settings />, permission: 'settings.view' },
-  { label: 'Users & roles', to: '/admin/users', icon: <UserCog />, permission: 'users.manage' },
-  { label: 'Audit log', to: '/admin/audit-logs', icon: <ScrollText />, permission: 'audit.view' },
+  {
+    label: 'System',
+    items: [
+      { label: 'Settings', to: '/admin/settings', icon: <Settings />, permission: 'settings.view' },
+      { label: 'Users & roles', to: '/admin/users', icon: <UserCog />, permission: 'users.manage' },
+      { label: 'Audit log', to: '/admin/audit-logs', icon: <ScrollText />, permission: 'audit.view' },
+      { label: 'System log', to: '/admin/system-logs', icon: <Activity />, permission: 'audit.view' },
+    ],
+  },
 ]
 
 function isActive(pathname: string, search: string, to: string): boolean {
@@ -114,43 +133,59 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
 
   return (
-    <nav className="grid gap-0.5 px-3 py-2 text-sm" aria-label="Admin">
-      {NAV.filter((item) => !item.permission || can(item.permission)).map((item) => {
-        const inGroup = pathname.startsWith(item.to) && item.to !== '/admin'
-        const expanded = item.children && (openGroup === item.label || (openGroup === null && inGroup))
+    <nav className="grid gap-5 px-3 py-2 text-sm" aria-label="Admin">
+      {NAV.map((section, i) => {
+        const items = section.items.filter((item) => !item.permission || can(item.permission))
+        if (!items.length) return null
         return (
-          <div key={item.label}>
-            <div className="flex items-center">
-              <NavLink
-                to={item.to}
-                end={item.to === '/admin'}
-                onClick={onNavigate}
-                className={({ isActive: active }) => cn(
-                  'flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4',
-                  (active || inGroup) && 'bg-brand font-medium text-brand-foreground hover:bg-brand hover:text-brand-foreground',
-                )}
-              >
-                {item.icon}
-                {item.label}
-              </NavLink>
-              {item.children && (
-                <button type="button" className="ml-0.5 rounded-md p-1.5 text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground" aria-label={`Toggle ${item.label}`}
-                  onClick={() => setOpenGroup(expanded ? '' : item.label)}>
-                  <ChevronDown className={cn('size-3.5 transition-transform', expanded && 'rotate-180')} />
-                </button>
-              )}
-            </div>
-            {expanded && (
-              <div className="my-1 ml-[22px] grid border-l border-sidebar-border pl-3">
-                {item.children!.filter((c) => !c.permission || can(c.permission)).map((child) => (
-                  <Link key={child.to} to={child.to} onClick={onNavigate}
-                    className={cn('rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted hover:text-sidebar-foreground',
-                      isActive(pathname, search, child.to) && 'font-medium text-brand')}>
-                    {child.label}
-                  </Link>
-                ))}
-              </div>
-            )}
+          <div key={section.label ?? i} className="grid gap-0.5">
+            {section.label && <p className="px-3 pb-1.5 text-[11px] font-medium tracking-[0.08em] text-sidebar-muted/70 uppercase">{section.label}</p>}
+            {items.map((item) => {
+              // A section is current when its own page (or a page under it) is open,
+              // or when one of its links matches exactly, query string included.
+              const childMatch = item.children?.some((c) => c.to.includes('?') ? isActive(pathname, search, c.to)
+                : c.to !== item.to && (pathname === c.to || pathname.startsWith(`${c.to}/`))) ?? false
+              const ownedElsewhere = NAV.some((sec) => sec.items.some((other) => other !== item
+                && other.children?.some((c) => c.to.includes('?') && isActive(pathname, search, c.to))))
+              const inGroup = item.to !== '/admin' && (childMatch
+                || (!ownedElsewhere && (pathname === item.to.split('?')[0] || pathname.startsWith(`${item.to.split('?')[0]}/`))))
+              const expanded = item.children && (openGroup === item.label || (openGroup === null && inGroup))
+              return (
+                <div key={item.label}>
+                  <div className="flex items-center">
+                    <NavLink
+                      to={item.to}
+                      end={item.to === '/admin'}
+                      onClick={onNavigate}
+                      className={({ isActive: active }) => cn(
+                        'flex flex-1 items-center gap-3 rounded-lg px-3 py-[7px] text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4 [&_svg]:shrink-0',
+                        (active || inGroup) && 'bg-brand-soft font-medium text-brand hover:bg-brand-soft hover:text-brand',
+                      )}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </NavLink>
+                    {item.children && (
+                      <button type="button" className="ml-0.5 rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground" aria-label={`Toggle ${item.label}`}
+                        aria-expanded={!!expanded} onClick={() => setOpenGroup(expanded ? '' : item.label)}>
+                        <ChevronDown className={cn('size-3.5 transition-transform duration-200 ease-out', expanded && 'rotate-180')} />
+                      </button>
+                    )}
+                  </div>
+                  {expanded && (
+                    <div className="enter my-1 ml-[21px] grid border-l border-sidebar-border pl-3">
+                      {item.children!.filter((c) => !c.permission || can(c.permission)).map((child) => (
+                        <Link key={child.to} to={child.to} onClick={onNavigate}
+                          className={cn('rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted transition-colors hover:text-sidebar-foreground',
+                            isActive(pathname, search, child.to) && 'font-medium text-sidebar-foreground')}>
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )
       })}
@@ -207,6 +242,7 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [q, setQ] = useState('')
   const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')))
+  useAdminTheme()
 
   useEffect(() => {
     document.title = `Admin · ${config?.store.name ?? 'Store'}`
@@ -240,7 +276,7 @@ export default function AdminLayout() {
   const sidebar = (
     <div className="flex h-full flex-col text-sidebar-foreground">
       <div className="flex h-16 items-center gap-2.5 px-6">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-foreground">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-foreground text-sm font-bold text-sidebar">
           {initials(config?.store.name ?? 'S')}
         </div>
         <span className="truncate text-[15px] font-semibold tracking-tight">{config?.store.name ?? 'Store'}</span>
@@ -260,7 +296,7 @@ export default function AdminLayout() {
 
   return (
     <div className="flex min-h-dvh bg-background">
-      <aside className="no-print sticky top-0 hidden h-dvh w-64 shrink-0 flex-col bg-sidebar lg:flex">{sidebar}</aside>
+      <aside className="no-print sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">{sidebar}</aside>
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 gap-0 border-0 bg-sidebar p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
@@ -274,7 +310,7 @@ export default function AdminLayout() {
           {can('orders.view') && (
             <form onSubmit={search} className="relative w-full max-w-md">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search orders, phone, tracking, SKU…" className="h-10 rounded-full border-transparent bg-card pl-10 shadow-xs" aria-label="Search orders" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search orders, phone, tracking, SKU…" className="h-10 rounded-full border-border bg-card pl-10 shadow-none" aria-label="Search orders" />
             </form>
           )}
           <div className="ml-auto flex items-center gap-1.5">

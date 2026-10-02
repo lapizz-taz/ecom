@@ -131,8 +131,8 @@ export default function AuditLogsPage() {
                                   {diff.map((d) => (
                                     <tr key={d.key} className="align-top">
                                       <td className="py-1 font-mono">{d.key}</td>
-                                      <td className="py-1 pr-3 font-mono break-all text-red-700 dark:text-red-400">{show(d.from)}</td>
-                                      <td className="py-1 font-mono break-all text-emerald-700 dark:text-emerald-400">{show(d.to)}</td>
+                                      <td className="py-1 pr-3 font-mono break-all text-red-700">{show(d.from)}</td>
+                                      <td className="py-1 font-mono break-all text-emerald-700">{show(d.to)}</td>
                                     </tr>
                                   ))}
                                 </tbody>

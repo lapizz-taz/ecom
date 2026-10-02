@@ -1,10 +1,12 @@
 import { Navigate, useNavigate, useSearchParams } from 'react-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/features/auth/auth-context'
+import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { SignInForm } from '@/pages/storefront/login'
 
 export default function AdminLoginPage() {
+  useAdminTheme()
   const { session, access } = useAuth()
   const { data: config } = useStoreConfig()
   const navigate = useNavigate()

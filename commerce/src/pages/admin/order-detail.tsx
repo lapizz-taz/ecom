@@ -175,7 +175,7 @@ export default function OrderDetailPage() {
       </div>
 
       {o.duplicate_status === 'SUSPECTED' && related.data && (
-        <Card className="border-amber-300 bg-amber-50/60 dark:bg-amber-950/20">
+        <Card className="border-amber-300 bg-amber-50/60">
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 text-sm">
               <Copy className="mt-0.5 size-5 text-amber-600" />
@@ -196,7 +196,7 @@ export default function OrderDetailPage() {
         </Card>
       )}
       {o.merged_into && related.data && (
-        <Card className="border-sky-300 bg-sky-50/60 dark:bg-sky-950/20">
+        <Card className="border-sky-300 bg-sky-50/60">
           <CardContent className="flex items-center gap-3 text-sm">
             <Layers className="size-5 text-sky-600" />
             <p>This order was merged into <Link to={`/admin/orders/${related.data.id}`} className="font-mono font-medium underline">{related.data.order_number}</Link> — ship that order instead.</p>
@@ -213,7 +213,7 @@ export default function OrderDetailPage() {
       />
 
       {can('fraud.review') && ['FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'REJECTED_FRAUD'].includes(status) && (
-        <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+        <Card className="border-amber-300 bg-amber-50/50">
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 text-sm">
               <ShieldAlert className="mt-0.5 size-5 text-amber-600" />
@@ -333,7 +333,7 @@ export default function OrderDetailPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {unresolvedAdvance && can('refunds.manage') && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 p-3 text-sm">
                   <span><Money value={o.amount_paid} /> was paid on an order that won't be delivered. Refund it or keep it.</span>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => setDialog('refund')}>Refund</Button>
@@ -611,7 +611,7 @@ function NotesCard({ orderId, notes, onAdded, canAdd, phone }: {
         {notes.length === 0 ? <p className="text-sm text-muted-foreground">No notes yet.</p> : (
           <ul className="space-y-2">
             {notes.map((n) => (
-              <li key={n.id} className={cn('rounded-md p-2.5 text-sm', n.visibility === 'CUSTOMER' ? 'bg-sky-50 dark:bg-sky-950/30' : 'bg-muted/60')}>
+              <li key={n.id} className={cn('rounded-md p-2.5 text-sm', n.visibility === 'CUSTOMER' ? 'bg-sky-50' : 'bg-muted/60')}>
                 <p className="whitespace-pre-line">{n.body}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {n.kind === 'CONTACT' ? 'Contact log' : n.visibility === 'CUSTOMER' ? 'Customer note' : 'Internal'} · {n.created_by_name ?? 'Staff'} · {formatDateTime(n.created_at)}

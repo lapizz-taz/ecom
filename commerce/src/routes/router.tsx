@@ -82,6 +82,7 @@ export const router = createBrowserRouter([
       admin('settings', () => import('@/pages/admin/settings'), 'settings.view'),
       admin('users', () => import('@/pages/admin/users'), 'users.manage'),
       admin('audit-logs', () => import('@/pages/admin/audit-logs'), 'audit.view'),
+      admin('system-logs', () => import('@/pages/admin/system-logs'), 'audit.view'),
       admin('account', () => import('@/pages/admin/account')),
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],

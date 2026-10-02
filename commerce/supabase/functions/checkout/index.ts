@@ -13,6 +13,7 @@ import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shar
 import { parse, placeOrderSchema, quoteSchema } from '../_shared/schemas.ts'
 import { adminClient, getSettings, optionalUser, rpc } from '../_shared/supabase.ts'
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
+import { logEvent } from '../_shared/monitoring.ts'
 
 interface FraudCheckRow {
   id: string | null
@@ -27,6 +28,13 @@ async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Reco
     { phone, district: context.district as string | undefined, orderValue: context.order_value as number | undefined },
     { context },
   )
+  if (payload.status !== 'SUCCESS') {
+    void logEvent({
+      level: 'WARN', category: 'FRAUD', source: 'checkout',
+      message: `Courier history lookup ${payload.status === 'ERROR' ? 'failed' : 'partly failed'}: ${payload.error ?? 'no detail'}`,
+      context: { providers: payload.providers },
+    })
+  }
   const check = await rpc<FraudCheckRow>(admin, 'record_fraud_check', { p_input: payload })
   return check.id
 }
@@ -63,7 +71,7 @@ Deno.serve(
           })
         } catch (error) {
           // A risk check that cannot run must not block the price preview.
-          console.error('Fraud check failed during quote', error)
+          void logEvent({ level: 'ERROR', category: 'FRAUD', source: 'checkout', message: 'Fraud check failed during quote', error })
         }
       }
       const requirement = await rpc(admin, 'checkout_risk_preview', {
@@ -101,7 +109,7 @@ Deno.serve(
         district: input.shipping.district,
         payment_method: input.payment_method,
       }).catch((error) => {
-        console.error('Fraud check failed during checkout', error)
+        void logEvent({ level: 'ERROR', category: 'FRAUD', source: 'checkout', message: 'Fraud check failed while placing an order', error })
         return null
       })
 
@@ -143,7 +151,8 @@ Deno.serve(
             p_body: `Customer reported ${input.advance_payment.channel} advance at checkout — TrxID ${input.advance_payment.transaction_id} from ${input.advance_payment.sender_phone} (${due}). Not recorded automatically: ${paymentError}`,
             p_visibility: 'INTERNAL',
             p_kind: 'SYSTEM',
-          }).catch((e) => console.error('Could not save payment note', e))
+          }).catch((e) => logEvent({ level: 'ERROR', category: 'PAYMENT', source: 'checkout', message: 'Could not save the payment note', error: e }))
+          void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'checkout', message: `Advance payment at checkout not recorded: ${paymentError}`, context: { order_number: order.order_number } })
         }
       }
       dispatchNotificationsInBackground()

@@ -75,8 +75,11 @@ describe('courier-history check', () => {
       expect(result.error).toMatch(pattern)
       expect(result.error).not.toContain('secret-key')
     }
-    const offline = new CourierHistoryProvider({ apiKey: 'k' }, vi.fn().mockRejectedValue(new TypeError('network down')))
-    expect(await offline.checkCustomer({ phone: '01712345678' })).toMatchObject({ ok: false, error: 'network down' })
+    const offline = new CourierHistoryProvider({ apiKey: 'secret-key' }, vi.fn().mockRejectedValue(
+      new TypeError('error sending request for url (https://llcgteam.com/courier-fraud-checker/fatch.php?api_key=secret-key&term=01712345678)')))
+    expect(await offline.checkCustomer({ phone: '01712345678' })).toMatchObject({ ok: false, error: 'Could not reach the courier history service' })
+    const odd = new CourierHistoryProvider({ apiKey: 'secret-key' }, vi.fn().mockRejectedValue(new Error('bad thing with secret-key inside')))
+    expect((await odd.checkCustomer({ phone: '01712345678' })).error).toBe('bad thing with [redacted] inside')
     const foreign = new CourierHistoryProvider({ apiKey: 'k' }, vi.fn())
     expect(await foreign.checkCustomer({ phone: '+44 7700 900123' })).toMatchObject({ ok: false, error: 'Not a Bangladeshi mobile number' })
   })
