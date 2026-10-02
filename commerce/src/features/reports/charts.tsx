@@ -133,7 +133,8 @@ export function BarsChart({
         {horizontal ? (
           <>
             <XAxis type="number" {...axisProps} tickFormatter={(v: number) => compact(v, format)} />
-            <YAxis type="category" dataKey={xKey} {...axisProps} width={110} />
+            <YAxis type="category" dataKey={xKey} {...axisProps} width={150} interval={0}
+              tickFormatter={(v: string) => (v.length > 22 ? `${v.slice(0, 21)}…` : v)} />
           </>
         ) : (
           <>

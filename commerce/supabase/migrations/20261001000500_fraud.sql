@@ -640,6 +640,12 @@ begin
       'payment_method', v_order.payment_method, 'source', v_order.source,
       'item_count', (select sum(quantity) from public.order_items where order_id = p_order_id)));
     v_decision := (v_eval ->> 'decision')::public.fraud_decision;
+  elsif v_fraud_enabled then
+    -- Checks are on but none could be recorded (provider or service outage):
+    -- never fail open. Follow the store's provider-error policy.
+    v_decision := case when public.setting_text('fraud', array['on_provider_error'], 'REVIEW') = 'ALLOW'
+                       then 'ALLOW' else 'REVIEW' end;
+    v_eval := jsonb_build_object('decision', v_decision, 'advance_amount', 0, 'advance_type', 'NONE', 'matched_rules', '[]'::jsonb);
   else
     v_eval := jsonb_build_object('decision', 'ALLOW', 'advance_amount', 0, 'advance_type', 'NONE', 'matched_rules', '[]'::jsonb);
   end if;
@@ -666,7 +672,8 @@ begin
   returning * into v_order;
 
   perform public._order_log(p_order_id, 'FRAUD_EVALUATED',
-    case when v_check.id is null then 'Risk check skipped'
+    case when v_check.id is null and v_fraud_enabled then 'Risk check unavailable'
+         when v_check.id is null then 'Risk check skipped'
          else format('Risk %s (score %s) → %s', v_check.risk_level, v_check.risk_score, v_decision) end,
     null, null, jsonb_build_object('fraud_check_id', p_fraud_check_id, 'decision', v_decision,
       'advance_amount', v_req -> 'amount', 'matched_rules', v_eval -> 'matched_rules'));

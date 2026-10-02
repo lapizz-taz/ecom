@@ -290,7 +290,7 @@ function ProductReport({ range }: { range: DateRange }) {
             <ChartCard title={finance ? 'Top products by gross profit' : 'Top products by revenue'}>
               <BarsChart horizontal format="money" height={Math.max(160, Math.min(data.length, 10) * 34)}
                 data={[...data].sort((a, b) => toNumber(finance ? b.gross_profit : b.revenue) - toNumber(finance ? a.gross_profit : a.revenue)).slice(0, 10)
-                  .map((r) => ({ name: r.product_name.length > 18 ? `${r.product_name.slice(0, 17)}…` : r.product_name, value: toNumber(finance ? r.gross_profit : r.revenue) }))}
+                  .map((r) => ({ name: r.product_name, value: toNumber(finance ? r.gross_profit : r.revenue) }))}
                 xKey="name" series={[{ key: 'value', label: finance ? 'Gross profit' : 'Revenue', slot: 1 }]} />
             </ChartCard>
             <ReportTable title="All products" description="Revenue and cost count delivered orders only, net of returns." rows={data} columns={columns}

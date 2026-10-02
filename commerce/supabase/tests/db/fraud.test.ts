@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, asUser, closePool, expectError, inTx, num, one, value, type Db } from '../support/db'
-import { advanceOrder, createOrder, createProduct, createStaff, inventory, placeOrder, setSetting } from '../support/fixtures'
+import { advanceOrder, createOrder, createProduct, createStaff, inventory, orderPayload, placeOrder, setSetting } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -173,6 +173,23 @@ describe('checkout with risk-based advance payment', () => {
         [JSON.stringify({ phone: '01911000006', provider: 'http', status: 'ERROR', error: 'timeout' })])
       expect(check.status).toBe('ERROR')
       expect(check.risk_level).toBe('HIGH')
+    }))
+
+  it('holds an order for review when no fraud check could be recorded', () =>
+    inTx(async (db) => {
+      const p = await createProduct(db, { price: 1000 })
+      await asService(db)
+      const held = await value<Record<string, unknown>>(db, `select public.place_storefront_order($1, null)`,
+        [JSON.stringify(orderPayload({ phone: '01911000007', items: [{ variantId: p.variantIds[0], quantity: 1 }] }))])
+      expect(held.status).toBe('FRAUD_REVIEW')
+      expect((held.payment_requirement as Record<string, unknown>).mode).toBe('REVIEW')
+
+      // A store that prefers to keep selling during an outage can opt in.
+      await setSetting(db, 'fraud', { on_provider_error: 'ALLOW' })
+      await asService(db)
+      const allowed = await value<Record<string, unknown>>(db, `select public.place_storefront_order($1, null)`,
+        [JSON.stringify(orderPayload({ phone: '01911000008', items: [{ variantId: p.variantIds[0], quantity: 1 }] }))])
+      expect(allowed.status).toBe('CONFIRMED')
     }))
 
   it('honours full online payment as the payment requirement', () =>

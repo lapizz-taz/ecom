@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Info, Lock, ShieldAlert } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { z } from 'zod'
@@ -108,6 +108,7 @@ export default function CheckoutPage() {
     retry: false,
   })
 
+  const placed = useRef(false)
   const place = useMutation({
     meta: { silent: true },
     mutationFn: (values: CheckoutValues) => placeOrder({
@@ -122,6 +123,9 @@ export default function CheckoutPage() {
       utm: storedUtm(),
     }),
     onSuccess: ({ order }, values) => {
+      // Set before clearing the cart: the mutation is not "success" yet during this
+      // callback, and an empty cart would otherwise redirect to /cart first.
+      placed.current = true
       sessionStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ order_number: order.order_number, phone: normalizePhone(values.phone) }))
       trackEvent('PURCHASE')
       clear()
@@ -130,7 +134,7 @@ export default function CheckoutPage() {
     },
   })
 
-  if (!items.length && !place.isSuccess) return <Navigate to="/cart" replace />
+  if (!items.length && !place.isSuccess && !placed.current) return <Navigate to="/cart" replace />
 
   const q = quote.data?.quote
   const requirement = quote.data?.payment_requirement

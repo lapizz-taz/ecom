@@ -29,16 +29,18 @@ export default function FinanceOverviewPage() {
       <PageHeader
         title="Finance"
         description="Profit is recognised when orders are delivered; cash is counted when money actually moves."
-        actions={<DateRangeFilter value={range} onChange={setRange} />}
       />
-      {can('finance.manage') && (
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" asChild><Link to="/admin/finance/expenses?new=1"><TrendingDown /> Add expense</Link></Button>
-          <Button size="sm" variant="outline" asChild><Link to="/admin/finance/income?new=1"><TrendingUp /> Add income</Link></Button>
-          <Button size="sm" variant="outline" asChild><Link to={`/admin/finance/profit-loss${qs}`}><FileText /> Profit &amp; loss</Link></Button>
-          <Button size="sm" variant="outline" asChild><Link to={`/admin/finance/cash-flow${qs}`}><Banknote /> Cash flow</Link></Button>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <DateRangeFilter value={range} onChange={setRange} />
+        {can('finance.manage') && (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" asChild><Link to="/admin/finance/expenses?new=1"><TrendingDown /> Add expense</Link></Button>
+            <Button size="sm" variant="outline" asChild><Link to="/admin/finance/income?new=1"><TrendingUp /> Add income</Link></Button>
+            <Button size="sm" variant="outline" asChild><Link to={`/admin/finance/profit-loss${qs}`}><FileText /> Profit &amp; loss</Link></Button>
+            <Button size="sm" variant="outline" asChild><Link to={`/admin/finance/cash-flow${qs}`}><Banknote /> Cash flow</Link></Button>
+          </div>
+        )}
+      </div>
 
       {overview.error ? <ErrorState error={overview.error} onRetry={() => overview.refetch()} /> : !f ? <CardsSkeleton count={8} /> : (
         <>
