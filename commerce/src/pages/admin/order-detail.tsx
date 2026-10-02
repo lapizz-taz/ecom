@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, MoreHorizontal, Package, Pencil, Phone, Printer,
-  RefreshCw, ShieldAlert, ShieldCheck, Truck, Undo2, Wallet, X,
+  ArrowLeft, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MoreHorizontal, Package, Pencil, Phone, Printer,
+  RefreshCw, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -32,7 +32,8 @@ import {
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import {
-  addOrderNote, duplicateOrder, fraudReviewDecide, getOrder, type OrderDetail, runFraudCheck, transitionOrder, verifyManualPayment,
+  addOrderNote, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, mergeOrders, type OrderDetail, runFraudCheck,
+  transitionOrder, verifyManualPayment,
 } from '@/services/orders'
 import type { OrderStatus } from '@/types/domain'
 
@@ -57,6 +58,9 @@ export default function OrderDetailPage() {
   const [dialog, setDialog] = useState<DialogName>(null)
   const [transitionTo, setTransitionTo] = useState<OrderStatus | null>(null)
   const [fraudAction, setFraudAction] = useState<FraudAction | null>(null)
+  const [confirmMerge, setConfirmMerge] = useState(false)
+  const duplicateOf = order.data?.duplicate_status === 'SUSPECTED' ? order.data.duplicate_of : order.data?.merged_into
+  const related = useQuery({ queryKey: ['order-brief', duplicateOf], enabled: !!duplicateOf, queryFn: () => getOrderBrief(duplicateOf!) })
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['order', id] })
@@ -74,6 +78,14 @@ export default function OrderDetailPage() {
   const duplicate = useMutation({
     mutationFn: () => duplicateOrder(id),
     onSuccess: (o) => { toast.success(`Created ${o?.order_number}`); navigate(`/admin/orders/${o?.id}`) },
+  })
+  const merge = useMutation({
+    mutationFn: () => mergeOrders(id, related.data!.id),
+    onSuccess: () => { toast.success(`Merged into ${related.data?.order_number}`); refresh(); navigate(`/admin/orders/${related.data!.id}`) },
+  })
+  const dismiss = useMutation({
+    mutationFn: () => dismissDuplicate(id),
+    onSuccess: () => { toast.success('Marked as not a duplicate'); refresh() },
   })
   const verify = useMutation({
     mutationFn: ({ paymentId, approve }: { paymentId: string; approve: boolean }) => verifyManualPayment(paymentId, approve, approve ? 'Verified against statement' : 'Not found in statement'),
@@ -111,6 +123,10 @@ export default function OrderDetailPage() {
             <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} />
             <StatusBadge value={o.fraud_status} map={FRAUD_STATUS} />
             {o.source === 'ADMIN' && <Badge variant="outline">Manual order</Badge>}
+            {o.label_printed_at
+              ? <Badge variant="success" className="gap-1" title={formatDateTime(o.label_printed_at)}><Tag className="size-3" /> Label printed{o.label_print_count > 1 ? ` ${o.label_print_count}×` : ''}</Badge>
+              : <Badge variant="neutral" className="gap-1"><Tag className="size-3" /> Label not printed</Badge>}
+            {o.merged_count > 0 && <Badge variant="info" className="gap-1"><Layers className="size-3" /> {o.merged_count} checkout{o.merged_count === 1 ? '' : 's'} merged in</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
             {formatDateTime(o.created_at)} · {o.customer_name} · {PAYMENT_METHOD[o.payment_method]}
@@ -118,6 +134,9 @@ export default function OrderDetailPage() {
           </p>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
+          {can('orders.fulfill') && !['CANCELLED', 'REJECTED_FRAUD'].includes(status) && (
+            <Button size="sm" variant="outline" asChild><Link to={`/admin/labels?ids=${o.id}`}><Printer /> {o.label_printed_at ? 'Reprint label' : 'Print label'}</Link></Button>
+          )}
           {can('orders.status') && next.map((a) => (
             <Button key={a.to} size="sm" variant={a === next[0] ? 'default' : 'outline'} disabled={transition.isPending}
               onClick={() => (a.to === 'FAILED_DELIVERY' ? setTransitionTo(a.to) : transition.mutate({ to: a.to, note: '' }))}>
@@ -153,6 +172,44 @@ export default function OrderDetailPage() {
           </DropdownMenu>
         </div>
       </div>
+
+      {o.duplicate_status === 'SUSPECTED' && related.data && (
+        <Card className="border-amber-300 bg-amber-50/60 dark:bg-amber-950/20">
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 text-sm">
+              <Copy className="mt-0.5 size-5 text-amber-600" />
+              <div>
+                <p className="font-medium">Possible duplicate of <Link to={`/admin/orders/${related.data.id}`} className="font-mono underline">{related.data.order_number}</Link></p>
+                <p className="text-muted-foreground">
+                  {related.data.customer_name} · <Money value={related.data.total_amount} /> · {formatDateTime(related.data.created_at)} · {ORDER_STATUS[related.data.status as OrderStatus].label}
+                </p>
+              </div>
+            </div>
+            {can('orders.update') && (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setConfirmMerge(true)}><Layers /> Merge into {related.data.order_number}</Button>
+                <Button size="sm" variant="outline" onClick={() => dismiss.mutate()} disabled={dismiss.isPending}><X /> Not a duplicate</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {o.merged_into && related.data && (
+        <Card className="border-sky-300 bg-sky-50/60 dark:bg-sky-950/20">
+          <CardContent className="flex items-center gap-3 text-sm">
+            <Layers className="size-5 text-sky-600" />
+            <p>This order was merged into <Link to={`/admin/orders/${related.data.id}`} className="font-mono font-medium underline">{related.data.order_number}</Link> — ship that order instead.</p>
+          </CardContent>
+        </Card>
+      )}
+      <ConfirmDialog
+        open={confirmMerge}
+        onOpenChange={setConfirmMerge}
+        title={`Merge ${o.order_number} into ${related.data?.order_number ?? ''}?`}
+        description="All items move to the other order (one parcel, one delivery charge) and this order is cancelled as merged. The customer is not sent a cancellation message."
+        confirmLabel="Merge orders"
+        onConfirm={() => merge.mutateAsync()}
+      />
 
       {can('fraud.review') && ['FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'REJECTED_FRAUD'].includes(status) && (
         <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">

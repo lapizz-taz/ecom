@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import {
   BadgePercent, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, Factory, LayoutDashboard, LogOut, Megaphone, Menu,
-  Package, ScrollText, Search, Settings, ShieldAlert, ShoppingCart, Truck, UserCog, Users, Wallet, Warehouse,
+  Package, ScanBarcode, ScrollText, Search, Settings, ShieldAlert, ShoppingCart, Truck, UserCog, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
@@ -42,7 +42,16 @@ const NAV: NavItem[] = [
       { label: 'Cancelled', to: '/admin/orders?tab=cancelled' },
       { label: 'Returned', to: '/admin/orders?tab=returned' },
       { label: 'Failed delivery', to: '/admin/orders?tab=failed' },
+      { label: 'Possible duplicates', to: '/admin/orders?tab=duplicates' },
       { label: 'Fraud / Review', to: '/admin/orders/fraud', permission: 'fraud.view' },
+    ],
+  },
+  {
+    label: 'Fulfilment', to: '/admin/scan', icon: <ScanBarcode />, permission: 'orders.fulfill',
+    children: [
+      { label: 'Scan parcels', to: '/admin/scan' },
+      { label: 'Labels to print', to: '/admin/orders?tab=to_print' },
+      { label: 'Ready to ship', to: '/admin/orders?tab=ready' },
     ],
   },
   { label: 'Products', to: '/admin/products', icon: <Package />, permission: 'products.view' },
@@ -105,7 +114,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
 
   return (
-    <nav className="grid gap-0.5 p-2 text-sm" aria-label="Admin">
+    <nav className="grid gap-0.5 px-3 py-2 text-sm" aria-label="Admin">
       {NAV.filter((item) => !item.permission || can(item.permission)).map((item) => {
         const inGroup = pathname.startsWith(item.to) && item.to !== '/admin'
         const expanded = item.children && (openGroup === item.label || (openGroup === null && inGroup))
@@ -117,26 +126,26 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 end={item.to === '/admin'}
                 onClick={onNavigate}
                 className={({ isActive: active }) => cn(
-                  'flex flex-1 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4',
-                  (active || inGroup) && 'bg-sidebar-accent font-medium text-sidebar-foreground',
+                  'flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4',
+                  (active || inGroup) && 'bg-brand font-medium text-brand-foreground hover:bg-brand hover:text-brand-foreground',
                 )}
               >
                 {item.icon}
                 {item.label}
               </NavLink>
               {item.children && (
-                <button type="button" className="rounded p-1 text-muted-foreground hover:bg-sidebar-accent" aria-label={`Toggle ${item.label}`}
+                <button type="button" className="ml-0.5 rounded-md p-1.5 text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground" aria-label={`Toggle ${item.label}`}
                   onClick={() => setOpenGroup(expanded ? '' : item.label)}>
                   <ChevronDown className={cn('size-3.5 transition-transform', expanded && 'rotate-180')} />
                 </button>
               )}
             </div>
             {expanded && (
-              <div className="my-0.5 ml-[18px] grid border-l pl-2">
+              <div className="my-1 ml-[22px] grid border-l border-sidebar-border pl-3">
                 {item.children!.filter((c) => !c.permission || can(c.permission)).map((child) => (
                   <Link key={child.to} to={child.to} onClick={onNavigate}
-                    className={cn('rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:text-foreground',
-                      isActive(pathname, search, child.to) && 'font-medium text-foreground')}>
+                    className={cn('rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted hover:text-sidebar-foreground',
+                      isActive(pathname, search, child.to) && 'font-medium text-brand')}>
                     {child.label}
                   </Link>
                 ))}
@@ -229,39 +238,51 @@ export default function AdminLayout() {
   }
 
   const sidebar = (
-    <>
-      <div className="flex h-14 items-center gap-2 border-b px-4">
-        <div className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+    <div className="flex h-full flex-col text-sidebar-foreground">
+      <div className="flex h-16 items-center gap-2.5 px-6">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-foreground">
           {initials(config?.store.name ?? 'S')}
         </div>
-        <span className="truncate font-semibold">{config?.store.name ?? 'Store'}</span>
+        <span className="truncate text-[15px] font-semibold tracking-tight">{config?.store.name ?? 'Store'}</span>
       </div>
-      <div className="flex-1 overflow-y-auto"><SidebarNav onNavigate={() => setMobileOpen(false)} /></div>
-    </>
+      <div className="flex-1 overflow-y-auto pb-4"><SidebarNav onNavigate={() => setMobileOpen(false)} /></div>
+      <div className="border-t border-sidebar-border p-3">
+        <Link to="/admin/account" onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sidebar-accent">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold">{initials(access.full_name || access.email)}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{access.full_name || access.email}</span>
+            <span className="block truncate text-xs text-sidebar-muted">{access.role_name}</span>
+          </span>
+        </Link>
+      </div>
+    </div>
   )
 
   return (
-    <div className="flex min-h-dvh bg-muted/30">
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-sidebar lg:flex">{sidebar}</aside>
+    <div className="flex min-h-dvh bg-background">
+      <aside className="no-print sticky top-0 hidden h-dvh w-64 shrink-0 flex-col bg-sidebar lg:flex">{sidebar}</aside>
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-64 gap-0 bg-sidebar p-0">
+        <SheetContent side="left" className="w-72 gap-0 border-0 bg-sidebar p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           {sidebar}
         </SheetContent>
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur sm:px-5">
+        <header className="no-print sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur sm:px-6">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu /></Button>
           {can('orders.view') && (
             <form onSubmit={search} className="relative w-full max-w-md">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search orders: number, phone, name, tracking, SKU…" className="h-8 pl-8" aria-label="Search orders" />
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search orders, phone, tracking, SKU…" className="h-10 rounded-full border-transparent bg-card pl-10 shadow-xs" aria-label="Search orders" />
             </form>
           )}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1.5">
+            {can('orders.fulfill') && (
+              <Button size="sm" variant="outline" asChild className="hidden rounded-full sm:inline-flex"><Link to="/admin/scan"><ScanBarcode /> Scan</Link></Button>
+            )}
             {can('orders.create') && (
-              <Button size="sm" asChild className="hidden sm:inline-flex"><Link to="/admin/orders/new"><ClipboardList /> New order</Link></Button>
+              <Button size="sm" asChild className="hidden rounded-full sm:inline-flex"><Link to="/admin/orders/new"><ClipboardList /> New order</Link></Button>
             )}
             {can('orders.view') && (
               <Button variant="ghost" size="icon" className="relative" aria-label="New orders"
@@ -292,7 +313,7 @@ export default function AdminLayout() {
             </DropdownMenu>
           </div>
         </header>
-        <main className="print-area mx-auto w-full max-w-7xl flex-1 p-3 sm:p-5">
+        <main className="print-area mx-auto w-full max-w-[1400px] flex-1 p-3 sm:p-6">
           {allowed ? <Outlet /> : <PermissionDenied />}
         </main>
       </div>

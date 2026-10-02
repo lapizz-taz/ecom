@@ -24,9 +24,72 @@ import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, TextareaSetti
 export function FraudSettings() {
   return (
     <div className="grid gap-4">
+      <ReceiveRateSettings />
       <FraudGeneral />
       <FraudRules />
     </div>
+  )
+}
+
+const TIER_ACTIONS = [
+  { value: 'COD', label: 'Cash on delivery' },
+  { value: 'ADVANCE', label: 'Advance required' },
+  { value: 'REVIEW', label: 'Manual review' },
+  { value: 'BLOCK', label: 'Block online order' },
+]
+
+/** The phone check at checkout: delivery success rate decides COD vs advance. */
+function ReceiveRateSettings() {
+  const s = useSettingDraft('fraud')
+  const rr = (k: string) => s.get(['receive_rate', k])
+  const good = Number(rr('good_min') ?? 80)
+  const mid = Number(rr('mid_min') ?? 50)
+  const validate = () => (0 < mid && mid < good && good <= 100 ? null : 'Medium must be above 0 and below Good; Good at most 100')
+  const tiers = [
+    { key: 'GOOD', dot: 'bg-emerald-500', label: 'Good', range: `${good}% or more delivered` },
+    { key: 'MID', dot: 'bg-amber-500', label: 'Medium', range: `${mid}% – ${Math.max(good - 1, mid)}%` },
+    { key: 'LOW', dot: 'bg-red-500', label: 'Low', range: `below ${mid}%` },
+    { key: 'NEW', dot: 'bg-sky-500', label: 'New customer', range: `fewer than ${Number(rr('min_parcels') ?? 1)} parcel${Number(rr('min_parcels') ?? 1) === 1 ? '' : 's'} of history` },
+    { key: 'ERROR', dot: 'bg-zinc-400', label: 'Check failed', range: 'courier history service did not answer' },
+  ]
+  return (
+    <SettingCard setting={s} title="Delivery success check at checkout" validate={validate}
+      description="When a customer types their phone number, we look up how many of their past parcels were actually received (your store plus the courier-history API). Customers only ever see what they need to do — never their rate.">
+      <SwitchSetting s={s} path={['receive_rate', 'enabled']} label="Use the delivery success check"
+        hint="Good receivers order with cash on delivery; others pay a small advance with bKash or Nagad first" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <NumberSetting s={s} path={['receive_rate', 'good_min']} label="Good from (%)" min={1} max={100} />
+        <NumberSetting s={s} path={['receive_rate', 'mid_min']} label="Medium from (%)" min={1} max={99} />
+        <NumberSetting s={s} path={['receive_rate', 'min_parcels']} label="Min. parcels to judge" min={1} />
+      </div>
+      <div className="divide-y rounded-xl border">
+        {tiers.map((t) => (
+          <div key={t.key} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+            <span className={`size-2.5 rounded-full ${t.dot}`} />
+            <div className="min-w-40 flex-1">
+              <p className="text-sm font-medium">{t.label}</p>
+              <p className="text-xs text-muted-foreground">{t.range}</p>
+            </div>
+            <Select value={String(rr('actions') && (rr('actions') as Record<string, string>)[t.key] || (['MID', 'LOW', 'ERROR'].includes(t.key) ? 'ADVANCE' : 'COD'))}
+              onValueChange={(v) => s.set(['receive_rate', 'actions', t.key], v)}>
+              <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>{TIER_ACTIONS.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SelectSetting s={s} path={['receive_rate', 'advance_type']} label="Advance amount" options={[
+          { value: 'FIXED', label: 'Fixed amount' },
+          { value: 'DELIVERY_CHARGE', label: "The order's delivery charge" },
+          { value: 'DELIVERY_PLUS_RETURN', label: 'Delivery + return charge' },
+        ]} />
+        {(rr('advance_type') ?? 'FIXED') === 'FIXED' && (
+          <NumberSetting s={s} path={['receive_rate', 'advance_amount']} label="Fixed advance (৳)" min={1} />
+        )}
+      </div>
+      <TextareaSetting s={s} path={['receive_rate', 'message']} label="Message shown at checkout" rows={2} hint="{amount} is replaced with the advance, e.g. ৳55" />
+    </SettingCard>
   )
 }
 

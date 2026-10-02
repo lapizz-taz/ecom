@@ -87,11 +87,13 @@ export interface PlaceOrderInput {
   coupon_code?: string | null
   customer_note?: string | null
   idempotency_key: string
+  advance_payment?: { channel: 'BKASH' | 'NAGAD' | 'ROCKET'; sender_phone: string; transaction_id: string } | null
   utm?: { source?: string | null; medium?: string | null; campaign?: string | null } | null
 }
 
 export function placeOrder(input: PlaceOrderInput) {
-  return invokeFunction<{ order: PublicOrder }>('checkout', { action: 'place', ...input })
+  return invokeFunction<{ order: PublicOrder & { merged?: boolean }; payment: { status: string; amount: number } | null; payment_error: string | null }>(
+    'checkout', { action: 'place', ...input })
 }
 
 export async function trackOrder(orderNumber: string, phone: string): Promise<PublicOrder | null> {

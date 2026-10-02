@@ -58,3 +58,19 @@ export function syncShipment(shipmentId: string) {
 export function syncAllShipments(courierId?: string) {
   return invokeFunction<{ synced: number }>('courier', { action: 'sync_all', courier_id: courierId })
 }
+
+export type CourierProviderCode = 'steadfast' | 'pathao' | 'redx'
+
+/** Tests the credentials with the courier, then stores them server-side (Vault). */
+export function connectCourier(input: { courier_id?: string; provider: CourierProviderCode; name?: string; credentials: Record<string, string | boolean> }) {
+  return invokeFunction<{ courier_id: string; ok: boolean; message: string }>('courier', { action: 'connect', ...input })
+}
+
+export function disconnectCourier(courierId: string) {
+  return invokeFunction<{ ok: boolean }>('courier', { action: 'disconnect', courier_id: courierId })
+}
+
+export function bookShipments(orderIds: string[], courierId: string) {
+  return invokeFunction<{ booked: number; results: Array<{ order_id: string; ok: boolean; tracking_number?: string | null; error?: string }> }>(
+    'courier', { action: 'create_shipments', order_ids: orderIds, courier_id: courierId })
+}

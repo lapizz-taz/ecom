@@ -1,9 +1,12 @@
 // Storefront checkout (public). Two actions:
-//   quote — prices the cart server-side and, once a phone number is known,
-//           runs the fraud check to tell the customer whether an advance is
-//           needed (never revealing scores).
+//   quote — prices the cart server-side and, as soon as a valid phone number
+//           is entered, runs the fraud / delivery-success check to tell the
+//           customer whether cash on delivery is available or an advance is
+//           needed (never revealing scores or rates).
 //   place — creates the order atomically with the risk decision and stock
-//           reservation. Prices, discounts and delivery come from the database.
+//           reservation (or adds it to the customer's order from a minute ago).
+//           Prices, discounts and delivery come from the database. A bKash /
+//           Nagad advance sent at checkout is recorded for staff verification.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { FraudDetectionService, type FraudSettings, providersFromSettings } from '../_shared/fraud/service.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
@@ -47,7 +50,7 @@ Deno.serve(
         p_phone: input.phone || null,
       })
       let checkId: string | null = null
-      if (input.phone && input.district) {
+      if (input.phone) {
         try {
           checkId = await fraudCheckFor(admin, input.phone, {
             order_value: quote.total,
@@ -76,7 +79,7 @@ Deno.serve(
         },
         p_payment_method: input.payment_method,
       })
-      return json(req, { quote, payment_requirement: input.phone && input.district ? requirement : null })
+      return json(req, { quote, payment_requirement: input.phone ? requirement : null })
     }
 
     if (body.action === 'place') {
@@ -117,8 +120,38 @@ Deno.serve(
         },
         p_fraud_check_id: checkId,
       })
+      // Advance sent with bKash / Nagad at checkout: record it for verification.
+      // It only counts once staff match it against the statement.
+      let payment: Record<string, unknown> | null = null
+      let paymentError: string | null = null
+      const due = Number(order.amount_due_now ?? 0)
+      if (input.advance_payment && due > 0 && !order.pending_payment_verification) {
+        try {
+          payment = await rpc<Record<string, unknown>>(admin, 'submit_manual_payment', {
+            p_order_number: order.order_number,
+            p_phone: input.customer.phone,
+            p_channel: input.advance_payment.channel,
+            p_sender_phone: input.advance_payment.sender_phone,
+            p_transaction_id: input.advance_payment.transaction_id,
+            p_amount: due,
+          })
+        } catch (error) {
+          paymentError = error instanceof HttpError ? error.message : 'We could not record your payment details'
+          // Keep what the customer sent so staff can still match it.
+          await rpc(admin, 'add_order_note', {
+            p_order_id: order.id,
+            p_body: `Customer reported ${input.advance_payment.channel} advance at checkout — TrxID ${input.advance_payment.transaction_id} from ${input.advance_payment.sender_phone} (${due}). Not recorded automatically: ${paymentError}`,
+            p_visibility: 'INTERNAL',
+            p_kind: 'SYSTEM',
+          }).catch((e) => console.error('Could not save payment note', e))
+        }
+      }
       dispatchNotificationsInBackground()
-      return json(req, { order }, 201)
+      return json(req, {
+        order: payment ? { ...order, pending_payment_verification: true } : order,
+        payment: payment ? { status: payment.status, amount: payment.amount } : null,
+        payment_error: paymentError,
+      }, 201)
     }
 
     throw new HttpError(400, 'Unknown action', 'UNKNOWN_ACTION')

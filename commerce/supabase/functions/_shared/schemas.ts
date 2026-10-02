@@ -47,6 +47,15 @@ export const placeOrderSchema = z.object({
   coupon_code: optionalText(32),
   customer_note: optionalText(500),
   idempotency_key: z.string().min(8).max(100),
+  /** bKash / Nagad "Send Money" made at checkout when an advance is required. */
+  advance_payment: z
+    .object({
+      channel: z.enum(['BKASH', 'NAGAD', 'ROCKET']),
+      sender_phone: phoneSchema,
+      transaction_id: z.string().trim().min(6).max(30),
+    })
+    .optional()
+    .nullable(),
   utm: z
     .object({ source: optionalText(100), medium: optionalText(100), campaign: optionalText(100) })
     .partial()

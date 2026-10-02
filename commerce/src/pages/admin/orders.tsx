@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, Filter, Plus } from 'lucide-react'
+import { Check, Copy, Download, Filter, Layers, Plus, Printer, Truck } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { Can } from '@/components/common/permission-gate'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -15,6 +15,7 @@ import { StatusBadge } from '@/components/common/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/features/auth/auth-context'
@@ -23,7 +24,10 @@ import { downloadCsv } from '@/lib/csv'
 import { formatDateTime, timeAgo } from '@/lib/format'
 import { ORDER_STATUS, ORDER_STATUS_FILTERS, PAYMENT_METHOD, PAYMENT_STATUS, RISK_LEVEL } from '@/lib/status'
 import { cn } from '@/lib/utils'
-import { bulkTransition, exportOrders, type OrderFilters, searchOrders, statusCounts } from '@/services/orders'
+import { bookShipments, listCouriers } from '@/services/couriers'
+import { bulkTransition, exportOrders, fulfillmentSummary, type OrderFilters, searchOrders, statusCounts } from '@/services/orders'
+import { Spinner } from '@/components/common/states'
+import { FulfillmentBar } from '@/features/orders/fulfillment-bar'
 import type { OrderListItem, OrderStatus } from '@/types/domain'
 
 const PAGE_SIZE = 25
@@ -32,6 +36,8 @@ const BULK_TARGETS: OrderStatus[] = ['CONFIRMED', 'PROCESSING', 'PACKING', 'READ
 export default function OrdersPage() {
   const { can } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [bookOpen, setBookOpen] = useState(false)
   const [state, update] = useUrlState({
     tab: 'all', q: '', payment_status: '', risk_level: '', source: '', district: '', date_from: '', date_to: '', sort: 'created_at', dir: 'desc', page: '1',
   })
@@ -44,6 +50,7 @@ export default function OrdersPage() {
   const filters: OrderFilters = useMemo(() => ({
     q: state.q || undefined,
     statuses: tab.statuses,
+    ...tab.extra,
     payment_status: state.payment_status || undefined,
     risk_level: state.risk_level || undefined,
     source: state.source || undefined,
@@ -58,6 +65,7 @@ export default function OrdersPage() {
     queryFn: () => searchOrders(filters, state.sort, state.dir as 'asc' | 'desc', PAGE_SIZE, (page - 1) * PAGE_SIZE),
   })
   const counts = useQuery({ queryKey: ['orders', 'counts'], queryFn: statusCounts, staleTime: 15_000 })
+  const summary = useQuery({ queryKey: ['fulfillment-summary'], queryFn: fulfillmentSummary, staleTime: 15_000, refetchInterval: 60_000 })
 
   const bulk = useMutation({
     mutationFn: ({ to, note }: { to: OrderStatus; note: string }) => bulkTransition([...selected], to, note),
@@ -96,17 +104,30 @@ export default function OrdersPage() {
     }
   }
 
-  const tabCount = (statuses: OrderStatus[]) =>
-    statuses.length ? statuses.reduce((s, st) => s + (counts.data?.[st] ?? 0), 0) : Object.values(counts.data ?? {}).reduce((a, b) => a + b, 0)
+  const tabCount = (t: (typeof ORDER_STATUS_FILTERS)[number]) => {
+    if (t.key === 'to_print') return summary.data?.to_print ?? 0
+    if (t.key === 'duplicates') return summary.data?.duplicates ?? 0
+    return t.statuses.length ? t.statuses.reduce((s, st) => s + (counts.data?.[st] ?? 0), 0) : Object.values(counts.data ?? {}).reduce((a, b) => a + b, 0)
+  }
   const activeFilters = ['payment_status', 'risk_level', 'source', 'district', 'date_from', 'date_to'].filter((k) => state[k as keyof typeof state]).length
 
   const columns: Column<OrderListItem>[] = [
     {
       key: 'order', header: 'Order', primary: true,
       cell: (o) => (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-medium">{o.order_number}</span>
           {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
+          {o.label_printed_at && (
+            <Badge variant="success" className="gap-0.5 text-[10px]" title={`Label printed ${formatDateTime(o.label_printed_at)}${o.label_print_count > 1 ? ` · ${o.label_print_count}×` : ''}`}>
+              <Check className="size-3" /> Printed{o.label_print_count > 1 ? ` ${o.label_print_count}×` : ''}
+            </Badge>
+          )}
+          {o.duplicate_status === 'SUSPECTED' && (
+            <Badge variant="warning" className="gap-0.5 text-[10px]" title={`Possible duplicate of ${o.duplicate_of_number ?? 'another order'}`}><Copy className="size-3" /> Duplicate?</Badge>
+          )}
+          {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]" title="Includes merged checkouts"><Layers className="size-3" /> +{o.merged_count} merged</Badge>}
+          {o.merged_into_number && <Badge variant="neutral" className="text-[10px]">Merged into {o.merged_into_number}</Badge>}
         </div>
       ),
     },
@@ -144,12 +165,14 @@ export default function OrdersPage() {
         }
       />
 
+      <FulfillmentBar summary={summary.data} active={state.tab} onSelect={(tab) => { setSelected(new Set()); update({ tab }) }} />
+
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-        {ORDER_STATUS_FILTERS.map((t) => (
+        {ORDER_STATUS_FILTERS.filter((t) => !t.hidden || state.tab === t.key).map((t) => (
           <button key={t.key} type="button" onClick={() => { setSelected(new Set()); update({ tab: t.key }) }}
-            className={cn('flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm', state.tab === t.key ? 'bg-foreground text-background' : 'hover:bg-muted')}>
+            className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm', state.tab === t.key ? 'bg-foreground text-background' : 'hover:bg-card')}>
             {t.label}
-            {counts.data && <span className={cn('text-xs tabular-nums', state.tab === t.key ? 'opacity-70' : 'text-muted-foreground')}>{tabCount(t.statuses)}</span>}
+            {counts.data && <span className={cn('text-xs tabular-nums', state.tab === t.key ? 'opacity-70' : 'text-muted-foreground')}>{tabCount(t)}</span>}
           </button>
         ))}
       </div>
@@ -187,14 +210,22 @@ export default function OrdersPage() {
             <SelectItem value="status:asc">Status</SelectItem>
           </SelectContent>
         </Select>
-        {selected.size > 0 && can('orders.status') && (
-          <div className="flex items-center gap-2 rounded-md border bg-card px-2 py-1">
-            <span className="text-sm">{selected.size} selected</span>
-            <Select value="" onValueChange={(v) => setBulkTarget(v as OrderStatus)}>
-              <SelectTrigger size="sm" className="w-40"><SelectValue placeholder="Change status…" /></SelectTrigger>
-              <SelectContent>{BULK_TARGETS.filter((s) => s !== 'CANCELLED' || can('orders.cancel')).map((s) => <SelectItem key={s} value={s}>{ORDER_STATUS[s].label}</SelectItem>)}</SelectContent>
-            </Select>
-            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
+        {selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-full border bg-card py-1 pr-1 pl-3 shadow-xs">
+            <span className="text-sm font-medium">{selected.size} selected</span>
+            {can('orders.fulfill') && (
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>
+            )}
+            {can('shipments.manage') && (
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => setBookOpen(true)}><Truck /> Book courier</Button>
+            )}
+            {can('orders.status') && (
+              <Select value="" onValueChange={(v) => setBulkTarget(v as OrderStatus)}>
+                <SelectTrigger size="sm" className="w-40 rounded-full"><SelectValue placeholder="Change status…" /></SelectTrigger>
+                <SelectContent>{BULK_TARGETS.filter((s) => s !== 'CANCELLED' || can('orders.cancel')).map((s) => <SelectItem key={s} value={s}>{ORDER_STATUS[s].label}</SelectItem>)}</SelectContent>
+              </Select>
+            )}
+            <Button variant="ghost" size="sm" className="rounded-full" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
         )}
       </div>
@@ -207,7 +238,7 @@ export default function OrdersPage() {
         error={orders.error}
         onRetry={() => orders.refetch()}
         rowHref={(o) => `/admin/orders/${o.id}`}
-        selected={can('orders.status') || can('orders.export') ? selected : undefined}
+        selected={can('orders.status') || can('orders.export') || can('orders.fulfill') ? selected : undefined}
         onSelectedChange={setSelected}
         empty={<EmptyState title="No orders match" description={state.q ? 'Try a different search.' : 'Orders will appear here as they come in.'} />}
         footer={<Pagination page={page} pageSize={PAGE_SIZE} total={orders.data?.total ?? 0} onPage={(p) => update({ page: String(p) }, { resetPage: false })} />}
@@ -225,7 +256,55 @@ export default function OrdersPage() {
         confirmLabel="Update orders"
         onConfirm={(note) => bulk.mutateAsync({ to: bulkTarget!, note })}
       />
+
+      <BookCourierDialog open={bookOpen} onOpenChange={setBookOpen} orderIds={[...selected]}
+        orderNumber={(id) => orders.data?.items.find((o) => o.id === id)?.order_number ?? id.slice(0, 8)}
+        onDone={() => { setSelected(new Set()); void queryClient.invalidateQueries({ queryKey: ['orders'] }) }} />
     </div>
+  )
+}
+
+/** Books the selected orders with a connected courier's API in one go. */
+function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, onDone }: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  orderIds: string[]
+  orderNumber: (id: string) => string
+  onDone: () => void
+}) {
+  const couriers = useQuery({ queryKey: ['couriers', 'active'], queryFn: () => listCouriers(true), enabled: open })
+  const connected = (couriers.data ?? []).filter((c) => c.api_enabled)
+  const [courierId, setCourierId] = useState('')
+  const book = useMutation({
+    mutationFn: () => bookShipments(orderIds, courierId || connected[0]?.id),
+    onSuccess: (r) => {
+      if (r.booked) toast.success(`${r.booked} parcel(s) booked`)
+      for (const f of r.results.filter((x) => !x.ok).slice(0, 4)) toast.error(`${orderNumber(f.order_id)}: ${f.error}`)
+      onDone()
+      onOpenChange(false)
+    },
+  })
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Book {orderIds.length} parcel{orderIds.length === 1 ? '' : 's'} with a courier</DialogTitle>
+          <DialogDescription>Each order is sent to the courier's API; the tracking number is saved and printed on the label. Orders already booked are skipped.</DialogDescription>
+        </DialogHeader>
+        {couriers.isLoading ? <Spinner /> : connected.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No courier is connected yet. <Link to="/admin/couriers" className="underline">Connect Steadfast, Pathao or RedX</Link> first.</p>
+        ) : (
+          <Select value={courierId || connected[0].id} onValueChange={setCourierId}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>{connected.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+          </Select>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => book.mutate()} disabled={!connected.length || book.isPending}>{book.isPending ? <Spinner /> : <Truck />} Book parcels</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

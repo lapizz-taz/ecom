@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plug, Plus, RefreshCw, Wallet } from 'lucide-react'
+import { CircleCheck, Pencil, Plug, PlugZap, Plus, RefreshCw, Unplug, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -26,26 +26,52 @@ import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { SHIPMENT_STATUS } from '@/lib/status'
 import {
-  codReceivable, type CourierRow, listCouriers, listShipments, saveCourier, settleCod, type ShipmentRow, syncAllShipments, syncShipment,
-  testCourierConnection,
+  codReceivable, connectCourier, type CourierProviderCode, type CourierRow, disconnectCourier, listCouriers, listShipments, saveCourier,
+  settleCod, type ShipmentRow, syncAllShipments, syncShipment, testCourierConnection,
 } from '@/services/couriers'
 import type { CodReceivableItem } from '@/types/domain'
 
 const PROVIDERS = [
   { value: 'manual', label: 'Manual (no API)' },
   { value: 'steadfast', label: 'Steadfast (API)' },
+  { value: 'pathao', label: 'Pathao (API)' },
+  { value: 'redx', label: 'RedX (API)' },
+]
+
+interface CredentialField { key: string; label: string; secret?: boolean; placeholder?: string }
+const INTEGRATIONS: Array<{ code: CourierProviderCode; name: string; color: string; blurb: string; where: string; sandbox?: boolean; fields: CredentialField[] }> = [
+  {
+    code: 'steadfast', name: 'Steadfast', color: 'bg-[#00b795] text-white', blurb: 'Book parcels, print tracking on labels, live status updates.',
+    where: 'Steadfast portal → Settings → API', fields: [
+      { key: 'api_key', label: 'API key' }, { key: 'secret_key', label: 'Secret key', secret: true },
+    ],
+  },
+  {
+    code: 'pathao', name: 'Pathao', color: 'bg-[#e1252e] text-white', blurb: 'Merchant API — city and zone are matched from the order address.',
+    where: 'Pathao merchant panel → Developers API', sandbox: true, fields: [
+      { key: 'client_id', label: 'Client ID' }, { key: 'client_secret', label: 'Client secret', secret: true },
+      { key: 'username', label: 'Merchant login email', placeholder: 'you@shop.com' }, { key: 'password', label: 'Merchant password', secret: true },
+      { key: 'store_id', label: 'Store ID', placeholder: 'e.g. 12345' },
+    ],
+  },
+  {
+    code: 'redx', name: 'RedX', color: 'bg-[#e8202a] text-white', blurb: 'Open API — delivery area is matched from the order address.',
+    where: 'RedX merchant panel → Developer / API access', sandbox: true, fields: [
+      { key: 'access_token', label: 'API access token', secret: true },
+    ],
+  },
 ]
 
 export default function CouriersPage() {
-  const [state, update] = useUrlState({ tab: 'shipments' })
+  const [state, update] = useUrlState({ tab: 'couriers' })
   return (
     <div className="space-y-4">
       <PageHeader title="Couriers" description="Courier accounts, parcels in transit and cash on delivery still held by couriers." />
       <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
         <TabsList>
+          <TabsTrigger value="couriers">Connections</TabsTrigger>
           <TabsTrigger value="shipments">Shipments</TabsTrigger>
           <TabsTrigger value="cod">COD receivable</TabsTrigger>
-          <TabsTrigger value="couriers">Couriers</TabsTrigger>
         </TabsList>
         <TabsContent value="shipments"><Shipments /></TabsContent>
         <TabsContent value="cod"><CodReceivable /></TabsContent>
@@ -58,7 +84,7 @@ export default function CouriersPage() {
 function Shipments() {
   const { can } = useAuth()
   const queryClient = useQueryClient()
-  const [state, update] = useUrlState({ tab: 'shipments', courier: '', status: '', q: '', page: '1' })
+  const [state, update] = useUrlState({ tab: 'couriers', courier: '', status: '', q: '', page: '1' })
   const page = Number(state.page) || 1
   const couriers = useQuery({ queryKey: ['couriers'], queryFn: () => listCouriers() })
   const shipments = useQuery({
@@ -171,7 +197,56 @@ function CourierList() {
     mutationFn: testCourierConnection,
     onSuccess: (r) => { (r.ok ? toast.success : toast.error)(r.message); void queryClient.invalidateQueries({ queryKey: ['couriers'] }) },
   })
+  const [connecting, setConnecting] = useState<(typeof INTEGRATIONS)[number] | null>(null)
+  const [disconnecting, setDisconnecting] = useState<CourierRow | null>(null)
+  const disconnect = useMutation({
+    mutationFn: (id: string) => disconnectCourier(id),
+    onSuccess: () => { toast.success('Courier disconnected — its API keys were wiped'); void queryClient.invalidateQueries({ queryKey: ['couriers'] }) },
+  })
   return (
+    <div className="space-y-4">
+    <div className="grid gap-3 md:grid-cols-3">
+      {INTEGRATIONS.map((integration) => {
+        const row = (couriers.data ?? []).find((c) => c.provider === integration.code && c.api_enabled)
+          ?? (couriers.data ?? []).find((c) => c.provider === integration.code)
+        const connected = !!row?.api_enabled && row.api_status !== 'NOT_CONFIGURED'
+        const hint = (row?.config as { credential_hint?: string } | null)?.credential_hint
+        return (
+          <Card key={integration.code} className="gap-3 p-5">
+            <div className="flex items-center gap-3">
+              <span className={`flex size-10 items-center justify-center rounded-xl text-sm font-bold ${integration.color}`}>{integration.name[0]}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{integration.name}</p>
+                {connected
+                  ? <p className="flex items-center gap-1 text-xs text-emerald-700"><CircleCheck className="size-3.5" /> Connected{hint ? ` · key ${hint}` : ''}</p>
+                  : <p className="text-xs text-muted-foreground">Not connected</p>}
+              </div>
+              {connected && row.api_status === 'ERROR' && <Badge variant="danger">Error</Badge>}
+            </div>
+            <p className="text-sm text-muted-foreground">{integration.blurb}</p>
+            {can('couriers.manage') && (
+              <div className="mt-auto flex flex-wrap gap-2">
+                <Button size="sm" variant={connected ? 'outline' : 'default'} className="rounded-full" onClick={() => setConnecting(integration)}>
+                  <PlugZap /> {connected ? 'Update keys' : 'Connect'}
+                </Button>
+                {connected && row && (
+                  <>
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => test.mutate(row.id)} disabled={test.isPending}><Plug /> Test</Button>
+                    <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDisconnecting(row)}><Unplug /> Disconnect</Button>
+                  </>
+                )}
+              </div>
+            )}
+          </Card>
+        )
+      })}
+    </div>
+    <ConnectCourierDialog integration={connecting} existing={connecting ? (couriers.data ?? []).find((c) => c.provider === connecting.code)
+      ?? (couriers.data ?? []).find((c) => c.name.trim().toLowerCase() === connecting.name.toLowerCase()) : undefined}
+      onClose={() => setConnecting(null)} onConnected={() => void queryClient.invalidateQueries({ queryKey: ['couriers'] })} />
+    <ConfirmDialog open={disconnecting !== null} onOpenChange={(o) => !o && setDisconnecting(null)} destructive
+      title={`Disconnect ${disconnecting?.name}?`} description="The saved API keys are wiped. Booking and status sync stop until you connect again; existing shipments are kept."
+      confirmLabel="Disconnect" onConfirm={() => disconnect.mutateAsync(disconnecting!.id)} />
     <Card>
       <CardContent className="space-y-3">
         {can('couriers.manage') && <Button size="sm" onClick={() => setEditing({ provider: 'manual', is_active: true })}><Plus /> Add courier</Button>}
@@ -199,7 +274,7 @@ function CourierList() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editing?.id ? 'Edit courier' : 'New courier'}</DialogTitle>
-            <DialogDescription>API keys are never stored here — set them as edge function secrets (e.g. STEADFAST_API_KEY).</DialogDescription>
+            <DialogDescription>API keys are added with Connect above and kept encrypted on the server — never in this form.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name" htmlFor="cr-name" required><Input id="cr-name" value={editing?.name ?? ''} onChange={(e) => setEditing((c) => ({ ...c, name: e.target.value }))} /></Field>
@@ -225,5 +300,58 @@ function CourierList() {
         </DialogContent>
       </Dialog>
     </Card>
+    </div>
+  )
+}
+
+/** Enter API keys once; they are tested with the courier, then stored encrypted server-side. */
+function ConnectCourierDialog({ integration, existing, onClose, onConnected }: {
+  integration: (typeof INTEGRATIONS)[number] | null
+  existing: CourierRow | undefined
+  onClose: () => void
+  onConnected: () => void
+}) {
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [sandbox, setSandbox] = useState(false)
+  const [name, setName] = useState('')
+  const connect = useMutation({
+    meta: { silent: true },
+    mutationFn: () => connectCourier({
+      courier_id: existing?.id,
+      provider: integration!.code,
+      name: existing ? undefined : name.trim() || integration!.name,
+      credentials: { ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()])), ...(integration!.sandbox ? { sandbox } : {}) },
+    }),
+    onSuccess: (r) => { toast.success(r.message); setValues({}); onConnected(); onClose() },
+  })
+  const missing = integration?.fields.some((f) => !values[f.key]?.trim())
+  return (
+    <Dialog open={integration !== null} onOpenChange={(o) => { if (!o) { connect.reset(); setValues({}); onClose() } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Connect {integration?.name}</DialogTitle>
+          <DialogDescription>Find these in: {integration?.where}. We test them with {integration?.name} first, then store them encrypted on the server — they are never shown again.</DialogDescription>
+        </DialogHeader>
+        <form id="connect-courier" className="grid gap-3" onSubmit={(e) => { e.preventDefault(); connect.mutate() }}>
+          {!existing && (
+            <Field label="Name in your admin" htmlFor="cc-name"><Input id="cc-name" value={name} placeholder={integration?.name} onChange={(e) => setName(e.target.value)} /></Field>
+          )}
+          {integration?.fields.map((f) => (
+            <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required>
+              <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'text'} autoComplete="off" placeholder={f.placeholder}
+                value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
+            </Field>
+          ))}
+          {integration?.sandbox && (
+            <label className="flex items-center gap-2 text-sm"><Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox / test account</label>
+          )}
+          {connect.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{connect.error.message}</p>}
+        </form>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="connect-courier" disabled={missing || connect.isPending}>{connect.isPending ? <Spinner /> : <PlugZap />} Test & connect</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

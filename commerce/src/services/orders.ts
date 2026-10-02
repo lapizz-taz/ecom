@@ -2,7 +2,7 @@ import { invokeFunction } from '@/lib/functions'
 import { asJson, fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
 import type { Enums } from '@/types/database'
-import type { FraudQueueItem, OrderListItem, OrderStatus, Paged, Quote } from '@/types/domain'
+import type { FraudQueueItem, FulfillmentSummary, OrderListItem, OrderStatus, Paged, Quote, ScanAction, ScanResult } from '@/types/domain'
 
 export interface OrderFilters {
   q?: string
@@ -18,6 +18,8 @@ export interface OrderFilters {
   date_from?: string
   date_to?: string
   has_due?: boolean
+  duplicates?: boolean
+  label?: 'printed' | 'not_printed'
 }
 
 export async function searchOrders(filters: OrderFilters, sort = 'created_at', direction: 'asc' | 'desc' = 'desc', limit = 25, offset = 0): Promise<Paged<OrderListItem>> {
@@ -207,3 +209,69 @@ export async function fraudQueue(statuses: OrderStatus[], risk?: Enums<'risk_lev
   if (error) throw error
   return fromJson<Paged<FraudQueueItem>>(data)
 }
+
+// -----------------------------------------------------------------------------
+// Fulfilment: duplicates, labels, scanning
+// -----------------------------------------------------------------------------
+export async function fulfillmentSummary(): Promise<FulfillmentSummary> {
+  const { data, error } = await supabase.rpc('admin_fulfillment_summary')
+  if (error) throw error
+  return fromJson<FulfillmentSummary>(data)
+}
+
+export async function mergeOrders(orderId: string, intoOrderId: string) {
+  const { data, error } = await supabase.rpc('admin_merge_orders', { p_order_id: orderId, p_into_order_id: intoOrderId })
+  if (error) throw error
+  return data
+}
+
+export async function getOrderBrief(id: string) {
+  const { data, error } = await supabase.from('orders')
+    .select('id, order_number, status, total_amount, created_at, customer_name, shipping_address').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function dismissDuplicate(orderId: string) {
+  const { error } = await supabase.rpc('admin_dismiss_duplicate', { p_order_id: orderId })
+  if (error) throw error
+}
+
+export async function markLabelsPrinted(orderIds: string[], format: string) {
+  const { data, error } = await supabase.rpc('mark_labels_printed', { p_order_ids: orderIds, p_format: format })
+  if (error) throw error
+  return fromJson<{ printed: number; reprinted: number; skipped: Array<{ order_number: string; reason: string }> }>(data)
+}
+
+/** Everything a shipping label needs, for up to 200 orders. */
+export async function labelOrders(ids: string[]) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select(`id, order_number, status, created_at, customer_name, customer_phone, shipping_address, shipping_area, shipping_city,
+      shipping_district, shipping_postal_code, total_amount, amount_paid, cod_amount, payment_method, customer_note,
+      label_printed_at, label_print_count,
+      order_items(product_name, variant_title, sku, quantity),
+      shipments(is_active, tracking_number, consignment_id, couriers(name))`)
+    .in('id', ids.slice(0, 200))
+  if (error) throw error
+  const order = new Map(ids.map((id, i) => [id, i]))
+  return (data ?? []).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+}
+export type LabelOrder = Awaited<ReturnType<typeof labelOrders>>[number]
+
+export async function scanParcel(code: string, action: ScanAction, courierId?: string | null): Promise<ScanResult> {
+  const { data, error } = await supabase.rpc('scan_parcel', { p_code: code, p_action: action, p_courier_id: courierId || undefined })
+  if (error) throw error
+  return fromJson<ScanResult>(data)
+}
+
+export async function recentScans(limit = 50) {
+  const { data, error } = await supabase
+    .from('parcel_scans')
+    .select('id, code, action, order_id, order_number, result, message, from_status, to_status, scanned_by_name, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data ?? []
+}
+export type ScanLogRow = Awaited<ReturnType<typeof recentScans>>[number]

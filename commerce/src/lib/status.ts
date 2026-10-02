@@ -170,8 +170,10 @@ export const CANCELLABLE: OrderStatus[] = [
 export const EDITABLE = CANCELLABLE
 
 /** Admin sidebar order status shortcuts. */
-export const ORDER_STATUS_FILTERS: Array<{ key: string; label: string; statuses: OrderStatus[] }> = [
+export const ORDER_STATUS_FILTERS: Array<{ key: string; label: string; statuses: OrderStatus[]; extra?: { duplicates?: boolean; label?: 'printed' | 'not_printed' }; hidden?: boolean }> = [
   { key: 'all', label: 'All', statuses: [] },
+  { key: 'to_print', label: 'Labels to print', statuses: ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP'], extra: { label: 'not_printed' }, hidden: true },
+  { key: 'duplicates', label: 'Possible duplicates', statuses: [], extra: { duplicates: true }, hidden: true },
   { key: 'pending', label: 'Pending', statuses: ['PENDING', 'FRAUD_CHECK', 'CONFIRMATION_REQUIRED', 'ADVANCE_REQUIRED'] },
   { key: 'confirmed', label: 'Confirmed', statuses: ['CONFIRMED'] },
   { key: 'processing', label: 'Processing', statuses: ['PROCESSING', 'PRODUCTION', 'QUALITY_CHECK', 'PACKING'] },

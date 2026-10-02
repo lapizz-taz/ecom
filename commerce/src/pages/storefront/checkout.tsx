@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Info, Lock, ShieldAlert } from 'lucide-react'
+import { toast } from 'sonner'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link, Navigate, useNavigate } from 'react-router'
@@ -17,6 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { cartLines, useCart } from '@/features/cart/cart-store'
+import { type AdvancePaymentValues, AdvancePaymentFields, validateAdvancePayment } from '@/features/checkout/advance-payment-fields'
+import { PhoneCheckStatus } from '@/features/checkout/phone-check'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { errorCode, toUserMessage } from '@/lib/errors'
@@ -53,6 +56,8 @@ export default function CheckoutPage() {
   const { items, couponCode, setCoupon, clear } = useCart()
   const [couponInput, setCouponInput] = useState(couponCode)
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
+  const [advance, setAdvance] = useState<AdvancePaymentValues>({ channel: 'BKASH', sender_phone: '', transaction_id: '' })
+  const [advanceErrors, setAdvanceErrors] = useState<Partial<Record<keyof AdvancePaymentValues, string>>>({})
   const schema = useMemo(() => buildSchema(config?.phone_pattern ?? '^[0-9]{8,15}$'), [config?.phone_pattern])
 
   const paymentOptions = useMemo(() => {
@@ -111,7 +116,7 @@ export default function CheckoutPage() {
   const placed = useRef(false)
   const place = useMutation({
     meta: { silent: true },
-    mutationFn: (values: CheckoutValues) => placeOrder({
+    mutationFn: ({ values, advancePayment }: { values: CheckoutValues; advancePayment: AdvancePaymentValues | null }) => placeOrder({
       customer: { full_name: values.full_name, phone: normalizePhone(values.phone), email: values.email || null },
       shipping: { address: values.address, area: values.area || null, city: values.city || null, district: values.district, postal_code: values.postal_code || null },
       items: cartLines(items),
@@ -120,9 +125,10 @@ export default function CheckoutPage() {
       coupon_code: couponCode || null,
       customer_note: values.customer_note || null,
       idempotency_key: idempotencyKey,
+      advance_payment: advancePayment ? { ...advancePayment, sender_phone: normalizePhone(advancePayment.sender_phone) } : null,
       utm: storedUtm(),
     }),
-    onSuccess: ({ order }, values) => {
+    onSuccess: ({ order, payment_error }, { values }) => {
       // Set before clearing the cart: the mutation is not "success" yet during this
       // callback, and an empty cart would otherwise redirect to /cart first.
       placed.current = true
@@ -130,7 +136,10 @@ export default function CheckoutPage() {
       trackEvent('PURCHASE')
       clear()
       setIdempotencyKey(crypto.randomUUID())
-      navigate(`/order-success?order=${encodeURIComponent(order.order_number)}`, { replace: true })
+      if (payment_error) toast.warning(`Order placed, but your payment details need another look: ${payment_error}`)
+      const params = new URLSearchParams({ order: order.order_number })
+      if (order.merged) params.set('merged', '1')
+      navigate(`/order-success?${params}`, { replace: true })
     },
   })
 
@@ -139,6 +148,28 @@ export default function CheckoutPage() {
   const q = quote.data?.quote
   const requirement = quote.data?.payment_requirement
   const blocked = requirement?.mode === 'BLOCKED'
+  const checkingPhone = phoneValid && (quote.isFetching || !quoteInput.phone)
+  const manual = config?.payments.providers.find((p) => p.type === 'manual')
+  const walletAccounts = (manual?.accounts ?? []).filter((a) => ['BKASH', 'NAGAD', 'ROCKET'].includes(a.channel) && a.number)
+  const payNow = requirement && (requirement.mode === 'ADVANCE' || requirement.mode === 'FULL') ? requirement.amount : 0
+  // Collect the bKash / Nagad payment right here when the store takes Send Money.
+  const collectAtCheckout = payNow > 0 && walletAccounts.length > 0
+  const walletChannel = walletAccounts.some((a) => a.channel === advance.channel) ? advance.channel
+    : (walletAccounts[0]?.channel as AdvancePaymentValues['channel'] | undefined) ?? 'BKASH'
+
+  const submit = form.handleSubmit((values) => {
+    let advancePayment: AdvancePaymentValues | null = null
+    if (collectAtCheckout) {
+      advancePayment = { ...advance, channel: walletChannel }
+      const errors = validateAdvancePayment(advancePayment, (p) => isValidPhone(p, config?.phone_pattern ?? '^[0-9]{8,15}$'))
+      setAdvanceErrors(errors)
+      if (Object.keys(errors).length) {
+        document.getElementById(errors.sender_phone ? 'adv-sender' : 'adv-trx')?.focus()
+        return
+      }
+    }
+    place.mutate({ values, advancePayment })
+  })
   const stockErrors = q?.stock_errors ?? []
   const districts = config?.delivery.districts ?? []
   const methods = config?.delivery.methods ?? [{ code: 'standard', name: 'Standard delivery', extra_charge: 0 }]
@@ -149,7 +180,7 @@ export default function CheckoutPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
-      <form onSubmit={form.handleSubmit((v) => place.mutate(v))} className="grid gap-8 lg:grid-cols-[1fr_380px]" noValidate>
+      <form onSubmit={submit} className="grid gap-8 lg:grid-cols-[1fr_380px]" noValidate>
         <div className="space-y-6">
           <Card>
             <CardHeader><CardTitle className="text-base">Contact</CardTitle></CardHeader>
@@ -160,6 +191,9 @@ export default function CheckoutPage() {
               <Field label="Mobile number" htmlFor="phone" error={form.formState.errors.phone?.message} required hint="We'll call or text about your delivery">
                 <Input id="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="01XXXXXXXXX" {...form.register('phone')} aria-invalid={!!form.formState.errors.phone} />
               </Field>
+              <div className="sm:col-span-2 sm:order-last">
+                <PhoneCheckStatus checking={checkingPhone} requirement={requirement} phoneValid={phoneValid} />
+              </div>
               <Field label="Email (optional)" htmlFor="email" error={form.formState.errors.email?.message}>
                 <Input id="email" type="email" autoComplete="email" {...form.register('email')} />
               </Field>
@@ -210,12 +244,18 @@ export default function CheckoutPage() {
                   {paymentOptions.map((o) => (
                     <Label key={o.value} className="flex cursor-pointer items-center gap-3 rounded-md border p-3 font-normal has-[[data-state=checked]]:border-foreground">
                       <RadioGroupItem value={o.value} />
-                      <span className="flex-1"><span className="block font-medium">{o.label}</span><span className="text-xs text-muted-foreground">{o.hint}</span></span>
+                      <span className="flex-1"><span className="block font-medium">{o.label}</span><span className="text-xs text-muted-foreground">
+                        {o.value === 'COD' && requirement?.mode === 'ADVANCE' ? `${formatMoney(requirement.amount)} advance now, the rest on delivery` : o.hint}
+                      </span></span>
                     </Label>
                   ))}
                 </RadioGroup>
               )} />
-              {requirement?.message && (
+              {collectAtCheckout && (
+                <AdvancePaymentFields amount={payNow} accounts={walletAccounts} value={{ ...advance, channel: walletChannel }}
+                  onChange={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
+              )}
+              {requirement?.message && !collectAtCheckout && (
                 <div className={cn('flex gap-3 rounded-lg border p-3 text-sm',
                   blocked ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900')} role="status">
                   {blocked ? <ShieldAlert className="mt-0.5 size-4 shrink-0" /> : <Info className="mt-0.5 size-4 shrink-0" />}
@@ -284,8 +324,10 @@ export default function CheckoutPage() {
                   <span>{submitError}{submitCode === 'INSUFFICIENT_STOCK' && <> <Link to="/cart" className="underline">Update cart</Link></>}</span>
                 </div>
               )}
-              <Button type="submit" size="lg" className="w-full" disabled={place.isPending || blocked || stockErrors.length > 0}>
-                {place.isPending ? <Spinner /> : <Lock />} Place order
+              <Button type="submit" size="lg" className="h-12 w-full rounded-xl text-base" disabled={place.isPending || blocked || stockErrors.length > 0 || checkingPhone}>
+                {place.isPending || checkingPhone ? <Spinner /> : <Lock />}
+                {checkingPhone ? 'Checking…' : collectAtCheckout ? <>Confirm order · pay {formatMoney(payNow)} now</>
+                  : requirement?.mode === 'COD' ? 'Confirm order · cash on delivery' : 'Place order'}
               </Button>
               {blocked && config?.store.phone && <p className="text-center text-sm">Call us: <a href={`tel:${config.store.phone}`} className="underline">{config.store.phone}</a></p>}
             </CardContent>

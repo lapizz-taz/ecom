@@ -214,6 +214,46 @@ export interface OrderListItem {
   item_count: number
   courier_name: string | null
   tracking_number: string | null
+  label_printed_at: string | null
+  label_print_count: number
+  duplicate_status: 'SUSPECTED' | 'DISMISSED' | 'MERGED' | null
+  duplicate_of_number: string | null
+  merged_count: number
+  merged_into_number: string | null
+}
+
+export type ScanAction = 'READY_TO_SHIP' | 'SHIPPED' | 'RETURNED' | 'LOOKUP'
+
+export interface ScanResult {
+  result: 'OK' | 'ALREADY' | 'ERROR' | 'NOT_FOUND'
+  message: string
+  code: string
+  from_status?: OrderStatus
+  order: {
+    id: string
+    order_number: string
+    status: OrderStatus
+    customer_name: string
+    customer_phone: string
+    shipping_district: string
+    cod_amount: number
+    total_amount: number
+    item_count: number
+    label_printed_at: string | null
+    courier_name: string | null
+    tracking_number: string | null
+  } | null
+}
+
+export interface FulfillmentSummary {
+  to_confirm: number
+  advance_pending: number
+  to_print: number
+  printed: number
+  ready_to_ship: number
+  shipped_today: number
+  duplicates: number
+  merged_today: number
 }
 
 export interface Paged<T> {

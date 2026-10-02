@@ -238,6 +238,44 @@ export type Database = {
         }
         Relationships: []
       }
+      courier_credentials: {
+        Row: {
+          courier_id: string
+          provider: string
+          secret_id: string | null
+          hint: string | null
+          connected_by: string | null
+          connected_at: string
+          updated_at: string
+        }
+        Insert: {
+          courier_id: string
+          provider: string
+          secret_id?: string | null
+          hint?: string | null
+          connected_by?: string | null
+          connected_at?: string
+          updated_at?: string
+        }
+        Update: {
+          courier_id?: string
+          provider?: string
+          secret_id?: string | null
+          hint?: string | null
+          connected_by?: string | null
+          connected_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_credentials_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: true
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       couriers: {
         Row: {
           id: string
@@ -1324,6 +1362,57 @@ export type Database = {
           },
         ]
       }
+      order_merges: {
+        Row: {
+          id: string
+          order_id: string
+          source_order_id: string | null
+          kind: string
+          idempotency_key: string | null
+          items: Json
+          amount: number
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          source_order_id?: string | null
+          kind: string
+          idempotency_key?: string | null
+          items?: Json
+          amount?: number
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          source_order_id?: string | null
+          kind?: string
+          idempotency_key?: string | null
+          items?: Json
+          amount?: number
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_merges_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_merges_source_order_id_fkey"
+            columns: ["source_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_notes: {
         Row: {
           id: string
@@ -1546,6 +1635,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
         Insert: {
           id?: string
@@ -1602,6 +1699,14 @@ export type Database = {
           created_at?: string
           updated_at?: string
           fraud_decision?: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of?: string | null
+          duplicate_status?: string | null
+          merged_into?: string | null
+          merged_count?: number
+          label_printed_at?: string | null
+          label_last_printed_at?: string | null
+          label_printed_by?: string | null
+          label_print_count?: number
         }
         Update: {
           id?: string
@@ -1658,6 +1763,14 @@ export type Database = {
           created_at?: string
           updated_at?: string
           fraud_decision?: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of?: string | null
+          duplicate_status?: string | null
+          merged_into?: string | null
+          merged_count?: number
+          label_printed_at?: string | null
+          label_last_printed_at?: string | null
+          label_printed_by?: string | null
+          label_print_count?: number
         }
         Relationships: [
           {
@@ -1682,10 +1795,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_fraud_check_fk"
             columns: ["fraud_check_id"]
             isOneToOne: false
             referencedRelation: "fraud_checks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_merged_into_fkey"
+            columns: ["merged_into"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parcel_scans: {
+        Row: {
+          id: string
+          code: string
+          action: string
+          order_id: string | null
+          order_number: string | null
+          result: string
+          message: string | null
+          from_status: Database["public"]["Enums"]["order_status"] | null
+          to_status: Database["public"]["Enums"]["order_status"] | null
+          courier_id: string | null
+          scanned_by: string | null
+          scanned_by_name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          action: string
+          order_id?: string | null
+          order_number?: string | null
+          result: string
+          message?: string | null
+          from_status?: Database["public"]["Enums"]["order_status"] | null
+          to_status?: Database["public"]["Enums"]["order_status"] | null
+          courier_id?: string | null
+          scanned_by?: string | null
+          scanned_by_name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          action?: string
+          order_id?: string | null
+          order_number?: string | null
+          result?: string
+          message?: string | null
+          from_status?: Database["public"]["Enums"]["order_status"] | null
+          to_status?: Database["public"]["Enums"]["order_status"] | null
+          courier_id?: string | null
+          scanned_by?: string | null
+          scanned_by_name?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parcel_scans_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parcel_scans_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
@@ -3051,6 +3241,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       admin_create_production_order: {
@@ -3078,6 +3276,75 @@ export type Database = {
           p_customer_id: string
         }
         Returns: Json
+      }
+      admin_dismiss_duplicate: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: {
+          id: string
+          order_number: string
+          customer_id: string
+          auth_user_id: string | null
+          source: Database["public"]["Enums"]["order_source"]
+          status: Database["public"]["Enums"]["order_status"]
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: Database["public"]["Enums"]["payment_status"]
+          fraud_status: Database["public"]["Enums"]["fraud_status"]
+          risk_level: Database["public"]["Enums"]["risk_level"] | null
+          fraud_check_id: string | null
+          customer_name: string
+          customer_phone: string
+          customer_email: string | null
+          shipping_address: string
+          shipping_area: string | null
+          shipping_city: string | null
+          shipping_district: string
+          shipping_postal_code: string | null
+          delivery_zone_id: string | null
+          delivery_method: string
+          subtotal: number
+          coupon_id: string | null
+          coupon_code: string | null
+          coupon_discount: number
+          manual_discount: number
+          discount_total: number
+          delivery_charge: number
+          delivery_discount: number
+          return_charge: number
+          total_amount: number
+          cost_total: number
+          advance_required: number
+          advance_type: Database["public"]["Enums"]["advance_type"]
+          advance_due_at: string | null
+          amount_paid: number
+          amount_refunded: number
+          cod_amount: number
+          advance_resolution: Database["public"]["Enums"]["advance_resolution"] | null
+          customer_note: string | null
+          cancel_reason: string | null
+          idempotency_key: string | null
+          utm_source: string | null
+          utm_medium: string | null
+          utm_campaign: string | null
+          confirmed_at: string | null
+          shipped_at: string | null
+          delivered_at: string | null
+          cancelled_at: string | null
+          returned_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
+        }
       }
       admin_duplicate_order: {
         Args: {
@@ -3138,6 +3405,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       admin_fraud_queue: {
@@ -3148,6 +3423,80 @@ export type Database = {
           p_offset?: number
         }
         Returns: Json
+      }
+      admin_fulfillment_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_merge_orders: {
+        Args: {
+          p_order_id: string
+          p_into_order_id: string
+        }
+        Returns: {
+          id: string
+          order_number: string
+          customer_id: string
+          auth_user_id: string | null
+          source: Database["public"]["Enums"]["order_source"]
+          status: Database["public"]["Enums"]["order_status"]
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: Database["public"]["Enums"]["payment_status"]
+          fraud_status: Database["public"]["Enums"]["fraud_status"]
+          risk_level: Database["public"]["Enums"]["risk_level"] | null
+          fraud_check_id: string | null
+          customer_name: string
+          customer_phone: string
+          customer_email: string | null
+          shipping_address: string
+          shipping_area: string | null
+          shipping_city: string | null
+          shipping_district: string
+          shipping_postal_code: string | null
+          delivery_zone_id: string | null
+          delivery_method: string
+          subtotal: number
+          coupon_id: string | null
+          coupon_code: string | null
+          coupon_discount: number
+          manual_discount: number
+          discount_total: number
+          delivery_charge: number
+          delivery_discount: number
+          return_charge: number
+          total_amount: number
+          cost_total: number
+          advance_required: number
+          advance_type: Database["public"]["Enums"]["advance_type"]
+          advance_due_at: string | null
+          amount_paid: number
+          amount_refunded: number
+          cod_amount: number
+          advance_resolution: Database["public"]["Enums"]["advance_resolution"] | null
+          customer_note: string | null
+          cancel_reason: string | null
+          idempotency_key: string | null
+          utm_source: string | null
+          utm_medium: string | null
+          utm_campaign: string | null
+          confirmed_at: string | null
+          shipped_at: string | null
+          delivered_at: string | null
+          cancelled_at: string | null
+          returned_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
+        }
       }
       admin_order_status_counts: {
         Args: Record<PropertyKey, never>
@@ -3311,6 +3660,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       admin_set_user_role: {
@@ -3427,6 +3784,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       admin_update_setting: {
@@ -3504,6 +3869,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       apply_shipment_status: {
@@ -3712,6 +4085,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       get_my_access: {
@@ -3727,6 +4108,13 @@ export type Database = {
       is_staff: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      mark_labels_printed: {
+        Args: {
+          p_order_ids: string[]
+          p_format?: string
+        }
+        Returns: Json
       }
       process_order_return: {
         Args: {
@@ -3789,6 +4177,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       production_action: {
@@ -4151,6 +4547,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       retry_notification: {
@@ -4185,6 +4589,14 @@ export type Database = {
           created_by: string | null
           created_at: string
         }
+      }
+      scan_parcel: {
+        Args: {
+          p_code: string
+          p_action: string
+          p_courier_id?: string
+        }
+        Returns: Json
       }
       setting_numeric: {
         Args: {
@@ -4326,6 +4738,14 @@ export type Database = {
           created_at: string
           updated_at: string
           fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
         }
       }
       update_my_profile: {

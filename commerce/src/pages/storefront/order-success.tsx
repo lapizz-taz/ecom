@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, Clock } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Layers } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ErrorState, LoadingState } from '@/components/common/states'
@@ -31,6 +31,7 @@ export default function OrderSuccessPage() {
   const [params] = useSearchParams()
   const orderNumber = params.get('order') ?? ''
   const paymentResult = params.get('payment')
+  const merged = params.get('merged') === '1'
   const [phone, setPhone] = useState(() => storedPhone(orderNumber))
   const [phoneInput, setPhoneInput] = useState('')
 
@@ -75,6 +76,12 @@ export default function OrderSuccessPage() {
         <h1 className="text-2xl font-semibold">{needsPayment ? 'Almost done!' : 'Thank you for your order!'}</h1>
         <p className="mt-1 text-muted-foreground">Order <strong>{o.order_number}</strong> · we'll keep you updated by SMS.</p>
       </div>
+      {merged && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+          <Layers className="size-5 shrink-0" />
+          <span>You ordered again a moment ago, so we added these items to the same order — <strong>one parcel, one delivery charge</strong>.</span>
+        </div>
+      )}
       {banner && <div className={`mb-6 flex items-center gap-3 rounded-lg p-4 text-sm ${banner.tone}`}>{banner.icon}{banner.text}</div>}
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">

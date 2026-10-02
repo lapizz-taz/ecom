@@ -1,6 +1,7 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { env } from '../env.ts'
 import { HttpError } from '../http.ts'
-import { ManualCourierProvider, SteadfastProvider } from './providers.ts'
+import { ManualCourierProvider, PathaoProvider, RedxProvider, SteadfastProvider } from './providers.ts'
 import type { CourierProvider } from './types.ts'
 
 export interface CourierRow {
@@ -11,25 +12,80 @@ export interface CourierRow {
   tracking_url_template: string | null
 }
 
+export type CourierCredentials = Record<string, string | boolean | number | null | undefined>
+
+/** Fields each courier needs to connect, in the order the admin form shows them. */
+export const COURIER_FIELDS: Record<string, string[]> = {
+  steadfast: ['api_key', 'secret_key'],
+  pathao: ['client_id', 'client_secret', 'username', 'password', 'store_id'],
+  redx: ['access_token'],
+}
+
+export const COURIER_TRACKING: Record<string, string> = {
+  steadfast: 'https://steadfast.com.bd/t/{tracking}',
+  pathao: 'https://merchant.pathao.com/tracking?consignment_id={tracking}',
+  redx: 'https://redx.com.bd/track-parcel/?trackingId={tracking}',
+}
+
+const text = (v: unknown) => (v === undefined || v === null ? '' : String(v).trim())
+
+export function missingCredentialFields(provider: string, creds: CourierCredentials): string[] {
+  return (COURIER_FIELDS[provider] ?? []).filter((f) => !text(creds[f]))
+}
+
+/** Masked hint shown in the admin ("••••3f9a"); never the secret itself. */
+export function credentialHint(provider: string, creds: CourierCredentials): string {
+  const main = text(creds[COURIER_FIELDS[provider]?.[0] ?? ''])
+  return main ? `••••${main.slice(-4)}` : '••••'
+}
+
+/** Builds a provider from explicit credentials (used to test before saving). */
+export function buildCourierProvider(provider: string, creds: CourierCredentials, trackingTemplate?: string | null): CourierProvider {
+  const sandbox = creds.sandbox === true || creds.sandbox === 'true'
+  switch (provider) {
+    case 'steadfast':
+      return new SteadfastProvider({
+        apiKey: text(creds.api_key), secretKey: text(creds.secret_key),
+        baseUrl: text(creds.base_url) || env('STEADFAST_BASE_URL'), trackingTemplate,
+      })
+    case 'pathao':
+      return new PathaoProvider({
+        clientId: text(creds.client_id), clientSecret: text(creds.client_secret), username: text(creds.username),
+        password: text(creds.password), storeId: text(creds.store_id), sandbox, trackingTemplate,
+      })
+    case 'redx':
+      return new RedxProvider({ accessToken: text(creds.access_token), sandbox, trackingTemplate })
+    default:
+      return new ManualCourierProvider(trackingTemplate ?? null)
+  }
+}
+
+/** Credentials from function secrets (older setups and local development). */
+function envCredentials(provider: string): CourierCredentials | null {
+  const creds: CourierCredentials = provider === 'steadfast'
+    ? { api_key: env('STEADFAST_API_KEY'), secret_key: env('STEADFAST_SECRET_KEY') }
+    : provider === 'pathao'
+      ? { client_id: env('PATHAO_CLIENT_ID'), client_secret: env('PATHAO_CLIENT_SECRET'), username: env('PATHAO_USERNAME'),
+          password: env('PATHAO_PASSWORD'), store_id: env('PATHAO_STORE_ID'), sandbox: env('PATHAO_SANDBOX') === 'true' }
+      : provider === 'redx'
+        ? { access_token: env('REDX_ACCESS_TOKEN'), sandbox: env('REDX_SANDBOX') === 'true' }
+        : {}
+  return COURIER_FIELDS[provider] && missingCredentialFields(provider, creds).length === 0 ? creds : null
+}
+
 /**
- * CourierService factory. Credentials are per provider code, from secrets:
- *   steadfast → STEADFAST_API_KEY, STEADFAST_SECRET_KEY
- * Add a provider by implementing CourierProvider and registering it here.
+ * CourierService factory. Credentials come from Vault (saved from the admin
+ * "Connect courier" form through the service role) or function secrets.
  */
-export function courierProvider(courier: CourierRow): CourierProvider {
-  if (!courier.api_enabled || courier.provider === 'manual') {
+export async function courierProviderFor(admin: SupabaseClient, courier: CourierRow): Promise<CourierProvider> {
+  if (!courier.api_enabled || courier.provider === 'manual' || !COURIER_FIELDS[courier.provider]) {
     return new ManualCourierProvider(courier.tracking_url_template)
   }
-  switch (courier.provider) {
-    case 'steadfast': {
-      const apiKey = env('STEADFAST_API_KEY')
-      const secretKey = env('STEADFAST_SECRET_KEY')
-      if (!apiKey || !secretKey) {
-        throw new HttpError(503, 'Steadfast API keys are not configured (STEADFAST_API_KEY / STEADFAST_SECRET_KEY)', 'PROVIDER_NOT_CONFIGURED')
-      }
-      return new SteadfastProvider({ apiKey, secretKey, baseUrl: env('STEADFAST_BASE_URL'), trackingTemplate: courier.tracking_url_template })
-    }
-    default:
-      return new ManualCourierProvider(courier.tracking_url_template)
+  const { data, error } = await admin.rpc('courier_credentials_get', { p_courier_id: courier.id })
+  if (error) console.error('Could not load courier credentials', error)
+  const creds = (data as CourierCredentials | null) ?? envCredentials(courier.provider)
+  if (!creds || missingCredentialFields(courier.provider, creds).length) {
+    throw new HttpError(503, `${courier.name} is not connected. Connect it under Couriers.`, 'PROVIDER_NOT_CONFIGURED')
   }
+  return buildCourierProvider(courier.provider, creds, courier.tracking_url_template)
 }

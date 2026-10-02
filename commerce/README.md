@@ -156,7 +156,8 @@ Seeded logins (password `Password123!` for all):
 | `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch` and `courier` |
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional courier-history fraud provider |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | Card / mobile-banking payments |
-| `STEADFAST_API_KEY`, `STEADFAST_SECRET_KEY`, `STEADFAST_WEBHOOK_TOKEN` | Courier booking, tracking and status webhooks |
+| `STEADFAST_WEBHOOK_TOKEN` | Steadfast status webhooks |
+| `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
 | `SMS_API_URL`, `SMS_API_KEY`, `SMS_SENDER_ID`, `SMS_SUCCESS_PATTERN` | SMS notifications via an HTTP gateway |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email notifications |
@@ -192,6 +193,27 @@ the configurable thresholds, and evaluates the rules from **Settings → Fraud &
 wins (BLOCK > REVIEW > ADVANCE_REQUIRED > ALLOW) and the largest advance applies. Customers only ever see the configured
 message and the amount to pay. If no check can be recorded, the order follows `on_provider_error` (default: manual review),
 never silent approval.
+
+**Delivery success check (phone check at checkout).** As soon as the customer types a valid phone number, the checkout
+runs the fraud check and the delivery-success policy (Settings → Fraud & advance → *Delivery success check*): the share of
+the customer's past parcels that were actually received (store history plus the courier-history API) puts them in a tier —
+Good, Medium, Low, New or Check failed — and each tier maps to cash on delivery, an advance, manual review or a block.
+The default advance is a fixed ৳55, paid with bKash / Nagad *Send Money* right on the checkout page (sender number + TrxID);
+it counts only after staff verify it. Customers see only what to do, never their rate. The tier is also available to
+custom rules as `receive_rate_tier` / `receive_rate` / `parcel_count`.
+
+**Repeat and duplicate orders.** A second checkout from the same phone and address within the merge window (default
+3 minutes) is added to the first order — one parcel, one delivery charge — unless the merged order would need a stricter
+risk decision, a coupon is involved, or the label was already printed. Other look-alike orders (same phone, or same address
+in the same district, within 24 hours) are flagged *Possible duplicate*; staff merge them (items and stock reservations
+move, the duplicate is cancelled without notifying the customer) or dismiss the warning. Every merge is kept in
+`order_merges`.
+
+**Labels and scanning.** Shipping labels (4×6 in, 3×4 in or four per A4 sheet) carry a Code 128 barcode of the order number
+and, when booked, the courier tracking number. Printing records first print, reprints and who printed in the order history;
+printed orders show *Printed* everywhere and reprints ask first. The scanner page (USB / Bluetooth scanner or phone camera)
+marks parcels Ready to ship, Shipped (optionally assigning the courier) or Returned (restocked), refuses unconfirmed,
+cancelled or still-in-production parcels, and writes every scan — including failures — to `parcel_scans`.
 
 **Payments.** Online payments are confirmed only after the provider's validation API agrees; webhooks and redirects are
 idempotent. Manual bKash/Nagad transfers wait for a staff member to verify the transaction ID.
