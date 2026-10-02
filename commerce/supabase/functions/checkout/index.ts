@@ -8,7 +8,7 @@
 //           Prices, discounts and delivery come from the database. A bKash /
 //           Nagad advance sent at checkout is recorded for staff verification.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { FraudDetectionService, type FraudSettings, providersFromSettings } from '../_shared/fraud/service.ts'
+import { FraudDetectionService, type FraudSettings, loadFraudProviders } from '../_shared/fraud/service.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { parse, placeOrderSchema, quoteSchema } from '../_shared/schemas.ts'
 import { adminClient, getSettings, optionalUser, rpc } from '../_shared/supabase.ts'
@@ -23,7 +23,7 @@ async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Reco
   if (settings.enabled === false) return null
   const cached = await rpc<FraudCheckRow | null>(admin, 'recent_fraud_check', { p_phone: phone })
   if (cached?.id) return cached.id
-  const payload = await new FraudDetectionService(providersFromSettings(settings)).check(
+  const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check(
     { phone, district: context.district as string | undefined, orderValue: context.order_value as number | undefined },
     { context },
   )

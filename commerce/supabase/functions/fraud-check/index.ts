@@ -1,24 +1,91 @@
-// Staff: run a fresh fraud check for an order or phone number and optionally
-// apply the decision. Requires fraud.review; the database re-checks it.
+// Staff fraud tools:
+//   check                      — run a fresh check for an order or phone (fraud.review),
+//                                optionally applying the decision
+//   connect_courier_history    — test the courier-history API key with a real
+//                                lookup, then save it in Vault (settings.manage)
+//   test_courier_history       — look up a number with the saved key
+//   disconnect_courier_history — remove the key and stop using the service
+// Keys are only ever handled here, with the service role; they never go back
+// to a browser.
 import { z } from 'zod'
-import { FraudDetectionService, type FraudSettings, providersFromSettings } from '../_shared/fraud/service.ts'
+import { CourierHistoryProvider, type CourierHistorySummary } from '../_shared/fraud/courier-history.ts'
+import {
+  COURIER_HISTORY_SECRET, type FraudSecrets, FraudDetectionService, type FraudSettings, loadFraudProviders,
+} from '../_shared/fraud/service.ts'
+import { env } from '../_shared/env.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
-import { getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
 
-const schema = z.object({
-  order_id: z.uuid().optional(),
-  phone: phoneSchema.optional(),
-  apply: z.boolean().default(false),
-}).refine((v) => v.order_id || v.phone, 'order_id or phone is required')
+const schema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('check'),
+    order_id: z.uuid().optional(),
+    phone: phoneSchema.optional(),
+    apply: z.boolean().default(false),
+  }).refine((v) => v.order_id || v.phone, 'order_id or phone is required'),
+  z.object({
+    action: z.literal('connect_courier_history'),
+    api_key: z.string().trim().min(6, 'Enter the API key').max(200),
+    base_url: z.union([z.url({ protocol: /^https$/, error: 'Use an https:// address' }), z.literal('')]).optional(),
+    test_phone: phoneSchema,
+  }),
+  z.object({ action: z.literal('test_courier_history'), test_phone: phoneSchema }),
+  z.object({ action: z.literal('disconnect_courier_history') }),
+])
+
+const PERMISSION: Record<string, string> = {
+  check: 'fraud.review',
+  connect_courier_history: 'settings.manage',
+  test_courier_history: 'settings.manage',
+  disconnect_courier_history: 'settings.manage',
+}
 
 const REVIEWABLE = ['PENDING', 'FRAUD_CHECK', 'FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'CONFIRMATION_REQUIRED']
+
+async function lookup(secret: NonNullable<FraudSecrets['courierHistory']>, phone: string, settings: FraudSettings): Promise<CourierHistorySummary> {
+  if (!secret.api_key) throw new HttpError(422, 'Connect the courier history service first', 'NOT_CONNECTED')
+  try {
+    return await new CourierHistoryProvider({
+      apiKey: secret.api_key,
+      baseUrl: secret.base_url || env('COURIER_HISTORY_URL'),
+      timeoutMs: Math.max(settings.courier_history?.timeout_ms ?? 0, 10_000),
+    }).lookup(phone)
+  } catch (error) {
+    throw new HttpError(422, `Could not check the number: ${(error as Error).message}`, 'LOOKUP_FAILED')
+  }
+}
 
 Deno.serve(
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
-    const staff = await requireStaff(req, 'fraud.review')
-    const input = parse(schema, await readJson(req))
+    const body = await readJson<Record<string, unknown>>(req)
+    const input = parse(schema, { action: 'check', ...body })
+    const staff = await requireStaff(req, PERMISSION[input.action])
+    const admin = adminClient()
+    const settings = await getSettings<FraudSettings>(admin, 'fraud')
+
+    if (input.action === 'connect_courier_history') {
+      const secret = { api_key: input.api_key, ...(input.base_url ? { base_url: input.base_url } : {}) }
+      const result = await lookup(secret, input.test_phone, settings)
+      const hint = `••••${input.api_key.slice(-4)}`
+      await rpc(admin, 'integration_secret_store', { p_key: COURIER_HISTORY_SECRET, p_value: secret, p_hint: hint, p_actor: staff.user.id })
+      const providers = await rpc<string[]>(admin, 'fraud_set_provider', { p_provider: 'courier_history', p_enabled: true })
+      return json(req, { ok: true, hint, providers, result })
+    }
+
+    if (input.action === 'test_courier_history') {
+      const { data } = await admin.rpc('integration_secret_get', { p_key: COURIER_HISTORY_SECRET })
+      const saved = (data as FraudSecrets['courierHistory']) ?? (env('COURIER_HISTORY_API_KEY') ? { api_key: env('COURIER_HISTORY_API_KEY') } : null)
+      if (!saved?.api_key) throw new HttpError(422, 'Connect the courier history service first', 'NOT_CONNECTED')
+      return json(req, { ok: true, result: await lookup(saved, input.test_phone, settings) })
+    }
+
+    if (input.action === 'disconnect_courier_history') {
+      await rpc(admin, 'integration_secret_clear', { p_key: COURIER_HISTORY_SECRET, p_actor: staff.user.id })
+      const providers = await rpc<string[]>(admin, 'fraud_set_provider', { p_provider: 'courier_history', p_enabled: false })
+      return json(req, { ok: true, providers })
+    }
 
     let phone = input.phone ?? ''
     let context: Record<string, unknown> = {}
@@ -44,8 +111,7 @@ Deno.serve(
       }
     }
 
-    const settings = await getSettings<FraudSettings>(staff.client, 'fraud')
-    const payload = await new FraudDetectionService(providersFromSettings(settings)).check(
+    const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check(
       { phone, district: context.district as string | undefined, orderValue: context.order_value as number | undefined },
       { orderId: input.order_id, context },
     )

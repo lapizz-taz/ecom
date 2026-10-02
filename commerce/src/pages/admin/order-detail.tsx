@@ -20,6 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { CourierHistoryTable, courierHistoryOf } from '@/features/fraud/courier-history'
 import {
   AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, RecordPaymentDialog, RefundDialog, RetainAdvanceDialog,
   ReturnDialog, ShipmentStatusDialog,
@@ -506,6 +507,12 @@ export default function OrderDetailPage() {
                       <Row label="Cancel rate" value={formatPercent(fc.cancellation_rate)} />
                       <Row label="Fail rate" value={formatPercent(fc.failed_delivery_rate)} />
                     </dl>
+                    {courierHistoryOf(fc.provider_response) && (
+                      <div className="border-t pt-3">
+                        <p className="mb-2 text-xs text-muted-foreground">Courier history</p>
+                        <CourierHistoryTable result={courierHistoryOf(fc.provider_response)!} />
+                      </div>
+                    )}
                     {Array.isArray(fc.matched_rules) && fc.matched_rules.length > 0 && (
                       <div>
                         <p className="mb-1 text-xs text-muted-foreground">Matched rules</p>

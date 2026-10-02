@@ -1,4 +1,5 @@
 import { asJson } from '@/lib/json'
+import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 import type { Json, TablesInsert } from '@/types/database'
 
@@ -76,3 +77,41 @@ export async function retryNotification(id: string) {
 }
 
 export type { Json }
+
+// ---------------------------------------------------------------------------
+// Courier-history check (key saved in Vault by the fraud-check function)
+// ---------------------------------------------------------------------------
+export interface CourierHistoryResult {
+  couriers: Array<{ courier: string; orders: number; cancelled: number; delivered: number }>
+  total: number
+  delivered: number
+  cancelled: number
+  success_ratio: number | null
+  name_on_record: string | null
+}
+
+export interface IntegrationStatus {
+  connected: boolean
+  hint: string | null
+  connected_at: string
+  connected_by_name: string | null
+}
+
+export async function integrationStatus(): Promise<Record<string, IntegrationStatus>> {
+  const { data, error } = await supabase.rpc('admin_integration_status')
+  if (error) throw error
+  return (data ?? {}) as unknown as Record<string, IntegrationStatus>
+}
+
+export function connectCourierHistory(input: { api_key: string; base_url?: string; test_phone: string }) {
+  return invokeFunction<{ ok: boolean; hint: string; providers: string[]; result: CourierHistoryResult }>(
+    'fraud-check', { action: 'connect_courier_history', ...input })
+}
+
+export function testCourierHistory(testPhone: string) {
+  return invokeFunction<{ ok: boolean; result: CourierHistoryResult }>('fraud-check', { action: 'test_courier_history', test_phone: testPhone })
+}
+
+export function disconnectCourierHistory() {
+  return invokeFunction<{ ok: boolean; providers: string[] }>('fraud-check', { action: 'disconnect_courier_history' })
+}

@@ -154,7 +154,8 @@ Seeded logins (password `Password123!` for all):
 | --- | --- |
 | `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects |
 | `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch` and `courier` |
-| `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional courier-history fraud provider |
+| `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
+| `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | Card / mobile-banking payments |
 | `STEADFAST_WEBHOOK_TOKEN` | Steadfast status webhooks |
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
@@ -201,6 +202,14 @@ Good, Medium, Low, New or Check failed — and each tier maps to cash on deliver
 The default advance is a fixed ৳55, paid with bKash / Nagad *Send Money* right on the checkout page (sender number + TrxID);
 it counts only after staff verify it. Customers see only what to do, never their rate. The tier is also available to
 custom rules as `receive_rate_tier` / `receive_rate` / `parcel_count`.
+
+**Courier history check.** With a key connected, the phone check also asks the courier fraud-check service (the one behind
+the [`fraud_checker`](https://github.com/Almas-Ali/fraud_checker) library) how many parcels each courier — Pathao,
+Steadfast, RedX, Paperfly — carried for the number and how many were cancelled at the door. Those counts are merged with the
+store's own history (the larger count wins) before the tier is worked out. Staff see the per-courier table on each order;
+customers never do. A lookup times out after 5 seconds; a failed lookup counts as *Check failed* (default: advance) for
+numbers with no history of their own and is retried after 2 minutes, while a successful one is reused for
+`cache_minutes`.
 
 **Repeat and duplicate orders.** A second checkout from the same phone and address within the merge window (default
 3 minutes) is added to the first order — one parcel, one delivery charge — unless the merged order would need a stricter

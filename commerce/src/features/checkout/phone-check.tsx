@@ -1,47 +1,47 @@
-import { CircleCheck, Clock, Loader2, ShieldAlert, Wallet } from 'lucide-react'
+import { CircleCheck, Loader2, PhoneCall, ShieldAlert, Wallet } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Money } from '@/components/common/money'
 import { cn } from '@/lib/utils'
-import type { PaymentRequirement } from '@/types/domain'
+import type { PaymentMethod, PaymentRequirement } from '@/types/domain'
+
+type CheckState = 'checking' | 'cod' | 'advance' | 'review' | 'blocked' | 'checked'
+
+/** What the server decided for this number, from the customer's point of view. */
+export function phoneCheckState(checking: boolean, requirement: PaymentRequirement | null | undefined, method: PaymentMethod): CheckState {
+  if (checking || !requirement) return 'checking'
+  if (requirement.mode === 'BLOCKED') return 'blocked'
+  if (requirement.mode === 'REVIEW') return 'review'
+  // The customer chose to pay online: nothing to say about cash on delivery.
+  if (method !== 'COD') return 'checked'
+  return requirement.mode === 'COD' ? 'cod' : 'advance'
+}
+
+/** Small icon inside the phone field. */
+export function PhoneCheckIcon({ state }: { state: CheckState | null }) {
+  if (!state) return null
+  const cls = 'pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2'
+  if (state === 'checking') return <Loader2 className={cn(cls, 'animate-spin text-muted-foreground')} aria-hidden />
+  if (state === 'cod' || state === 'checked') return <CircleCheck className={cn(cls, 'text-emerald-600')} aria-hidden />
+  if (state === 'advance') return <Wallet className={cn(cls, 'text-amber-600')} aria-hidden />
+  if (state === 'review') return <PhoneCall className={cn(cls, 'text-sky-600')} aria-hidden />
+  return <ShieldAlert className={cn(cls, 'text-red-600')} aria-hidden />
+}
 
 /**
- * Result of the server-side delivery check for the number the customer typed.
- * Shows only what the customer has to do — never a score or delivery rate.
+ * One line under the phone field. Shows only what the customer has to do —
+ * never a score, a delivery rate or courier history.
  */
-export function PhoneCheckStatus({ checking, requirement, phoneValid }: {
-  checking: boolean
-  requirement: PaymentRequirement | null | undefined
-  phoneValid: boolean
-}) {
-  if (!phoneValid) return null
-  if (checking || !requirement) {
-    return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
-        <Loader2 className="size-4 animate-spin" /> Checking delivery options for this number…
-      </p>
-    )
+export function PhoneCheckStatus({ state, requirement }: { state: CheckState | null; requirement: PaymentRequirement | null | undefined }) {
+  if (!state) return null
+  const lines: Record<CheckState, { cls: string; text: ReactNode }> = {
+    checking: { cls: 'text-muted-foreground', text: 'Checking delivery options for this number…' },
+    cod: { cls: 'text-emerald-700', text: 'Cash on delivery available' },
+    checked: { cls: 'text-emerald-700', text: 'Number confirmed' },
+    advance: { cls: 'text-amber-800', text: <>Pay <Money value={requirement?.amount ?? 0} /> delivery charge in advance to confirm</> },
+    review: { cls: 'text-sky-800', text: "We'll call you to confirm this order" },
+    blocked: { cls: 'text-red-700', text: 'Please call us to place this order' },
   }
-  const tone = {
-    COD: { icon: CircleCheck, cls: 'border-emerald-200 bg-emerald-50 text-emerald-900', title: 'Cash on delivery available', body: 'Pay when your order arrives.' },
-    ADVANCE: { icon: Wallet, cls: 'border-amber-200 bg-amber-50 text-amber-950', title: 'Small advance needed', body: null },
-    FULL: { icon: Wallet, cls: 'border-amber-200 bg-amber-50 text-amber-950', title: 'Payment needed', body: null },
-    REVIEW: { icon: Clock, cls: 'border-sky-200 bg-sky-50 text-sky-950', title: 'We will call to confirm', body: requirement.message },
-    BLOCKED: { icon: ShieldAlert, cls: 'border-red-200 bg-red-50 text-red-900', title: 'Online order unavailable', body: requirement.message },
-  }[requirement.mode]
-  const Icon = tone.icon
   return (
-    <div className={cn('flex items-start gap-3 rounded-xl border px-3.5 py-3 text-sm', tone.cls)} role="status" aria-live="polite">
-      <Icon className="mt-0.5 size-4 shrink-0" />
-      <div className="min-w-0">
-        <p className="font-medium">{tone.title}</p>
-        <p className="mt-0.5 opacity-90">
-          {tone.body ?? (
-            <>
-              Pay <strong><Money value={requirement.amount} /></strong> now with bKash or Nagad
-              {requirement.remaining_cod !== undefined && requirement.remaining_cod > 0 && <>, and <Money value={requirement.remaining_cod} /> when it arrives</>}.
-            </>
-          )}
-        </p>
-      </div>
-    </div>
+    <p className={cn('text-xs font-medium', lines[state].cls)} role="status" aria-live="polite">{lines[state].text}</p>
   )
 }

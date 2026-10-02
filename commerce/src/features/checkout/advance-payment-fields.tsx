@@ -1,5 +1,5 @@
 import { Check, Copy } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
 import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
@@ -26,7 +26,9 @@ const WALLET: Record<WalletChannel, { name: string; cls: string }> = {
  * enters their wallet number and the transaction ID from the SMS. The order is
  * confirmed only after staff match it against the statement.
  */
-export function AdvancePaymentFields({ amount, accounts, value, onChange, errors }: {
+export function AdvancePaymentFields({ title, note, amount, accounts, value, onChange, errors }: {
+  title: string
+  note?: ReactNode
   amount: number
   accounts: PaymentAccount[]
   value: AdvancePaymentValues
@@ -45,9 +47,12 @@ export function AdvancePaymentFields({ amount, accounts, value, onChange, errors
 
   if (wallets.length === 0) return null
   return (
-    <div className="space-y-4 rounded-xl border bg-card p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="font-medium">Pay the advance</p>
+    <div className="space-y-4 rounded-xl bg-muted/50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium">{title}</p>
+          {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
+        </div>
         <p className="text-xl font-semibold tabular-nums"><Money value={amount} /></p>
       </div>
 
@@ -55,7 +60,7 @@ export function AdvancePaymentFields({ amount, accounts, value, onChange, errors
         {wallets.map((c) => (
           <button key={c} type="button" role="radio" aria-checked={value.channel === c} data-active={value.channel === c}
             onClick={() => onChange({ ...value, channel: c })}
-            className={cn('rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted', WALLET[c].cls)}>
+            className={cn('rounded-lg border bg-card px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted', WALLET[c].cls)}>
             {WALLET[c].name}
           </button>
         ))}
@@ -64,10 +69,10 @@ export function AdvancePaymentFields({ amount, accounts, value, onChange, errors
       {account && (
         <ol className="space-y-3 text-sm">
           <li className="flex gap-3">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">1</span>
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-card text-xs font-semibold">1</span>
             <div className="min-w-0 flex-1">
               <p>Open {WALLET[value.channel].name} and <strong>Send Money</strong> <Money value={amount} /> to</p>
-              <div className="mt-1.5 flex items-center justify-between rounded-lg bg-muted px-3 py-2">
+              <div className="mt-1.5 flex items-center justify-between rounded-lg border bg-card px-3 py-2">
                 <span className="font-mono text-base tracking-wide tabular-nums">{account.number}</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => copy(account.number)} aria-label="Copy number">
                   {copied ? <Check /> : <Copy />} {copied ? 'Copied' : 'Copy'}
@@ -77,14 +82,14 @@ export function AdvancePaymentFields({ amount, accounts, value, onChange, errors
             </div>
           </li>
           <li className="flex gap-3">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">2</span>
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-card text-xs font-semibold">2</span>
             <div className="grid flex-1 gap-3 sm:grid-cols-2">
               <Field label={`Your ${WALLET[value.channel].name} number`} htmlFor="adv-sender" error={errors.sender_phone}>
-                <Input id="adv-sender" inputMode="tel" placeholder="01XXXXXXXXX" value={value.sender_phone}
+                <Input id="adv-sender" className="bg-card" inputMode="tel" placeholder="01XXXXXXXXX" value={value.sender_phone}
                   onChange={(e) => onChange({ ...value, sender_phone: e.target.value })} aria-invalid={!!errors.sender_phone} />
               </Field>
               <Field label="Transaction ID (TrxID)" htmlFor="adv-trx" error={errors.transaction_id} hint="From the payment SMS">
-                <Input id="adv-trx" className="font-mono uppercase" placeholder="e.g. 9JK4L2M8NP" value={value.transaction_id}
+                <Input id="adv-trx" className="bg-card font-mono uppercase" placeholder="e.g. 9JK4L2M8NP" value={value.transaction_id}
                   onChange={(e) => onChange({ ...value, transaction_id: e.target.value.toUpperCase().replace(/\s/g, '') })}
                   aria-invalid={!!errors.transaction_id} />
               </Field>

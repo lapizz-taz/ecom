@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, CircleCheck, PlugZap, Pencil, Plus, Search, Trash2, Unplug } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
-import { EmptyState, LoadingState } from '@/components/common/states'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
+import { EmptyState, LoadingState, Spinner } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,8 +16,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { CourierHistoryTable } from '@/features/fraud/courier-history'
+import { useStoreConfig } from '@/hooks/use-store-config'
+import { formatDateTime } from '@/lib/format'
 import { ADVANCE_TYPE, FRAUD_DECISION } from '@/lib/status'
-import { deleteFraudRule, type FraudRule, listFraudRules, saveFraudRule, toggleFraudRule } from '@/services/settings'
+import {
+  connectCourierHistory, type CourierHistoryResult, deleteFraudRule, disconnectCourierHistory, type FraudRule, integrationStatus,
+  listFraudRules, saveFraudRule, testCourierHistory, toggleFraudRule,
+} from '@/services/settings'
 import type { Enums } from '@/types/database'
 import { ADVANCE_OPTIONS } from './payment-settings'
 import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, TextareaSetting, TextSetting, useSettingDraft } from './setting-form'
@@ -24,10 +31,142 @@ import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, TextareaSetti
 export function FraudSettings() {
   return (
     <div className="grid gap-4">
+      <CourierHistorySettings />
       <ReceiveRateSettings />
       <FraudGeneral />
       <FraudRules />
     </div>
+  )
+}
+
+const COURIER_HISTORY = 'fraud.courier_history'
+
+/**
+ * Courier-history lookup (Pathao, Steadfast, RedX, Paperfly) behind the phone
+ * check. The API key is tested, then saved encrypted on the server.
+ */
+function CourierHistorySettings() {
+  const { can } = useAuth()
+  const { data: config } = useStoreConfig()
+  const queryClient = useQueryClient()
+  const status = useQuery({ queryKey: ['integration-status'], queryFn: integrationStatus })
+  const info = status.data?.[COURIER_HISTORY]
+  const connected = !!info?.connected
+  const canManage = can('settings.manage')
+  const [connectOpen, setConnectOpen] = useState(false)
+  const [confirmOff, setConfirmOff] = useState(false)
+  const [phone, setPhone] = useState('')
+  const [result, setResult] = useState<CourierHistoryResult | null>(null)
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['integration-status'] })
+    void queryClient.invalidateQueries({ queryKey: ['settings'] })
+  }
+  const test = useMutation({
+    meta: { silent: true },
+    mutationFn: () => testCourierHistory(phone.trim()),
+    onSuccess: (r) => setResult(r.result),
+    onError: () => setResult(null),
+  })
+  const disconnect = useMutation({
+    mutationFn: disconnectCourierHistory,
+    onSuccess: () => { toast.success('Courier history check turned off'); setResult(null); refresh() },
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Courier history check</CardTitle>
+        <CardDescription>
+          Looks up the customer's parcels on Pathao, Steadfast, RedX and Paperfly (courier fraud-checker service) the moment they type their number at checkout.
+          The delivery success check below uses it to decide cash on delivery or advance. Customers never see these numbers.
+        </CardDescription>
+        {canManage && (
+          <CardAction>
+            <Button size="sm" variant={connected ? 'outline' : 'default'} onClick={() => setConnectOpen(true)}>
+              <PlugZap /> {connected ? 'Change key' : 'Connect'}
+            </Button>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {status.isLoading ? <LoadingState /> : (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
+            <span className={`size-2.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{connected ? 'Connected' : 'Not connected'}</p>
+              <p className="text-xs text-muted-foreground">
+                {connected
+                  ? <>API key {info?.hint} · {info?.connected_by_name ? `${info.connected_by_name}, ` : ''}{formatDateTime(info!.connected_at)}</>
+                  : 'Only your own store history is used until you connect an API key.'}
+              </p>
+            </div>
+            {connected && canManage && (
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setConfirmOff(true)}><Unplug /> Disconnect</Button>
+            )}
+          </div>
+        )}
+        {connected && canManage && (
+          <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) test.mutate() }}>
+            <div className="flex gap-2">
+              <Input aria-label="Mobile number to look up" inputMode="tel" placeholder="Look up a number, e.g. 01712345678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Button type="submit" variant="outline" disabled={!phone.trim() || test.isPending}>{test.isPending ? <Spinner /> : <Search />} Look up</Button>
+            </div>
+            {test.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{test.error.message}</p>}
+            {result && <CourierHistoryTable result={result} className="max-w-xl" />}
+          </form>
+        )}
+      </CardContent>
+      <ConnectCourierHistoryDialog open={connectOpen} onOpenChange={setConnectOpen} defaultPhone={config?.store.phone ?? ''}
+        onConnected={(r) => { setResult(r); refresh() }} />
+      <ConfirmDialog open={confirmOff} onOpenChange={setConfirmOff} title="Disconnect the courier history check?" destructive
+        description="The key is deleted from the server. The checkout falls back to your own store history." confirmLabel="Disconnect"
+        onConfirm={() => disconnect.mutateAsync()} />
+    </Card>
+  )
+}
+
+function ConnectCourierHistoryDialog({ open, onOpenChange, defaultPhone, onConnected }: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  defaultPhone: string
+  onConnected: (r: CourierHistoryResult) => void
+}) {
+  const [apiKey, setApiKey] = useState('')
+  const [testPhone, setTestPhone] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [advanced, setAdvanced] = useState(false)
+  useEffect(() => { if (open) setTestPhone((p) => p || defaultPhone) }, [open, defaultPhone])
+  const connect = useMutation({
+    meta: { silent: true },
+    mutationFn: () => connectCourierHistory({ api_key: apiKey.trim(), test_phone: testPhone.trim(), base_url: baseUrl.trim() || undefined }),
+    onSuccess: (r) => {
+      toast.success('Courier history check connected')
+      setApiKey('')
+      onConnected(r.result)
+      onOpenChange(false)
+    },
+  })
+  return (
+    <FormDialog open={open} onOpenChange={(o) => { if (!o) connect.reset(); onOpenChange(o) }} title="Connect courier history check"
+      description="We look up the test number with your key first, then store the key encrypted on the server. It is never shown again."
+      submitLabel="Test & connect" onSubmit={() => connect.mutate()} busy={connect.isPending} disabled={apiKey.trim().length < 6 || !testPhone.trim()}>
+      <Field label="API key" htmlFor="ch-key" required hint="From your courier fraud-checker account">
+        <Input id="ch-key" type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+      </Field>
+      <Field label="Test with this number" htmlFor="ch-phone" required hint="Any Bangladeshi mobile number — e.g. a regular customer">
+        <Input id="ch-phone" inputMode="tel" placeholder="01XXXXXXXXX" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
+      </Field>
+      {advanced ? (
+        <Field label="Service address" htmlFor="ch-url" hint="Leave empty for the standard service">
+          <Input id="ch-url" className="font-mono text-xs" placeholder="https://llcgteam.com/courier-fraud-checker" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        </Field>
+      ) : (
+        <button type="button" className="w-fit text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAdvanced(true)}>Use a different service address</button>
+      )}
+      {connect.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{connect.error.message}</p>}
+      {connect.isSuccess && <p className="flex items-center gap-2 text-sm text-emerald-700"><CircleCheck className="size-4" /> Connected</p>}
+    </FormDialog>
   )
 }
 
@@ -114,9 +253,13 @@ function FraudGeneral() {
           <span>Store history<span className="block text-xs text-muted-foreground">This store's own delivered / cancelled / returned orders for the phone number</span></span>
         </label>
         <label className="flex items-start gap-2 text-sm">
+          <Checkbox checked={providers.includes('courier_history')} onCheckedChange={(v) => toggleProvider('courier_history', v === true)} className="mt-0.5" />
+          <span>Courier history (Pathao, Steadfast, RedX, Paperfly)<span className="block text-xs text-muted-foreground">Turned on when you connect the courier history check above</span></span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
           <Checkbox checked={providers.includes('http')} onCheckedChange={(v) => toggleProvider('http', v === true)} className="mt-0.5" />
           <span>
-            Courier history API
+            Other courier-history API (advanced)
             <span className="block text-xs text-muted-foreground">
               A courier-ratio / fraud-check API. URL and key are Edge Function secrets (<code>FRAUD_API_URL</code> with a <code>{'{phone}'}</code> placeholder, <code>FRAUD_API_KEY</code>) — never stored in the database.
             </span>

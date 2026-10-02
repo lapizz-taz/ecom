@@ -1,4 +1,6 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { env } from '../env.ts'
+import { CourierHistoryProvider } from './courier-history.ts'
 import { HttpCourierHistoryProvider, type HttpProviderConfig, InternalHistoryProvider } from './providers.ts'
 import type { FraudCheckInput, FraudProvider, FraudProviderResult, OutcomeCounts, RecordFraudCheckPayload } from './types.ts'
 
@@ -6,14 +8,35 @@ export interface FraudSettings {
   enabled?: boolean
   providers?: string[]
   http?: { mapping?: HttpProviderConfig['mapping']; method?: 'GET' | 'POST'; timeout_ms?: number }
+  courier_history?: { timeout_ms?: number }
 }
 
-/** Builds the configured providers. Credentials come from secrets only. */
-export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch): FraudProvider[] {
+/** Keys loaded from Vault by the service role (see loadFraudProviders). */
+export interface FraudSecrets {
+  courierHistory?: { api_key?: string; base_url?: string } | null
+}
+
+/** Vault entry for the courier-history API key, saved from Settings → Fraud. */
+export const COURIER_HISTORY_SECRET = 'fraud.courier_history'
+
+/** Builds the configured providers. Credentials come from Vault or secrets only. */
+export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch, secrets: FraudSecrets = {}): FraudProvider[] {
   const names = settings.providers?.length ? settings.providers : ['internal']
   const providers: FraudProvider[] = []
   for (const name of names) {
     if (name === 'internal') providers.push(new InternalHistoryProvider())
+    if (name === 'courier_history') {
+      const apiKey = secrets.courierHistory?.api_key ?? env('COURIER_HISTORY_API_KEY')
+      if (!apiKey) {
+        console.warn('Courier history check is enabled but no API key is connected; skipping it')
+        continue
+      }
+      providers.push(new CourierHistoryProvider({
+        apiKey,
+        baseUrl: secrets.courierHistory?.base_url || env('COURIER_HISTORY_URL'),
+        timeoutMs: settings.courier_history?.timeout_ms,
+      }, fetchFn))
+    }
     if (name === 'http') {
       const urlTemplate = env('FRAUD_API_URL')
       if (!urlTemplate) {
@@ -37,6 +60,17 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
     }
   }
   return providers.length ? providers : [new InternalHistoryProvider()]
+}
+
+/** Providers for a check, with the courier-history key read from Vault. */
+export async function loadFraudProviders(admin: SupabaseClient, settings: FraudSettings, fetchFn: typeof fetch = fetch): Promise<FraudProvider[]> {
+  let courierHistory: FraudSecrets['courierHistory'] = null
+  if (settings.providers?.includes('courier_history')) {
+    const { data, error } = await admin.rpc('integration_secret_get', { p_key: COURIER_HISTORY_SECRET })
+    if (error) console.error('Could not load the courier history key', error.message)
+    courierHistory = (data as FraudSecrets['courierHistory']) ?? null
+  }
+  return providersFromSettings(settings, fetchFn, { courierHistory })
 }
 
 function maxDefined(values: Array<number | undefined>): number | undefined {

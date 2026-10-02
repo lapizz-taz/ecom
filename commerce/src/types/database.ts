@@ -920,6 +920,33 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_credentials: {
+        Row: {
+          key: string
+          secret_id: string | null
+          hint: string | null
+          connected_by: string | null
+          connected_at: string
+          updated_at: string
+        }
+        Insert: {
+          key: string
+          secret_id?: string | null
+          hint?: string | null
+          connected_by?: string | null
+          connected_at?: string
+          updated_at?: string
+        }
+        Update: {
+          key?: string
+          secret_id?: string | null
+          hint?: string | null
+          connected_by?: string | null
+          connected_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       inventory: {
         Row: {
           variant_id: string
@@ -3425,6 +3452,10 @@ export type Database = {
         Returns: Json
       }
       admin_fulfillment_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_integration_status: {
         Args: Record<PropertyKey, never>
         Returns: Json
       }

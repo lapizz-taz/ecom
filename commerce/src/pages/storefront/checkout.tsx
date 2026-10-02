@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Info, Lock, ShieldAlert } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Banknote, ChevronDown, Info, Lock, PhoneCall, ShieldAlert, ShieldCheck, Smartphone, Truck } from 'lucide-react'
 import { toast } from 'sonner'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { z } from 'zod'
@@ -10,7 +10,6 @@ import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -19,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { cartLines, useCart } from '@/features/cart/cart-store'
 import { type AdvancePaymentValues, AdvancePaymentFields, validateAdvancePayment } from '@/features/checkout/advance-payment-fields'
-import { PhoneCheckStatus } from '@/features/checkout/phone-check'
+import { PhoneCheckIcon, PhoneCheckStatus, phoneCheckState } from '@/features/checkout/phone-check'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { errorCode, toUserMessage } from '@/lib/errors'
@@ -37,9 +36,7 @@ function buildSchema(phonePattern: string) {
     email: z.union([z.literal(''), z.email('Enter a valid email')]),
     address: z.string().trim().min(5, 'Enter your full address (house, road, area)').max(300),
     area: z.string().trim().max(80),
-    city: z.string().trim().max(80),
     district: z.string().min(2, 'Choose your district'),
-    postal_code: z.string().trim().max(12),
     delivery_method: z.string().min(1),
     payment_method: z.enum(['COD', 'ADVANCE', 'FULL_PAYMENT']),
     customer_note: z.string().max(500),
@@ -49,12 +46,26 @@ type CheckoutValues = z.infer<ReturnType<typeof buildSchema>>
 
 export const LAST_ORDER_KEY = 'last_order'
 
+function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border bg-card p-5 shadow-xs sm:p-6" aria-labelledby={`step-${step}`}>
+      <h2 id={`step-${step}`} className="mb-5 flex items-center gap-2.5 text-base font-semibold">
+        <span className="flex size-6 items-center justify-center rounded-full bg-foreground text-xs text-background">{step}</span>
+        {title}
+      </h2>
+      {children}
+    </section>
+  )
+}
+
 export default function CheckoutPage() {
   const { data: config } = useStoreConfig()
   const { user } = useAuth()
   const navigate = useNavigate()
   const { items, couponCode, setCoupon, clear } = useCart()
   const [couponInput, setCouponInput] = useState(couponCode)
+  const [couponOpen, setCouponOpen] = useState(Boolean(couponCode))
+  const [extrasOpen, setExtrasOpen] = useState(false)
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
   const [advance, setAdvance] = useState<AdvancePaymentValues>({ channel: 'BKASH', sender_phone: '', transaction_id: '' })
   const [advanceErrors, setAdvanceErrors] = useState<Partial<Record<keyof AdvancePaymentValues, string>>>({})
@@ -62,12 +73,17 @@ export default function CheckoutPage() {
 
   const paymentOptions = useMemo(() => {
     const p = config?.payments
-    const hasPaymentProvider = (p?.providers.length ?? 0) > 0
+    const providers = p?.providers ?? []
+    const codEnabled = p?.cod_enabled !== false
     return [
-      p?.cod_enabled !== false && { value: 'COD' as const, label: 'Cash on delivery', hint: 'Pay when your order arrives' },
-      p?.advance_enabled && hasPaymentProvider && { value: 'ADVANCE' as const, label: 'Pay delivery charge now', hint: 'Rest on delivery' },
-      p?.full_payment_enabled && hasPaymentProvider && { value: 'FULL_PAYMENT' as const, label: 'Pay in full now', hint: 'bKash, Nagad or card' },
-    ].filter(Boolean) as Array<{ value: PaymentMethod; label: string; hint: string }>
+      codEnabled && { value: 'COD' as const, label: 'Cash on delivery', hint: 'Pay when your parcel arrives', icon: Banknote },
+      p?.full_payment_enabled && providers.length > 0 && {
+        value: 'FULL_PAYMENT' as const, label: 'Pay now',
+        hint: providers.some((x) => x.type === 'redirect') ? 'bKash, Nagad or card' : 'bKash or Nagad', icon: Smartphone,
+      },
+      // Stores without cash on delivery can still take part payment up front.
+      !codEnabled && p?.advance_enabled && providers.length > 0 && { value: 'ADVANCE' as const, label: 'Pay delivery charge now', hint: 'Rest on delivery', icon: Truck },
+    ].filter(Boolean) as Array<{ value: PaymentMethod; label: string; hint: string; icon: typeof Banknote }>
   }, [config])
 
   const form = useForm<CheckoutValues>({
@@ -76,7 +92,7 @@ export default function CheckoutPage() {
       full_name: (user?.user_metadata?.full_name as string) ?? '',
       phone: (user?.user_metadata?.phone as string) ?? '',
       email: user?.email ?? '',
-      address: '', area: '', city: '', district: '', postal_code: '',
+      address: '', area: '', district: '',
       delivery_method: 'standard',
       payment_method: 'COD',
       customer_note: '',
@@ -84,6 +100,7 @@ export default function CheckoutPage() {
   })
   const watched = useWatch({ control: form.control })
   const phoneValid = Boolean(watched.phone && config && isValidPhone(watched.phone, config.phone_pattern))
+  const method = (watched.payment_method ?? 'COD') as PaymentMethod
   const quoteInput = useDebounce({
     items: cartLines(items),
     district: watched.district || null,
@@ -91,7 +108,7 @@ export default function CheckoutPage() {
     delivery_method: watched.delivery_method ?? 'standard',
     coupon_code: couponCode || null,
     phone: phoneValid ? normalizePhone(watched.phone ?? '') : null,
-    payment_method: (watched.payment_method ?? 'COD') as PaymentMethod,
+    payment_method: method,
   }, 400)
 
   useEffect(() => {
@@ -109,7 +126,8 @@ export default function CheckoutPage() {
     queryKey: ['checkout-quote', quoteInput],
     enabled: quoteInput.items.length > 0,
     placeholderData: keepPreviousData,
-    queryFn: () => checkoutQuote(quoteInput),
+    // Remember which number the answer is for, so editing the address doesn't re-check it.
+    queryFn: async () => ({ ...(await checkoutQuote(quoteInput)), phone: quoteInput.phone }),
     retry: false,
   })
 
@@ -118,7 +136,7 @@ export default function CheckoutPage() {
     meta: { silent: true },
     mutationFn: ({ values, advancePayment }: { values: CheckoutValues; advancePayment: AdvancePaymentValues | null }) => placeOrder({
       customer: { full_name: values.full_name, phone: normalizePhone(values.phone), email: values.email || null },
-      shipping: { address: values.address, area: values.area || null, city: values.city || null, district: values.district, postal_code: values.postal_code || null },
+      shipping: { address: values.address, area: values.area || null, city: null, district: values.district, postal_code: null },
       items: cartLines(items),
       delivery_method: values.delivery_method,
       payment_method: values.payment_method,
@@ -146,12 +164,17 @@ export default function CheckoutPage() {
   if (!items.length && !place.isSuccess && !placed.current) return <Navigate to="/cart" replace />
 
   const q = quote.data?.quote
-  const requirement = quote.data?.payment_requirement
+  // Only use a decision made for the number currently typed.
+  const currentPhone = phoneValid ? normalizePhone(watched.phone ?? '') : null
+  const requirement = currentPhone && quote.data?.phone === currentPhone ? quote.data.payment_requirement : null
+  const checkingPhone = phoneValid && !requirement && !(quote.error && !quote.isFetching)
+  const checkState = phoneValid ? phoneCheckState(checkingPhone, requirement, method) : null
   const blocked = requirement?.mode === 'BLOCKED'
-  const checkingPhone = phoneValid && (quote.isFetching || !quoteInput.phone)
   const manual = config?.payments.providers.find((p) => p.type === 'manual')
   const walletAccounts = (manual?.accounts ?? []).filter((a) => ['BKASH', 'NAGAD', 'ROCKET'].includes(a.channel) && a.number)
-  const payNow = requirement && (requirement.mode === 'ADVANCE' || requirement.mode === 'FULL') ? requirement.amount : 0
+  const payNow = !checkingPhone && requirement && (requirement.mode === 'ADVANCE' || requirement.mode === 'FULL') ? requirement.amount : 0
+  // The risk check asked for an advance although the customer chose cash on delivery.
+  const advanceRequired = method === 'COD' && payNow > 0
   // Collect the bKash / Nagad payment right here when the store takes Send Money.
   const collectAtCheckout = payNow > 0 && walletAccounts.length > 0
   const walletChannel = walletAccounts.some((a) => a.channel === advance.channel) ? advance.channel
@@ -173,58 +196,65 @@ export default function CheckoutPage() {
   const stockErrors = q?.stock_errors ?? []
   const districts = config?.delivery.districts ?? []
   const methods = config?.delivery.methods ?? [{ code: 'standard', name: 'Standard delivery', extra_charge: 0 }]
+  const total = Number(q?.total ?? 0)
+  const delivery = Number(q?.delivery_charge ?? 0) - Number(q?.delivery_discount ?? 0)
+  const itemCount = items.reduce((s, i) => s + i.quantity, 0)
 
   const submitError = place.error ? toUserMessage(place.error) : null
   const submitCode = place.error ? errorCode(place.error) : null
+  const canSubmit = !place.isPending && !blocked && stockErrors.length === 0 && !checkingPhone
+  const buttonContent = place.isPending || checkingPhone
+    ? <><Spinner /> {checkingPhone ? 'Checking…' : 'Placing order…'}</>
+    : <><Lock /> Confirm order</>
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
-      <form onSubmit={submit} className="grid gap-8 lg:grid-cols-[1fr_380px]" noValidate>
-        <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Contact</CardTitle></CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <Field label="Full name" htmlFor="full_name" error={form.formState.errors.full_name?.message} required className="sm:col-span-2">
-                <Input id="full_name" autoComplete="name" {...form.register('full_name')} aria-invalid={!!form.formState.errors.full_name} />
-              </Field>
-              <Field label="Mobile number" htmlFor="phone" error={form.formState.errors.phone?.message} required hint="We'll call or text about your delivery">
-                <Input id="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="01XXXXXXXXX" {...form.register('phone')} aria-invalid={!!form.formState.errors.phone} />
-              </Field>
-              <div className="sm:col-span-2 sm:order-last">
-                <PhoneCheckStatus checking={checkingPhone} requirement={requirement} phoneValid={phoneValid} />
-              </div>
-              <Field label="Email (optional)" htmlFor="email" error={form.formState.errors.email?.message}>
-                <Input id="email" type="email" autoComplete="email" {...form.register('email')} />
-              </Field>
-            </CardContent>
-          </Card>
+    <div className="mx-auto max-w-5xl px-4 pt-6 pb-32 lg:pb-14">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Checkout</h1>
+        <Link to="/cart" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Cart</Link>
+      </div>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Delivery address</CardTitle></CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <Field label="Address" htmlFor="address" error={form.formState.errors.address?.message} required className="sm:col-span-2">
-                <Textarea id="address" rows={2} autoComplete="street-address" placeholder="House, road, area" {...form.register('address')} aria-invalid={!!form.formState.errors.address} />
+      <form id="checkout" onSubmit={submit} className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-start lg:gap-8" noValidate>
+        <div className="space-y-5">
+          <Section step={1} title="Delivery details">
+            <div className="grid items-start gap-4 sm:grid-cols-2">
+              <Field label="Full name" htmlFor="full_name" error={form.formState.errors.full_name?.message}>
+                <Input id="full_name" autoComplete="name" className="h-11" {...form.register('full_name')} aria-invalid={!!form.formState.errors.full_name} />
               </Field>
-              <Field label="District" error={form.formState.errors.district?.message} required>
+              <div className="grid gap-1.5">
+                <Field label="Mobile number" htmlFor="phone" error={form.formState.errors.phone?.message}>
+                  <div className="relative">
+                    <Input id="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="01XXXXXXXXX" className="h-11 pr-10"
+                      {...form.register('phone')} aria-invalid={!!form.formState.errors.phone} aria-describedby="phone-check" />
+                    <PhoneCheckIcon state={checkState} />
+                  </div>
+                </Field>
+                <div id="phone-check">
+                  {checkState ? <PhoneCheckStatus state={checkState} requirement={requirement} />
+                    : !form.formState.errors.phone && <p className="text-xs text-muted-foreground">We'll call or text about your delivery</p>}
+                </div>
+              </div>
+              <Field label="Full address" htmlFor="address" error={form.formState.errors.address?.message} className="sm:col-span-2">
+                <Textarea id="address" rows={2} autoComplete="street-address" placeholder="House, road, area" className="min-h-0 resize-none"
+                  {...form.register('address')} aria-invalid={!!form.formState.errors.address} />
+              </Field>
+              <Field label="District" error={form.formState.errors.district?.message}>
                 <Controller control={form.control} name="district" render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger aria-invalid={!!form.formState.errors.district}><SelectValue placeholder="Choose district" /></SelectTrigger>
+                    <SelectTrigger className="h-11 w-full" aria-invalid={!!form.formState.errors.district}><SelectValue placeholder="Choose district" /></SelectTrigger>
                     <SelectContent className="max-h-72">{districts.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                   </Select>
                 )} />
               </Field>
               <Field label="Area / Thana" htmlFor="area">
-                <Input id="area" {...form.register('area')} />
+                <Input id="area" className="h-11" placeholder="e.g. Dhanmondi" {...form.register('area')} />
               </Field>
-              <Field label="City (optional)" htmlFor="city"><Input id="city" autoComplete="address-level2" {...form.register('city')} /></Field>
-              <Field label="Postal code (optional)" htmlFor="postal_code"><Input id="postal_code" autoComplete="postal-code" {...form.register('postal_code')} /></Field>
               {methods.length > 1 && (
-                <Field label="Delivery method" className="sm:col-span-2">
+                <Field label="Delivery" className="sm:col-span-2">
                   <Controller control={form.control} name="delivery_method" render={({ field }) => (
                     <RadioGroup value={field.value} onValueChange={field.onChange} className="grid gap-2 sm:grid-cols-2">
                       {methods.map((m) => (
-                        <Label key={m.code} className="flex cursor-pointer items-center gap-3 rounded-md border p-3 font-normal has-[[data-state=checked]]:border-foreground">
+                        <Label key={m.code} className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 font-normal has-[[data-state=checked]]:border-foreground has-[[data-state=checked]]:bg-muted/40">
                           <RadioGroupItem value={m.code} /> <span className="flex-1">{m.name}</span>
                           {Number(m.extra_charge) > 0 && <span className="text-muted-foreground">+{formatMoney(m.extra_charge)}</span>}
                         </Label>
@@ -233,105 +263,165 @@ export default function CheckoutPage() {
                   )} />
                 </Field>
               )}
-            </CardContent>
-          </Card>
+            </div>
+            {extrasOpen ? (
+              <div className="mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+                <Field label="Email (optional)" htmlFor="email" error={form.formState.errors.email?.message}>
+                  <Input id="email" type="email" autoComplete="email" className="h-11" {...form.register('email')} />
+                </Field>
+                <Field label="Note for delivery (optional)" htmlFor="customer_note">
+                  <Input id="customer_note" className="h-11" placeholder="e.g. call before coming" {...form.register('customer_note')} />
+                </Field>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setExtrasOpen(true)} className="mt-4 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                + Add email or a delivery note
+              </button>
+            )}
+          </Section>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Payment</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <Controller control={form.control} name="payment_method" render={({ field }) => (
-                <RadioGroup value={field.value} onValueChange={field.onChange} className="gap-2">
-                  {paymentOptions.map((o) => (
-                    <Label key={o.value} className="flex cursor-pointer items-center gap-3 rounded-md border p-3 font-normal has-[[data-state=checked]]:border-foreground">
-                      <RadioGroupItem value={o.value} />
-                      <span className="flex-1"><span className="block font-medium">{o.label}</span><span className="text-xs text-muted-foreground">
-                        {o.value === 'COD' && requirement?.mode === 'ADVANCE' ? `${formatMoney(requirement.amount)} advance now, the rest on delivery` : o.hint}
-                      </span></span>
-                    </Label>
-                  ))}
-                </RadioGroup>
-              )} />
-              {collectAtCheckout && (
-                <AdvancePaymentFields amount={payNow} accounts={walletAccounts} value={{ ...advance, channel: walletChannel }}
-                  onChange={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
-              )}
-              {requirement?.message && !collectAtCheckout && (
-                <div className={cn('flex gap-3 rounded-lg border p-3 text-sm',
-                  blocked ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900')} role="status">
-                  {blocked ? <ShieldAlert className="mt-0.5 size-4 shrink-0" /> : <Info className="mt-0.5 size-4 shrink-0" />}
+          <Section step={2} title="Payment">
+            {!phoneValid ? (
+              <p className="rounded-xl border border-dashed px-4 py-5 text-center text-sm text-muted-foreground">Enter your mobile number to see how you can pay.</p>
+            ) : checkingPhone ? (
+              <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-5 text-sm text-muted-foreground" role="status">
+                <Spinner /> Checking payment options…
+              </div>
+            ) : blocked ? (
+              <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
+                <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+                <div>
+                  <p className="font-medium">{requirement?.message}</p>
+                  {config?.store.phone && <p className="mt-1">Call us: <a href={`tel:${config.store.phone}`} className="font-medium underline">{config.store.phone}</a></p>}
+                </div>
+              </div>
+            ) : advanceRequired ? (
+              collectAtCheckout ? (
+                <AdvancePaymentFields title="Pay the delivery charge in advance" amount={payNow} accounts={walletAccounts}
+                  note={<>Then pay the remaining <Money value={requirement?.remaining_cod ?? Math.max(total - payNow, 0)} /> in cash when your parcel arrives.</>}
+                  value={{ ...advance, channel: walletChannel }} onChange={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
+              ) : (
+                <div className="flex gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-950" role="status">
+                  <Info className="mt-0.5 size-4 shrink-0" />
                   <div>
-                    <p className="font-medium">{requirement.message}</p>
-                    {requirement.mode === 'ADVANCE' && requirement.remaining_cod !== undefined && (
-                      <p className="mt-1">You'll pay the remaining {formatMoney(requirement.remaining_cod)} on delivery. Payment options appear after you place the order.</p>
-                    )}
+                    <p className="font-medium">{requirement?.message}</p>
+                    <p className="mt-1">You'll see how to pay after you confirm. The rest is paid on delivery.</p>
                   </div>
                 </div>
-              )}
-              <Field label="Order notes (optional)" htmlFor="customer_note">
-                <Textarea id="customer_note" rows={2} placeholder="Delivery instructions, gift message…" {...form.register('customer_note')} />
-              </Field>
-            </CardContent>
-          </Card>
+              )
+            ) : (
+              <div className="space-y-4">
+                {requirement?.mode === 'REVIEW' && (
+                  <p className="flex items-center gap-2 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-950" role="status">
+                    <PhoneCall className="size-4 shrink-0" /> We'll call you to confirm this order before it ships.
+                  </p>
+                )}
+                <Controller control={form.control} name="payment_method" render={({ field }) => (
+                  <RadioGroup value={field.value} onValueChange={field.onChange} className={cn('grid gap-2', paymentOptions.length > 1 && 'sm:grid-cols-2')}>
+                    {paymentOptions.map((o) => (
+                      <Label key={o.value} className="group flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 font-normal transition-colors has-[[data-state=checked]]:border-foreground has-[[data-state=checked]]:bg-muted/40 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50">
+                        <RadioGroupItem value={o.value} className="sr-only" />
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted"><o.icon className="size-4" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">{o.label}</span>
+                          <span className="block text-xs text-muted-foreground">{o.hint}</span>
+                        </span>
+                        <span className="size-4 shrink-0 rounded-full border-2 border-muted-foreground/30 transition-all group-has-[[data-state=checked]]:border-[5px] group-has-[[data-state=checked]]:border-foreground" aria-hidden />
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                )} />
+                {collectAtCheckout && (
+                  <AdvancePaymentFields title="Pay with bKash or Nagad" amount={payNow} accounts={walletAccounts}
+                    value={{ ...advance, channel: walletChannel }} onChange={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
+                )}
+                {payNow > 0 && !collectAtCheckout && requirement?.message && (
+                  <p className="text-sm text-muted-foreground">{requirement.message} You'll see how to pay after you confirm.</p>
+                )}
+              </div>
+            )}
+          </Section>
         </div>
 
-        <div className="lg:sticky lg:top-24 lg:h-fit">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Order summary</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <ul className="max-h-64 space-y-3 overflow-y-auto">
-                {items.map((item) => (
-                  <li key={item.variantId} className="flex items-center gap-3 text-sm">
-                    <div className="relative">
-                      <img src={imageUrl(item.image, 100)} alt="" className="size-12 rounded-md bg-muted object-cover" />
-                      <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-muted-foreground text-[10px] text-white">{item.quantity}</span>
-                    </div>
-                    <div className="min-w-0 flex-1"><p className="truncate">{item.name}</p>{item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}</div>
-                    <Money value={q?.lines.find((l) => l.variant_id === item.variantId)?.line_subtotal ?? item.price * item.quantity} />
-                  </li>
-                ))}
-              </ul>
-              <div className="flex gap-2">
-                <Input value={couponInput} onChange={(e) => setCouponInput(e.target.value.toUpperCase())} placeholder="Coupon code" aria-label="Coupon code" />
-                <Button type="button" variant="outline" onClick={() => setCoupon(couponInput)}>Apply</Button>
-              </div>
+        <aside className="lg:sticky lg:top-24">
+          <div className="rounded-2xl border bg-card p-5 shadow-xs sm:p-6">
+            <h2 className="mb-4 text-base font-semibold">Your order <span className="font-normal text-muted-foreground">· {itemCount} item{itemCount === 1 ? '' : 's'}</span></h2>
+            <ul className="max-h-60 space-y-3 overflow-y-auto">
+              {items.map((item) => (
+                <li key={item.variantId} className="flex items-center gap-3 text-sm">
+                  <div className="relative shrink-0">
+                    <img src={imageUrl(item.image, 100)} alt="" className="size-12 rounded-lg bg-muted object-cover" />
+                    <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-[10px] font-medium text-background">{item.quantity}</span>
+                  </div>
+                  <div className="min-w-0 flex-1"><p className="truncate">{item.name}</p>{item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}</div>
+                  <Money value={q?.lines.find((l) => l.variant_id === item.variantId)?.line_subtotal ?? item.price * item.quantity} />
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 border-t pt-3">
+              {couponOpen ? (
+                <div className="flex gap-2">
+                  <Input value={couponInput} onChange={(e) => setCouponInput(e.target.value.toUpperCase())} placeholder="Coupon code" aria-label="Coupon code" />
+                  <Button type="button" variant="outline" onClick={() => setCoupon(couponInput)}>Apply</Button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setCouponOpen(true)} className="flex w-full items-center justify-between text-sm text-muted-foreground hover:text-foreground">
+                  Have a coupon code? <ChevronDown className="size-4" />
+                </button>
+              )}
               {couponCode && q?.coupon && (
-                <p className={q.coupon.valid ? 'text-xs text-emerald-700' : 'text-xs text-destructive'}>
+                <p className={cn('mt-2 text-xs', q.coupon.valid ? 'text-emerald-700' : 'text-destructive')}>
                   {q.coupon.message} · <button type="button" className="underline" onClick={() => { setCoupon(''); setCouponInput('') }}>Remove</button>
                 </p>
               )}
-              <dl className="space-y-2 border-t pt-3 text-sm">
-                <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd><Money value={q?.subtotal ?? 0} /></dd></div>
-                {Number(q?.coupon_discount) > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Discount</dt><dd><Money value={-(q?.coupon_discount ?? 0)} /></dd></div>}
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Delivery{q?.delivery_zone ? ` · ${q.delivery_zone.name}` : ''}</dt>
-                  <dd>{!watched.district ? <span className="text-muted-foreground">Choose district</span>
-                    : Number(q?.delivery_charge) - Number(q?.delivery_discount) <= 0 ? 'Free' : <Money value={Number(q?.delivery_charge) - Number(q?.delivery_discount)} />}</dd>
-                </div>
-                <div className="flex justify-between border-t pt-2 text-base font-semibold"><dt>Total</dt><dd><Money value={q?.total ?? 0} /></dd></div>
-                {requirement && requirement.amount > 0 && (
-                  <>
-                    <div className="flex justify-between text-amber-800"><dt>Pay now</dt><dd><Money value={requirement.amount} /></dd></div>
-                    <div className="flex justify-between"><dt className="text-muted-foreground">Pay on delivery</dt><dd><Money value={Math.max(Number(q?.total ?? 0) - requirement.amount, 0)} /></dd></div>
-                  </>
-                )}
-                {q?.delivery_zone?.estimated_days && <p className="text-xs text-muted-foreground">Estimated delivery: {q.delivery_zone.estimated_days}</p>}
-              </dl>
-              {stockErrors.map((e) => <p key={e.variant_id} className="text-sm text-destructive">{e.message}</p>)}
-              {quote.error && <p className="text-sm text-destructive">{toUserMessage(quote.error)}</p>}
-              {submitError && (
-                <div className="flex gap-2 rounded-md bg-red-50 p-3 text-sm text-red-800" role="alert">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <span>{submitError}{submitCode === 'INSUFFICIENT_STOCK' && <> <Link to="/cart" className="underline">Update cart</Link></>}</span>
+            </div>
+
+            <dl className="mt-3 space-y-2 border-t pt-3 text-sm">
+              <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd><Money value={q?.subtotal ?? 0} /></dd></div>
+              {Number(q?.coupon_discount) > 0 && <div className="flex justify-between text-emerald-700"><dt>Discount</dt><dd><Money value={-(q?.coupon_discount ?? 0)} /></dd></div>}
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Delivery</dt>
+                <dd>{!watched.district ? <span className="text-muted-foreground">Choose district</span> : delivery <= 0 ? 'Free' : <Money value={delivery} />}</dd>
+              </div>
+              <div className="flex justify-between border-t pt-3 text-base font-semibold"><dt>Total</dt><dd><Money value={total} /></dd></div>
+              {payNow > 0 && (
+                <div className="space-y-1.5 rounded-xl bg-muted/60 p-3">
+                  <div className="flex justify-between font-medium"><dt>Pay now</dt><dd><Money value={payNow} /></dd></div>
+                  <div className="flex justify-between text-muted-foreground"><dt>On delivery</dt><dd><Money value={Math.max(total - payNow, 0)} /></dd></div>
                 </div>
               )}
-              <Button type="submit" size="lg" className="h-12 w-full rounded-xl text-base" disabled={place.isPending || blocked || stockErrors.length > 0 || checkingPhone}>
-                {place.isPending || checkingPhone ? <Spinner /> : <Lock />}
-                {checkingPhone ? 'Checking…' : collectAtCheckout ? <>Confirm order · pay {formatMoney(payNow)} now</>
-                  : requirement?.mode === 'COD' ? 'Confirm order · cash on delivery' : 'Place order'}
-              </Button>
-              {blocked && config?.store.phone && <p className="text-center text-sm">Call us: <a href={`tel:${config.store.phone}`} className="underline">{config.store.phone}</a></p>}
-            </CardContent>
-          </Card>
+              {q?.delivery_zone?.estimated_days && watched.district && (
+                <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground"><Truck className="size-3.5" /> Delivery in {q.delivery_zone.estimated_days}</p>
+              )}
+            </dl>
+
+            {stockErrors.map((e) => <p key={e.variant_id} className="mt-3 text-sm text-destructive">{e.message}</p>)}
+            {quote.error && <p className="mt-3 text-sm text-destructive">{toUserMessage(quote.error)}</p>}
+            {submitError && (
+              <div className="mt-4 flex gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-800" role="alert">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <span>{submitError}{submitCode === 'INSUFFICIENT_STOCK' && <> <Link to="/cart" className="underline">Update cart</Link></>}</span>
+              </div>
+            )}
+
+            <Button type="submit" size="lg" className="mt-5 hidden h-12 w-full rounded-xl text-base lg:flex" disabled={!canSubmit}>{buttonContent}</Button>
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+              <ShieldCheck className="size-3.5" /> Your details are only used to deliver this order
+            </p>
+          </div>
+        </aside>
+
+        {/* Phones: total and confirm button always in reach. */}
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+          {submitError && <p className="mb-2 text-xs text-destructive">{submitError}</p>}
+          <div className="mx-auto flex max-w-5xl items-center gap-4">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{payNow > 0 ? 'Pay now' : 'Total'}</p>
+              <p className="text-lg leading-tight font-semibold"><Money value={payNow > 0 ? payNow : total} /></p>
+            </div>
+            <Button type="submit" size="lg" className="h-12 flex-1 rounded-xl text-base" disabled={!canSubmit}>{buttonContent}</Button>
+          </div>
         </div>
       </form>
     </div>
