@@ -93,6 +93,80 @@ export type Database = {
           },
         ]
       }
+      checkout_leads: {
+        Row: {
+          id: string
+          visitor_id: string
+          phone: string
+          customer_name: string | null
+          address: string | null
+          district: string | null
+          area: string | null
+          items: Json
+          subtotal: number
+          total: number
+          attribution: Json | null
+          source: string | null
+          status: string
+          order_id: string | null
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          visitor_id: string
+          phone: string
+          customer_name?: string | null
+          address?: string | null
+          district?: string | null
+          area?: string | null
+          items?: Json
+          subtotal?: number
+          total?: number
+          attribution?: Json | null
+          source?: string | null
+          status?: string
+          order_id?: string | null
+          contact_count?: number
+          last_contacted_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          visitor_id?: string
+          phone?: string
+          customer_name?: string | null
+          address?: string | null
+          district?: string | null
+          area?: string | null
+          items?: Json
+          subtotal?: number
+          total?: number
+          attribution?: Json | null
+          source?: string | null
+          status?: string
+          order_id?: string | null
+          contact_count?: number
+          last_contacted_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_leads_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_messages: {
         Row: {
           id: string
@@ -1297,6 +1371,132 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      order_attributions: {
+        Row: {
+          order_id: string
+          channel: string
+          source: string
+          medium: string | null
+          is_paid: boolean | null
+          platform: Database["public"]["Enums"]["marketing_platform"] | null
+          campaign: string | null
+          adset: string | null
+          ad: string | null
+          campaign_id: string | null
+          adset_id: string | null
+          ad_id: string | null
+          click_id_type: string | null
+          click_id: string | null
+          utm_source: string | null
+          utm_medium: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_term: string | null
+          landing_page: string | null
+          referrer_host: string | null
+          first_channel: string | null
+          first_source: string | null
+          first_touch: Json | null
+          last_touch: Json | null
+          first_touch_at: string | null
+          last_touch_at: string | null
+          visitor_id: string | null
+          session_id: string | null
+          journey: Json
+          marketing_campaign_id: string | null
+          recorded_by: string
+          note: string | null
+          attributed_at: string
+        }
+        Insert: {
+          order_id: string
+          channel?: string
+          source?: string
+          medium?: string | null
+          is_paid?: boolean | null
+          platform?: Database["public"]["Enums"]["marketing_platform"] | null
+          campaign?: string | null
+          adset?: string | null
+          ad?: string | null
+          campaign_id?: string | null
+          adset_id?: string | null
+          ad_id?: string | null
+          click_id_type?: string | null
+          click_id?: string | null
+          utm_source?: string | null
+          utm_medium?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_term?: string | null
+          landing_page?: string | null
+          referrer_host?: string | null
+          first_channel?: string | null
+          first_source?: string | null
+          first_touch?: Json | null
+          last_touch?: Json | null
+          first_touch_at?: string | null
+          last_touch_at?: string | null
+          visitor_id?: string | null
+          session_id?: string | null
+          journey?: Json
+          marketing_campaign_id?: string | null
+          recorded_by?: string
+          note?: string | null
+          attributed_at?: string
+        }
+        Update: {
+          order_id?: string
+          channel?: string
+          source?: string
+          medium?: string | null
+          is_paid?: boolean | null
+          platform?: Database["public"]["Enums"]["marketing_platform"] | null
+          campaign?: string | null
+          adset?: string | null
+          ad?: string | null
+          campaign_id?: string | null
+          adset_id?: string | null
+          ad_id?: string | null
+          click_id_type?: string | null
+          click_id?: string | null
+          utm_source?: string | null
+          utm_medium?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_term?: string | null
+          landing_page?: string | null
+          referrer_host?: string | null
+          first_channel?: string | null
+          first_source?: string | null
+          first_touch?: Json | null
+          last_touch?: Json | null
+          first_touch_at?: string | null
+          last_touch_at?: string | null
+          visitor_id?: string | null
+          session_id?: string | null
+          journey?: Json
+          marketing_campaign_id?: string | null
+          recorded_by?: string
+          note?: string | null
+          attributed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_attributions_marketing_campaign_id_fkey"
+            columns: ["marketing_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_attributions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       order_items: {
         Row: {
@@ -2915,6 +3115,8 @@ export type Database = {
           utm_source: string | null
           utm_campaign: string | null
           created_at: string
+          visitor_id: string | null
+          page_path: string | null
         }
         Insert: {
           id?: number
@@ -2925,6 +3127,8 @@ export type Database = {
           utm_source?: string | null
           utm_campaign?: string | null
           created_at?: string
+          visitor_id?: string | null
+          page_path?: string | null
         }
         Update: {
           id?: number
@@ -2935,6 +3139,8 @@ export type Database = {
           utm_source?: string | null
           utm_campaign?: string | null
           created_at?: string
+          visitor_id?: string | null
+          page_path?: string | null
         }
         Relationships: []
       }
@@ -3752,6 +3958,49 @@ export type Database = {
           label_print_count: number
         }
       }
+      admin_set_order_source: {
+        Args: {
+          p_order_id: string
+          p_source: string
+          p_note?: string
+        }
+        Returns: {
+          order_id: string
+          channel: string
+          source: string
+          medium: string | null
+          is_paid: boolean | null
+          platform: Database["public"]["Enums"]["marketing_platform"] | null
+          campaign: string | null
+          adset: string | null
+          ad: string | null
+          campaign_id: string | null
+          adset_id: string | null
+          ad_id: string | null
+          click_id_type: string | null
+          click_id: string | null
+          utm_source: string | null
+          utm_medium: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_term: string | null
+          landing_page: string | null
+          referrer_host: string | null
+          first_channel: string | null
+          first_source: string | null
+          first_touch: Json | null
+          last_touch: Json | null
+          first_touch_at: string | null
+          last_touch_at: string | null
+          visitor_id: string | null
+          session_id: string | null
+          journey: Json
+          marketing_campaign_id: string | null
+          recorded_by: string
+          note: string | null
+          attributed_at: string
+        }
+      }
       admin_set_user_role: {
         Args: {
           p_user_id: string
@@ -3766,6 +4015,34 @@ export type Database = {
           role_id: string
           is_active: boolean
           last_seen_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      admin_update_checkout_lead: {
+        Args: {
+          p_id: string
+          p_status: string
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          visitor_id: string
+          phone: string
+          customer_name: string | null
+          address: string | null
+          district: string | null
+          area: string | null
+          items: Json
+          subtotal: number
+          total: number
+          attribution: Json | null
+          source: string | null
+          status: string
+          order_id: string | null
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
           created_at: string
           updated_at: string
         }
@@ -4035,6 +4312,20 @@ export type Database = {
           p_note?: string
         }
         Returns: Json
+      }
+      classify_touch: {
+        Args: {
+          p_touch: Json
+        }
+        Returns: Json
+      }
+      convert_checkout_lead: {
+        Args: {
+          p_visitor_id: string
+          p_phone: string
+          p_order_id: string
+        }
+        Returns: number
       }
       create_finance_transaction: {
         Args: {
@@ -4763,6 +5054,16 @@ export type Database = {
           p_product_id?: string
           p_utm_source?: string
           p_utm_campaign?: string
+        }
+        Returns: undefined
+      }
+      track_visit_event: {
+        Args: {
+          p_visitor_id: string
+          p_session_id: string
+          p_event_type: string
+          p_product_id?: string
+          p_page?: string
         }
         Returns: undefined
       }

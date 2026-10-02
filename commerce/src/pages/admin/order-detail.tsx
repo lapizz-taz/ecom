@@ -25,6 +25,7 @@ import {
   AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, RecordPaymentDialog, RefundDialog, RetainAdvanceDialog,
   ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
+import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, toNumber } from '@/lib/format'
 import {
   ADVANCE_TYPE, CANCELLABLE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, NEXT_ACTIONS, ORDER_STATUS, PAYMENT_CHANNEL, PAYMENT_METHOD,
@@ -131,7 +132,7 @@ export default function OrderDetailPage() {
           </div>
           <p className="text-sm text-muted-foreground">
             {formatDateTime(o.created_at)} · {o.customer_name} · {PAYMENT_METHOD[o.payment_method]}
-            {o.utm_campaign && <> · campaign <span className="font-medium">{o.utm_campaign}</span></>}
+            {o.attribution && o.attribution.channel !== 'unknown' && <> · from <span className="font-medium text-foreground">{o.attribution.source}</span>{o.attribution.campaign && <> · {o.attribution.campaign}</>}</>}
           </p>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
@@ -480,6 +481,8 @@ export default function OrderDetailPage() {
               {o.customer_note && <p className="mt-2 rounded-md bg-muted/60 p-2"><span className="font-medium">Customer note:</span> {o.customer_note}</p>}
             </CardContent>
           </Card>
+
+          <OrderSourceCard orderId={o.id} attribution={o.attribution} orderStatus={status} />
 
           <Can permission="fraud.view">
             <Card>

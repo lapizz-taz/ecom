@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { TrackingSetup } from '@/features/marketing/tracking-setup'
 import { BarsChart } from '@/features/reports/charts'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatNumber, isoDateToday, toNumber } from '@/lib/format'
@@ -91,6 +92,7 @@ export default function MarketingPage() {
           </Can>
         }
       />
+      <TrackingSetup />
       {!performance.data ? <CardsSkeleton count={4} /> : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard label="Ad spend (all time)" value={<Money value={spend} />} />

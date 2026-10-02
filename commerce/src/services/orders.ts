@@ -60,7 +60,8 @@ export async function getOrder(id: string) {
       fraud_check:fraud_checks!orders_fraud_check_fk(*),
       fraud_reviews(*),
       customer:customers(id, full_name, phone, email, segment, status, risk_level, total_orders, delivered_orders, cancelled_orders, returned_orders, failed_deliveries, total_spent),
-      delivery_zone:delivery_zones(name, charge, return_charge)`)
+      delivery_zone:delivery_zones(name, charge, return_charge),
+      attribution:order_attributions(*)`)
     .eq('id', id)
     .maybeSingle()
   if (error) throw error
@@ -275,3 +276,21 @@ export async function recentScans(limit = 50) {
   return data ?? []
 }
 export type ScanLogRow = Awaited<ReturnType<typeof recentScans>>[number]
+
+export const MANUAL_SOURCES = [
+  { value: 'MESSENGER', label: 'Messenger' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'PHONE', label: 'Phone call' },
+  { value: 'FACEBOOK_COMMENT', label: 'Facebook comment' },
+  { value: 'INSTAGRAM_DM', label: 'Instagram DM' },
+  { value: 'WALK_IN', label: 'Walk-in' },
+  { value: 'REFERRAL', label: 'Referral' },
+  { value: 'REPEAT_CUSTOMER', label: 'Repeat customer' },
+  { value: 'OTHER', label: 'Other' },
+] as const
+
+export async function setOrderSource(orderId: string, source: string, note?: string) {
+  const { data, error } = await supabase.rpc('admin_set_order_source', { p_order_id: orderId, p_source: source, p_note: note || undefined })
+  if (error) throw error
+  return data
+}

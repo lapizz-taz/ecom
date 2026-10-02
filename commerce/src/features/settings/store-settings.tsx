@@ -14,6 +14,7 @@ export function StoreSettings() {
           <TextSetting s={store} path={['tagline']} label="Tagline" />
           <TextSetting s={store} path={['email']} label="Email" />
           <TextSetting s={store} path={['phone']} label="Phone" />
+          <TextSetting s={store} path={['whatsapp']} label="WhatsApp number" hint="Customers can confirm their order here with one tap after checkout" />
           <TextSetting s={store} path={['address']} label="Address" className="sm:col-span-2" />
           <TextSetting s={store} path={['website_url']} label="Website" placeholder="https://" />
           <TextSetting s={store} path={['logo_url']} label="Logo URL" nullable placeholder="https://" />

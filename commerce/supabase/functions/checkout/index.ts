@@ -87,6 +87,25 @@ Deno.serve(
         },
         p_payment_method: input.payment_method,
       })
+      // Keep what the customer typed so staff can follow up if they don't order.
+      if (input.phone && input.attribution?.visitor_id) {
+        await rpc(admin, 'capture_checkout_lead', {
+          p_input: {
+            visitor_id: input.attribution.visitor_id,
+            phone: input.phone,
+            customer_name: input.lead?.customer_name ?? null,
+            address: input.lead?.address ?? null,
+            district: input.district ?? null,
+            area: input.area ?? null,
+            items: (quote.lines as Array<Record<string, unknown>> | undefined)?.map((l) => ({
+              variant_id: l.variant_id, quantity: l.quantity, name: l.product_name, variant: l.variant_title, price: l.unit_price,
+            })) ?? input.items,
+            subtotal: quote.subtotal,
+            total: quote.total,
+            attribution: input.attribution,
+          },
+        }).catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not save the incomplete checkout', error }))
+      }
       return json(req, { quote, payment_requirement: input.phone ? requirement : null })
     }
 
@@ -123,11 +142,25 @@ Deno.serve(
           coupon_code: input.coupon_code || null,
           customer_note: input.customer_note ?? null,
           idempotency_key: input.idempotency_key,
-          utm: input.utm ?? null,
+          utm: input.utm ?? (input.attribution?.last_touch?.params ? {
+            source: input.attribution.last_touch.params.utm_source ?? null,
+            medium: input.attribution.last_touch.params.utm_medium ?? null,
+            campaign: input.attribution.last_touch.params.utm_campaign ?? null,
+          } : null),
           auth_user_id: user?.id ?? null,
         },
         p_fraud_check_id: checkId,
       })
+      // Where the sale came from (kept with the original order when merged).
+      if (!order.merged) {
+        await rpc(admin, 'record_order_attribution', { p_order_id: order.id, p_attribution: input.attribution ?? {} })
+          .catch((error) => logEvent({ level: 'ERROR', category: 'FUNCTION', source: 'checkout', message: 'Could not record the order source', error, context: { order_number: order.order_number } }))
+      }
+      if (input.attribution?.visitor_id || input.customer.phone) {
+        await rpc(admin, 'convert_checkout_lead', {
+          p_visitor_id: input.attribution?.visitor_id ?? '', p_phone: input.customer.phone, p_order_id: order.id,
+        }).catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not close the incomplete checkout', error }))
+      }
       // Advance sent with bKash / Nagad at checkout: record it for verification.
       // It only counts once staff match it against the statement.
       let payment: Record<string, unknown> | null = null

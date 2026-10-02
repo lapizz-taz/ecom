@@ -10,7 +10,8 @@ import { cartCount, useCart } from '@/features/cart/cart-store'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
-import { captureUtm, getCategories, trackEvent } from '@/services/storefront'
+import { captureNavigation } from '@/lib/attribution'
+import { getCategories, trackEvent } from '@/services/storefront'
 
 function useCategories() {
   return useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
@@ -29,7 +30,7 @@ export default function StorefrontLayout() {
   const [q, setQ] = useState('')
 
   useEffect(() => {
-    captureUtm(location.search)
+    captureNavigation(location)
     trackEvent('PAGE_VIEW')
   }, [location.pathname, location.search])
 

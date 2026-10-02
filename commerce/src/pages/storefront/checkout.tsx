@@ -21,12 +21,13 @@ import { type AdvancePaymentValues, AdvancePaymentFields, validateAdvancePayment
 import { PhoneCheckIcon, PhoneCheckStatus, phoneCheckState } from '@/features/checkout/phone-check'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
+import { currentAttribution } from '@/lib/attribution'
 import { errorCode, toUserMessage } from '@/lib/errors'
 import { formatMoney } from '@/lib/format'
 import { isValidPhone, normalizePhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
-import { checkoutQuote, placeOrder, storedUtm, trackEvent } from '@/services/storefront'
+import { checkoutQuote, placeOrder, trackEvent } from '@/services/storefront'
 import type { PaymentMethod } from '@/types/domain'
 
 function buildSchema(phonePattern: string) {
@@ -70,6 +71,8 @@ export default function CheckoutPage() {
   const [advance, setAdvance] = useState<AdvancePaymentValues>({ channel: 'BKASH', sender_phone: '', transaction_id: '' })
   const [advanceErrors, setAdvanceErrors] = useState<Partial<Record<keyof AdvancePaymentValues, string>>>({})
   const schema = useMemo(() => buildSchema(config?.phone_pattern ?? '^[0-9]{8,15}$'), [config?.phone_pattern])
+  // Where this visitor came from (ad, search, direct…), sent with the quote and the order.
+  const [attribution] = useState(() => currentAttribution())
 
   const paymentOptions = useMemo(() => {
     const p = config?.payments
@@ -109,10 +112,15 @@ export default function CheckoutPage() {
     coupon_code: couponCode || null,
     phone: phoneValid ? normalizePhone(watched.phone ?? '') : null,
     payment_method: method,
-  }, 400)
+    lead: phoneValid ? { customer_name: watched.full_name?.trim() || null, address: watched.address?.trim() || null } : null,
+    attribution: phoneValid ? attribution : null,
+  }, 600)
 
+  const trackedCheckout = useRef(false)
   useEffect(() => {
-    if (items.length) trackEvent('BEGIN_CHECKOUT')
+    if (!items.length || trackedCheckout.current) return
+    trackedCheckout.current = true
+    trackEvent('BEGIN_CHECKOUT')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -144,7 +152,7 @@ export default function CheckoutPage() {
       customer_note: values.customer_note || null,
       idempotency_key: idempotencyKey,
       advance_payment: advancePayment ? { ...advancePayment, sender_phone: normalizePhone(advancePayment.sender_phone) } : null,
-      utm: storedUtm(),
+      attribution,
     }),
     onSuccess: ({ order, payment_error }, { values }) => {
       // Set before clearing the cart: the mutation is not "success" yet during this

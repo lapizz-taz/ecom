@@ -75,6 +75,8 @@ export interface StoreConfig {
     tagline?: string
     email?: string
     phone?: string
+    /** WhatsApp number customers can message (international or local format). */
+    whatsapp?: string
     address?: string
     website_url?: string
     logo_url?: string | null

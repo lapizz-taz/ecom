@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PaymentPanel } from '@/features/checkout/payment-panel'
 import { OrderItemsSummary, OrderTracking } from '@/features/storefront/order-views'
+import { WhatsAppConfirm } from '@/features/storefront/whatsapp-confirm'
+import { useStoreConfig } from '@/hooks/use-store-config'
 import { normalizePhone } from '@/lib/phone'
 import { trackOrder } from '@/services/storefront'
 
@@ -32,6 +34,7 @@ export default function OrderSuccessPage() {
   const orderNumber = params.get('order') ?? ''
   const paymentResult = params.get('payment')
   const merged = params.get('merged') === '1'
+  const { data: config } = useStoreConfig()
   const [phone, setPhone] = useState(() => storedPhone(orderNumber))
   const [phoneInput, setPhoneInput] = useState('')
 
@@ -75,6 +78,11 @@ export default function OrderSuccessPage() {
         <CheckCircle2 className="mx-auto mb-3 size-10 text-emerald-600" />
         <h1 className="text-2xl font-semibold">{needsPayment ? 'Almost done!' : 'Thank you for your order!'}</h1>
         <p className="mt-1 text-muted-foreground">Order <strong>{o.order_number}</strong> · we'll keep you updated by SMS.</p>
+        {!needsPayment && config?.store.whatsapp && (
+          <div className="mx-auto mt-5 max-w-sm">
+            <WhatsAppConfirm storeName={config.store.name} whatsapp={config.store.whatsapp} order={o} phone={phone} />
+          </div>
+        )}
       </div>
       {merged && (
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
@@ -93,7 +101,10 @@ export default function OrderSuccessPage() {
         </div>
         <OrderItemsSummary order={o} />
       </div>
-      <div className="mt-8 text-center"><Button asChild variant="outline"><Link to="/shop">Continue shopping</Link></Button></div>
+      <div className="mt-8 flex flex-wrap justify-center gap-2">
+        <Button asChild variant="outline"><Link to={`/track-order?order=${encodeURIComponent(o.order_number)}`}>Track order</Link></Button>
+        <Button asChild><Link to="/shop">Continue shopping</Link></Button>
+      </div>
     </div>
   )
 }

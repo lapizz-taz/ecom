@@ -16,6 +16,21 @@ export const cartItemSchema = z.object({
 
 export const paymentMethodSchema = z.enum(['COD', 'ADVANCE', 'FULL_PAYMENT'])
 
+/** One visit source as the storefront saw it (UTM tags, click ids, referrer, landing page). */
+export const touchSchema = z.object({
+  at: z.string().max(40),
+  landing: z.string().max(300),
+  referrer: z.string().max(300).nullable().optional(),
+  params: z.record(z.string().regex(/^[a-z_]{2,30}$/), z.string().max(200)).refine((p) => Object.keys(p).length <= 30, 'Too many parameters'),
+})
+
+export const attributionSchema = z.object({
+  visitor_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+  session_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().nullable(),
+  first_touch: touchSchema.nullable().optional(),
+  last_touch: touchSchema.nullable().optional(),
+})
+
 export const quoteSchema = z.object({
   action: z.literal('quote'),
   items: z.array(cartItemSchema).min(1).max(50),
@@ -25,6 +40,12 @@ export const quoteSchema = z.object({
   coupon_code: optionalText(32),
   phone: phoneSchema.optional().nullable().or(z.literal('')),
   payment_method: paymentMethodSchema.default('COD'),
+  /** What the customer has typed so far, kept as an incomplete order if they leave. */
+  lead: z.object({
+    customer_name: optionalText(100),
+    address: optionalText(300),
+  }).optional().nullable(),
+  attribution: attributionSchema.optional().nullable().catch(null),
 })
 
 export const placeOrderSchema = z.object({
@@ -61,6 +82,8 @@ export const placeOrderSchema = z.object({
     .partial()
     .optional()
     .nullable(),
+  /** Bad tracking data never blocks an order; it just isn't recorded. */
+  attribution: attributionSchema.optional().nullable().catch(null),
 })
 
 export const initiatePaymentSchema = z.object({

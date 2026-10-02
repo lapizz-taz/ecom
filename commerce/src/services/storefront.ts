@@ -1,3 +1,4 @@
+import { type Attribution, sessionId, visitorId } from '@/lib/attribution'
 import { invokeFunction } from '@/lib/functions'
 import { asJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
@@ -72,6 +73,8 @@ export interface CheckoutQuoteInput {
   coupon_code?: string | null
   phone?: string | null
   payment_method: PaymentMethod
+  lead?: { customer_name?: string | null; address?: string | null } | null
+  attribution?: Attribution | null
 }
 
 export function checkoutQuote(input: CheckoutQuoteInput) {
@@ -88,7 +91,7 @@ export interface PlaceOrderInput {
   customer_note?: string | null
   idempotency_key: string
   advance_payment?: { channel: 'BKASH' | 'NAGAD' | 'ROCKET'; sender_phone: string; transaction_id: string } | null
-  utm?: { source?: string | null; medium?: string | null; campaign?: string | null } | null
+  attribution?: Attribution | null
 }
 
 export function placeOrder(input: PlaceOrderInput) {
@@ -136,38 +139,13 @@ export async function submitContact(input: { name: string; phone?: string; email
   if (error) throw error
 }
 
-// First-party analytics (conversion rate). Fire-and-forget.
-const SESSION_KEY = 'sf_session'
-export function storefrontSessionId(): string {
-  let id = sessionStorage.getItem(SESSION_KEY)
-  if (!id) {
-    id = crypto.randomUUID().replace(/-/g, '')
-    sessionStorage.setItem(SESSION_KEY, id)
-  }
-  return id
-}
-
-const UTM_KEY = 'sf_utm'
-export function captureUtm(search: string): void {
-  const params = new URLSearchParams(search)
-  const utm = { source: params.get('utm_source'), medium: params.get('utm_medium'), campaign: params.get('utm_campaign') }
-  if (utm.source || utm.campaign) localStorage.setItem(UTM_KEY, JSON.stringify(utm))
-}
-export function storedUtm(): PlaceOrderInput['utm'] {
-  try {
-    return JSON.parse(localStorage.getItem(UTM_KEY) ?? 'null')
-  } catch {
-    return null
-  }
-}
-
+// First-party analytics (journey + conversion rate). Fire-and-forget.
 export function trackEvent(type: 'PAGE_VIEW' | 'VIEW_PRODUCT' | 'ADD_TO_CART' | 'BEGIN_CHECKOUT' | 'PURCHASE', productId?: string): void {
-  const utm = storedUtm()
-  void supabase.rpc('track_storefront_event', {
-    p_session_id: storefrontSessionId(),
+  void supabase.rpc('track_visit_event', {
+    p_visitor_id: visitorId(),
+    p_session_id: sessionId(),
     p_event_type: type,
     p_product_id: productId,
-    p_utm_source: utm?.source ?? undefined,
-    p_utm_campaign: utm?.campaign ?? undefined,
-  }).then(() => undefined)
+    p_page: `${window.location.pathname}${window.location.search}`.slice(0, 300),
+  }).then(({ error }) => { if (error && import.meta.env.DEV) console.warn('track_visit_event', error.message) })
 }
