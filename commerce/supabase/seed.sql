@@ -241,6 +241,10 @@ as $$
 declare
   v_s text;
 begin
+  -- Web orders wait for approval; the seeded ones that move on were approved first.
+  if (select status from public.orders where id = p_order) = 'CONFIRMATION_REQUIRED' and p_statuses[1] <> 'CONFIRMED' then
+    perform public._transition_order(p_order, 'CONFIRMED', 'Approved after a confirmation call');
+  end if;
   foreach v_s in array p_statuses loop
     perform public._transition_order(p_order, v_s::public.order_status, null);
   end loop;
@@ -341,9 +345,20 @@ begin
   perform pg_temp.ship(o, 'Steadfast', 'SF1000012');
   perform public._transition_order(o, 'DELIVERED', null);
 
-  -- 13. Confirmed this morning
+  -- 13. Approved this morning after a call
   o := pg_temp.seed_order('Arif Chowdhury', '01811000012', 'Gazipur',
     jsonb_build_array(jsonb_build_object('variant_id', pg_temp.variant('linen-resort-shirt', 1), 'quantity', 2)), 0);
+  perform pg_temp.go(o, array['CONFIRMED']);
+
+  -- 13b. Web orders still waiting for a call
+  o := pg_temp.seed_order('Nadia Rahman', '01711000017', 'Dhaka',
+    jsonb_build_array(jsonb_build_object('variant_id', pg_temp.variant('canvas-tote-bag'), 'quantity', 1)), 0);
+  update public.orders set review_status = 'NO_RESPONSE', contact_attempts = 2, last_contact_at = now() - interval '1 hour'
+  where id = o;
+  o := pg_temp.seed_order('Sabbir Hossain', '01811000018', 'Chattogram',
+    jsonb_build_array(jsonb_build_object('variant_id', pg_temp.variant('linen-resort-shirt', 2), 'quantity', 1)), 0);
+  update public.orders set review_status = 'FOLLOW_UP', follow_up_at = now() + interval '3 hours',
+    review_note = 'Asked to call back after work' where id = o;
 
   -- 14. Paid in full online, delivered
   o := pg_temp.seed_order('Lima Begum', '01911000013', 'Dhaka',

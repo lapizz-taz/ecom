@@ -1,3 +1,4 @@
+import { CallStatusesSettings } from './call-statuses'
 import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, TextSetting, useSettingDraft } from './setting-form'
 
 export function OperationsSettings() {
@@ -11,14 +12,16 @@ export function OperationsSettings() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <SettingCard setting={orders} title="Orders">
-        <SwitchSetting s={orders} path={['require_confirmation']} label="Confirm every order by phone" hint="Orders that pass the fraud check wait in “Needs confirmation” instead of being confirmed automatically" />
-        <SwitchSetting s={orders} path={['require_confirmation_after_advance']} label="Confirm by phone even after an advance is paid" />
+        <SwitchSetting s={orders} path={['require_confirmation']} label="Approve web orders by hand" hint="On: orders that pass the risk check wait in Web Orders until someone calls and approves them. Off: they are approved automatically." />
+        <SwitchSetting s={orders} path={['require_confirmation_after_advance']} label="Still call after an advance is paid" />
         <SwitchSetting s={orders} path={['require_courier_before_ship']} label="Require a courier before marking shipped" />
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberSetting s={orders} path={['advance_payment_timeout_hours']} label="Advance payment window (hours)" min={1} hint="Unpaid advance orders are cancelled after this" />
           <NumberSetting s={orders} path={['max_quantity_per_item']} label="Max quantity per item" min={1} />
         </div>
       </SettingCard>
+
+      <CallStatusesSettings />
 
       <SettingCard setting={orders} title="Repeat & duplicate orders"
         description="Customers often check out twice in a row. Repeat checkouts are merged into one parcel; other look-alike orders are flagged for you to merge or dismiss.">

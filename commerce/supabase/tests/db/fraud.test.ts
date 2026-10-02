@@ -107,16 +107,16 @@ describe('fraud rule decisions', () => {
 })
 
 describe('checkout with risk-based advance payment', () => {
-  it('confirms a low-risk COD order and keeps COD', () =>
+  it('passes a low-risk COD order, keeps COD and waits for approval', () =>
     inTx(async (db) => {
       const p = await createProduct(db, { price: 1000 })
       const order = await placeOrder(db, { phone: '01911000001', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
-      expect(order.status).toBe('CONFIRMED')
+      expect(order.status).toBe('CONFIRMATION_REQUIRED')
       expect(order.requirement.mode).toBe('COD')
       expect(num(order.advance_required)).toBe(0)
       const history = await db.query(`select from_status, to_status from public.order_status_history
                                       where order_id = $1 and event = 'STATUS_CHANGED' order by created_at`, [order.id])
-      expect(history.rows.map((r) => r.to_status)).toEqual(['FRAUD_CHECK', 'CONFIRMED'])
+      expect(history.rows.map((r) => r.to_status)).toEqual(['FRAUD_CHECK', 'CONFIRMATION_REQUIRED'])
     }))
 
   it('requires an advance from a high-risk customer and tells them the amount, not the score', () =>
@@ -189,7 +189,7 @@ describe('checkout with risk-based advance payment', () => {
       await asService(db)
       const allowed = await value<Record<string, unknown>>(db, `select public.place_storefront_order($1, null)`,
         [JSON.stringify(orderPayload({ phone: '01911000008', items: [{ variantId: p.variantIds[0], quantity: 1 }] }))])
-      expect(allowed.status).toBe('CONFIRMED')
+      expect(allowed.status).toBe('CONFIRMATION_REQUIRED')
     }))
 
   it('honours full online payment as the payment requirement', () =>

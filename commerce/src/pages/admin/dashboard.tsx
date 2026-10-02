@@ -66,9 +66,9 @@ export default function DashboardPage() {
               {[
                 { n: actions.fraud_review, label: 'Fraud review', to: '/admin/orders/fraud', icon: <ShieldAlert className="size-4 text-red-600" /> },
                 { n: actions.advance_pending, label: 'Awaiting advance', to: '/admin/orders/fraud?tab=advance', icon: <Wallet className="size-4 text-amber-600" /> },
-                { n: actions.payments_to_verify, label: 'Payments to verify', to: '/admin/orders?tab=pending', icon: <CreditCard className="size-4 text-amber-600" /> },
-                { n: actions.confirmation_required, label: 'Need confirmation', to: '/admin/orders?tab=pending', icon: <ShoppingCart className="size-4" /> },
-                { n: actions.ready_to_ship, label: 'Ready to ship', to: '/admin/orders?tab=ready', icon: <Truck className="size-4" /> },
+                { n: actions.payments_to_verify, label: 'Payments to verify', to: '/admin/orders/web?tab=all', icon: <CreditCard className="size-4 text-amber-600" /> },
+                { n: actions.confirmation_required, label: 'Web orders to call', to: '/admin/orders/web', icon: <ShoppingCart className="size-4" /> },
+                { n: actions.ready_to_ship, label: 'Ready to ship', to: '/admin/orders/approved?tab=RTS', icon: <Truck className="size-4" /> },
                 { n: actions.production_overdue, label: 'Production overdue', to: '/admin/production', icon: <Factory className="size-4 text-red-600" /> },
               ].filter((a) => a.n > 0).map((a) => (
                 <Link key={a.label} to={a.to} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50">

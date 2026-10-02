@@ -167,3 +167,13 @@ export async function searchVariants(q: string, limit = 12) {
   return data ?? []
 }
 export type VariantSearchRow = Awaited<ReturnType<typeof searchVariants>>[number]
+
+export async function variantsByIds(ids: string[]): Promise<VariantSearchRow[]> {
+  if (!ids.length) return []
+  const { data, error } = await supabase
+    .from('inventory_overview')
+    .select('variant_id, product_id, product_name, variant_title, sku, unit_price, unit_cost, available, track_inventory, product_status, variant_active')
+    .in('variant_id', ids)
+  if (error) throw error
+  return data ?? []
+}

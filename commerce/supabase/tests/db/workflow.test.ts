@@ -164,7 +164,7 @@ describe('courier shipments', () => {
       expect(tracked.shipment.tracking_url).toBe('https://t.example/TRK99')
     }))
 
-  it('marks failed deliveries and waits for staff to receive returned parcels', () =>
+  it('moves parcels the courier sends back to Return pending and waits for staff to receive them', () =>
     inTx(async (db) => {
       const p = await createProduct(db, { price: 100, stock: 4 })
       const order = await createOrder(db, { items: [{ variantId: p.variantIds[0], quantity: 1 }] })
@@ -173,7 +173,7 @@ describe('courier shipments', () => {
       const courierId = await value<string>(db, `select id from public.couriers limit 1`)
       const ship = await value<string>(db, `select id from public.assign_courier($1, $2, 'TRK5', 70)`, [order.id, courierId])
       await db.query(`select public.apply_shipment_status($1, 'RETURNED')`, [ship])
-      expect(await status(db, order.id)).toBe('FAILED_DELIVERY')
+      expect(await status(db, order.id)).toBe('RETURNING')
       expect(await value(db, `select on_hand from public.inventory where variant_id = $1`, [p.variantIds[0]])).toBe(3)
     }))
 })

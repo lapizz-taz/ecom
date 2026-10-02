@@ -2,7 +2,9 @@ import { invokeFunction } from '@/lib/functions'
 import { asJson, fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
 import type { Enums } from '@/types/database'
-import type { FraudQueueItem, FulfillmentSummary, OrderListItem, OrderStatus, Paged, Quote, ScanAction, ScanResult } from '@/types/domain'
+import type {
+  CheckoutLead, FraudQueueItem, FulfillmentSummary, OrderListItem, OrderStatus, Paged, QueueCounts, Quote, ReviewStatus, ScanAction, ScanResult,
+} from '@/types/domain'
 
 export interface OrderFilters {
   q?: string
@@ -20,6 +22,10 @@ export interface OrderFilters {
   has_due?: boolean
   duplicates?: boolean
   label?: 'printed' | 'not_printed'
+  queue?: 'web' | 'approved'
+  review_status?: string
+  stage?: string
+  follow_up_due?: boolean
 }
 
 export async function searchOrders(filters: OrderFilters, sort = 'created_at', direction: 'asc' | 'desc' = 'desc', limit = 25, offset = 0): Promise<Paged<OrderListItem>> {
@@ -291,6 +297,78 @@ export const MANUAL_SOURCES = [
 
 export async function setOrderSource(orderId: string, source: string, note?: string) {
   const { data, error } = await supabase.rpc('admin_set_order_source', { p_order_id: orderId, p_source: source, p_note: note || undefined })
+  if (error) throw error
+  return data
+}
+
+// ------------------------------------------------------------ web / approved
+
+export async function listReviewStatuses(includeInactive = false): Promise<ReviewStatus[]> {
+  let query = supabase.from('order_review_statuses').select('*').order('sort_order').order('label')
+  if (!includeInactive) query = query.eq('is_active', true)
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}
+
+export async function saveReviewStatus(input: Partial<ReviewStatus> & { label: string }) {
+  const { data, error } = await supabase.rpc('admin_save_review_status', { p: asJson(input) })
+  if (error) throw error
+  return data
+}
+
+type BatchResult = { failed: Array<{ order_id: string; order_number: string; error: string }> }
+
+export async function setWebOrderStatus(ids: string[], status: string, note?: string, followUpAt?: string | null) {
+  const { data, error } = await supabase.rpc('set_web_order_status', {
+    p_order_ids: ids, p_status: status, p_note: note || undefined, p_follow_up_at: followUpAt || undefined,
+  })
+  if (error) throw error
+  return fromJson<BatchResult & { updated: number }>(data)
+}
+
+export async function approveOrders(ids: string[], note?: string) {
+  const { data, error } = await supabase.rpc('approve_orders', { p_order_ids: ids, p_note: note || undefined })
+  if (error) throw error
+  return fromJson<BatchResult & { approved: number }>(data)
+}
+
+export async function queueCounts(): Promise<QueueCounts> {
+  const { data, error } = await supabase.rpc('admin_order_queue_counts')
+  if (error) throw error
+  return fromJson<QueueCounts>(data)
+}
+
+export async function recordPartialDelivery(orderId: string, items: Array<{ order_item_id: string; quantity: number }>, note?: string) {
+  const { data, error } = await supabase.rpc('record_partial_delivery', { p_order_id: orderId, p_items: asJson(items), p_note: note || undefined })
+  if (error) throw error
+  return data
+}
+
+export async function listCheckoutLeads(statuses: string[] = ['OPEN', 'CONTACTED'], q = '', limit = 25, offset = 0): Promise<Paged<CheckoutLead>> {
+  let query = supabase.from('checkout_leads').select('*', { count: 'exact' }).in('status', statuses)
+    .order('updated_at', { ascending: false }).range(offset, offset + limit - 1)
+  const term = q.trim().replace(/[%,()]/g, '')
+  if (term) query = query.or(`phone.ilike.%${term}%,customer_name.ilike.%${term}%`)
+  const { data, error, count } = await query
+  if (error) throw error
+  return { items: data, total: count ?? 0 }
+}
+
+export async function getCheckoutLead(id: string): Promise<CheckoutLead | null> {
+  const { data, error } = await supabase.from('checkout_leads').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function updateCheckoutLead(id: string, status: 'OPEN' | 'CONTACTED' | 'DISMISSED', note?: string) {
+  const { data, error } = await supabase.rpc('admin_update_checkout_lead', { p_id: id, p_status: status, p_note: note || undefined })
+  if (error) throw error
+  return data
+}
+
+export async function linkCheckoutLead(leadId: string, orderId: string) {
+  const { data, error } = await supabase.rpc('admin_link_checkout_lead', { p_lead_id: leadId, p_order_id: orderId })
   if (error) throw error
   return data
 }

@@ -67,7 +67,7 @@ export default function LabelsPage() {
     <div className="space-y-5">
       <style>{pageCss(activeFormat)}</style>
       <div className="no-print flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="sm" asChild><Link to="/admin/orders?tab=to_print"><ArrowLeft /> Orders</Link></Button>
+        <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/approved?print=1"><ArrowLeft /> Orders</Link></Button>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold tracking-tight">Shipping labels</h1>
           <p className="text-sm text-muted-foreground">

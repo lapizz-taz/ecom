@@ -134,9 +134,10 @@ describe('incomplete checkouts', () => {
       expect(contacted).toMatchObject({ status: 'CONTACTED', contact_count: 1 })
       expect(contacted.notes).toContain('No answer')
 
+      // Ordering with the same phone closes the lead, whichever way the order comes in.
       const o = await placeOrder(db, { phone: '01711000401', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
       await asService(db)
-      expect(await value(db, `select public.convert_checkout_lead('visitor-lead-001', '01711000401', $1)`, [o.id])).toBe(1)
+      expect(await value(db, `select public.convert_checkout_lead('visitor-lead-001', '01711000401', $1)`, [o.id])).toBe(0)
       await asSystem(db)
       expect(await one(db, `select status, order_id from public.checkout_leads where id = $1`, [id])).toEqual({ status: 'CONVERTED', order_id: o.id })
       // Right after ordering, the same visitor isn't recorded as abandoning.

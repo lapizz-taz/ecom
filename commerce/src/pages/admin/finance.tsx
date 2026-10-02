@@ -59,7 +59,7 @@ export default function FinanceOverviewPage() {
             <h2 className="mb-2 text-sm font-medium text-muted-foreground">Balances right now</h2>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard label="COD receivable" value={<Money value={f.cod_receivable} />} hint="delivered, not yet settled by courier" to="/admin/couriers?tab=cod" />
-              <StatCard label="Outstanding on open orders" value={<Money value={f.outstanding_amount} />} hint="still to be collected" to="/admin/orders?tab=processing" />
+              <StatCard label="Outstanding on open orders" value={<Money value={f.outstanding_amount} />} hint="still to be collected" to="/admin/orders/approved?tab=PENDING" />
               <StatCard label="Supplier payables" value={<Money value={f.supplier_payables} />} hint="owed on purchase orders" to="/admin/purchases" />
               <StatCard label="Unresolved advances" value={<Money value={f.unresolved_advances} />} hint="refund or keep" tone={toNumber(f.unresolved_advances) > 0 ? 'warning' : 'default'} icon={<Undo2 />} to="/admin/finance/refunds?tab=advances" />
             </div>

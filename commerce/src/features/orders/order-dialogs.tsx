@@ -19,7 +19,7 @@ import { formatMoney, toNumber } from '@/lib/format'
 import { PAYMENT_METHOD, SHIPMENT_STATUS } from '@/lib/status'
 import { listCouriers } from '@/services/couriers'
 import {
-  applyShipmentStatus, assignCourier, bookWithCourierApi, type OrderDetail, processReturn, recordPayment, refundOrder,
+  applyShipmentStatus, assignCourier, bookWithCourierApi, type OrderDetail, processReturn, recordPartialDelivery, recordPayment, refundOrder,
   retainAdvance, setOrderItems, updateOrder, updateShipment,
 } from '@/services/orders'
 import type { Enums } from '@/types/database'
@@ -326,11 +326,13 @@ export function EditItemsDialog({ order, open, onOpenChange, onDone }: DialogPro
 export function ReturnDialog({ order, open, onOpenChange, onDone }: DialogProps) {
   const [rows, setRows] = useState<Record<string, { restock: number; damaged: number }>>({})
   const [note, setNote] = useState('')
+  // On a partial delivery only the items the customer refused come back.
+  const partial = order.status === 'PARTIALLY_DELIVERED'
   useEffect(() => {
     if (open) {
-      setRows(Object.fromEntries(order.order_items.map((i) => [i.id, { restock: i.quantity - i.returned_quantity - i.damaged_quantity, damaged: 0 }])))
+      setRows(Object.fromEntries(order.order_items.map((i) => [i.id, { restock: partial ? 0 : i.quantity - i.returned_quantity - i.damaged_quantity, damaged: 0 }])))
     }
-  }, [open, order.order_items])
+  }, [open, order.order_items, partial])
   const save = useMutation({
     mutationFn: () => processReturn(order.id, Object.entries(rows).flatMap(([id, r]) => [
       ...(r.restock > 0 ? [{ order_item_id: id, quantity: r.restock, condition: 'RESTOCK' as const }] : []),
@@ -339,8 +341,11 @@ export function ReturnDialog({ order, open, onOpenChange, onDone }: DialogProps)
     onSuccess: () => { toast.success('Return received and stock updated'); onOpenChange(false); onDone() },
   })
   return (
-    <FormDialog open={open} onOpenChange={onOpenChange} title="Receive returned parcel" submitLabel="Complete return" wide
-      description="Good items go back to sellable stock; damaged items go to the damaged bucket."
+    <FormDialog open={open} onOpenChange={onOpenChange} title={partial ? 'Receive the items sent back' : 'Receive returned parcel'}
+      submitLabel={partial ? 'Receive items' : 'Complete return'} wide
+      description={partial ? 'Enter only the items that came back. The order stays a partial delivery.'
+        : 'Good items go back to sellable stock; damaged items go to the damaged bucket.'}
+      disabled={partial && !Object.values(rows).some((r) => r.restock + r.damaged > 0)}
       onSubmit={() => save.mutate()} busy={save.isPending}>
       <ul className="divide-y rounded-md border text-sm">
         {order.order_items.map((i) => {
@@ -411,6 +416,49 @@ export function FraudDecisionDialog({ order, open, onOpenChange, onConfirm, acti
       {action === 'REJECT' && (
         <label className="flex items-center gap-2 text-sm"><Switch checked={block} onCheckedChange={setBlock} /> Also block this customer from ordering online</label>
       )}
+    </FormDialog>
+  )
+}
+
+/** The customer kept part of the order: record what came back so only the rest is collected. */
+export function PartialDeliveryDialog({ order, open, onOpenChange, onDone }: DialogProps) {
+  const [back, setBack] = useState<Record<string, number>>({})
+  const [note, setNote] = useState('')
+  useEffect(() => {
+    if (open) {
+      setBack({})
+      setNote('')
+    }
+  }, [open])
+  const units = Object.values(back).reduce((a, b) => a + b, 0)
+  const all = order.order_items.reduce((a, i) => a + i.quantity, 0)
+  const value = order.order_items.reduce((sum, i) => sum + Math.round((toNumber(i.line_total) / i.quantity) * (back[i.id] ?? 0) * 100) / 100, 0)
+  const due = Math.max(toNumber(order.total_amount) - value - toNumber(order.amount_paid), 0)
+  const save = useMutation({
+    mutationFn: () => recordPartialDelivery(order.id, Object.entries(back).filter(([, q]) => q > 0).map(([id, q]) => ({ order_item_id: id, quantity: q })), note),
+    onSuccess: () => { toast.success('Partial delivery recorded'); onOpenChange(false); onDone() },
+  })
+  return (
+    <FormDialog open={open} onOpenChange={onOpenChange} title="Partial delivery" submitLabel="Record partial delivery" wide
+      description="Choose what the customer sent back with the courier. They pay only for what they kept."
+      disabled={units === 0 || units >= all} onSubmit={() => save.mutate()} busy={save.isPending}>
+      <ul className="divide-y rounded-md border text-sm">
+        {order.order_items.map((i) => (
+          <li key={i.id} className="flex flex-wrap items-center gap-3 p-2">
+            <div className="min-w-40 flex-1"><p className="font-medium">{i.product_name}</p><p className="text-xs text-muted-foreground">{i.variant_title ? `${i.variant_title} · ` : ''}ordered {i.quantity} · {formatMoney(i.line_total)}</p></div>
+            <label className="flex items-center gap-1.5 text-xs">Sent back
+              <Input type="number" min="0" max={i.quantity} className="h-8 w-16" value={back[i.id] ?? 0}
+                onChange={(e) => setBack((b) => ({ ...b, [i.id]: Math.min(i.quantity, Math.max(0, Math.floor(Number(e.target.value) || 0))) }))} />
+            </label>
+          </li>
+        ))}
+      </ul>
+      <dl className="grid gap-1 rounded-md bg-muted/60 p-3 text-sm">
+        <div className="flex justify-between"><dt className="text-muted-foreground">Value sent back</dt><dd className="tabular-nums">−{formatMoney(value)}</dd></div>
+        <div className="flex justify-between font-semibold"><dt>Courier should collect</dt><dd className="tabular-nums">{formatMoney(due)}</dd></div>
+      </dl>
+      {units >= all && all > 0 && <p className="text-sm text-amber-700">Everything came back — mark the parcel as coming back instead.</p>}
+      <Field label="Note" htmlFor="partial-note"><Input id="partial-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Customer kept the shirt, refused the socks" /></Field>
     </FormDialog>
   )
 }

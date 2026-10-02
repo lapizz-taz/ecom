@@ -1741,6 +1741,51 @@ export type Database = {
           },
         ]
       }
+      order_review_statuses: {
+        Row: {
+          code: string
+          label: string
+          description: string | null
+          color: string
+          closes_order: boolean
+          needs_follow_up: boolean
+          counts_contact: boolean
+          is_system: boolean
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          label: string
+          description?: string | null
+          color?: string
+          closes_order?: boolean
+          needs_follow_up?: boolean
+          counts_contact?: boolean
+          is_system?: boolean
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          label?: string
+          description?: string | null
+          color?: string
+          closes_order?: boolean
+          needs_follow_up?: boolean
+          counts_contact?: boolean
+          is_system?: boolean
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_status_history: {
         Row: {
           id: string
@@ -1870,6 +1915,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
         Insert: {
           id?: string
@@ -1934,6 +1989,16 @@ export type Database = {
           label_last_printed_at?: string | null
           label_printed_by?: string | null
           label_print_count?: number
+          review_status?: string
+          review_note?: string | null
+          follow_up_at?: string | null
+          contact_attempts?: number
+          last_contact_at?: string | null
+          review_updated_at?: string | null
+          review_updated_by?: string | null
+          approved_by?: string | null
+          partial_return_amount?: number
+          lost_at?: string | null
         }
         Update: {
           id?: string
@@ -1998,6 +2063,16 @@ export type Database = {
           label_last_printed_at?: string | null
           label_printed_by?: string | null
           label_print_count?: number
+          review_status?: string
+          review_note?: string | null
+          follow_up_at?: string | null
+          contact_attempts?: number
+          last_contact_at?: string | null
+          review_updated_at?: string | null
+          review_updated_by?: string | null
+          approved_by?: string | null
+          partial_return_amount?: number
+          lost_at?: string | null
         }
         Relationships: [
           {
@@ -2041,6 +2116,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_review_status_fkey"
+            columns: ["review_status"]
+            isOneToOne: false
+            referencedRelation: "order_review_statuses"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -3527,6 +3609,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       admin_create_production_order: {
@@ -3622,6 +3714,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       admin_duplicate_order: {
@@ -3691,6 +3793,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       admin_fraud_queue: {
@@ -3709,6 +3821,33 @@ export type Database = {
       admin_integration_status: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      admin_link_checkout_lead: {
+        Args: {
+          p_lead_id: string
+          p_order_id: string
+        }
+        Returns: {
+          id: string
+          visitor_id: string
+          phone: string
+          customer_name: string | null
+          address: string | null
+          district: string | null
+          area: string | null
+          items: Json
+          subtotal: number
+          total: number
+          attribution: Json | null
+          source: string | null
+          status: string
+          order_id: string | null
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
       }
       admin_merge_orders: {
         Args: {
@@ -3778,7 +3917,21 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
+      }
+      admin_order_queue_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       admin_order_status_counts: {
         Args: Record<PropertyKey, never>
@@ -3878,6 +4031,25 @@ export type Database = {
           updated_at: string
         }
       }
+      admin_save_review_status: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          code: string
+          label: string
+          description: string | null
+          color: string
+          closes_order: boolean
+          needs_follow_up: boolean
+          counts_contact: boolean
+          is_system: boolean
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+      }
       admin_search_orders: {
         Args: {
           p_filters?: Json
@@ -3956,6 +4128,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       admin_set_order_source: {
@@ -4151,6 +4333,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       admin_update_setting: {
@@ -4236,6 +4428,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       apply_shipment_status: {
@@ -4271,6 +4473,13 @@ export type Database = {
           created_at: string
           updated_at: string
         }
+      }
+      approve_orders: {
+        Args: {
+          p_order_ids: string[]
+          p_note?: string
+        }
+        Returns: Json
       }
       assign_courier: {
         Args: {
@@ -4466,6 +4675,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       get_my_access: {
@@ -4495,6 +4714,13 @@ export type Database = {
           p_format?: string
         }
         Returns: Json
+      }
+      order_stage: {
+        Args: {
+          p_status: Database["public"]["Enums"]["order_status"]
+          p_confirmed_at: string
+        }
+        Returns: string
       }
       process_order_return: {
         Args: {
@@ -4565,6 +4791,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       production_action: {
@@ -4728,6 +4964,87 @@ export type Database = {
           idempotency_key: string | null
           recorded_by: string | null
           created_at: string
+        }
+      }
+      record_partial_delivery: {
+        Args: {
+          p_order_id: string
+          p_items: Json
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          order_number: string
+          customer_id: string
+          auth_user_id: string | null
+          source: Database["public"]["Enums"]["order_source"]
+          status: Database["public"]["Enums"]["order_status"]
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: Database["public"]["Enums"]["payment_status"]
+          fraud_status: Database["public"]["Enums"]["fraud_status"]
+          risk_level: Database["public"]["Enums"]["risk_level"] | null
+          fraud_check_id: string | null
+          customer_name: string
+          customer_phone: string
+          customer_email: string | null
+          shipping_address: string
+          shipping_area: string | null
+          shipping_city: string | null
+          shipping_district: string
+          shipping_postal_code: string | null
+          delivery_zone_id: string | null
+          delivery_method: string
+          subtotal: number
+          coupon_id: string | null
+          coupon_code: string | null
+          coupon_discount: number
+          manual_discount: number
+          discount_total: number
+          delivery_charge: number
+          delivery_discount: number
+          return_charge: number
+          total_amount: number
+          cost_total: number
+          advance_required: number
+          advance_type: Database["public"]["Enums"]["advance_type"]
+          advance_due_at: string | null
+          amount_paid: number
+          amount_refunded: number
+          cod_amount: number
+          advance_resolution: Database["public"]["Enums"]["advance_resolution"] | null
+          customer_note: string | null
+          cancel_reason: string | null
+          idempotency_key: string | null
+          utm_source: string | null
+          utm_medium: string | null
+          utm_campaign: string | null
+          confirmed_at: string | null
+          shipped_at: string | null
+          delivered_at: string | null
+          cancelled_at: string | null
+          returned_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          fraud_decision: Database["public"]["Enums"]["fraud_decision"] | null
+          duplicate_of: string | null
+          duplicate_status: string | null
+          merged_into: string | null
+          merged_count: number
+          label_printed_at: string | null
+          label_last_printed_at: string | null
+          label_printed_by: string | null
+          label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       record_purchase_payment: {
@@ -4935,6 +5252,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       retry_notification: {
@@ -4975,6 +5302,15 @@ export type Database = {
           p_code: string
           p_action: string
           p_courier_id?: string
+        }
+        Returns: Json
+      }
+      set_web_order_status: {
+        Args: {
+          p_order_ids: string[]
+          p_status: string
+          p_note?: string
+          p_follow_up_at?: string
         }
         Returns: Json
       }
@@ -5136,6 +5472,16 @@ export type Database = {
           label_last_printed_at: string | null
           label_printed_by: string | null
           label_print_count: number
+          review_status: string
+          review_note: string | null
+          follow_up_at: string | null
+          contact_attempts: number
+          last_contact_at: string | null
+          review_updated_at: string | null
+          review_updated_by: string | null
+          approved_by: string | null
+          partial_return_amount: number
+          lost_at: string | null
         }
       }
       update_my_profile: {
@@ -5232,7 +5578,7 @@ export type Database = {
       notification_status: "QUEUED" | "SENDING" | "SENT" | "FAILED" | "SKIPPED"
       order_payment_kind: "ADVANCE" | "FULL" | "BALANCE" | "COD" | "REFUND"
       order_source: "STOREFRONT" | "ADMIN" | "IMPORT" | "API"
-      order_status: "PENDING" | "FRAUD_CHECK" | "ADVANCE_REQUIRED" | "FRAUD_REVIEW" | "CONFIRMATION_REQUIRED" | "CONFIRMED" | "PROCESSING" | "PRODUCTION" | "QUALITY_CHECK" | "PACKING" | "READY_TO_SHIP" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "RETURN_REQUESTED" | "RETURNED" | "FAILED_DELIVERY" | "REJECTED_FRAUD"
+      order_status: "PENDING" | "FRAUD_CHECK" | "ADVANCE_REQUIRED" | "FRAUD_REVIEW" | "CONFIRMATION_REQUIRED" | "CONFIRMED" | "PRE_ORDER" | "PROCESSING" | "PRODUCTION" | "QUALITY_CHECK" | "PACKING" | "READY_TO_SHIP" | "SHIPPED" | "PENDING_CANCEL" | "DELIVERED" | "PARTIALLY_DELIVERED" | "CANCELLED" | "RETURN_REQUESTED" | "RETURNING" | "RETURNED" | "FAILED_DELIVERY" | "LOST" | "REJECTED_FRAUD"
       payment_channel: "CASH" | "BKASH" | "NAGAD" | "ROCKET" | "CARD" | "BANK_TRANSFER" | "GATEWAY" | "COURIER_COD" | "OTHER"
       payment_intent_status: "PENDING" | "REQUIRES_VERIFICATION" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "EXPIRED"
       payment_method: "COD" | "ADVANCE" | "FULL_PAYMENT"
@@ -5287,7 +5633,7 @@ export const Constants = {
       notification_status: ["QUEUED", "SENDING", "SENT", "FAILED", "SKIPPED"],
       order_payment_kind: ["ADVANCE", "FULL", "BALANCE", "COD", "REFUND"],
       order_source: ["STOREFRONT", "ADMIN", "IMPORT", "API"],
-      order_status: ["PENDING", "FRAUD_CHECK", "ADVANCE_REQUIRED", "FRAUD_REVIEW", "CONFIRMATION_REQUIRED", "CONFIRMED", "PROCESSING", "PRODUCTION", "QUALITY_CHECK", "PACKING", "READY_TO_SHIP", "SHIPPED", "DELIVERED", "CANCELLED", "RETURN_REQUESTED", "RETURNED", "FAILED_DELIVERY", "REJECTED_FRAUD"],
+      order_status: ["PENDING", "FRAUD_CHECK", "ADVANCE_REQUIRED", "FRAUD_REVIEW", "CONFIRMATION_REQUIRED", "CONFIRMED", "PRE_ORDER", "PROCESSING", "PRODUCTION", "QUALITY_CHECK", "PACKING", "READY_TO_SHIP", "SHIPPED", "PENDING_CANCEL", "DELIVERED", "PARTIALLY_DELIVERED", "CANCELLED", "RETURN_REQUESTED", "RETURNING", "RETURNED", "FAILED_DELIVERY", "LOST", "REJECTED_FRAUD"],
       payment_channel: ["CASH", "BKASH", "NAGAD", "ROCKET", "CARD", "BANK_TRANSFER", "GATEWAY", "COURIER_COD", "OTHER"],
       payment_intent_status: ["PENDING", "REQUIRES_VERIFICATION", "SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"],
       payment_method: ["COD", "ADVANCE", "FULL_PAYMENT"],

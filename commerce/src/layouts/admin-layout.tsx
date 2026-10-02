@@ -42,14 +42,11 @@ const NAV: NavSection[] = [
     label: 'Operations',
     items: [
       {
-        label: 'Orders', to: '/admin/orders', icon: <ShoppingCart />, permission: 'orders.view',
+        label: 'Orders', to: '/admin/orders/web', icon: <ShoppingCart />, permission: 'orders.view',
         children: [
+          { label: 'Web orders', to: '/admin/orders/web' },
+          { label: 'Approved orders', to: '/admin/orders/approved' },
           { label: 'All orders', to: '/admin/orders' },
-          { label: 'To confirm', to: '/admin/orders?tab=pending' },
-          { label: 'Processing', to: '/admin/orders?tab=processing' },
-          { label: 'Shipped', to: '/admin/orders?tab=shipped' },
-          { label: 'Returns', to: '/admin/orders?tab=returned' },
-          { label: 'Possible duplicates', to: '/admin/orders?tab=duplicates' },
           { label: 'Fraud review', to: '/admin/orders/fraud', permission: 'fraud.view' },
         ],
       },
@@ -57,7 +54,7 @@ const NAV: NavSection[] = [
         label: 'Fulfilment', to: '/admin/scan', icon: <ScanBarcode />, permission: 'orders.fulfill',
         children: [
           { label: 'Scan parcels', to: '/admin/scan' },
-          { label: 'Labels to print', to: '/admin/orders?tab=to_print' },
+          { label: 'Labels to print', to: '/admin/orders/approved?print=1' },
         ],
       },
       { label: 'Customers', to: '/admin/customers', icon: <Users />, permission: 'customers.view' },
@@ -123,14 +120,14 @@ const NAV: NavSection[] = [
 function isActive(pathname: string, search: string, to: string): boolean {
   const [path, query] = to.split('?')
   if (query) return pathname === path && search.includes(query)
-  if (path === '/admin') return pathname === '/admin'
-  return pathname === path && !search.includes('tab=') && !search.includes('status=')
+  return pathname === path
 }
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { can } = useAuth()
   const { pathname, search } = useLocation()
   const [openGroup, setOpenGroup] = useState<string | null>(null)
+  const anyQueryActive = NAV.some((sec) => sec.items.some((it) => it.children?.some((c) => c.to.includes('?') && isActive(pathname, search, c.to))))
 
   return (
     <nav className="grid gap-5 px-3 py-2 text-sm" aria-label="Admin">
@@ -143,12 +140,12 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             {items.map((item) => {
               // A section is current when its own page (or a page under it) is open,
               // or when one of its links matches exactly, query string included.
-              const childMatch = item.children?.some((c) => c.to.includes('?') ? isActive(pathname, search, c.to)
-                : c.to !== item.to && (pathname === c.to || pathname.startsWith(`${c.to}/`))) ?? false
-              const ownedElsewhere = NAV.some((sec) => sec.items.some((other) => other !== item
-                && other.children?.some((c) => c.to.includes('?') && isActive(pathname, search, c.to))))
-              const inGroup = item.to !== '/admin' && (childMatch
-                || (!ownedElsewhere && (pathname === item.to.split('?')[0] || pathname.startsWith(`${item.to.split('?')[0]}/`))))
+              const queryMatch = item.children?.some((c) => c.to.includes('?') && isActive(pathname, search, c.to)) ?? false
+              const pathMatch = item.children?.some((c) => !c.to.includes('?') && (pathname === c.to || pathname.startsWith(`${c.to}/`))) ?? false
+              const ownedElsewhere = !queryMatch && anyQueryActive
+              const base = item.to.split('?')[0]
+              const inGroup = item.to !== '/admin' && (queryMatch
+                || (!ownedElsewhere && (pathMatch || pathname === base || pathname.startsWith(`${base}/`))))
               const expanded = item.children && (openGroup === item.label || (openGroup === null && inGroup))
               return (
                 <div key={item.label}>
@@ -177,7 +174,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                       {item.children!.filter((c) => !c.permission || can(c.permission)).map((child) => (
                         <Link key={child.to} to={child.to} onClick={onNavigate}
                           className={cn('rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted transition-colors hover:text-sidebar-foreground',
-                            isActive(pathname, search, child.to) && 'font-medium text-sidebar-foreground')}>
+                            isActive(pathname, search, child.to) && (child.to.includes('?') || !anyQueryActive) && 'font-medium text-sidebar-foreground')}>
                           {child.label}
                         </Link>
                       ))}
@@ -322,7 +319,7 @@ export default function AdminLayout() {
             )}
             {can('orders.view') && (
               <Button variant="ghost" size="icon" className="relative" aria-label="New orders"
-                onClick={() => { alerts.reset(); navigate('/admin/orders') }}>
+                onClick={() => { alerts.reset(); navigate('/admin/orders/web') }}>
                 <Bell />
                 {alerts.unseen > 0 && <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500" />}
               </Button>

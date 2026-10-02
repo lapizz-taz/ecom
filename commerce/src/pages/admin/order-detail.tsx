@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MoreHorizontal, Package, Pencil, Phone, Printer,
-  RefreshCw, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
+  ArrowLeft, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MessageCircle, MoreHorizontal, Package, PackageMinus,
+  PackageX, Pencil, Phone, PhoneCall, Printer, RefreshCw, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { Can } from '@/components/common/permission-gate'
@@ -11,35 +11,46 @@ import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Money } from '@/components/common/money'
 import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
-import { Badge } from '@/components/ui/badge'
+import { Badge, type BadgeVariant } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { CourierHistoryTable, courierHistoryOf } from '@/features/fraud/courier-history'
 import {
-  AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, RecordPaymentDialog, RefundDialog, RetainAdvanceDialog,
-  ReturnDialog, ShipmentStatusDialog,
+  AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, PartialDeliveryDialog, RecordPaymentDialog, RefundDialog,
+  RetainAdvanceDialog, ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
+import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, toNumber } from '@/lib/format'
 import {
-  ADVANCE_TYPE, CANCELLABLE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, NEXT_ACTIONS, ORDER_STATUS, PAYMENT_CHANNEL, PAYMENT_METHOD,
-  PAYMENT_STATUS, PRODUCTION_STATUS, RISK_LEVEL, SEGMENT, SHIPMENT_STATUS,
+  ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, NEEDS_REASON, NEXT_ACTIONS, ORDER_STATUS,
+  PAYMENT_CHANNEL, PAYMENT_METHOD, PAYMENT_STATUS, PRODUCTION_STATUS, RECEIVABLE, RISK_LEVEL, SEGMENT, SHIPMENT_STATUS, STAGE, stageOf,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import {
-  addOrderNote, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, mergeOrders, type OrderDetail, runFraudCheck,
-  transitionOrder, verifyManualPayment,
+  addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
+  type OrderDetail, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
 } from '@/services/orders'
 import type { OrderStatus } from '@/types/domain'
 
-type DialogName = 'payment' | 'refund' | 'retain' | 'courier' | 'shipment' | 'edit' | 'items' | 'return' | null
+type DialogName = 'payment' | 'refund' | 'retain' | 'courier' | 'shipment' | 'edit' | 'items' | 'return' | 'partial' | null
+
+const EVENT_LABEL: Record<string, string> = {
+  REVIEW_STATUS: 'Call',
+  FROM_INCOMPLETE_CHECKOUT: 'Created from an incomplete checkout',
+  PARTIAL_RECORDED: 'Partial delivery recorded',
+  PARTIAL_RETURN_RECEIVED: 'Items sent back received',
+  PARCEL_LOST: 'Parcel lost',
+  PICKED_UP_DESPITE_CANCEL: 'Picked up before the cancel',
+}
 type FraudAction = 'APPROVE' | 'REQUEST_ADVANCE' | 'REJECT'
 
 function Row({ label, value, strong, muted, className }: { label: ReactNode; value: ReactNode; strong?: boolean; muted?: boolean; className?: string }) {
@@ -73,6 +84,14 @@ export default function OrderDetailPage() {
     mutationFn: ({ to, note }: { to: OrderStatus; note: string }) => transitionOrder(id, to, note),
     onSuccess: (_d, v) => { toast.success(`Order moved to ${ORDER_STATUS[v.to].label}`); refresh() },
   })
+  const approve = useMutation({
+    mutationFn: () => approveOrders([id]),
+    onSuccess: (r) => {
+      if (r.approved) toast.success('Approved — it is now in Approved Orders')
+      else toast.error(r.failed[0]?.error.replace(/^[A-Z_]+: /, '') ?? 'Could not approve this order')
+      refresh()
+    },
+  })
   const fraudCheck = useMutation({
     mutationFn: () => runFraudCheck(id, true),
     onSuccess: () => { toast.success('Fraud check completed'); refresh() },
@@ -105,23 +124,34 @@ export default function OrderDetailPage() {
   const inReview = ['FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'REJECTED_FRAUD', 'CONFIRMATION_REQUIRED', 'PENDING', 'FRAUD_CHECK'].includes(status)
   const unresolvedAdvance = ['CANCELLED', 'REJECTED_FRAUD', 'RETURNED', 'FAILED_DELIVERY'].includes(status) && !o.delivered_at
     && toNumber(o.amount_paid) > 0 && !o.advance_resolution
-  const remainingCod = Math.max(toNumber(o.total_amount) - toNumber(o.amount_paid), 0)
+  const partialBack = toNumber(o.partial_return_amount)
+  const remainingCod = Math.max(toNumber(o.total_amount) - partialBack - toNumber(o.amount_paid), 0)
+  const stage = stageOf(status, o.confirmed_at)
+  const isWeb = stage === 'WEB'
+  const closed = ['CANCELLED', 'REJECTED_FRAUD'].includes(status)
+  const canReceive = RECEIVABLE.includes(status) && (status !== 'PENDING_CANCEL' || !!o.shipped_at)
+  const canPartial = ['SHIPPED', 'FAILED_DELIVERY'].includes(status) || (status === 'PARTIALLY_DELIVERED' && partialBack === 0)
+  const courierHasIt = CANCEL_VIA_COURIER.includes(status) && !!shipment && (status === 'SHIPPED' || !!shipment.tracking_number)
   const history = [...o.order_status_history].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const notes = [...o.order_notes].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const fc = o.fraud_check
-  const next = (NEXT_ACTIONS[status] ?? []).filter((a) => a.to !== 'CONFIRMED' || !['ADVANCE_REQUIRED', 'FRAUD_REVIEW'].includes(status))
+  // Approval lives on the call card for web orders.
+  const next = (NEXT_ACTIONS[status] ?? []).filter((a) => a.to !== 'CONFIRMED')
 
   return (
     <div className="space-y-4">
       <div className="no-print">
-        <Link to="/admin/orders" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Orders</Link>
+        <Link to={isWeb ? '/admin/orders/web' : '/admin/orders/approved'} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-4" /> {isWeb ? 'Web orders' : 'Approved orders'}
+        </Link>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold">{o.order_number}</h1>
-            <StatusBadge value={status} map={ORDER_STATUS} />
+            {isWeb ? <Badge variant="outline">Web order</Badge> : <StatusBadge value={stage} map={STAGE} />}
+            {(isWeb || STAGE[stage].label !== ORDER_STATUS[status].label) && <StatusBadge value={status} map={ORDER_STATUS} />}
             <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} />
             <StatusBadge value={o.fraud_status} map={FRAUD_STATUS} />
             {o.source === 'ADMIN' && <Badge variant="outline">Manual order</Badge>}
@@ -141,14 +171,16 @@ export default function OrderDetailPage() {
           )}
           {can('orders.status') && next.map((a) => (
             <Button key={a.to} size="sm" variant={a === next[0] ? 'default' : 'outline'} disabled={transition.isPending}
-              onClick={() => (a.to === 'FAILED_DELIVERY' ? setTransitionTo(a.to) : transition.mutate({ to: a.to, note: '' }))}>
+              onClick={() => (NEEDS_REASON.includes(a.to) ? setTransitionTo(a.to) : transition.mutate({ to: a.to, note: '' }))}>
               {transition.isPending && transition.variables?.to === a.to ? <Spinner /> : <Check />} {a.label}
             </Button>
           ))}
-          {can('orders.status') && ['FAILED_DELIVERY', 'RETURN_REQUESTED'].includes(status) && (
-            <Button size="sm" onClick={() => setDialog('return')}><Undo2 /> Receive return</Button>
+          {can('orders.status') && canReceive && (
+            <Button size="sm" onClick={() => setDialog('return')}><Undo2 /> {status === 'PARTIALLY_DELIVERED' ? 'Receive items sent back' : 'Receive return'}</Button>
           )}
-          {can('orders.cancel') && CANCELLABLE.includes(status) && (
+          {can('orders.cancel') && courierHasIt ? (
+            <Button size="sm" variant="outline" onClick={() => setTransitionTo('PENDING_CANCEL')}><Ban /> Ask courier to cancel</Button>
+          ) : can('orders.cancel') && CANCELLABLE.includes(status) && (
             <Button size="sm" variant="outline" onClick={() => setTransitionTo('CANCELLED')}><Ban /> Cancel</Button>
           )}
           <DropdownMenu>
@@ -164,16 +196,22 @@ export default function OrderDetailPage() {
               <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}/packing-slip`}><Printer /> Packing slip</Link></DropdownMenuItem>
               {can('orders.create') && <DropdownMenuItem onClick={() => duplicate.mutate()}><Copy /> Duplicate order</DropdownMenuItem>}
               {can('fraud.review') && inReview && <DropdownMenuItem onClick={() => fraudCheck.mutate()}><RefreshCw /> Re-run fraud check</DropdownMenuItem>}
-              {can('orders.status') && status === 'SHIPPED' && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setTransitionTo('RETURN_REQUESTED')}><Undo2 /> Customer return in transit</DropdownMenuItem>
-                </>
+              {can('orders.status') && (canPartial || status === 'SHIPPED' || LOSABLE.includes(status)) && <DropdownMenuSeparator />}
+              {can('orders.status') && canPartial && (
+                <DropdownMenuItem onClick={() => setDialog('partial')}><PackageMinus /> Partial delivery…</DropdownMenuItem>
+              )}
+              {can('orders.status') && (status === 'SHIPPED' || (status === 'PENDING_CANCEL' && o.shipped_at)) && (
+                <DropdownMenuItem onClick={() => transition.mutate({ to: 'RETURNING', note: '' })}><Undo2 /> Parcel coming back</DropdownMenuItem>
+              )}
+              {can('orders.status') && LOSABLE.includes(status) && (
+                <DropdownMenuItem onClick={() => setTransitionTo('LOST')}><PackageX /> Lost by courier…</DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {isWeb && !closed && <CallOutcomeCard order={o} onChanged={refresh} onApprove={() => approve.mutate()} approving={approve.isPending} />}
 
       {o.duplicate_status === 'SUSPECTED' && related.data && (
         <Card className="border-amber-300 bg-amber-50/60">
@@ -293,6 +331,7 @@ export default function OrderDetailPage() {
                   <Row label={`Delivery${o.delivery_zone ? ` (${o.delivery_zone.name})` : ''}`} value={formatMoney(o.delivery_charge)} />
                   {toNumber(o.delivery_discount) > 0 && <Row label="Free delivery" value={`−${formatMoney(o.delivery_discount)}`} />}
                   <Row label="Order total" value={formatMoney(o.total_amount)} strong className="border-t pt-1.5" />
+                  {partialBack > 0 && <Row label="Sent back (partial delivery)" value={`−${formatMoney(partialBack)}`} />}
                   {toNumber(o.advance_required) > 0 && <Row label={`Advance required (${ADVANCE_TYPE[o.advance_type]})`} value={formatMoney(o.advance_required)} muted />}
                   <Row label="Paid" value={toNumber(o.amount_paid) > 0 ? `−${formatMoney(o.amount_paid)}` : formatMoney(0)} />
                   {toNumber(o.amount_refunded) > 0 && <Row label="Refunded" value={formatMoney(o.amount_refunded)} muted />}
@@ -429,7 +468,7 @@ export default function OrderDetailPage() {
                   <li key={h.id} className="relative text-sm">
                     <span className={cn('absolute top-1.5 -left-[21px] size-2 rounded-full', h.to_status ? 'bg-foreground' : 'bg-muted-foreground/50')} />
                     <p className="font-medium">
-                      {h.to_status ? <>{h.from_status ? `${ORDER_STATUS[h.from_status as OrderStatus].label} → ` : ''}{ORDER_STATUS[h.to_status as OrderStatus].label}</> : titleCase(h.event)}
+                      {h.to_status ? <>{h.from_status ? `${ORDER_STATUS[h.from_status as OrderStatus].label} → ` : ''}{ORDER_STATUS[h.to_status as OrderStatus].label}</> : EVENT_LABEL[h.event] ?? titleCase(h.event)}
                     </p>
                     {h.message && <p className="text-muted-foreground">{h.message}</p>}
                     <p className="text-xs text-muted-foreground">{formatDateTime(h.created_at)} · {h.actor_name ?? 'System'}</p>
@@ -551,6 +590,7 @@ export default function OrderDetailPage() {
       {dialog === 'edit' && <EditOrderDialog order={o} open onOpenChange={() => setDialog(null)} onDone={refresh} />}
       {dialog === 'items' && <EditItemsDialog order={o} open onOpenChange={() => setDialog(null)} onDone={refresh} />}
       {dialog === 'return' && <ReturnDialog order={o} open onOpenChange={() => setDialog(null)} onDone={refresh} />}
+      {dialog === 'partial' && <PartialDeliveryDialog order={o} open onOpenChange={() => setDialog(null)} onDone={refresh} />}
       {fraudAction && (
         <FraudDecisionDialog order={o} open action={fraudAction} onOpenChange={() => setFraudAction(null)}
           onConfirm={async (input) => {
@@ -562,16 +602,111 @@ export default function OrderDetailPage() {
       <ConfirmDialog
         open={transitionTo !== null}
         onOpenChange={(open) => !open && setTransitionTo(null)}
-        title={transitionTo === 'CANCELLED' ? `Cancel ${o.order_number}?` : `Mark ${o.order_number} as ${transitionTo ? ORDER_STATUS[transitionTo].label : ''}?`}
-        description={transitionTo === 'CANCELLED' ? 'Reserved stock is released and the customer is notified.' : undefined}
-        destructive={transitionTo === 'CANCELLED'}
+        title={transitionCopy(transitionTo, o.order_number, status).title}
+        description={transitionCopy(transitionTo, o.order_number, status).description}
+        destructive={transitionTo === 'CANCELLED' || transitionTo === 'LOST'}
         reason
-        reasonRequired={transitionTo === 'CANCELLED'}
-        reasonLabel={transitionTo === 'CANCELLED' ? 'Cancellation reason' : 'Note'}
-        confirmLabel={transitionTo === 'CANCELLED' ? 'Cancel order' : 'Confirm'}
+        reasonRequired={transitionTo !== null && NEEDS_REASON.includes(transitionTo)}
+        reasonLabel={transitionCopy(transitionTo, o.order_number, status).reason}
+        confirmLabel={transitionCopy(transitionTo, o.order_number, status).confirm}
         onConfirm={(note) => transition.mutateAsync({ to: transitionTo!, note })}
       />
     </div>
+  )
+}
+
+function transitionCopy(to: OrderStatus | null, number: string, from: OrderStatus) {
+  switch (to) {
+    case 'CANCELLED':
+      return from === 'PENDING_CANCEL'
+        ? { title: 'Did the courier cancel the parcel?', description: 'Reserved stock is released and the order is closed.', reason: 'Note', confirm: 'Close as cancelled' }
+        : { title: `Cancel ${number}?`, description: 'Reserved stock is released and the customer is notified.', reason: 'Cancellation reason', confirm: 'Cancel order' }
+    case 'PENDING_CANCEL':
+      return { title: 'Ask the courier to cancel?', description: 'The order waits in Pending cancel until the courier confirms. Contact the courier now.', reason: 'Why is it being cancelled?', confirm: 'Mark pending cancel' }
+    case 'LOST':
+      return { title: 'Mark the parcel as lost?', description: 'The cost of the goods is booked as a loss. If it turns up, receive it or mark it delivered.', reason: 'What did the courier say?', confirm: 'Mark lost' }
+    case 'FAILED_DELIVERY':
+      return { title: 'Delivery failed?', description: 'The order moves to Pending return.', reason: 'What happened?', confirm: 'Mark failed' }
+    default:
+      return { title: `Mark ${number} as ${to ? ORDER_STATUS[to].label : ''}?`, description: undefined, reason: 'Note', confirm: 'Confirm' }
+  }
+}
+
+function localInput(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** Web orders: what happened on the call, and approval. */
+function CallOutcomeCard({ order, onChanged, onApprove, approving }: { order: OrderDetail; onChanged: () => void; onApprove: () => void; approving: boolean }) {
+  const { can } = useAuth()
+  const statuses = useQuery({ queryKey: ['review-statuses'], queryFn: () => listReviewStatuses(), staleTime: 60_000 })
+  const [code, setCode] = useState(order.review_status)
+  const [note, setNote] = useState('')
+  const [followUp, setFollowUp] = useState(() => localInput(new Date(Date.now() + 2 * 3600_000)))
+  useEffect(() => setCode(order.review_status), [order.review_status])
+  const current = statuses.data?.find((s) => s.code === order.review_status)
+  const chosen = statuses.data?.find((s) => s.code === code)
+  const save = useMutation({
+    mutationFn: () => setWebOrderStatus([order.id], code, note, chosen?.needs_follow_up ? new Date(followUp).toISOString() : null),
+    onSuccess: (r) => {
+      if (r.updated) toast.success('Call status saved')
+      else toast.error(r.failed[0]?.error.replace(/^[A-Z_]+: /, '') ?? 'Could not save')
+      setNote('')
+      onChanged()
+    },
+  })
+  const wa = waNumber(order.customer_phone)
+  const dirty = code !== order.review_status || note.trim() !== '' || (chosen?.needs_follow_up ?? false)
+  const blocked = ['ADVANCE_REQUIRED', 'FRAUD_REVIEW'].includes(order.status) && !can('fraud.review')
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3 text-sm">
+            <PhoneCall className="mt-0.5 size-5 text-muted-foreground" />
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">Call the customer, then approve</p>
+                <Badge variant={(current?.color ?? 'neutral') as BadgeVariant}>{current?.label ?? titleCase(order.review_status)}</Badge>
+              </div>
+              <p className="text-muted-foreground">
+                {order.contact_attempts > 0 ? `${order.contact_attempts} call attempt${order.contact_attempts === 1 ? '' : 's'}` : 'Not called yet'}
+                {order.last_contact_at && ` · last ${formatDateTime(order.last_contact_at)}`}
+                {order.follow_up_at && ` · call back ${formatDateTime(order.follow_up_at)}`}
+              </p>
+              {order.review_note && <p className="text-muted-foreground">“{order.review_note}”</p>}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" asChild><a href={`tel:${order.customer_phone}`}><Phone /> Call</a></Button>
+            {wa && <Button size="sm" variant="outline" asChild><a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>}
+            {can('orders.status') && (
+              <Button size="sm" onClick={onApprove} disabled={approving || blocked} title={blocked ? 'Needs a fraud reviewer' : undefined}>
+                {approving ? <Spinner /> : <Check />} Approve
+              </Button>
+            )}
+          </div>
+        </div>
+        {can('orders.update') && (
+          <form className="grid gap-2 border-t pt-3 sm:grid-cols-[180px_1fr_auto] sm:items-start" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
+            <div className="grid gap-2">
+              <Select value={code} onValueChange={setCode}>
+                <SelectTrigger size="sm" aria-label="Call status"><SelectValue /></SelectTrigger>
+                <SelectContent>{(statuses.data ?? []).map((st) => <SelectItem key={st.code} value={st.code}>{st.label}</SelectItem>)}</SelectContent>
+              </Select>
+              {chosen?.needs_follow_up && (
+                <Input type="datetime-local" className="h-8" value={followUp} onChange={(e) => setFollowUp(e.target.value)} aria-label="Call back at" />
+              )}
+            </div>
+            <Textarea rows={1} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What did the customer say?" aria-label="Call note" className="min-h-8" />
+            <Button size="sm" type="submit" variant={chosen?.closes_order ? 'destructive' : 'outline'} disabled={!dirty || save.isPending}>
+              {save.isPending && <Spinner />} {chosen?.closes_order ? `Close as ${chosen.label}` : 'Save'}
+            </Button>
+          </form>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

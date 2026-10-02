@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { Trash2 } from 'lucide-react'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
@@ -22,7 +22,8 @@ import { formatMoney, toNumber } from '@/lib/format'
 import { normalizePhone } from '@/lib/phone'
 import { supabase } from '@/lib/supabase'
 import { PAYMENT_METHOD } from '@/lib/status'
-import { adminQuote, createManualOrder } from '@/services/orders'
+import { variantsByIds } from '@/services/catalog'
+import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, MANUAL_SOURCES, setOrderSource } from '@/services/orders'
 import type { Enums } from '@/types/database'
 
 interface Line {
@@ -49,7 +50,32 @@ export default function NewOrderPage() {
   const [customerNote, setCustomerNote] = useState('')
   const [internalNote, setInternalNote] = useState('')
   const [afterCreate, setAfterCreate] = useState<'confirm' | 'fraud' | 'pending'>('confirm')
+  const [orderSource, setOrderSourceChoice] = useState('')
   const priceOverride = can('orders.price_override')
+
+  // Started from an incomplete checkout: bring in what the visitor typed and their cart.
+  const [params] = useSearchParams()
+  const leadId = params.get('lead')
+  const lead = useQuery({ queryKey: ['checkout-lead', leadId], enabled: !!leadId, queryFn: () => getCheckoutLead(leadId!) })
+  const prefilled = useRef(false)
+  useEffect(() => {
+    const l = lead.data
+    if (!l || prefilled.current) return
+    prefilled.current = true
+    setCustomer((c) => ({ ...c, full_name: l.customer_name ?? '', phone: l.phone }))
+    setShipping((s) => ({ ...s, address: l.address ?? '', district: l.district ?? '', area: l.area ?? '' }))
+    const items = (Array.isArray(l.items) ? l.items : []) as Array<{ variant_id?: string; quantity?: number }>
+    void variantsByIds(items.flatMap((i) => (i.variant_id ? [i.variant_id] : []))).then((variants) => {
+      setLines(variants.map((v) => ({
+        variant_id: v.variant_id!,
+        label: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`,
+        sku: v.sku ?? '',
+        quantity: Math.max(1, items.find((i) => i.variant_id === v.variant_id)?.quantity ?? 1),
+        unit_price: toNumber(v.unit_price),
+        available: v.track_inventory ? v.available : null,
+      })))
+    }).catch(() => toast.warning('Could not load the cart from the checkout — add the products by hand'))
+  }, [lead.data])
 
   // Pre-fill from an existing customer when the phone matches.
   const phone = useDebounce(normalizePhone(customer.phone), 400)
@@ -85,6 +111,11 @@ export default function NewOrderPage() {
         customer_note: customerNote || null,
         internal_note: internalNote || null,
       }, afterCreate === 'confirm')
+      if (order?.id && leadId) {
+        await linkCheckoutLead(leadId, order.id).catch(() => toast.warning('Order created, but it could not be linked to the checkout'))
+      } else if (order?.id && orderSource) {
+        await setOrderSource(order.id, orderSource).catch(() => toast.warning('Order created, but its source could not be saved'))
+      }
       if (afterCreate === 'fraud' && order?.id) {
         await invokeFunction('fraud-check', { order_id: order.id, apply: true }).catch(() => toast.warning('Order created, but the fraud check could not run'))
       }
@@ -111,6 +142,12 @@ export default function NewOrderPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="New order" description="Phone, Messenger or walk-in orders. Prices, stock and delivery are checked on the server." />
+      {lead.data && (
+        <div className="rounded-lg border bg-card p-3 text-sm">
+          From an incomplete checkout · {lead.data.phone}{lead.data.source ? <> · came from <span className="font-medium">{lead.data.source}</span></> : ''}.
+          {' '}<span className="text-muted-foreground">The order keeps the visitor's ad source.</span>
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
           <Card>
@@ -208,12 +245,20 @@ export default function NewOrderPage() {
               </dl>
               {(q?.stock_errors ?? []).map((e) => <p key={e.variant_id} className="text-xs text-destructive">{e.message}</p>)}
               {quote.error && <p className="text-xs text-destructive">{(quote.error as Error).message.replace(/^[A-Z_]+: /, '')}</p>}
+              {!leadId && (
+                <Field label="Where did this order come from?" htmlFor="n-source" hint="Shown in reports next to website orders.">
+                  <Select value={orderSource} onValueChange={setOrderSourceChoice}>
+                    <SelectTrigger id="n-source"><SelectValue placeholder="Choose…" /></SelectTrigger>
+                    <SelectContent>{MANUAL_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+              )}
               <div className="space-y-2 border-t pt-3">
                 <p className="text-xs font-medium text-muted-foreground">After creating</p>
                 {[
-                  { v: 'confirm', l: 'Mark as confirmed (verified by phone)' },
+                  { v: 'confirm', l: 'Approve now (confirmed on the call)' },
                   { v: 'fraud', l: 'Run fraud check & apply rules', perm: 'fraud.review' },
-                  { v: 'pending', l: 'Leave as pending' },
+                  { v: 'pending', l: 'Send to Web Orders to call' },
                 ].filter((o) => !o.perm || can(o.perm)).map((o) => (
                   <label key={o.v} className="flex items-center gap-2 text-sm">
                     <Switch checked={afterCreate === o.v} onCheckedChange={(on) => on && setAfterCreate(o.v as typeof afterCreate)} /> {o.l}

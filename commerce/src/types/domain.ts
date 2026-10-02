@@ -1,6 +1,7 @@
 // Shapes of JSON returned by database functions (jsonb results are typed as
 // `Json` by the generator; these interfaces describe them precisely).
-import type { Enums } from '@/types/database'
+import type { OrderStage } from '@/lib/status'
+import type { Enums, Tables } from '@/types/database'
 
 export type OrderStatus = Enums<'order_status'>
 export type PaymentMethod = Enums<'payment_method'>
@@ -222,6 +223,27 @@ export interface OrderListItem {
   duplicate_of_number: string | null
   merged_count: number
   merged_into_number: string | null
+  stage: OrderStage | 'WEB'
+  confirmed_at: string | null
+  review_status: string
+  review_note: string | null
+  follow_up_at: string | null
+  contact_attempts: number
+  last_contact_at: string | null
+  partial_return_amount: number
+  items_preview: string | null
+  attribution: { source: string; channel: string; is_paid: boolean | null; campaign: string | null } | null
+  courier_history: { delivered: number; completed: number; score: number | null } | null
+}
+
+export type ReviewStatus = Tables<'order_review_statuses'>
+export type CheckoutLead = Tables<'checkout_leads'>
+
+export interface QueueCounts {
+  web: Record<string, number>
+  approved: Partial<Record<OrderStage, number>>
+  follow_up_due: number
+  incomplete: number
 }
 
 export type ScanAction = 'READY_TO_SHIP' | 'SHIPPED' | 'RETURNED' | 'LOOKUP'

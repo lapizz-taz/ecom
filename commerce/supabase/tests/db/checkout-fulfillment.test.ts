@@ -109,13 +109,13 @@ describe('delivery-success (receive rate) policy', () => {
       expect((await evaluate(db, { courier_score: 10, delivered_orders: 1, failed_delivery_orders: 9 })).decision).toBe('REVIEW')
     }))
 
-  it('drives checkout: good history confirms, mid history waits for ৳55', () =>
+  it('drives checkout: good history goes to approval, mid history waits for ৳55', () =>
     inTx(async (db) => {
       await enablePolicy(db)
       const { variantIds } = await createProduct(db, { price: 900 })
       const good = await placeOrder(db, { phone: '01711000101', items: [{ variantId: variantIds[0], quantity: 1 }] },
         { total: 10, delivered: 9, failed: 1 })
-      expect(good.status).toBe('CONFIRMED')
+      expect(good.status).toBe('CONFIRMATION_REQUIRED')
       expect(num(good.advance_required)).toBe(0)
 
       const mid = await placeOrder(db, { phone: '01711000102', items: [{ variantId: variantIds[0], quantity: 1 }] },
@@ -387,7 +387,7 @@ describe('parcel scanning', () => {
       await advanceOrder(db, waiting.id, ['ADVANCE_REQUIRED'])
       const r1 = await scan(db, packer, waiting.order_number, 'SHIPPED')
       expect(r1.result).toBe('ERROR')
-      expect(r1.message).toMatch(/not confirmed/)
+      expect(r1.message).toMatch(/not approved/)
       expect(r1.order?.status).toBe('ADVANCE_REQUIRED')
 
       const cancelled = await createOrder(db, { phone: '01711000504', items: [{ variantId: variantIds[0], quantity: 1 }] })

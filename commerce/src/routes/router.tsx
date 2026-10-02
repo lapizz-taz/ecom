@@ -49,6 +49,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, handle: { permission: 'dashboard.view' }, ...page(() => import('@/pages/admin/dashboard')) },
       admin('orders', () => import('@/pages/admin/orders'), 'orders.view'),
+      admin('orders/web', () => import('@/pages/admin/web-orders'), 'orders.view'),
+      admin('orders/approved', () => import('@/pages/admin/approved-orders'), 'orders.view'),
       admin('orders/new', () => import('@/pages/admin/order-new'), 'orders.create'),
       admin('orders/fraud', () => import('@/pages/admin/fraud-review'), 'fraud.view'),
       admin('orders/:id', () => import('@/pages/admin/order-detail'), 'orders.view'),

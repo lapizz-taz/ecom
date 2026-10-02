@@ -86,7 +86,7 @@ describe('return handling', () => {
       ])])
       expect(await inventory(db, p.variantIds[0])).toEqual({ on_hand: 4, reserved: 0, available: 4, damaged: 1 })
       // A completed return cannot be processed twice.
-      await expectError(db, `select public.process_order_return($1, $2)`, [order.id, '[]'], /only failed deliveries/)
+      await expectError(db, `select public.process_order_return($1, $2)`, [order.id, '[]'], /only parcels on their way back/)
       expect(await value(db, `select status from public.orders where id = $1`, [order.id])).toBe('RETURNED')
     }))
 
