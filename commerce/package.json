@@ -18,7 +18,7 @@
     "test:db": "vitest run --project db",
     "test:watch": "vitest",
     "db:types": "node scripts/gen-db-types.mjs",
-    "functions:check": "deno check supabase/functions/*/index.ts"
+    "functions:check": "cd supabase/functions && deno check --config deno.json */index.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

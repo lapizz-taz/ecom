@@ -46,7 +46,7 @@ export function OperationsSettings() {
       <SettingCard setting={production} title="Production">
         <SwitchSetting s={production} path={['enabled']} label="Use the production pipeline" />
         <div className="grid gap-4 sm:grid-cols-2">
-          <SelectSetting s={production} path={['auto_create']} label="Create a production job when an order is confirmed" options={[
+          <SelectSetting s={production} path={['auto_create']} label="Create a production job when an order moves to processing" options={[
             { value: 'REQUIRED_ONLY', label: 'Only for made-to-order products' }, { value: 'ALL', label: 'For every order' }, { value: 'OFF', label: 'Never (create manually)' },
           ]} />
           <NumberSetting s={production} path={['default_deadline_days']} label="Default deadline (days)" min={0} />
