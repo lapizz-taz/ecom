@@ -21,6 +21,18 @@ begin
 end;
 $$;
 
+-- Service role only: lets the admin-users function find an existing account
+-- (e.g. a customer being promoted to staff) without listing every user.
+create or replace function public.find_auth_user_id(p_email text)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select id from auth.users where lower(email) = lower(trim(p_email)) limit 1
+$$;
+
 -- Functions ------------------------------------------------------------------
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on all functions in schema public to service_role;

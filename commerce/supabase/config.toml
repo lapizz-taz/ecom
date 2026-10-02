@@ -1,0 +1,84 @@
+# Supabase CLI configuration for local development (`supabase start`).
+project_id = "commerce-platform"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/reset-password", "http://localhost:5173/admin/reset-password"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+deno_version = 2
+
+# Public endpoints validate input themselves; staff endpoints require a JWT.
+[functions.checkout]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.payments]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.payment-webhook]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.courier-webhook]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.notifications-dispatch]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.fraud-check]
+verify_jwt = true
+import_map = "./functions/import_map.json"
+
+[functions.courier]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.admin-users]
+verify_jwt = true
+import_map = "./functions/import_map.json"
