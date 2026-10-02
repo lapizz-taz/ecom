@@ -51,7 +51,7 @@ export function ShippingLabel({ order, format, options }: { order: LabelOrder; f
         {options.showCod && (
           <div className="shrink-0 text-right">
             <p className="text-[7pt] font-semibold tracking-wider uppercase">{due > 0 ? 'Collect (COD)' : 'Paid'}</p>
-            <p className={cn('leading-none font-black tabular-nums', small ? 'text-[15pt]' : 'text-[20pt]')}>{due > 0 ? formatMoney(due) : '৳0'}</p>
+            <p className={cn('leading-none font-extrabold tabular-nums', small ? 'text-[15pt]' : 'text-[20pt]')}>{due > 0 ? formatMoney(due) : '৳0'}</p>
           </div>
         )}
       </header>
@@ -69,7 +69,7 @@ export function ShippingLabel({ order, format, options }: { order: LabelOrder; f
         <p className={cn('font-bold leading-tight', small ? 'text-[11pt]' : 'text-[13pt]')}>{order.customer_name}</p>
         <p className={cn('font-mono font-semibold tabular-nums', small ? 'text-[10pt]' : 'text-[12pt]')}>{order.customer_phone}</p>
         <p className="mt-[1mm] leading-snug">{order.shipping_address}</p>
-        <p className={cn('mt-[1mm] font-black uppercase', small ? 'text-[11pt]' : 'text-[14pt]')}>
+        <p className={cn('mt-[1mm] font-extrabold uppercase', small ? 'text-[11pt]' : 'text-[14pt]')}>
           {order.shipping_district}{order.shipping_area ? <span className="font-semibold normal-case"> · {order.shipping_area}</span> : null}
         </p>
       </section>
