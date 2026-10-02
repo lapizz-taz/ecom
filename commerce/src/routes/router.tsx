@@ -1,0 +1,87 @@
+import type { ComponentType } from 'react'
+import { createBrowserRouter, type RouteObject } from 'react-router'
+import { RouteError } from '@/routes/route-error'
+
+// Every page is lazy-loaded so the storefront never downloads admin code.
+type Loader = () => Promise<{ default: ComponentType }>
+const page = (load: Loader) => ({ lazy: async () => ({ Component: (await load()).default }) })
+
+const admin = (path: string, load: Loader, permission?: string): RouteObject => ({
+  path,
+  handle: { permission },
+  ...page(load),
+})
+
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    ...page(() => import('@/layouts/storefront-layout')),
+    errorElement: <RouteError />,
+    children: [
+      { index: true, ...page(() => import('@/pages/storefront/home')) },
+      { path: 'shop', ...page(() => import('@/pages/storefront/shop')) },
+      { path: 'collection/:slug', ...page(() => import('@/pages/storefront/shop')) },
+      { path: 'search', ...page(() => import('@/pages/storefront/shop')) },
+      { path: 'product/:slug', ...page(() => import('@/pages/storefront/product')) },
+      { path: 'cart', ...page(() => import('@/pages/storefront/cart')) },
+      { path: 'checkout', ...page(() => import('@/pages/storefront/checkout')) },
+      { path: 'order-success', ...page(() => import('@/pages/storefront/order-success')) },
+      { path: 'track-order', ...page(() => import('@/pages/storefront/track-order')) },
+      { path: 'login', ...page(() => import('@/pages/storefront/login')) },
+      { path: 'register', ...page(() => import('@/pages/storefront/register')) },
+      { path: 'forgot-password', ...page(() => import('@/pages/storefront/forgot-password')) },
+      { path: 'reset-password', ...page(() => import('@/pages/storefront/reset-password')) },
+      { path: 'account', ...page(() => import('@/pages/storefront/account')) },
+      { path: 'account/orders/:id', ...page(() => import('@/pages/storefront/account-order')) },
+      { path: 'contact', ...page(() => import('@/pages/storefront/contact')) },
+      { path: 'policies', ...page(() => import('@/pages/storefront/policies')) },
+      { path: 'policies/:policy', ...page(() => import('@/pages/storefront/policies')) },
+      { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
+    ],
+  },
+  { path: '/admin/login', errorElement: <RouteError />, ...page(() => import('@/pages/admin/login')) },
+  { path: '/admin/forgot-password', ...page(() => import('@/pages/storefront/forgot-password')) },
+  { path: '/admin/reset-password', ...page(() => import('@/pages/storefront/reset-password')) },
+  {
+    path: '/admin',
+    ...page(() => import('@/layouts/admin-layout')),
+    errorElement: <RouteError />,
+    children: [
+      { index: true, handle: { permission: 'dashboard.view' }, ...page(() => import('@/pages/admin/dashboard')) },
+      admin('orders', () => import('@/pages/admin/orders'), 'orders.view'),
+      admin('orders/new', () => import('@/pages/admin/order-new'), 'orders.create'),
+      admin('orders/fraud', () => import('@/pages/admin/fraud-review'), 'fraud.view'),
+      admin('orders/:id', () => import('@/pages/admin/order-detail'), 'orders.view'),
+      admin('orders/:id/invoice', () => import('@/pages/admin/order-print'), 'orders.view'),
+      admin('orders/:id/packing-slip', () => import('@/pages/admin/order-print'), 'orders.view'),
+      admin('products', () => import('@/pages/admin/products'), 'products.view'),
+      admin('products/new', () => import('@/pages/admin/product-edit'), 'products.manage'),
+      admin('products/:id', () => import('@/pages/admin/product-edit'), 'products.view'),
+      admin('inventory', () => import('@/pages/admin/inventory'), 'inventory.view'),
+      admin('inventory/movements', () => import('@/pages/admin/inventory-movements'), 'inventory.view'),
+      admin('inventory/adjustments', () => import('@/pages/admin/inventory-adjustments'), 'inventory.view'),
+      admin('purchases', () => import('@/pages/admin/purchases'), 'purchases.view'),
+      admin('purchases/new', () => import('@/pages/admin/purchase-edit'), 'purchases.manage'),
+      admin('purchases/:id', () => import('@/pages/admin/purchase-edit'), 'purchases.view'),
+      admin('production', () => import('@/pages/admin/production'), 'production.view'),
+      admin('production/:id', () => import('@/pages/admin/production-detail'), 'production.view'),
+      admin('customers', () => import('@/pages/admin/customers'), 'customers.view'),
+      admin('customers/:id', () => import('@/pages/admin/customer-detail'), 'customers.view'),
+      admin('couriers', () => import('@/pages/admin/couriers'), 'couriers.view'),
+      admin('finance', () => import('@/pages/admin/finance'), 'finance.view'),
+      admin('finance/income', () => import('@/pages/admin/finance-transactions'), 'finance.view'),
+      admin('finance/expenses', () => import('@/pages/admin/finance-transactions'), 'finance.view'),
+      admin('finance/refunds', () => import('@/pages/admin/finance-refunds'), 'finance.view'),
+      admin('finance/profit-loss', () => import('@/pages/admin/finance-pnl'), 'finance.view'),
+      admin('finance/cash-flow', () => import('@/pages/admin/finance-cash-flow'), 'finance.view'),
+      admin('reports', () => import('@/pages/admin/reports'), 'reports.view'),
+      admin('marketing', () => import('@/pages/admin/marketing'), 'marketing.view'),
+      admin('coupons', () => import('@/pages/admin/coupons'), 'coupons.manage'),
+      admin('settings', () => import('@/pages/admin/settings'), 'settings.view'),
+      admin('users', () => import('@/pages/admin/users'), 'users.manage'),
+      admin('audit-logs', () => import('@/pages/admin/audit-logs'), 'audit.view'),
+      admin('account', () => import('@/pages/admin/account')),
+      { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
+    ],
+  },
+])

@@ -1,0 +1,209 @@
+import { invokeFunction } from '@/lib/functions'
+import { asJson, fromJson } from '@/lib/json'
+import { supabase } from '@/lib/supabase'
+import type { Enums } from '@/types/database'
+import type { FraudQueueItem, OrderListItem, OrderStatus, Paged, Quote } from '@/types/domain'
+
+export interface OrderFilters {
+  q?: string
+  statuses?: OrderStatus[]
+  payment_status?: string
+  payment_method?: string
+  fraud_status?: string
+  risk_level?: string
+  source?: string
+  courier_id?: string
+  district?: string
+  customer_id?: string
+  date_from?: string
+  date_to?: string
+  has_due?: boolean
+}
+
+export async function searchOrders(filters: OrderFilters, sort = 'created_at', direction: 'asc' | 'desc' = 'desc', limit = 25, offset = 0): Promise<Paged<OrderListItem>> {
+  const clean = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0)))
+  const { data, error } = await supabase.rpc('admin_search_orders', { p_filters: asJson(clean), p_sort: sort, p_direction: direction, p_limit: limit, p_offset: offset })
+  if (error) throw error
+  return fromJson<Paged<OrderListItem>>(data)
+}
+
+/** Fetches up to `max` matching orders page by page (for CSV export). */
+export async function exportOrders(filters: OrderFilters, max = 5000): Promise<OrderListItem[]> {
+  const rows: OrderListItem[] = []
+  for (let offset = 0; offset < max; offset += 200) {
+    const page = await searchOrders(filters, 'created_at', 'desc', 200, offset)
+    rows.push(...page.items)
+    if (rows.length >= page.total || page.items.length === 0) break
+  }
+  return rows
+}
+
+export async function statusCounts(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.rpc('admin_order_status_counts')
+  if (error) throw error
+  return fromJson<Record<string, number>>(data) ?? {}
+}
+
+export async function getOrder(id: string) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select(`*,
+      order_items(*),
+      order_notes(*),
+      order_status_history(*),
+      order_payments(*),
+      payments(*),
+      shipments(*, couriers(id, name, provider, api_enabled, tracking_url_template), shipment_events(*)),
+      production_orders(*, production_items(*)),
+      fraud_check:fraud_checks!orders_fraud_check_fk(*),
+      fraud_reviews(*),
+      customer:customers(id, full_name, phone, email, segment, status, risk_level, total_orders, delivered_orders, cancelled_orders, returned_orders, failed_deliveries, total_spent),
+      delivery_zone:delivery_zones(name, charge, return_charge)`)
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+export type OrderDetail = NonNullable<Awaited<ReturnType<typeof getOrder>>>
+
+export async function transitionOrder(id: string, to: OrderStatus, note?: string) {
+  const { data, error } = await supabase.rpc('transition_order_status', { p_order_id: id, p_to: to, p_note: note || undefined })
+  if (error) throw error
+  return data
+}
+
+export async function bulkTransition(ids: string[], to: OrderStatus, note?: string) {
+  const { data, error } = await supabase.rpc('bulk_transition_orders', { p_order_ids: ids, p_to: to, p_note: note || undefined })
+  if (error) throw error
+  return fromJson<{ updated: number; failed: Array<{ order_number: string; error: string }> }>(data)
+}
+
+export async function updateOrder(id: string, changes: Record<string, unknown>) {
+  const { data, error } = await supabase.rpc('admin_update_order', { p_order_id: id, p_changes: asJson(changes) })
+  if (error) throw error
+  return data
+}
+
+export async function setOrderItems(id: string, items: Array<{ variant_id: string; quantity: number; unit_price?: number }>) {
+  const { data, error } = await supabase.rpc('admin_set_order_items', { p_order_id: id, p_items: asJson(items) })
+  if (error) throw error
+  return data
+}
+
+export async function duplicateOrder(id: string) {
+  const { data, error } = await supabase.rpc('admin_duplicate_order', { p_order_id: id })
+  if (error) throw error
+  return data
+}
+
+export async function addOrderNote(id: string, body: string, visibility: Enums<'note_visibility'> = 'INTERNAL', kind: Enums<'note_kind'> = 'NOTE') {
+  const { data, error } = await supabase.rpc('add_order_note', { p_order_id: id, p_body: body, p_visibility: visibility, p_kind: kind })
+  if (error) throw error
+  return data
+}
+
+export interface ManualOrderPayload {
+  customer: { full_name: string; phone: string; email?: string | null }
+  shipping: { address: string; area?: string | null; city?: string | null; district: string; postal_code?: string | null }
+  items: Array<{ variant_id: string; quantity: number; unit_price?: number }>
+  delivery_method: string
+  payment_method: Enums<'payment_method'>
+  coupon_code?: string | null
+  manual_discount?: number
+  delivery_charge?: number | null
+  customer_note?: string | null
+  internal_note?: string | null
+}
+
+export async function createManualOrder(payload: ManualOrderPayload, confirm: boolean) {
+  const { data, error } = await supabase.rpc('admin_create_order', { p_payload: asJson(payload), p_confirm: confirm })
+  if (error) throw error
+  return data
+}
+
+export async function adminQuote(items: Array<{ variant_id: string; quantity: number; unit_price?: number }>, district: string, area?: string, method = 'standard', coupon?: string, phone?: string): Promise<Quote> {
+  const { data, error } = await supabase.rpc('admin_quote_order', {
+    p_items: asJson(items), p_district: district, p_area: area || undefined, p_delivery_method: method,
+    p_coupon_code: coupon || undefined, p_phone: phone || undefined,
+  })
+  if (error) throw error
+  return fromJson<Quote>(data)
+}
+
+export async function recordPayment(input: { orderId: string; kind: Enums<'order_payment_kind'>; channel: Enums<'payment_channel'>; amount: number; reference?: string; note?: string; idempotencyKey: string }) {
+  const { data, error } = await supabase.rpc('record_order_payment', {
+    p_order_id: input.orderId, p_kind: input.kind, p_channel: input.channel, p_amount: input.amount,
+    p_reference: input.reference || undefined, p_note: input.note || undefined, p_idempotency_key: input.idempotencyKey,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function verifyManualPayment(paymentId: string, approve: boolean, note?: string) {
+  const { data, error } = await supabase.rpc('verify_manual_payment', { p_payment_id: paymentId, p_approve: approve, p_note: note || undefined })
+  if (error) throw error
+  return data
+}
+
+export async function refundOrder(input: { orderId: string; amount: number; channel: Enums<'payment_channel'>; reason: string; idempotencyKey: string }) {
+  const { data, error } = await supabase.rpc('refund_order', {
+    p_order_id: input.orderId, p_amount: input.amount, p_channel: input.channel, p_reason: input.reason, p_idempotency_key: input.idempotencyKey,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function retainAdvance(orderId: string, note: string) {
+  const { data, error } = await supabase.rpc('retain_order_advance', { p_order_id: orderId, p_note: note })
+  if (error) throw error
+  return data
+}
+
+export async function processReturn(orderId: string, items: Array<{ order_item_id: string; quantity: number; condition: 'RESTOCK' | 'DAMAGED' }>, note?: string) {
+  const { data, error } = await supabase.rpc('process_order_return', { p_order_id: orderId, p_items: asJson(items), p_note: note || undefined })
+  if (error) throw error
+  return data
+}
+
+export async function assignCourier(input: { orderId: string; courierId: string; trackingNumber?: string; shippingCost?: number | null; note?: string }) {
+  const { data, error } = await supabase.rpc('assign_courier', {
+    p_order_id: input.orderId, p_courier_id: input.courierId, p_tracking_number: input.trackingNumber || undefined,
+    p_shipping_cost: input.shippingCost ?? undefined, p_note: input.note || undefined,
+  })
+  if (error) throw error
+  return data
+}
+
+export function bookWithCourierApi(orderId: string, courierId: string, note?: string) {
+  return invokeFunction<{ shipment: unknown }>('courier', { action: 'create_shipment', order_id: orderId, courier_id: courierId, note })
+}
+
+export async function updateShipment(shipmentId: string, changes: Record<string, unknown>) {
+  const { data, error } = await supabase.rpc('update_shipment', { p_shipment_id: shipmentId, p_changes: asJson(changes) })
+  if (error) throw error
+  return data
+}
+
+export async function applyShipmentStatus(shipmentId: string, status: Enums<'shipment_status'>, description?: string) {
+  const { data, error } = await supabase.rpc('apply_shipment_status', { p_shipment_id: shipmentId, p_status: status, p_description: description || undefined })
+  if (error) throw error
+  return data
+}
+
+export function runFraudCheck(orderId: string, apply = true) {
+  return invokeFunction<{ check: Record<string, unknown>; order: unknown }>('fraud-check', { order_id: orderId, apply })
+}
+
+export async function fraudReviewDecide(orderId: string, action: 'APPROVE' | 'REQUEST_ADVANCE' | 'REJECT', opts: { advance?: number; note?: string; blockCustomer?: boolean } = {}) {
+  const { data, error } = await supabase.rpc('fraud_review_decide', {
+    p_order_id: orderId, p_action: action, p_advance_amount: opts.advance, p_note: opts.note || undefined, p_block_customer: opts.blockCustomer ?? false,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function fraudQueue(statuses: OrderStatus[], risk?: Enums<'risk_level'>, limit = 25, offset = 0): Promise<Paged<FraudQueueItem>> {
+  const { data, error } = await supabase.rpc('admin_fraud_queue', { p_statuses: statuses, p_risk_level: risk, p_limit: limit, p_offset: offset })
+  if (error) throw error
+  return fromJson<Paged<FraudQueueItem>>(data)
+}
