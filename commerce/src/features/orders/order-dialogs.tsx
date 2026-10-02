@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Trash2 } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Field } from '@/components/common/field'
+import { ChannelSelect, FormDialog } from '@/components/common/form-dialog'
 import { Money } from '@/components/common/money'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { VariantPicker } from '@/features/products/variant-picker'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, toNumber } from '@/lib/format'
-import { PAYMENT_CHANNEL, PAYMENT_METHOD, SHIPMENT_STATUS } from '@/lib/status'
+import { PAYMENT_METHOD, SHIPMENT_STATUS } from '@/lib/status'
 import { listCouriers } from '@/services/couriers'
 import {
   applyShipmentStatus, assignCourier, bookWithCourierApi, type OrderDetail, processReturn, recordPayment, refundOrder,
@@ -24,53 +25,15 @@ import {
 import type { Enums } from '@/types/database'
 
 type Channel = Enums<'payment_channel'>
-const CHANNELS = Object.keys(PAYMENT_CHANNEL) as Channel[]
 
-function FormDialog({ open, onOpenChange, title, description, children, submitLabel, onSubmit, busy, disabled, wide }: {
-  open: boolean
-  onOpenChange: (o: boolean) => void
-  title: string
-  description?: ReactNode
-  children: ReactNode
-  submitLabel: string
-  onSubmit: () => void
-  busy?: boolean
-  disabled?: boolean
-  wide?: boolean
-}) {
-  return (
-    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className={wide ? 'sm:max-w-2xl' : undefined}>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
-        </DialogHeader>
-        <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); onSubmit() }}>
-          {children}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
-            <Button type="submit" disabled={busy || disabled}>{busy && <Spinner />} {submitLabel}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
+/** Refund / retain only need the order id and what was paid, so the finance pages can reuse them. */
+type AdvanceDialogProps = Omit<DialogProps, 'order'> & { order: { id: string; amount_paid: number | string } }
 
 interface DialogProps {
   order: OrderDetail
   open: boolean
   onOpenChange: (o: boolean) => void
   onDone: () => void
-}
-
-function ChannelSelect({ value, onChange }: { value: Channel; onChange: (v: Channel) => void }) {
-  return (
-    <Select value={value} onValueChange={(v) => onChange(v as Channel)}>
-      <SelectTrigger><SelectValue /></SelectTrigger>
-      <SelectContent>{CHANNELS.map((c) => <SelectItem key={c} value={c}>{PAYMENT_CHANNEL[c]}</SelectItem>)}</SelectContent>
-    </Select>
-  )
 }
 
 export function RecordPaymentDialog({ order, open, onOpenChange, onDone }: DialogProps) {
@@ -108,7 +71,7 @@ export function RecordPaymentDialog({ order, open, onOpenChange, onDone }: Dialo
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Method"><ChannelSelect value={channel} onChange={setChannel} /></Field>
+        <Field label="Method"><ChannelSelect value={channel} onChange={(v) => v && setChannel(v)} /></Field>
         <Field label="Amount" htmlFor="pay-amount"><Input id="pay-amount" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
         <Field label="Reference / TrxID" htmlFor="pay-ref"><Input id="pay-ref" value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
       </div>
@@ -117,7 +80,7 @@ export function RecordPaymentDialog({ order, open, onOpenChange, onDone }: Dialo
   )
 }
 
-export function RefundDialog({ order, open, onOpenChange, onDone }: DialogProps) {
+export function RefundDialog({ order, open, onOpenChange, onDone }: AdvanceDialogProps) {
   const [amount, setAmount] = useState('')
   const [channel, setChannel] = useState<Channel>('BKASH')
   const [reason, setReason] = useState('')
@@ -135,14 +98,14 @@ export function RefundDialog({ order, open, onOpenChange, onDone }: DialogProps)
       onSubmit={() => save.mutate()} busy={save.isPending} disabled={!(Number(amount) > 0) || !reason.trim()}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Amount" htmlFor="refund-amount"><Input id="refund-amount" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-        <Field label="Refunded via"><ChannelSelect value={channel} onChange={setChannel} /></Field>
+        <Field label="Refunded via"><ChannelSelect value={channel} onChange={(v) => v && setChannel(v)} /></Field>
       </div>
       <Field label="Reason" htmlFor="refund-reason" required><Textarea id="refund-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
     </FormDialog>
   )
 }
 
-export function RetainAdvanceDialog({ order, open, onOpenChange, onDone }: DialogProps) {
+export function RetainAdvanceDialog({ order, open, onOpenChange, onDone }: AdvanceDialogProps) {
   const [note, setNote] = useState('')
   const save = useMutation({
     mutationFn: () => retainAdvance(order.id, note),

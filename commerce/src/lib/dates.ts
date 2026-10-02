@@ -59,3 +59,12 @@ export function granularityFor(range: DateRange): 'day' | 'week' | 'month' {
   if (days <= 200) return 'week'
   return 'month'
 }
+
+/** The equally long period that ends the day before `range` starts (for comparisons). */
+export function previousPeriod(range: DateRange): DateRange {
+  const from = new Date(`${range.from}T00:00:00`)
+  const to = new Date(`${range.to}T00:00:00`)
+  const days = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1
+  const prevTo = addDays(from, -1)
+  return { from: isoDate(addDays(prevTo, -(days - 1))), to: isoDate(prevTo) }
+}

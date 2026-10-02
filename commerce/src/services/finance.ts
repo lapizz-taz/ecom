@@ -70,7 +70,15 @@ export async function listTransactions(f: TransactionFilters) {
   }
   const { data, error, count } = await query
   if (error) throw error
-  return { items: data ?? [], total: count ?? 0 }
+  const items = data ?? []
+  // Which of these rows already have a reversal entry (reversals are separate, immutable rows).
+  const reversed = new Set<string>()
+  if (items.length) {
+    const { data: rev, error: revError } = await supabase.from('finance_transactions').select('reverses_id').in('reverses_id', items.map((t) => t.id))
+    if (revError) throw revError
+    for (const r of rev ?? []) if (r.reverses_id) reversed.add(r.reverses_id)
+  }
+  return { items: items.map((t) => ({ ...t, reversed: reversed.has(t.id) })), total: count ?? 0 }
 }
 export type TransactionRow = Awaited<ReturnType<typeof listTransactions>>['items'][number]
 

@@ -55,9 +55,18 @@ const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short
 const dateTimeFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const shortFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })
 
+/** Date-only strings ("2026-10-01") are calendar dates, not UTC midnight. */
+function toDate(value: string | Date): Date {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  }
+  return new Date(value)
+}
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  return dateFmt.format(new Date(value))
+  return dateFmt.format(toDate(value))
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {
@@ -67,7 +76,7 @@ export function formatDateTime(value: string | Date | null | undefined): string 
 
 export function formatShortDate(value: string | Date | null | undefined): string {
   if (!value) return '—'
-  return shortFmt.format(new Date(value))
+  return shortFmt.format(toDate(value))
 }
 
 export function timeAgo(value: string | Date | null | undefined): string {
