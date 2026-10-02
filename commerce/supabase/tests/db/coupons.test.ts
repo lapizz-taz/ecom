@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { asSystem, closePool, expectError, inTx, num, value, type Db } from '../support/db'
-import { createOrder, createProduct, orderPayload, transition } from '../support/fixtures'
+import { asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
+import { createOrder, createProduct, createStaff, orderPayload, transition } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -67,6 +67,21 @@ describe('coupon validation', () => {
       expect(await value(db, `select usage_count from public.coupons where code = 'ONCE'`)).toBe(0)
       const again = await createOrder(db, { phone: '01711000102', coupon: 'ONCE', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
       expect(num(again.discount_total)).toBe(100)
+    }))
+
+  it('lets staff edit a coupon but never its usage counter', () =>
+    inTx(async (db) => {
+      const p = await createProduct(db, { price: 1000, stock: 10 })
+      const admin = await createStaff(db, 'ADMIN')
+      await asUser(db, admin)
+      await db.query(`insert into public.coupons(code, discount_type, discount_value, usage_limit, usage_count) values ('STAFF1', 'FIXED', 50, 1, 99)`)
+      expect(await value(db, `select usage_count from public.coupons where code = 'STAFF1'`)).toBe(0)
+      expect(await value(db, `select created_by from public.coupons where code = 'STAFF1'`)).toBe(admin)
+      await db.query(`update public.coupons set description = 'Staff discount' where code = 'STAFF1'`)
+      await createOrder(db, { coupon: 'STAFF1', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      expect(await value(db, `select usage_count from public.coupons where code = 'STAFF1'`)).toBe(1)
+      await asUser(db, admin)
+      await expectError(db, `update public.coupons set usage_count = 0 where code = 'STAFF1'`, [], /counted automatically/)
     }))
 
   it('enforces the per-customer limit by phone', () =>

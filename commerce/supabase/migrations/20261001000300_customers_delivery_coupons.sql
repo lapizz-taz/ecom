@@ -167,6 +167,28 @@ create trigger coupons_updated_at before update on public.coupons
 create trigger coupons_audit after insert or update or delete on public.coupons
   for each row execute function public.audit_row_change();
 
+-- usage_count is maintained by the order functions (SECURITY DEFINER, so they
+-- run as the table owner). API clients may edit a coupon but never its counter.
+create or replace function public.coupons_guard_usage_count()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      new.usage_count := 0;
+      new.created_by := auth.uid();
+    elsif new.usage_count is distinct from old.usage_count then
+      raise exception 'VALIDATION: coupon usage is counted automatically and cannot be edited' using errcode = '22023';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+create trigger coupons_guard_usage_count before insert or update on public.coupons
+  for each row execute function public.coupons_guard_usage_count();
+
 create table public.coupon_usage (
   id uuid primary key default gen_random_uuid(),
   coupon_id uuid not null references public.coupons(id),
