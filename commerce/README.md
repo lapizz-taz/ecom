@@ -145,12 +145,16 @@ Seeded logins (password `Password123!` for all):
    $$);
 
    -- Finishes bKash / PayStation payments whose customer paid but never came back to the store.
+   -- Calls the function only while such a payment is waiting.
    select cron.schedule('payments-reconcile', '*/5 * * * *', $$
      select net.http_post(
        url := 'https://<ref>.supabase.co/functions/v1/payment-webhook?reconcile=1',
        headers := jsonb_build_object('Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
        body := '{}'::jsonb)
+     where exists (select 1 from public.payments
+                   where status = 'PENDING' and provider in ('bkash', 'paystation')
+                     and created_at < now() - interval '3 minutes' and created_at > now() - interval '3 days')
    $$);
    ```
 7. **Provider callbacks**
