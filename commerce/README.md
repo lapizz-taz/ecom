@@ -170,6 +170,7 @@ Seeded logins (password `Password123!` for all):
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` (all optional) | Fallback bKash Merchant API (tokenized checkout) credentials. Normally connected in **Settings → Payments**: tested by granting a token, then stored encrypted in Supabase Vault |
 | `PAYSTATION_MERCHANT_ID`, `PAYSTATION_PASSWORD`, `PAYSTATION_TOKEN`, `PAYSTATION_BASE_URL` (all optional) | Fallback PayStation credentials, likewise normally connected in **Settings → Payments** |
+| `ALLOW_INSECURE_GATEWAY_URL` | Local testing only: lets a gateway's *API address* be `http://` (a mock). Never set it in production |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | Card / mobile-banking payments |
 | `STEADFAST_WEBHOOK_TOKEN` | Steadfast status webhooks |
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |

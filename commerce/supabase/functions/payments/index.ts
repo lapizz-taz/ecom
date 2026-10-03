@@ -216,6 +216,10 @@ Deno.serve(
       const creds = Object.fromEntries(Object.entries(input.credentials).filter(([, v]) => v)) as Record<string, string>
       const missing = REQUIRED[code].filter((k) => !creds[k])
       if (missing.length) throw new HttpError(422, `Enter ${missing.join(', ').replace(/_/g, ' ')}`, 'VALIDATION')
+      // Credentials travel to this address: never in clear text (a local mock can opt out).
+      if (creds.base_url && !creds.base_url.startsWith('https://') && env('ALLOW_INSECURE_GATEWAY_URL') !== 'true') {
+        throw new HttpError(422, 'The API address must start with https://', 'VALIDATION')
+      }
       const provider = gatewayFromCredentials(code, { ...settings.providers?.[code], sandbox: input.sandbox }, creds, admin)
       let message: string
       try {
