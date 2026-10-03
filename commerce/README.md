@@ -164,7 +164,7 @@ Seeded logins (password `Password123!` for all):
 
 | Secret | Used for |
 | --- | --- |
-| `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects |
+| `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects. Without `STOREFRONT_URL` the *Website* from **Settings → Store** is used |
 | `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1` |
 | `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |

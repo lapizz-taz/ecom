@@ -15,12 +15,8 @@ import {
   type Gateway, GATEWAYS, gatewayFromCredentials, gatewaySecret, loadPaymentProvider, type PaymentSettings,
 } from '../_shared/payments/registry.ts'
 import { initiatePaymentSchema, manualPaymentSchema, parse } from '../_shared/schemas.ts'
+import { storefrontBase } from '../_shared/storefront.ts'
 import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
-
-function storefrontUrl(path: string): string {
-  const base = (env('STOREFRONT_URL') ?? 'http://localhost:5173').replace(/\/$/, '')
-  return `${base}${path}`
-}
 
 const credential = (max = 200) => z.string().trim().min(1).max(max)
 
@@ -92,9 +88,8 @@ Deno.serve(
           context: { order_number: orderNumber } })
         outcome = 'review'
       }
-      const target = storefrontUrl(
-        `/order-success?${new URLSearchParams({ order: orderNumber ?? params.value_a ?? '', payment: outcome })}`,
-      )
+      const target = `${await storefrontBase(admin)}/order-success?${
+        new URLSearchParams({ order: orderNumber ?? params.value_a ?? '', payment: outcome })}`
       return new Response(null, { status: 303, headers: { Location: target } })
     }
 

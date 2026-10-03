@@ -2,9 +2,9 @@
 // every role change goes through admin_set_user_role() as the caller, so the
 // database enforces who may grant what (no privilege escalation).
 import { z } from 'zod'
-import { env } from '../_shared/env.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
+import { storefrontBase } from '../_shared/storefront.ts'
 import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const roleSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/)
@@ -50,7 +50,7 @@ Deno.serve(
         let userId = existingId
         let created = false
         if (!userId) {
-          const redirectTo = `${(env('STOREFRONT_URL') ?? 'http://localhost:5173').replace(/\/$/, '')}/admin/reset-password`
+          const redirectTo = `${await storefrontBase(admin)}/admin/reset-password`
           const result = input.password
             ? await admin.auth.admin.createUser({
                 email: input.email, password: input.password, email_confirm: true, user_metadata: { full_name: input.full_name },
