@@ -115,3 +115,27 @@ export function testCourierHistory(testPhone: string) {
 export function disconnectCourierHistory() {
   return invokeFunction<{ ok: boolean; providers: string[] }>('fraud-check', { action: 'disconnect_courier_history' })
 }
+
+export type Gateway = 'bkash' | 'paystation'
+export interface GatewayCredentials {
+  app_key?: string
+  app_secret?: string
+  username?: string
+  password?: string
+  merchant_id?: string
+  token?: string
+  base_url?: string
+}
+
+/** Tests the credentials with the gateway, then saves them in Vault and turns the gateway on. */
+export function connectGateway(provider: Gateway, credentials: GatewayCredentials, sandbox?: boolean) {
+  return invokeFunction<{ ok: boolean; message: string; hint: string }>('payments', { action: 'connect_gateway', provider, credentials, sandbox })
+}
+
+export function testGateway(provider: Gateway) {
+  return invokeFunction<{ ok: boolean; message: string }>('payments', { action: 'test_gateway', provider })
+}
+
+export function disconnectGateway(provider: Gateway) {
+  return invokeFunction<{ ok: boolean }>('payments', { action: 'disconnect_gateway', provider })
+}

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ADVANCE_TYPE, PAYMENT_CHANNEL } from '@/lib/status'
+import { PaymentGateways } from './payment-gateways'
 import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, TextareaSetting, TextSetting, useSettingDraft } from './setting-form'
 
 interface Account { channel: string; label: string; number: string }
@@ -19,6 +20,7 @@ export function PaymentSettings() {
   }
   return (
     <div className="grid gap-4">
+      <PaymentGateways />
       <SettingCard setting={s} title="Payment methods" validate={validate}
         description="Payment confirmations are always verified on the server: gateway payments by the provider's validation API, manual transfers by a staff member.">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -31,6 +33,13 @@ export function PaymentSettings() {
           {['FIXED', 'PERCENTAGE'].includes(String(s.get(['voluntary_advance', 'type']))) && (
             <NumberSetting s={s} path={['voluntary_advance', 'value']} label={s.get(['voluntary_advance', 'type']) === 'PERCENTAGE' ? 'Percentage' : 'Amount'} min={0} />
           )}
+        </div>
+
+        <div className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
+          <TextSetting s={s} path={['providers', 'bkash', 'label']} label="bKash button at checkout" placeholder="Pay with bKash" />
+          <TextSetting s={s} path={['providers', 'paystation', 'label']} label="PayStation button at checkout" placeholder="Nagad, Rocket or card" />
+          <SwitchSetting s={s} path={['providers', 'paystation', 'pay_with_charge']} label="Customer pays the PayStation fee"
+            hint="Off: the store absorbs the gateway charge" />
         </div>
 
         <div className="rounded-lg border p-4">

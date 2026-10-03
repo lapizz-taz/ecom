@@ -22,6 +22,8 @@ export interface PaymentInitResult {
   instructions?: string
   accounts?: Array<{ channel: string; label: string; number: string }>
   providerData?: Record<string, unknown>
+  /** The gateway's id for this attempt (bKash paymentID, PayStation invoice), to find the payment again. */
+  session?: string
 }
 
 export interface VerifiedPayment {
@@ -43,4 +45,8 @@ export interface PaymentProvider {
   initiate(ctx: PaymentInitContext): Promise<PaymentInitResult>
   /** Verifies a callback (IPN or browser return) with the provider's server. */
   verifyCallback?(params: Record<string, string>): Promise<VerifiedPayment>
+  /** Re-checks an attempt whose customer never returned. null = still waiting. */
+  reconcile?(session: string, reference: string, ageMinutes: number): Promise<VerifiedPayment | null>
+  /** Proves saved credentials work; returns a short confirmation. */
+  test?(): Promise<string>
 }

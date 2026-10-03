@@ -37,11 +37,13 @@ import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
-  type OrderDetail, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
+  checkGatewayPayment, type OrderDetail, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
 } from '@/services/orders'
 import type { OrderStatus } from '@/types/domain'
 
 type DialogName = 'payment' | 'refund' | 'retain' | 'courier' | 'shipment' | 'edit' | 'items' | 'return' | 'partial' | null
+
+const GATEWAY_NAME: Record<string, string> = { bkash: 'bKash', paystation: 'PayStation' }
 
 const EVENT_LABEL: Record<string, string> = {
   REVIEW_STATUS: 'Call',
@@ -111,6 +113,19 @@ export default function OrderDetailPage() {
   const verify = useMutation({
     mutationFn: ({ paymentId, approve }: { paymentId: string; approve: boolean }) => verifyManualPayment(paymentId, approve, approve ? 'Verified against statement' : 'Not found in statement'),
     onSuccess: (_d, v) => { toast.success(v.approve ? 'Payment verified' : 'Payment rejected'); refresh() },
+  })
+
+  const checkGateway = useMutation({
+    mutationFn: (paymentId: string) => checkGatewayPayment(paymentId),
+    onSuccess: ({ status }) => {
+      const messages: Record<string, string> = {
+        succeeded: 'Payment confirmed by the gateway', already_succeeded: 'Payment was already confirmed',
+        pending: 'Not paid yet — the gateway is still waiting for the customer', failed: 'The gateway reports this payment failed',
+        amount_mismatch: 'Paid, but the amount does not match — held for review',
+      }
+      toast[status === 'succeeded' || status === 'already_succeeded' ? 'success' : 'info'](messages[status] ?? `Gateway answered: ${status.replace(/_/g, ' ')}`)
+      refresh()
+    },
   })
 
   if (order.isLoading) return <LoadingState />
@@ -393,9 +408,17 @@ export default function OrderDetailPage() {
                     </li>
                   ))}
                   {o.payments.filter((p) => !['SUCCEEDED', 'REQUIRES_VERIFICATION'].includes(p.status)).map((p) => (
-                    <li key={p.id} className="flex justify-between gap-3 py-2 text-muted-foreground">
-                      <span>{p.provider} attempt · {titleCase(p.status)}{p.failure_reason ? ` · ${p.failure_reason}` : ''}</span>
-                      <Money value={p.amount} />
+                    <li key={p.id} className="flex items-center justify-between gap-3 py-2 text-muted-foreground">
+                      <span className="min-w-0">{GATEWAY_NAME[p.provider] ?? p.provider} attempt · {titleCase(p.status)}{p.failure_reason ? ` · ${p.failure_reason}` : ''}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {GATEWAY_NAME[p.provider] && can('payments.verify')
+                          && (p.status === 'PENDING' || (p.status === 'FAILED' && !o.payments.some((x) => x.status === 'SUCCEEDED'))) && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={checkGateway.isPending} onClick={() => checkGateway.mutate(p.id)}>
+                            {checkGateway.isPending && checkGateway.variables === p.id ? <Spinner /> : <RefreshCw />} Check with {GATEWAY_NAME[p.provider]}
+                          </Button>
+                        )}
+                        <Money value={p.amount} />
+                      </span>
                     </li>
                   ))}
                 </ul>

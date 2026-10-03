@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotificationsInBackground } from './dispatch.ts'
-import type { VerifiedPayment } from './payments/types.ts'
+import type { PaymentProvider, VerifiedPayment } from './payments/types.ts'
 import { rpc } from './supabase.ts'
 
 /**
@@ -52,4 +52,39 @@ export async function formOrQuery(req: Request): Promise<Record<string, string>>
     }
   }
   return params
+}
+
+export interface PendingGatewayPayment {
+  id: string
+  provider: string
+  reference: string
+  sessions: string[]
+  age_minutes: number
+}
+
+/**
+ * Asks the gateway about each attempt of a pending payment (newest first).
+ * A confirmed attempt is recorded; if every attempt has definitely failed the
+ * payment is marked failed; otherwise it stays pending for the next run.
+ */
+export async function reconcilePayment(
+  admin: SupabaseClient,
+  provider: PaymentProvider,
+  payment: PendingGatewayPayment,
+): Promise<{ status: string; orderNumber: string | null }> {
+  if (!provider.reconcile) return { status: 'unsupported', orderNumber: null }
+  const sessions = payment.sessions.length ? [...payment.sessions].reverse() : [payment.reference]
+  let lastFailure: VerifiedPayment | null = null
+  let waiting = false
+  for (const session of sessions) {
+    const verified = await provider.reconcile(session, payment.reference, payment.age_minutes)
+    if (!verified) {
+      waiting = true
+      continue
+    }
+    if (verified.success) return recordVerifiedPayment(admin, payment.provider, { ...verified, reference: payment.reference })
+    lastFailure = verified
+  }
+  if (waiting || !lastFailure) return { status: 'pending', orderNumber: null }
+  return recordVerifiedPayment(admin, payment.provider, { ...lastFailure, reference: payment.reference })
 }

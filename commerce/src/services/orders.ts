@@ -154,6 +154,11 @@ export async function verifyManualPayment(paymentId: string, approve: boolean, n
   return data
 }
 
+/** Asks bKash / PayStation about an online payment the customer never came back from. */
+export function checkGatewayPayment(paymentId: string) {
+  return invokeFunction<{ status: string }>('payments', { action: 'check_payment', payment_id: paymentId })
+}
+
 export async function refundOrder(input: { orderId: string; amount: number; channel: Enums<'payment_channel'>; reason: string; idempotencyKey: string }) {
   const { data, error } = await supabase.rpc('refund_order', {
     p_order_id: input.orderId, p_amount: input.amount, p_channel: input.channel, p_reason: input.reason, p_idempotency_key: input.idempotencyKey,

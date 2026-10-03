@@ -20,14 +20,15 @@ describe('row level security', () => {
 
   it('serves the catalogue to visitors without cost prices', () =>
     inTx(async (db) => {
-      await createProduct(db, { name: 'Visible Tee', price: 799, cost: 321 })
+      // A cost that can't turn up by chance inside an id or a timestamp.
+      await createProduct(db, { name: 'Visible Tee', price: 799, cost: 321.47 })
       await asAnon(db)
       const list = await value<{ items: unknown[] }>(db, `select public.storefront_list_products(null, 'Visible Tee')`)
       expect(list.items).toHaveLength(1)
-      expect(JSON.stringify(list)).not.toContain('321')
+      expect(JSON.stringify(list)).not.toMatch(/321\.47|cost/)
       const quoteJson = JSON.stringify(await value(db, `select public.storefront_quote($1, 'Dhaka')`,
         [JSON.stringify([{ variant_id: (list.items[0] as { id: string }).id, quantity: 1 }])]).catch(() => ({})))
-      expect(quoteJson).not.toContain('321')
+      expect(quoteJson).not.toMatch(/321\.47|cost/)
     }))
 
   it('denies admin functions to visitors and customers', () =>

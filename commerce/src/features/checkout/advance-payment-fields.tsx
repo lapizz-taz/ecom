@@ -26,7 +26,7 @@ const WALLET: Record<WalletChannel, { name: string; cls: string }> = {
  * enters their wallet number and the transaction ID from the SMS. The order is
  * confirmed only after staff match it against the statement.
  */
-export function AdvancePaymentFields({ title, note, amount, accounts, value, onChange, errors }: {
+export function AdvancePaymentFields({ title, note, amount, accounts, value, onChange, errors, bare }: {
   title: string
   note?: ReactNode
   amount: number
@@ -34,6 +34,8 @@ export function AdvancePaymentFields({ title, note, amount, accounts, value, onC
   value: AdvancePaymentValues
   onChange: (v: AdvancePaymentValues) => void
   errors: Partial<Record<keyof AdvancePaymentValues, string>>
+  /** Inside another payment panel: no own box or heading. */
+  bare?: boolean
 }) {
   const wallets = (['BKASH', 'NAGAD', 'ROCKET'] as const).filter((c) => accounts.some((a) => a.channel === c && a.number))
   const account = accounts.find((a) => a.channel === value.channel && a.number)
@@ -47,14 +49,16 @@ export function AdvancePaymentFields({ title, note, amount, accounts, value, onC
 
   if (wallets.length === 0) return null
   return (
-    <div className="space-y-4 rounded-xl bg-muted/50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-medium">{title}</p>
-          {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
+    <div className={cn('space-y-4', !bare && 'rounded-xl bg-muted/50 p-4')}>
+      {!bare && (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-medium">{title}</p>
+            {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
+          </div>
+          <p className="text-xl font-semibold tabular-nums"><Money value={amount} /></p>
         </div>
-        <p className="text-xl font-semibold tabular-nums"><Money value={amount} /></p>
-      </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Wallet">
         {wallets.map((c) => (

@@ -17,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { cartLines, useCart } from '@/features/cart/cart-store'
-import { type AdvancePaymentValues, AdvancePaymentFields, validateAdvancePayment } from '@/features/checkout/advance-payment-fields'
+import { AdvancePay } from '@/features/checkout/advance-pay'
+import { type AdvancePaymentValues, validateAdvancePayment } from '@/features/checkout/advance-payment-fields'
 import { PhoneCheckIcon, PhoneCheckStatus, phoneCheckState } from '@/features/checkout/phone-check'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -27,7 +28,7 @@ import { formatMoney } from '@/lib/format'
 import { isValidPhone, normalizePhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
-import { checkoutQuote, placeOrder, trackEvent } from '@/services/storefront'
+import { checkoutQuote, initiatePayment, placeOrder, trackEvent } from '@/services/storefront'
 import type { PaymentMethod } from '@/types/domain'
 
 function buildSchema(phonePattern: string) {
@@ -70,6 +71,9 @@ export default function CheckoutPage() {
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
   const [advance, setAdvance] = useState<AdvancePaymentValues>({ channel: 'BKASH', sender_phone: '', transaction_id: '' })
   const [advanceErrors, setAdvanceErrors] = useState<Partial<Record<keyof AdvancePaymentValues, string>>>({})
+  // How the customer pays what is due now: a gateway code (bkash, paystation…) or 'manual' Send Money.
+  const [payVia, setPayVia] = useState('')
+  const [redirecting, setRedirecting] = useState(false)
   const schema = useMemo(() => buildSchema(config?.phone_pattern ?? '^[0-9]{8,15}$'), [config?.phone_pattern])
   // Where this visitor came from (ad, search, direct…), sent with the quote and the order.
   const [attribution] = useState(() => currentAttribution())
@@ -142,7 +146,7 @@ export default function CheckoutPage() {
   const placed = useRef(false)
   const place = useMutation({
     meta: { silent: true },
-    mutationFn: ({ values, advancePayment }: { values: CheckoutValues; advancePayment: AdvancePaymentValues | null }) => placeOrder({
+    mutationFn: ({ values, advancePayment }: { values: CheckoutValues; advancePayment: AdvancePaymentValues | null; gateway: string | null }) => placeOrder({
       customer: { full_name: values.full_name, phone: normalizePhone(values.phone), email: values.email || null },
       shipping: { address: values.address, area: values.area || null, city: null, district: values.district, postal_code: null },
       items: cartLines(items),
@@ -154,17 +158,37 @@ export default function CheckoutPage() {
       advance_payment: advancePayment ? { ...advancePayment, sender_phone: normalizePhone(advancePayment.sender_phone) } : null,
       attribution,
     }),
-    onSuccess: ({ order, payment_error }, { values }) => {
+    onSuccess: async ({ order, payment_error }, { values, gateway }) => {
       // Set before clearing the cart: the mutation is not "success" yet during this
       // callback, and an empty cart would otherwise redirect to /cart first.
       placed.current = true
-      sessionStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ order_number: order.order_number, phone: normalizePhone(values.phone) }))
+      const phone = normalizePhone(values.phone)
+      sessionStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ order_number: order.order_number, phone }))
       trackEvent('PURCHASE')
       clear()
       setIdempotencyKey(crypto.randomUUID())
       if (payment_error) toast.warning(`Order placed, but your payment details need another look: ${payment_error}`)
       const params = new URLSearchParams({ order: order.order_number })
       if (order.merged) params.set('merged', '1')
+      // Straight on to bKash / PayStation. The order counts as paid only when the
+      // gateway confirms it to our server, never because the customer came back.
+      if (gateway && Number(order.amount_due_now) > 0) {
+        setRedirecting(true)
+        try {
+          const res = await initiatePayment({
+            order_number: order.order_number, phone, provider: gateway,
+            purpose: values.payment_method === 'FULL_PAYMENT' ? 'FULL' : 'ADVANCE',
+          })
+          if (res.redirectUrl) {
+            window.location.assign(res.redirectUrl)
+            return
+          }
+        } catch {
+          // The order is placed; the success page offers every way to pay.
+        }
+        setRedirecting(false)
+        params.set('payment', 'unavailable')
+      }
       navigate(`/order-success?${params}`, { replace: true })
     },
   })
@@ -183,14 +207,22 @@ export default function CheckoutPage() {
   const payNow = !checkingPhone && requirement && (requirement.mode === 'ADVANCE' || requirement.mode === 'FULL') ? requirement.amount : 0
   // The risk check asked for an advance although the customer chose cash on delivery.
   const advanceRequired = method === 'COD' && payNow > 0
-  // Collect the bKash / Nagad payment right here when the store takes Send Money.
-  const collectAtCheckout = payNow > 0 && walletAccounts.length > 0
+  const gateways = (config?.payments.providers ?? []).filter((p) => p.type === 'redirect').map((p) => ({ code: p.code, label: p.label }))
+  // Take the payment right here: online through a gateway, or Send Money with a TrxID.
+  const collectAtCheckout = payNow > 0 && (gateways.length > 0 || walletAccounts.length > 0)
+  const via = payVia === 'manual' && walletAccounts.length ? 'manual'
+    : gateways.find((g) => g.code === payVia)?.code ?? gateways[0]?.code ?? 'manual'
+  const gateway = collectAtCheckout && via !== 'manual' ? gateways.find((g) => g.code === via) ?? null : null
   const walletChannel = walletAccounts.some((a) => a.channel === advance.channel) ? advance.channel
     : (walletAccounts[0]?.channel as AdvancePaymentValues['channel'] | undefined) ?? 'BKASH'
+  const advancePay = (title: string, note?: ReactNode) => (
+    <AdvancePay title={title} note={note} amount={payNow} gateways={gateways} accounts={walletAccounts} via={via} onVia={(v) => { setPayVia(v); setAdvanceErrors({}) }}
+      manual={{ ...advance, channel: walletChannel }} onManual={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
+  )
 
   const submit = form.handleSubmit((values) => {
     let advancePayment: AdvancePaymentValues | null = null
-    if (collectAtCheckout) {
+    if (collectAtCheckout && via === 'manual') {
       advancePayment = { ...advance, channel: walletChannel }
       const errors = validateAdvancePayment(advancePayment, (p) => isValidPhone(p, config?.phone_pattern ?? '^[0-9]{8,15}$'))
       setAdvanceErrors(errors)
@@ -199,7 +231,7 @@ export default function CheckoutPage() {
         return
       }
     }
-    place.mutate({ values, advancePayment })
+    place.mutate({ values, advancePayment, gateway: gateway?.code ?? null })
   })
   const stockErrors = q?.stock_errors ?? []
   const districts = config?.delivery.districts ?? []
@@ -210,9 +242,12 @@ export default function CheckoutPage() {
 
   const submitError = place.error ? toUserMessage(place.error) : null
   const submitCode = place.error ? errorCode(place.error) : null
-  const canSubmit = !place.isPending && !blocked && stockErrors.length === 0 && !checkingPhone
-  const buttonContent = place.isPending || checkingPhone
-    ? <><Spinner /> {checkingPhone ? 'Checking…' : 'Placing order…'}</>
+  const busy = place.isPending || redirecting
+  const canSubmit = !busy && !blocked && stockErrors.length === 0 && !checkingPhone
+  const gatewayName = gateway?.label.replace(/^Pay with /, '').replace(/ \(.*\)$/, '')
+  const buttonContent = busy || checkingPhone
+    ? <><Spinner /> {checkingPhone ? 'Checking…' : redirecting ? `Opening ${gatewayName}…` : 'Placing order…'}</>
+    : gateway ? <><Lock /> Pay {formatMoney(payNow)} with {gatewayName}</>
     : <><Lock /> Confirm order</>
 
   return (
@@ -305,9 +340,8 @@ export default function CheckoutPage() {
               </div>
             ) : advanceRequired ? (
               collectAtCheckout ? (
-                <AdvancePaymentFields title="Pay the delivery charge in advance" amount={payNow} accounts={walletAccounts}
-                  note={<>Then pay the remaining <Money value={requirement?.remaining_cod ?? Math.max(total - payNow, 0)} /> in cash when your parcel arrives.</>}
-                  value={{ ...advance, channel: walletChannel }} onChange={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
+                advancePay('Pay the delivery charge in advance',
+                  <>Then pay the remaining <Money value={requirement?.remaining_cod ?? Math.max(total - payNow, 0)} /> in cash when your parcel arrives.</>)
               ) : (
                 <div className="flex gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-950" role="status">
                   <Info className="mt-0.5 size-4 shrink-0" />
@@ -339,10 +373,7 @@ export default function CheckoutPage() {
                     ))}
                   </RadioGroup>
                 )} />
-                {collectAtCheckout && (
-                  <AdvancePaymentFields title="Pay with bKash or Nagad" amount={payNow} accounts={walletAccounts}
-                    value={{ ...advance, channel: walletChannel }} onChange={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
-                )}
+                {collectAtCheckout && advancePay(method === 'FULL_PAYMENT' ? 'Pay for your order now' : 'Pay now')}
                 {payNow > 0 && !collectAtCheckout && requirement?.message && (
                   <p className="text-sm text-muted-foreground">{requirement.message} You'll see how to pay after you confirm.</p>
                 )}

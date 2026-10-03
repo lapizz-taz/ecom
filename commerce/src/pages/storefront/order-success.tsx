@@ -27,6 +27,7 @@ const PAYMENT_MESSAGES: Record<string, { tone: string; icon: React.ReactNode; te
   cancelled: { tone: 'bg-red-50 text-red-900', icon: <AlertTriangle className="size-5" />, text: 'Payment was cancelled. You can try again below.' },
   review: { tone: 'bg-amber-50 text-amber-900', icon: <Clock className="size-5" />, text: 'We are verifying your payment and will confirm shortly.' },
   pending: { tone: 'bg-amber-50 text-amber-900', icon: <Clock className="size-5" />, text: 'We are waiting for confirmation from the payment provider.' },
+  unavailable: { tone: 'bg-amber-50 text-amber-900', icon: <AlertTriangle className="size-5" />, text: 'Your order is placed, but online payment could not open just now. Please try again or choose another way to pay below.' },
 }
 
 export default function OrderSuccessPage() {

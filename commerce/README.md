@@ -142,8 +142,20 @@ Seeded logins (password `Password123!` for all):
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
        body := '{"action": "sync_all"}'::jsonb)
    $$);
+
+   -- Finishes bKash / PayStation payments whose customer paid but never came back to the store.
+   select cron.schedule('payments-reconcile', '*/5 * * * *', $$
+     select net.http_post(
+       url := 'https://<ref>.supabase.co/functions/v1/payment-webhook?reconcile=1',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       body := '{}'::jsonb)
+   $$);
    ```
 7. **Provider callbacks**
+   - bKash and PayStation need nothing here: each payment carries its own callback URL
+     (`https://<ref>.supabase.co/functions/v1/payments?callback=…`), and the reconcile job above covers customers who
+     close the tab. Connect them in **Settings → Payments → Online payment gateways**.
    - SSLCommerz IPN: `https://<ref>.supabase.co/functions/v1/payment-webhook?provider=sslcommerz`
    - Steadfast status webhook: `https://<ref>.supabase.co/functions/v1/courier-webhook?provider=steadfast` with
      `Authorization: Bearer <STEADFAST_WEBHOOK_TOKEN>`
@@ -153,9 +165,11 @@ Seeded logins (password `Password123!` for all):
 | Secret | Used for |
 | --- | --- |
 | `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects |
-| `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch` and `courier` |
+| `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1` |
 | `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |
+| `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` (all optional) | Fallback bKash Merchant API (tokenized checkout) credentials. Normally connected in **Settings → Payments**: tested by granting a token, then stored encrypted in Supabase Vault |
+| `PAYSTATION_MERCHANT_ID`, `PAYSTATION_PASSWORD`, `PAYSTATION_TOKEN`, `PAYSTATION_BASE_URL` (all optional) | Fallback PayStation credentials, likewise normally connected in **Settings → Payments** |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | Card / mobile-banking payments |
 | `STEADFAST_WEBHOOK_TOKEN` | Steadfast status webhooks |
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
@@ -199,8 +213,9 @@ never silent approval.
 runs the fraud check and the delivery-success policy (Settings → Fraud & advance → *Delivery success check*): the share of
 the customer's past parcels that were actually received (store history plus the courier-history API) puts them in a tier —
 Good, Medium, Low, New or Check failed — and each tier maps to cash on delivery, an advance, manual review or a block.
-The default advance is a fixed ৳55, paid with bKash / Nagad *Send Money* right on the checkout page (sender number + TrxID);
-it counts only after staff verify it. Customers see only what to do, never their rate. The tier is also available to
+The default advance is a fixed ৳55, paid right on the checkout page: online with bKash or PayStation when connected
+(confirmed instantly by the gateway), or by bKash / Nagad *Send Money* with the sender number and TrxID, which counts only
+after staff verify it. Customers see only what to do, never their rate. The tier is also available to
 custom rules as `receive_rate_tier` / `receive_rate` / `parcel_count`.
 
 **Courier history check.** With a key connected, the phone check also asks the courier fraud-check service (the one behind
@@ -225,7 +240,13 @@ marks parcels Ready to ship, Shipped (optionally assigning the courier) or Retur
 cancelled or still-in-production parcels, and writes every scan — including failures — to `parcel_scans`.
 
 **Payments.** Online payments are confirmed only after the provider's validation API agrees; webhooks and redirects are
-idempotent. Manual bKash/Nagad transfers wait for a staff member to verify the transaction ID.
+idempotent. With bKash the store executes the payment server-side and counts it only when bKash reports it *Completed*
+for that paymentID; with PayStation the transaction-status API must report it successful. Either way `confirm_payment()`
+checks the amount against what is due (a short payment is held for review) and ignores a repeated confirmation, so a
+callback, a retry and the reconcile job can all arrive without paying twice. A `status=success` in the return URL is never
+trusted on its own. Customers who cancel can try again from the order page; staff can ask the gateway about any pending
+attempt from the order (*Check with bKash*). The bKash access token is granted once an hour and shared between function
+instances through Vault. Manual bKash/Nagad transfers wait for a staff member to verify the transaction ID.
 
 **Finance.** Product revenue, delivery income and cost of goods are posted when an order is delivered (accrual). Advances, COD
 settlements and online payments are cash movements, not revenue. Refunds on delivered orders reduce revenue; refunds of
