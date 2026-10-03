@@ -68,6 +68,9 @@ describe('bKash tokenized checkout', () => {
     const otherKey = fakeBkash(routes)
     await new BkashProvider({ ...creds, appKey: 'new-key' }, otherKey, Date.now, store).initiate(ctx)
     expect(otherKey.mock.calls.filter((c) => String(c[0]).endsWith('/grant'))).toHaveLength(1)
+    // Testing credentials never leans on a shared token.
+    const wrongSecret = fakeBkash({ '/tokenized/checkout/token/grant': { statusCode: '2001', statusMessage: 'Invalid App Secret' } })
+    await expect(new BkashProvider({ ...creds, appKey: 'new-key', appSecret: 'typo' }, wrongSecret, Date.now, store).test()).rejects.toThrow(/Invalid App Secret/)
   })
 
   it('grants a new token once when bKash says the old one expired', async () => {

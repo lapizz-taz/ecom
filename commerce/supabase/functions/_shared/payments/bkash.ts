@@ -232,8 +232,8 @@ export class BkashProvider implements PaymentProvider {
 
   /** Proves the credentials work (Settings → Payments → Connect). */
   async test(): Promise<string> {
-    clearBkashTokens()
-    await this.token()
+    // Always a real grant: a cached or shared token proves nothing about the credentials typed in.
+    await this.token(true)
     return this.config.sandbox ? 'Connected to the bKash sandbox' : 'Connected to bKash'
   }
 }
