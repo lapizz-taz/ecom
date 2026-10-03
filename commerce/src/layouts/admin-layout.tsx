@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Activity, BadgePercent, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, Factory, LayoutDashboard, LogOut, Megaphone, Menu,
+  Activity, BadgePercent, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, Factory, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquare,
   Package, ScanBarcode, ScrollText, Search, Settings, ShieldAlert, ShoppingCart, Truck, UserCog, Users, Wallet, Warehouse,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
@@ -87,6 +87,7 @@ const NAV: NavSection[] = [
           { label: 'Coupons', to: '/admin/coupons', permission: 'coupons.manage' },
         ],
       },
+      { label: 'SMS', to: '/admin/sms', icon: <MessageSquare />, permission: 'sms.view' },
     ],
   },
   {

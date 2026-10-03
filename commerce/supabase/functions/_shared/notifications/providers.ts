@@ -50,43 +50,6 @@ export class WebhookProvider implements NotificationProvider {
   }
 }
 
-export interface HttpSmsConfig {
-  /** e.g. https://sms.example.com/send?api_key={key}&to={to}&sender={sender}&message={message} */
-  urlTemplate: string
-  apiKey?: string
-  senderId?: string
-  method?: 'GET' | 'POST'
-  /** Regex the response body must match to count as sent (optional). */
-  successPattern?: string
-}
-
-/** Generic HTTP SMS gateway (most local SMS gateways use this shape). */
-export class HttpSmsProvider implements NotificationProvider {
-  readonly name = 'sms_http'
-  constructor(private readonly config: HttpSmsConfig, private readonly fetchFn: FetchFn = fetch) {}
-
-  buildUrl(message: OutboundMessage): string {
-    const fill = (template: string) =>
-      template
-        .replaceAll('{key}', encodeURIComponent(this.config.apiKey ?? ''))
-        .replaceAll('{sender}', encodeURIComponent(this.config.senderId ?? ''))
-        .replaceAll('{to}', encodeURIComponent(message.to))
-        .replaceAll('{message}', encodeURIComponent(message.body))
-    return fill(this.config.urlTemplate)
-  }
-
-  async send(message: OutboundMessage): Promise<{ messageId?: string }> {
-    const url = this.buildUrl(message)
-    const response = await this.fetchFn(url, { method: this.config.method ?? 'GET' })
-    const text = await response.text()
-    if (!response.ok) throw new Error(`SMS gateway returned HTTP ${response.status}: ${text.slice(0, 200)}`)
-    if (this.config.successPattern && !new RegExp(this.config.successPattern).test(text)) {
-      throw new Error(`SMS gateway rejected the message: ${text.slice(0, 200)}`)
-    }
-    return { messageId: text.slice(0, 120) }
-  }
-}
-
 /** Transactional email via Resend. */
 export class ResendEmailProvider implements NotificationProvider {
   readonly name = 'resend'
@@ -104,24 +67,13 @@ export class ResendEmailProvider implements NotificationProvider {
   }
 }
 
-/** NotificationService provider factory (credentials from secrets). */
+/** WhatsApp / email provider factory (credentials from secrets). SMS uses the gateway connected on the SMS page. */
 export function notificationProvider(name: string): NotificationProvider {
   switch (name) {
     case 'webhook': {
       const url = env('NOTIFY_WEBHOOK_URL')
       if (!url) throw new Error('NOTIFY_WEBHOOK_URL is not set')
       return new WebhookProvider(url, env('NOTIFY_WEBHOOK_SECRET'))
-    }
-    case 'sms_http': {
-      const urlTemplate = env('SMS_API_URL')
-      if (!urlTemplate) throw new Error('SMS_API_URL is not set')
-      return new HttpSmsProvider({
-        urlTemplate,
-        apiKey: env('SMS_API_KEY'),
-        senderId: env('SMS_SENDER_ID'),
-        method: env('SMS_API_METHOD') === 'POST' ? 'POST' : 'GET',
-        successPattern: env('SMS_SUCCESS_PATTERN'),
-      })
     }
     case 'resend': {
       const apiKey = env('RESEND_API_KEY')

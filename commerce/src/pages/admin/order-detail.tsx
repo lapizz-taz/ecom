@@ -27,14 +27,17 @@ import {
   RetainAdvanceDialog, ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
+import { eventLabel } from '@/features/sms/sms-text'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, toNumber } from '@/lib/format'
 import {
-  ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, CHARGE_KIND, CHARGE_SOURCE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, NEEDS_REASON, NEXT_ACTIONS, ORDER_STATUS,
+  ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, CHARGE_KIND, CHARGE_SOURCE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, MESSAGE_STATUS, NEEDS_REASON,
+  NEXT_ACTIONS, ORDER_STATUS,
   PAYMENT_CHANNEL, PAYMENT_METHOD, PAYMENT_STATUS, PRODUCTION_STATUS, RECEIVABLE, RISK_LEVEL, SEGMENT, SHIPMENT_STATUS, STAGE, stageOf,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
+import { listOrderMessages } from '@/services/sms'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
   checkGatewayPayment, type OrderDetail, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
@@ -482,6 +485,8 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
+          <CustomerMessages orderId={o.id} />
+
           <NotesCard orderId={o.id} notes={notes} onAdded={refresh} canAdd={can('orders.update')} phone={o.customer_phone} />
 
           <Card>
@@ -823,5 +828,34 @@ function CourierCharges({ charges }: { charges: OrderDetail['shipments'][number]
         </ul>
       )}
     </div>
+  )
+}
+
+/** What the customer was sent about this order (SMS, WhatsApp, email). */
+function CustomerMessages({ orderId }: { orderId: string }) {
+  const { can } = useAuth()
+  const messages = useQuery({ queryKey: ['order-messages', orderId], queryFn: () => listOrderMessages(orderId), enabled: can('sms.view') || can('settings.view') })
+  if (!messages.data?.length) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Messages to the customer</CardTitle>
+        {can('sms.view') && <CardAction><Button size="sm" variant="ghost" asChild><Link to="/admin/sms?tab=messages">All SMS</Link></Button></CardAction>}
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y text-sm">
+          {messages.data.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-start justify-between gap-2 py-2 first:pt-0 last:pb-0">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{eventLabel(m.event)} <span className="text-xs font-normal text-muted-foreground">· {m.channel === 'SMS' ? 'SMS' : titleCase(m.channel)} · {formatDateTime(m.sent_at ?? m.created_at)}</span></p>
+                <p className="line-clamp-2 text-xs text-muted-foreground" title={m.body}>{m.body}</p>
+                {m.error && <p className="text-xs text-red-600">{m.error}</p>}
+              </div>
+              <StatusBadge value={m.status} map={MESSAGE_STATUS} />
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }

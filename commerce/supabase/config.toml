@@ -79,6 +79,10 @@ import_map = "./functions/import_map.json"
 verify_jwt = false
 import_map = "./functions/import_map.json"
 
+[functions.sms]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
 [functions.admin-users]
 verify_jwt = true
 import_map = "./functions/import_map.json"

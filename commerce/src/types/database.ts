@@ -1577,7 +1577,7 @@ export type Database = {
         Row: {
           id: string
           notification_id: string | null
-          event: Database["public"]["Enums"]["notification_event"]
+          event: Database["public"]["Enums"]["notification_event"] | null
           channel: Database["public"]["Enums"]["notification_channel"]
           recipient: string
           subject: string | null
@@ -1593,11 +1593,21 @@ export type Database = {
           sent_at: string | null
           created_at: string
           updated_at: string
+          purpose: string
+          dedupe_key: string | null
+          segments: number | null
+          encoding: string | null
+          cost: number | null
+          cost_source: string | null
+          delivery_status: string | null
+          delivered_at: string | null
+          status_checked_at: string | null
+          created_by: string | null
         }
         Insert: {
           id?: string
           notification_id?: string | null
-          event: Database["public"]["Enums"]["notification_event"]
+          event?: Database["public"]["Enums"]["notification_event"] | null
           channel: Database["public"]["Enums"]["notification_channel"]
           recipient: string
           subject?: string | null
@@ -1613,11 +1623,21 @@ export type Database = {
           sent_at?: string | null
           created_at?: string
           updated_at?: string
+          purpose?: string
+          dedupe_key?: string | null
+          segments?: number | null
+          encoding?: string | null
+          cost?: number | null
+          cost_source?: string | null
+          delivery_status?: string | null
+          delivered_at?: string | null
+          status_checked_at?: string | null
+          created_by?: string | null
         }
         Update: {
           id?: string
           notification_id?: string | null
-          event?: Database["public"]["Enums"]["notification_event"]
+          event?: Database["public"]["Enums"]["notification_event"] | null
           channel?: Database["public"]["Enums"]["notification_channel"]
           recipient?: string
           subject?: string | null
@@ -1633,6 +1653,16 @@ export type Database = {
           sent_at?: string | null
           created_at?: string
           updated_at?: string
+          purpose?: string
+          dedupe_key?: string | null
+          segments?: number | null
+          encoding?: string | null
+          cost?: number | null
+          cost_source?: string | null
+          delivery_status?: string | null
+          delivered_at?: string | null
+          status_checked_at?: string | null
+          created_by?: string | null
         }
         Relationships: [
           {
@@ -1668,6 +1698,8 @@ export type Database = {
           template: string
           created_at: string
           updated_at: string
+          name: string | null
+          conditions: Json
         }
         Insert: {
           id?: string
@@ -1678,6 +1710,8 @@ export type Database = {
           template: string
           created_at?: string
           updated_at?: string
+          name?: string | null
+          conditions?: Json
         }
         Update: {
           id?: string
@@ -1688,6 +1722,8 @@ export type Database = {
           template?: string
           created_at?: string
           updated_at?: string
+          name?: string | null
+          conditions?: Json
         }
         Relationships: []
       }
@@ -5134,6 +5170,18 @@ export type Database = {
         }
         Returns: Json
       }
+      notification_conditions_error: {
+        Args: {
+          p_conditions: Json
+        }
+        Returns: string
+      }
+      notification_event_label: {
+        Args: {
+          p_event: Database["public"]["Enums"]["notification_event"]
+        }
+        Returns: string
+      }
       order_stage: {
         Args: {
           p_status: Database["public"]["Enums"]["order_status"]
@@ -5794,6 +5842,50 @@ export type Database = {
         }
         Returns: number
       }
+      sms_overview: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      sms_rule_delete: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      sms_rule_save: {
+        Args: {
+          p_id: string
+          p_event: Database["public"]["Enums"]["notification_event"]
+          p_name: string
+          p_template: string
+          p_conditions: Json
+          p_enabled: boolean
+        }
+        Returns: {
+          id: string
+          event: Database["public"]["Enums"]["notification_event"]
+          channel: Database["public"]["Enums"]["notification_channel"]
+          is_enabled: boolean
+          subject: string | null
+          template: string
+          created_at: string
+          updated_at: string
+          name: string | null
+          conditions: Json
+        }
+      }
+      sms_update_settings: {
+        Args: {
+          p_enabled?: boolean
+          p_sender_id?: string
+          p_cost_per_sms?: number
+          p_currency_text?: string
+        }
+        Returns: Json
+      }
       staff_directory: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -6048,7 +6140,7 @@ export type Database = {
       note_kind: "NOTE" | "CONTACT" | "SYSTEM"
       note_visibility: "INTERNAL" | "CUSTOMER"
       notification_channel: "SMS" | "WHATSAPP" | "EMAIL"
-      notification_event: "ORDER_CREATED" | "ORDER_CONFIRMED" | "ADVANCE_REQUIRED" | "ADVANCE_RECEIVED" | "ORDER_SHIPPED" | "ORDER_DELIVERED" | "ORDER_CANCELLED" | "ORDER_RETURNED"
+      notification_event: "ORDER_CREATED" | "ORDER_CONFIRMED" | "PRE_ORDER_CONFIRMED" | "ADVANCE_REQUIRED" | "ADVANCE_RECEIVED" | "PAYMENT_RECEIVED" | "PAYMENT_FAILED" | "ORDER_SHIPPED" | "OUT_FOR_DELIVERY" | "ORDER_DELIVERED" | "ORDER_CANCELLED" | "RETURN_INITIATED" | "ORDER_RETURNED"
       notification_status: "QUEUED" | "SENDING" | "SENT" | "FAILED" | "SKIPPED"
       order_payment_kind: "ADVANCE" | "FULL" | "BALANCE" | "COD" | "REFUND"
       order_source: "STOREFRONT" | "ADMIN" | "IMPORT" | "API"
@@ -6106,7 +6198,7 @@ export const Constants = {
       note_kind: ["NOTE", "CONTACT", "SYSTEM"],
       note_visibility: ["INTERNAL", "CUSTOMER"],
       notification_channel: ["SMS", "WHATSAPP", "EMAIL"],
-      notification_event: ["ORDER_CREATED", "ORDER_CONFIRMED", "ADVANCE_REQUIRED", "ADVANCE_RECEIVED", "ORDER_SHIPPED", "ORDER_DELIVERED", "ORDER_CANCELLED", "ORDER_RETURNED"],
+      notification_event: ["ORDER_CREATED", "ORDER_CONFIRMED", "PRE_ORDER_CONFIRMED", "ADVANCE_REQUIRED", "ADVANCE_RECEIVED", "PAYMENT_RECEIVED", "PAYMENT_FAILED", "ORDER_SHIPPED", "OUT_FOR_DELIVERY", "ORDER_DELIVERED", "ORDER_CANCELLED", "RETURN_INITIATED", "ORDER_RETURNED"],
       notification_status: ["QUEUED", "SENDING", "SENT", "FAILED", "SKIPPED"],
       order_payment_kind: ["ADVANCE", "FULL", "BALANCE", "COD", "REFUND"],
       order_source: ["STOREFRONT", "ADMIN", "IMPORT", "API"],

@@ -4,7 +4,7 @@ import { HttpCourierHistoryProvider, InternalHistoryProvider, readPath } from '.
 import { FraudDetectionService } from './fraud/service.ts'
 import type { FraudProvider } from './fraud/types.ts'
 import { fromDbError, HttpError } from './http.ts'
-import { HttpSmsProvider, WebhookProvider } from './notifications/providers.ts'
+import { WebhookProvider } from './notifications/providers.ts'
 import { SslCommerzProvider } from './payments/providers.ts'
 import { parse, placeOrderSchema } from './schemas.ts'
 
@@ -155,12 +155,6 @@ describe('Steadfast courier provider', () => {
 })
 
 describe('notification providers', () => {
-  it('fills the SMS gateway URL template with encoded values', () => {
-    const sms = new HttpSmsProvider({ urlTemplate: 'https://sms.example/send?k={key}&to={to}&from={sender}&msg={message}', apiKey: 'K&1', senderId: 'SHOP' })
-    expect(sms.buildUrl({ channel: 'SMS', to: '01711000000', body: 'Order ISO-1 confirmed & paid' }))
-      .toBe('https://sms.example/send?k=K%261&to=01711000000&from=SHOP&msg=Order%20ISO-1%20confirmed%20%26%20paid')
-  })
-
   it('signs webhook notifications when a secret is configured', async () => {
     const fetchFn = vi.fn().mockResolvedValue(new Response('ok'))
     await new WebhookProvider('https://hook.example', 'secret', fetchFn).send({ channel: 'WHATSAPP', to: '017', body: 'hi' })

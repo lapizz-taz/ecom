@@ -268,3 +268,18 @@ export const CHARGE_SOURCE: Record<Enums<'charge_source'>, string> = {
   INVOICE: 'Statement',
   MANUAL: 'Manual',
 }
+
+export const MESSAGE_STATUS: Record<Enums<'notification_status'>, Meta> = {
+  QUEUED: { label: 'Waiting', variant: 'info' },
+  SENDING: { label: 'Sending', variant: 'info' },
+  SENT: { label: 'Sent', variant: 'success' },
+  FAILED: { label: 'Failed', variant: 'danger' },
+  SKIPPED: { label: 'Not sent', variant: 'neutral' },
+}
+
+export const SMS_DELIVERY: Record<'PENDING' | 'DELIVERED' | 'FAILED' | 'UNKNOWN', string> = {
+  PENDING: 'Waiting for delivery report',
+  DELIVERED: 'Delivered to the phone',
+  FAILED: 'Not delivered',
+  UNKNOWN: 'Delivery not reported',
+}

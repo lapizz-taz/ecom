@@ -18,11 +18,10 @@ import { SelectSetting, SettingCard, SwitchSetting, useSettingDraft } from './se
 
 const PROVIDERS = [
   { value: 'console', label: 'Log only (testing)', secrets: [] },
-  { value: 'sms_http', label: 'SMS gateway (HTTP API)', secrets: ['SMS_API_URL', 'SMS_API_KEY', 'SMS_SENDER_ID'] },
   { value: 'webhook', label: 'Webhook (your own service / WhatsApp BSP)', secrets: ['NOTIFY_WEBHOOK_URL', 'NOTIFY_WEBHOOK_SECRET'] },
   { value: 'resend', label: 'Resend (email)', secrets: ['RESEND_API_KEY', 'EMAIL_FROM'] },
 ]
-const VARIABLES = ['customer_name', 'order_number', 'total', 'cod_amount', 'advance_amount', 'courier_name', 'tracking_number', 'tracking_url', 'track_order_url', 'store_name', 'store_phone']
+const VARIABLES = ['customer_name', 'customer_first_name', 'order_number', 'total', 'cod_amount', 'due_amount', 'advance_amount', 'payment_amount', 'courier_name', 'tracking_number', 'tracking_url', 'track_order_url', 'store_name', 'store_phone']
 const STATUS_VARIANT = { QUEUED: 'info', SENDING: 'info', SENT: 'success', FAILED: 'danger', SKIPPED: 'neutral' } as const
 
 export function NotificationSettings() {
@@ -39,16 +38,19 @@ function Channels() {
   const s = useSettingDraft('notifications')
   return (
     <SettingCard setting={s} title="Channels"
-      description="Messages are queued in the database and sent by the notifications-dispatch function with retries. Provider credentials are Edge Function secrets.">
+      description="WhatsApp and email messages are queued in the database and sent by the notifications-dispatch function with retries. Provider credentials are Edge Function secrets.">
       <SwitchSetting s={s} path={['enabled']} label="Send customer notifications" />
-      <div className="grid gap-4 md:grid-cols-3">
-        {(['sms', 'whatsapp', 'email'] as const).map((ch) => {
+      <p className="text-sm text-muted-foreground">
+        SMS has its own page — provider, automations, delivery and costs: <Link to="/admin/sms" className="font-medium text-foreground underline-offset-4 hover:underline">SMS</Link>.
+      </p>
+      <div className="grid gap-4 md:grid-cols-2">
+        {(['whatsapp', 'email'] as const).map((ch) => {
           const provider = PROVIDERS.find((p) => p.value === s.get(['channels', ch, 'provider']))
           return (
             <div key={ch} className="grid gap-3 rounded-lg border p-3">
-              <SwitchSetting s={s} path={['channels', ch, 'enabled']} label={ch === 'sms' ? 'SMS' : titleCase(ch)} />
+              <SwitchSetting s={s} path={['channels', ch, 'enabled']} label={titleCase(ch)} />
               <SelectSetting s={s} path={['channels', ch, 'provider']} label="Provider"
-                options={PROVIDERS.filter((p) => (ch === 'email' ? p.value !== 'sms_http' : p.value !== 'resend')).map(({ value, label }) => ({ value, label }))} />
+                options={PROVIDERS.filter((p) => ch === 'email' || p.value !== 'resend').map(({ value, label }) => ({ value, label }))} />
               {provider && provider.secrets.length > 0 && (
                 <p className="text-xs text-muted-foreground">Secrets: {provider.secrets.map((x) => <code key={x} className="mr-1">{x}</code>)}</p>
               )}
@@ -96,14 +98,13 @@ function TemplateRow({ template }: { template: Template }) {
   return (
     <div className="grid gap-2 rounded-lg border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">{titleCase(template.event)} <Badge variant="outline">{template.channel === 'SMS' ? 'SMS' : titleCase(template.channel)}</Badge></p>
+        <p className="text-sm font-medium">{titleCase(template.event)} <Badge variant="outline">{titleCase(template.channel)}</Badge></p>
         <label className="flex items-center gap-2 text-sm">
           <Switch checked={template.is_enabled} disabled={!editable || save.isPending} onCheckedChange={(v) => save.mutate({ is_enabled: v })} /> {template.is_enabled ? 'On' : 'Off'}
         </label>
       </div>
       {template.channel === 'EMAIL' && <Input aria-label="Subject" value={subject} disabled={!editable} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" />}
       <Textarea aria-label="Message" rows={2} value={body} disabled={!editable} onChange={(e) => setBody(e.target.value)} />
-      {template.channel === 'SMS' && <p className="text-xs text-muted-foreground">{body.length} characters (≈ {Math.max(1, Math.ceil(body.length / 160))} SMS before variables are filled)</p>}
       {dirty && editable && (
         <Button size="sm" className="w-fit" disabled={!body.trim() || save.isPending}
           onClick={() => save.mutate({ template: body, subject: template.channel === 'EMAIL' ? subject || null : template.subject })}>
@@ -142,7 +143,7 @@ function Logs() {
                 {logs.data.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell className="pl-6 text-xs whitespace-nowrap">{formatDateTime(l.created_at)}</TableCell>
-                    <TableCell className="text-xs">{titleCase(l.event)} · {l.channel}</TableCell>
+                    <TableCell className="text-xs">{titleCase(l.event ?? 'test')} · {l.channel}</TableCell>
                     <TableCell className="font-mono text-xs">{l.recipient}</TableCell>
                     <TableCell className="text-xs">{l.orders ? <Link to={`/admin/orders/${l.order_id}`} className="hover:underline">{l.orders.order_number}</Link> : '—'}</TableCell>
                     <TableCell>

@@ -125,15 +125,20 @@ Seeded logins (password `Password123!` for all):
    shared secret kept in Vault:
    ```sql
    create extension if not exists pg_net;
-   -- The migrations create a random 'cron_secret' in Vault; payment-webhook accepts it as is. For notifications-dispatch
-   -- and courier, set the CRON_SECRET function secret to the same value (or replace the Vault secret with yours).
+   -- The migrations create a random 'cron_secret' in Vault; payment-webhook and notifications-dispatch accept it as is.
+   -- For courier, set the CRON_SECRET function secret to the same value (or replace the Vault secret with yours).
 
+   -- Sends waiting customer messages and fetches SMS delivery reports; calls the function only when there is work.
    select cron.schedule('notifications-dispatch', '* * * * *', $$
      select net.http_post(
        url := 'https://<ref>.supabase.co/functions/v1/notifications-dispatch',
        headers := jsonb_build_object('Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
        body := '{}'::jsonb)
+     where exists (select 1 from public.notification_logs
+                   where (status = 'QUEUED' and next_attempt_at <= now())
+                      or (channel = 'SMS' and status = 'SENT' and delivery_status = 'PENDING'
+                          and sent_at < now() - interval '1 minute'))
    $$);
 
    select cron.schedule('courier-sync', '*/30 * * * *', $$
@@ -162,6 +167,9 @@ Seeded logins (password `Password123!` for all):
      (`https://<ref>.supabase.co/functions/v1/payments?callback=…`), and the reconcile job above covers customers who
      close the tab. Connect them in **Settings → Payments → Online payment gateways**.
    - SSLCommerz IPN: `https://<ref>.supabase.co/functions/v1/payment-webhook?provider=sslcommerz`
+   - SMS: connect the provider on the **SMS** page (Alpha SMS / sms.net.bd, BulkSMSBD, SSL Wireless, or any gateway with
+     an HTTP send URL). The key is tested (balance check where the provider has one) and stored in Vault; nothing is
+     configured as a function secret. SSL Wireless only accepts whitelisted server IPs.
    - Pathao and Steadfast status webhooks: **Couriers → Connections → Webhook** shows the callback URL
      (`…/functions/v1/courier-webhook?courier=<id>&provider=pathao|steadfast`) and a secret to paste into the courier's
      panel. Pathao sends it in `X-PATHAO-Signature`, Steadfast as `Authorization: Bearer …`; it is kept in Vault.
@@ -171,17 +179,16 @@ Seeded logins (password `Password123!` for all):
 | Secret | Used for |
 | --- | --- |
 | `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects. Without `STOREFRONT_URL` the *Website* from **Settings → Store** is used |
-| `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1`. `payment-webhook` also accepts the `cron_secret` the migrations keep in Vault, so its job needs no extra secret |
+| `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1`. `payment-webhook` and `notifications-dispatch` also accept the `cron_secret` the migrations keep in Vault, so their jobs need no extra secret |
 | `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` (all optional) | Fallback bKash Merchant API (tokenized checkout) credentials. Normally connected in **Settings → Payments**: tested by granting a token, then stored encrypted in Supabase Vault |
 | `PAYSTATION_MERCHANT_ID`, `PAYSTATION_PASSWORD`, `PAYSTATION_TOKEN`, `PAYSTATION_BASE_URL` (all optional) | Fallback PayStation credentials, likewise normally connected in **Settings → Payments** |
-| `ALLOW_INSECURE_GATEWAY_URL` | Local testing only: lets a gateway's *API address* be `http://` (a mock). Never set it in production |
+| `ALLOW_INSECURE_GATEWAY_URL` | Local testing only: lets a payment or SMS gateway's *API address* be `http://` (a mock). Never set it in production |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | Card / mobile-banking payments |
 | `PATHAO_WEBHOOK_SECRET`, `STEADFAST_WEBHOOK_TOKEN` (optional) | Webhook secrets for provider-wide URLs (`?provider=…` without `courier=`). Normally set per courier under **Couriers → Webhook** |
 | `PATHAO_WEBHOOK_INTEGRATION_SECRET` (optional) | Overrides the value returned in Pathao's `X-Pathao-Merchant-Webhook-Integration-Secret` handshake header, should Pathao change it |
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
-| `SMS_API_URL`, `SMS_API_KEY`, `SMS_SENDER_ID`, `SMS_SUCCESS_PATTERN` | SMS notifications via an HTTP gateway |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email notifications |
 
@@ -269,6 +276,22 @@ trusted on its own. Customers who cancel can try again from the order page; staf
 attempt from the order (*Check with bKash*). The bKash access token is granted once an hour and shared between function
 instances through Vault. Manual bKash/Nagad transfers wait for a staff member to verify the transaction ID.
 
+**SMS.** The **SMS** page connects one SMS provider and turns automatic SMS on or off. *Automations* pick the event
+(order placed, approved, pre-order confirmed, advance needed, payment received or failed, shipped, out for delivery,
+delivered, return initiated, returned, cancelled), optional conditions (payment method, order total, district, first
+order or repeat customer, courier, where the order was placed) and the message, with variables such as
+`{{order_number}}`, `{{total}}` and `{{tracking_url}}`. Several automations may share an event. A customer gets at most
+one message per automation, order and event (out-for-delivery at most once a day), so a status set twice or a repeated
+courier webhook never texts twice. Amounts are written "Tk 1,250" so messages stay in the cheaper GSM encoding (a ৳,
+Bangla or emoji makes the whole message Unicode: 70 instead of 160 characters per SMS); the editor shows the part count
+and cost as you type. Messages are sent within a minute (the dispatcher is also nudged after checkout, payments and
+courier updates), retried twice on temporary errors and failed at once on permanent ones (an invalid number, an
+unapproved sender ID); a message left half-sent is marked failed rather than sent again. Failures appear in the
+Messages tab and the System log. Delivery reports are fetched where the provider offers them (Alpha SMS). Each sent
+SMS posts its cost to Finance (category *SMS*) against its order — the estimate from *Cost per SMS* first, then one
+adjustment when the provider reports the actual charge — so don't add SMS top-ups as expenses. A problem while
+queueing a message is written to the System log and never stops the order change itself.
+
 **Finance.** Product revenue, delivery income and cost of goods are posted when an order is delivered (accrual). Advances, COD
 settlements and online payments are cash movements, not revenue. Refunds on delivered orders reduce revenue; refunds of
 advances on undelivered orders don't touch profit; kept advances are other income. Ad spend logged in Marketing posts to
@@ -293,7 +316,8 @@ npm run build                     # production bundle
 
 The database suite covers the order state machine, stock reserve/release/commit/return, coupons, pricing and delivery
 zones, fraud scoring and rule decisions, checkout advance requirements, payment idempotency, refunds and finance postings,
-RLS / permission boundaries and privilege escalation, and that the seed loads through the real functions.
+RLS / permission boundaries and privilege escalation, courier webhooks, charges and statements, SMS automation (dedupe,
+conditions, retries, delivery reports, costs in Finance), and that the seed loads through the real functions.
 
 ### Regenerating database types
 
@@ -312,4 +336,7 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54322/postgres npm run db:ty
   must go through `recordVerifiedPayment`.
 - **Another fraud data source:** implement `FraudProvider` in `_shared/fraud/providers.ts` and add it to
   `providersFromSettings`; return outcome counts and let the database do the scoring.
+- **Another SMS provider:** implement `SmsProvider` (`send`, `balance`, `report`) in `_shared/sms/providers.ts`, add its
+  code and required fields there and in `src/features/sms/sms-provider.tsx`. Throw `SmsError(…, true)` for errors that
+  retrying can't fix.
 - **Another notification channel/provider:** implement `NotificationProvider` in `_shared/notifications/providers.ts`.

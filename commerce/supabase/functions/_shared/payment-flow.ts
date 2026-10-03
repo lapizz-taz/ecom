@@ -34,7 +34,7 @@ export async function recordVerifiedPayment(
     p_payload: { raw: verified.raw, reason: verified.reason ?? null },
     p_success: verified.success,
   })
-  if (result.status === 'succeeded') dispatchNotificationsInBackground()
+  if (result.status === 'succeeded' || result.status === 'failed') dispatchNotificationsInBackground()
   return { status: result.status, orderNumber }
 }
 

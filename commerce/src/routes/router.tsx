@@ -80,6 +80,7 @@ export const router = createBrowserRouter([
       admin('finance/cash-flow', () => import('@/pages/admin/finance-cash-flow'), 'finance.view'),
       admin('reports', () => import('@/pages/admin/reports'), 'reports.view'),
       admin('marketing', () => import('@/pages/admin/marketing'), 'marketing.view'),
+      admin('sms', () => import('@/pages/admin/sms'), 'sms.view'),
       admin('coupons', () => import('@/pages/admin/coupons'), 'coupons.manage'),
       admin('settings', () => import('@/pages/admin/settings'), 'settings.view'),
       admin('users', () => import('@/pages/admin/users'), 'users.manage'),

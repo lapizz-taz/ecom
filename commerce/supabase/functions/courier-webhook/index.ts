@@ -8,6 +8,7 @@
 // STEADFAST_WEBHOOK_TOKEN for provider-wide URLs.
 import { env } from '../_shared/env.ts'
 import { type CourierEvent, normalizePathao, normalizeSteadfast, sameSecret } from '../_shared/courier/webhooks.ts'
+import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { handle, HttpError, json } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { adminClient, rpc } from '../_shared/supabase.ts'
@@ -88,6 +89,8 @@ Deno.serve(
         context: { event_id: result.event_id, consignment_id: event.consignment_id, order: event.order_ref, error: result.error ?? null },
       })
     }
+    // Out for delivery, delivered, returned… may have queued a customer SMS.
+    if (result.status === 'processed') dispatchNotificationsInBackground()
     return reply(req, provider, { received: true, result: result.status })
   }),
 )
