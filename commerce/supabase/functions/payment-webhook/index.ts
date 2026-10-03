@@ -2,9 +2,10 @@
 //   POST ?provider=…   gateway notification (IPN). Safe to receive any number of
 //                      times: verified with the gateway and deduplicated by
 //                      (provider, event id) inside confirm_payment().
-//   POST ?reconcile=1  (pg_cron, x-cron-secret) finishes bKash / PayStation
-//                      payments whose customer never came back to the store.
-import { env } from '../_shared/env.ts'
+//   POST ?reconcile=1  (pg_cron; x-cron-secret is CRON_SECRET or Vault's
+//                      'cron_secret') finishes bKash / PayStation payments
+//                      whose customer never came back to the store.
+import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { formOrQuery, type PendingGatewayPayment, reconcilePayment, recordVerifiedPayment } from '../_shared/payment-flow.ts'
@@ -20,11 +21,7 @@ Deno.serve(
     const settings = await getSettings<PaymentSettings>(admin, 'payments')
 
     if (url.searchParams.get('reconcile')) {
-      const secret = env('CRON_SECRET')
-      const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY')
-      const authorized = (secret && req.headers.get('x-cron-secret') === secret)
-        || (serviceKey && req.headers.get('authorization') === `Bearer ${serviceKey}`)
-      if (!authorized) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
+      if (!(await isCronRequest(req, admin))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
 
       const pending = await rpc<PendingGatewayPayment[]>(admin, 'gateway_payments_to_reconcile', { p_limit: 50 })
       const providers = new Map<string, PaymentProvider>()

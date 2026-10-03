@@ -125,7 +125,7 @@ Seeded logins (password `Password123!` for all):
    shared secret in Vault:
    ```sql
    create extension if not exists pg_net;
-   select vault.create_secret('<same value as CRON_SECRET>', 'cron_secret');
+   -- The migrations create a random 'cron_secret' in Vault. Functions accept it, or the CRON_SECRET function secret.
 
    select cron.schedule('notifications-dispatch', '* * * * *', $$
      select net.http_post(
@@ -165,7 +165,7 @@ Seeded logins (password `Password123!` for all):
 | Secret | Used for |
 | --- | --- |
 | `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects. Without `STOREFRONT_URL` the *Website* from **Settings → Store** is used |
-| `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1` |
+| `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1`. `payment-webhook` also accepts the `cron_secret` the migrations keep in Vault, so its job needs no extra secret |
 | `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` (all optional) | Fallback bKash Merchant API (tokenized checkout) credentials. Normally connected in **Settings → Payments**: tested by granting a token, then stored encrypted in Supabase Vault |

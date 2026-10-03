@@ -113,6 +113,19 @@ describe('gateway payments', () => {
       await expectError(db, `select public.gateway_token_put('../x', '{}')`, [], /bad gateway token/)
     }))
 
+  it('checks scheduled calls against the cron secret in Vault', () =>
+    inTx(async (db) => {
+      await asSystem(db)
+      const secret = await value<string>(db, `select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret'`)
+      expect(secret).toMatch(/^[0-9a-f]{64}$/)
+      await asService(db)
+      expect(await value(db, `select public.cron_secret_matches($1)`, [secret])).toBe(true)
+      expect(await value(db, `select public.cron_secret_matches($1)`, [secret.slice(0, 63) + 'x'])).toBe(false)
+      expect(await value(db, `select public.cron_secret_matches('')`)).toBe(false)
+      await asAnon(db)
+      await expectError(db, `select public.cron_secret_matches('x')`, [], /permission denied/)
+    }))
+
   it('keeps the gateway plumbing away from browsers', () =>
     inTx(async (db) => {
       const staff = await createStaff(db, 'ADMIN')
