@@ -121,11 +121,12 @@ Seeded logins (password `Password123!` for all):
    After that, staff are managed from **Admin → Users & roles**.
 5. **Frontend** — `npm run build` and host `dist/` on any static host with an SPA fallback to `index.html`. Set
    `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` at build time.
-6. **Scheduled jobs** — `expire-unpaid-advance-orders` is created by the migrations. Add the two HTTP jobs once, keeping the
-   shared secret in Vault:
+6. **Scheduled jobs** — `expire-unpaid-advance-orders` is created by the migrations. Add the HTTP jobs once; they send the
+   shared secret kept in Vault:
    ```sql
    create extension if not exists pg_net;
-   -- The migrations create a random 'cron_secret' in Vault. Functions accept it, or the CRON_SECRET function secret.
+   -- The migrations create a random 'cron_secret' in Vault; payment-webhook accepts it as is. For notifications-dispatch
+   -- and courier, set the CRON_SECRET function secret to the same value (or replace the Vault secret with yours).
 
    select cron.schedule('notifications-dispatch', '* * * * *', $$
      select net.http_post(
