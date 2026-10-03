@@ -238,3 +238,33 @@ export function stageOf(status: OrderStatus, confirmedAt: string | null | undefi
     default: return 'CANCELLED'
   }
 }
+
+export const COURIER_INVOICE_STATUS: Record<Enums<'courier_invoice_status'>, Meta> = {
+  NEEDS_REVIEW: { label: 'Needs review', variant: 'warning' },
+  DISCREPANCY: { label: 'Discrepancy', variant: 'danger' },
+  VERIFIED: { label: 'Verified', variant: 'success' },
+  PAID: { label: 'Paid', variant: 'neutral' },
+}
+
+export const WEBHOOK_RESULT: Record<'RECEIVED' | 'PROCESSED' | 'IGNORED' | 'UNMATCHED' | 'FAILED', Meta> = {
+  RECEIVED: { label: 'Received', variant: 'neutral' },
+  PROCESSED: { label: 'Applied', variant: 'success' },
+  IGNORED: { label: 'No change', variant: 'neutral' },
+  UNMATCHED: { label: 'No parcel yet', variant: 'warning' },
+  FAILED: { label: 'Failed', variant: 'danger' },
+}
+
+export const CHARGE_KIND: Record<Enums<'shipment_charge_kind'>, string> = {
+  DELIVERY: 'Delivery fee',
+  RETURN: 'Return charge',
+  COD_FEE: 'COD fee',
+  OTHER: 'Other fees',
+}
+
+export const CHARGE_SOURCE: Record<Enums<'charge_source'>, string> = {
+  ESTIMATE: 'Estimate',
+  COURIER_API: 'Courier API',
+  WEBHOOK: 'Courier update',
+  INVOICE: 'Statement',
+  MANUAL: 'Manual',
+}

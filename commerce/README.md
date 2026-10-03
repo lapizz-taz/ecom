@@ -162,8 +162,9 @@ Seeded logins (password `Password123!` for all):
      (`https://<ref>.supabase.co/functions/v1/payments?callback=…`), and the reconcile job above covers customers who
      close the tab. Connect them in **Settings → Payments → Online payment gateways**.
    - SSLCommerz IPN: `https://<ref>.supabase.co/functions/v1/payment-webhook?provider=sslcommerz`
-   - Steadfast status webhook: `https://<ref>.supabase.co/functions/v1/courier-webhook?provider=steadfast` with
-     `Authorization: Bearer <STEADFAST_WEBHOOK_TOKEN>`
+   - Pathao and Steadfast status webhooks: **Couriers → Connections → Webhook** shows the callback URL
+     (`…/functions/v1/courier-webhook?courier=<id>&provider=pathao|steadfast`) and a secret to paste into the courier's
+     panel. Pathao sends it in `X-PATHAO-Signature`, Steadfast as `Authorization: Bearer …`; it is kept in Vault.
 
 ### Edge Function secrets
 
@@ -177,7 +178,8 @@ Seeded logins (password `Password123!` for all):
 | `PAYSTATION_MERCHANT_ID`, `PAYSTATION_PASSWORD`, `PAYSTATION_TOKEN`, `PAYSTATION_BASE_URL` (all optional) | Fallback PayStation credentials, likewise normally connected in **Settings → Payments** |
 | `ALLOW_INSECURE_GATEWAY_URL` | Local testing only: lets a gateway's *API address* be `http://` (a mock). Never set it in production |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD` | Card / mobile-banking payments |
-| `STEADFAST_WEBHOOK_TOKEN` | Steadfast status webhooks |
+| `PATHAO_WEBHOOK_SECRET`, `STEADFAST_WEBHOOK_TOKEN` (optional) | Webhook secrets for provider-wide URLs (`?provider=…` without `courier=`). Normally set per courier under **Couriers → Webhook** |
+| `PATHAO_WEBHOOK_INTEGRATION_SECRET` (optional) | Overrides the value returned in Pathao's `X-Pathao-Merchant-Webhook-Integration-Secret` handshake header, should Pathao change it |
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
 | `SMS_API_URL`, `SMS_API_KEY`, `SMS_SENDER_ID`, `SMS_SUCCESS_PATTERN` | SMS notifications via an HTTP gateway |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
@@ -238,6 +240,19 @@ risk decision, a coupon is involved, or the label was already printed. Other loo
 in the same district, within 24 hours) are flagged *Possible duplicate*; staff merge them (items and stock reservations
 move, the duplicate is cancelled without notifying the customer) or dismiss the warning. Every merge is kept in
 `order_merges`.
+
+**Courier updates, charges and statements.** Every courier webhook lands in the Webhooks log with the parcel, the old and
+new status, the result and any error. Each event is applied once (a repeat is counted, not re-applied), an update older
+than the parcel's current state is ignored, an event for a parcel not booked yet waits and is retried automatically
+(`courier-webhook-retry`, every 5 minutes, up to 6 tries), and a failure leaves nothing half-applied. Courier costs per
+parcel — delivery fee, return charge, COD fee (Couriers → edit → *COD fee %*) and other fees — start as estimates and
+are replaced by what the courier reports, first in webhooks and finally in its statement; each correction is a separate
+finance entry, so nothing is charged twice. **Couriers → Statements** takes the courier's invoice or payment statement
+(CSV or Excel; columns are detected and can be changed), matches every line to a parcel by consignment ID or order
+number, and flags unknown parcels, duplicates and any collected amount or fee that differs from our records, with the
+expected payout next to the courier's. *Verified* makes the statement's fees the parcels' actual charges; *Paid* also
+marks the cash it collected as received on each order. **Couriers → Performance** shows shipped, delivered, returned and
+cancelled parcels, delivery and return rates, and total and per-order courier cost for any period.
 
 **Labels and scanning.** Shipping labels (4×6 in, 3×4 in or four per A4 sheet) carry a Code 128 barcode of the order number
 and, when booked, the courier tracking number. Printing records first print, reprints and who printed in the order history;

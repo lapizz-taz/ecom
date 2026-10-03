@@ -39,6 +39,7 @@
     "react-hook-form": "^7.89.0",
     "react-is": "^19.3.0",
     "react-router": "^7.18.4",
+    "read-excel-file": "^9.3.10",
     "recharts": "^3.10.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",

@@ -458,7 +458,7 @@ describe('courier credentials', () => {
       await asService(db)
       await db.query(`select public.courier_credentials_store($1, 'steadfast', $2, '••••9999', $3)`, [courier, JSON.stringify({ api_key: 'new', secret_key: 'new' }), owner])
       await asSystem(db)
-      expect(await value(db, `select count(*)::int from vault.secrets`)).toBe(1)
+      expect(await value(db, `select count(*)::int from vault.secrets where description = 'Courier API credentials'`)).toBe(1)
       await asService(db)
       await db.query(`select public.courier_credentials_clear($1, $2)`, [courier, owner])
       expect(await value(db, `select public.courier_credentials_get($1)`, [courier])).toBeNull()

@@ -30,7 +30,7 @@ import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, toNumber } from '@/lib/format'
 import {
-  ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, NEEDS_REASON, NEXT_ACTIONS, ORDER_STATUS,
+  ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, CHARGE_KIND, CHARGE_SOURCE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, NEEDS_REASON, NEXT_ACTIONS, ORDER_STATUS,
   PAYMENT_CHANNEL, PAYMENT_METHOD, PAYMENT_STATUS, PRODUCTION_STATUS, RECEIVABLE, RISK_LEVEL, SEGMENT, SHIPMENT_STATUS, STAGE, stageOf,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -455,6 +455,7 @@ export default function OrderDetailPage() {
                     <div><dt className="text-xs text-muted-foreground">COD collected</dt><dd><Money value={shipment.cod_collected} /></dd></div>
                     <div><dt className="text-xs text-muted-foreground">Delivered</dt><dd>{formatDateTime(shipment.delivered_at)}</dd></div>
                   </dl>
+                  <CourierCharges charges={shipment.shipment_charges} />
                   {shipment.shipment_events.length > 0 && (
                     <ul className="space-y-1 border-l pl-3 text-xs">
                       {[...shipment.shipment_events].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).map((e) => (
@@ -783,5 +784,44 @@ function NotesCard({ orderId, notes, onAdded, canAdd, phone }: {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** What the courier charged for this parcel: latest figure per fee, and where it came from. */
+function CourierCharges({ charges }: { charges: OrderDetail['shipments'][number]['shipment_charges'] }) {
+  const [open, setOpen] = useState(false)
+  if (!charges.length) return null
+  const sorted = [...charges].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const latest = new Map<string, (typeof sorted)[number]>()
+  for (const c of sorted) latest.set(c.kind, c)
+  const total = [...latest.values()].reduce((s, c) => s + toNumber(c.total_after), 0)
+  return (
+    <div className="rounded-lg bg-muted/40 p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">Courier charges</p>
+        <button type="button" className="text-xs text-muted-foreground underline-offset-4 hover:underline" onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide history' : `History (${charges.length})`}
+        </button>
+      </div>
+      <dl className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
+        {[...latest.values()].map((c) => (
+          <div key={c.kind}>
+            <dt className="text-xs text-muted-foreground">{CHARGE_KIND[c.kind]}</dt>
+            <dd><Money value={c.total_after} /> <span className="text-xs text-muted-foreground">· {CHARGE_SOURCE[c.source]}</span></dd>
+          </div>
+        ))}
+        <div><dt className="text-xs text-muted-foreground">Total</dt><dd className="font-medium"><Money value={total} /></dd></div>
+      </dl>
+      {open && (
+        <ul className="mt-2 space-y-0.5 border-t pt-2 text-xs">
+          {sorted.map((c) => (
+            <li key={c.id} className="flex justify-between gap-3">
+              <span>{c.note ?? CHARGE_KIND[c.kind]} <span className="text-muted-foreground">· {formatDateTime(c.created_at)}</span></span>
+              <Money value={c.amount} className={cn(toNumber(c.amount) < 0 && 'text-emerald-700')} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

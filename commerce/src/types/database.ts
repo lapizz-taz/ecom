@@ -350,6 +350,325 @@ export type Database = {
           },
         ]
       }
+      courier_invoice_lines: {
+        Row: {
+          id: string
+          invoice_id: string
+          line_no: number
+          consignment_id: string | null
+          order_ref: string | null
+          courier_status: string | null
+          cod_collected: number | null
+          delivery_fee: number | null
+          return_fee: number | null
+          cod_fee: number | null
+          other_fee: number | null
+          payout: number | null
+          shipment_id: string | null
+          order_id: string | null
+          expected_cod: number | null
+          expected_delivery_fee: number | null
+          expected_return_fee: number | null
+          expected_cod_fee: number | null
+          match_status: string
+          issues: string[]
+          settled_at: string | null
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          line_no: number
+          consignment_id?: string | null
+          order_ref?: string | null
+          courier_status?: string | null
+          cod_collected?: number | null
+          delivery_fee?: number | null
+          return_fee?: number | null
+          cod_fee?: number | null
+          other_fee?: number | null
+          payout?: number | null
+          shipment_id?: string | null
+          order_id?: string | null
+          expected_cod?: number | null
+          expected_delivery_fee?: number | null
+          expected_return_fee?: number | null
+          expected_cod_fee?: number | null
+          match_status: string
+          issues?: string[]
+          settled_at?: string | null
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          line_no?: number
+          consignment_id?: string | null
+          order_ref?: string | null
+          courier_status?: string | null
+          cod_collected?: number | null
+          delivery_fee?: number | null
+          return_fee?: number | null
+          cod_fee?: number | null
+          other_fee?: number | null
+          payout?: number | null
+          shipment_id?: string | null
+          order_id?: string | null
+          expected_cod?: number | null
+          expected_delivery_fee?: number | null
+          expected_return_fee?: number | null
+          expected_cod_fee?: number | null
+          match_status?: string
+          issues?: string[]
+          settled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_invoice_lines_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "courier_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_invoice_lines_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_invoice_lines_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courier_invoices: {
+        Row: {
+          id: string
+          courier_id: string
+          invoice_number: string | null
+          invoice_date: string | null
+          period_start: string | null
+          period_end: string | null
+          file_path: string | null
+          file_name: string | null
+          status: Database["public"]["Enums"]["courier_invoice_status"]
+          line_count: number
+          matched_count: number
+          mismatch_count: number
+          unmatched_count: number
+          duplicate_count: number
+          cod_collected: number
+          delivery_fees: number
+          return_fees: number
+          cod_fees: number
+          other_fees: number
+          payout_reported: number
+          expected_cod_collected: number
+          expected_delivery_fees: number
+          expected_return_fees: number
+          expected_cod_fees: number
+          payout_expected: number
+          difference: number | null
+          amount_paid: number
+          paid_at: string | null
+          paid_reference: string | null
+          charges_applied_at: string | null
+          notes: string | null
+          uploaded_by: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          courier_id: string
+          invoice_number?: string | null
+          invoice_date?: string | null
+          period_start?: string | null
+          period_end?: string | null
+          file_path?: string | null
+          file_name?: string | null
+          status?: Database["public"]["Enums"]["courier_invoice_status"]
+          line_count?: number
+          matched_count?: number
+          mismatch_count?: number
+          unmatched_count?: number
+          duplicate_count?: number
+          cod_collected?: number
+          delivery_fees?: number
+          return_fees?: number
+          cod_fees?: number
+          other_fees?: number
+          payout_reported?: number
+          expected_cod_collected?: number
+          expected_delivery_fees?: number
+          expected_return_fees?: number
+          expected_cod_fees?: number
+          payout_expected?: number
+          difference?: never
+          amount_paid?: number
+          paid_at?: string | null
+          paid_reference?: string | null
+          charges_applied_at?: string | null
+          notes?: string | null
+          uploaded_by?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          courier_id?: string
+          invoice_number?: string | null
+          invoice_date?: string | null
+          period_start?: string | null
+          period_end?: string | null
+          file_path?: string | null
+          file_name?: string | null
+          status?: Database["public"]["Enums"]["courier_invoice_status"]
+          line_count?: number
+          matched_count?: number
+          mismatch_count?: number
+          unmatched_count?: number
+          duplicate_count?: number
+          cod_collected?: number
+          delivery_fees?: number
+          return_fees?: number
+          cod_fees?: number
+          other_fees?: number
+          payout_reported?: number
+          expected_cod_collected?: number
+          expected_delivery_fees?: number
+          expected_return_fees?: number
+          expected_cod_fees?: number
+          payout_expected?: number
+          difference?: never
+          amount_paid?: number
+          paid_at?: string | null
+          paid_reference?: string | null
+          charges_applied_at?: string | null
+          notes?: string | null
+          uploaded_by?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_invoices_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courier_webhook_events: {
+        Row: {
+          id: string
+          courier_id: string | null
+          provider: string
+          event_key: string
+          event_type: string
+          consignment_id: string | null
+          order_ref: string | null
+          provider_status: string | null
+          new_status: Database["public"]["Enums"]["shipment_status"] | null
+          previous_status: Database["public"]["Enums"]["shipment_status"] | null
+          occurred_at: string | null
+          charges: Json
+          shipment_id: string | null
+          order_id: string | null
+          result: string
+          note: string | null
+          error: string | null
+          attempts: number
+          duplicates: number
+          next_retry_at: string | null
+          payload: Json
+          received_at: string
+          processed_at: string | null
+        }
+        Insert: {
+          id?: string
+          courier_id?: string | null
+          provider: string
+          event_key: string
+          event_type: string
+          consignment_id?: string | null
+          order_ref?: string | null
+          provider_status?: string | null
+          new_status?: Database["public"]["Enums"]["shipment_status"] | null
+          previous_status?: Database["public"]["Enums"]["shipment_status"] | null
+          occurred_at?: string | null
+          charges?: Json
+          shipment_id?: string | null
+          order_id?: string | null
+          result?: string
+          note?: string | null
+          error?: string | null
+          attempts?: number
+          duplicates?: number
+          next_retry_at?: string | null
+          payload?: Json
+          received_at?: string
+          processed_at?: string | null
+        }
+        Update: {
+          id?: string
+          courier_id?: string | null
+          provider?: string
+          event_key?: string
+          event_type?: string
+          consignment_id?: string | null
+          order_ref?: string | null
+          provider_status?: string | null
+          new_status?: Database["public"]["Enums"]["shipment_status"] | null
+          previous_status?: Database["public"]["Enums"]["shipment_status"] | null
+          occurred_at?: string | null
+          charges?: Json
+          shipment_id?: string | null
+          order_id?: string | null
+          result?: string
+          note?: string | null
+          error?: string | null
+          attempts?: number
+          duplicates?: number
+          next_retry_at?: string | null
+          payload?: Json
+          received_at?: string
+          processed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_webhook_events_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_webhook_events_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       couriers: {
         Row: {
           id: string
@@ -2995,6 +3314,93 @@ export type Database = {
         }
         Relationships: []
       }
+      shipment_charges: {
+        Row: {
+          id: string
+          shipment_id: string
+          order_id: string
+          courier_id: string
+          kind: Database["public"]["Enums"]["shipment_charge_kind"]
+          amount: number
+          total_after: number
+          source: Database["public"]["Enums"]["charge_source"]
+          source_key: string
+          note: string | null
+          invoice_id: string | null
+          finance_transaction_id: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          shipment_id: string
+          order_id: string
+          courier_id: string
+          kind: Database["public"]["Enums"]["shipment_charge_kind"]
+          amount: number
+          total_after: number
+          source: Database["public"]["Enums"]["charge_source"]
+          source_key: string
+          note?: string | null
+          invoice_id?: string | null
+          finance_transaction_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          shipment_id?: string
+          order_id?: string
+          courier_id?: string
+          kind?: Database["public"]["Enums"]["shipment_charge_kind"]
+          amount?: number
+          total_after?: number
+          source?: Database["public"]["Enums"]["charge_source"]
+          source_key?: string
+          note?: string | null
+          invoice_id?: string | null
+          finance_transaction_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_charges_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_charges_finance_transaction_id_fkey"
+            columns: ["finance_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "finance_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_charges_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "courier_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_charges_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_charges_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipment_events: {
         Row: {
           id: string
@@ -4536,6 +4942,13 @@ export type Database = {
         }
         Returns: number
       }
+      courier_metrics: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
       create_finance_transaction: {
         Args: {
           p: Json
@@ -4696,6 +5109,12 @@ export type Database = {
           p_code: string
         }
         Returns: boolean
+      }
+      import_courier_invoice: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
       }
       is_staff: {
         Args: Record<PropertyKey, never>
@@ -5264,6 +5683,12 @@ export type Database = {
           lost_at: string | null
         }
       }
+      retry_courier_webhook: {
+        Args: {
+          p_event_id: string
+        }
+        Returns: Json
+      }
       retry_notification: {
         Args: {
           p_id: string
@@ -5304,6 +5729,53 @@ export type Database = {
           p_courier_id?: string
         }
         Returns: Json
+      }
+      set_courier_invoice_status: {
+        Args: {
+          p_invoice_id: string
+          p_status: Database["public"]["Enums"]["courier_invoice_status"]
+          p_note?: string
+          p_amount_paid?: number
+          p_reference?: string
+        }
+        Returns: {
+          id: string
+          courier_id: string
+          invoice_number: string | null
+          invoice_date: string | null
+          period_start: string | null
+          period_end: string | null
+          file_path: string | null
+          file_name: string | null
+          status: Database["public"]["Enums"]["courier_invoice_status"]
+          line_count: number
+          matched_count: number
+          mismatch_count: number
+          unmatched_count: number
+          duplicate_count: number
+          cod_collected: number
+          delivery_fees: number
+          return_fees: number
+          cod_fees: number
+          other_fees: number
+          payout_reported: number
+          expected_cod_collected: number
+          expected_delivery_fees: number
+          expected_return_fees: number
+          expected_cod_fees: number
+          payout_expected: number
+          difference: number | null
+          amount_paid: number
+          paid_at: string | null
+          paid_reference: string | null
+          charges_applied_at: string | null
+          notes: string | null
+          uploaded_by: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          created_at: string
+          updated_at: string
+        }
       }
       set_web_order_status: {
         Args: {
@@ -5562,6 +6034,8 @@ export type Database = {
       advance_resolution: "REFUNDED" | "RETAINED"
       advance_type: "NONE" | "FIXED" | "DELIVERY_CHARGE" | "DELIVERY_PLUS_RETURN" | "PERCENTAGE" | "FULL"
       campaign_status: "ACTIVE" | "PAUSED" | "ENDED"
+      charge_source: "ESTIMATE" | "COURIER_API" | "WEBHOOK" | "INVOICE" | "MANUAL"
+      courier_invoice_status: "NEEDS_REVIEW" | "DISCREPANCY" | "VERIFIED" | "PAID"
       customer_segment: "NEW" | "REGULAR" | "VIP" | "HIGH_RISK" | "BLOCKED"
       customer_status: "ACTIVE" | "BLOCKED"
       data_source: "MANUAL" | "API" | "WEBHOOK" | "SYSTEM"
@@ -5593,6 +6067,7 @@ export type Database = {
       return_status: "NONE" | "REQUESTED" | "IN_TRANSIT" | "RECEIVED"
       risk_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
       settlement_status: "UNPAID" | "PARTIALLY_PAID" | "PAID"
+      shipment_charge_kind: "DELIVERY" | "RETURN" | "COD_FEE" | "OTHER"
       shipment_status: "PENDING" | "BOOKED" | "PICKED_UP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "PARTIALLY_DELIVERED" | "FAILED" | "RETURNING" | "RETURNED" | "CANCELLED" | "ON_HOLD"
     }
     CompositeTypes: {
@@ -5617,6 +6092,8 @@ export const Constants = {
       advance_resolution: ["REFUNDED", "RETAINED"],
       advance_type: ["NONE", "FIXED", "DELIVERY_CHARGE", "DELIVERY_PLUS_RETURN", "PERCENTAGE", "FULL"],
       campaign_status: ["ACTIVE", "PAUSED", "ENDED"],
+      charge_source: ["ESTIMATE", "COURIER_API", "WEBHOOK", "INVOICE", "MANUAL"],
+      courier_invoice_status: ["NEEDS_REVIEW", "DISCREPANCY", "VERIFIED", "PAID"],
       customer_segment: ["NEW", "REGULAR", "VIP", "HIGH_RISK", "BLOCKED"],
       customer_status: ["ACTIVE", "BLOCKED"],
       data_source: ["MANUAL", "API", "WEBHOOK", "SYSTEM"],
@@ -5648,6 +6125,7 @@ export const Constants = {
       return_status: ["NONE", "REQUESTED", "IN_TRANSIT", "RECEIVED"],
       risk_level: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
       settlement_status: ["UNPAID", "PARTIALLY_PAID", "PAID"],
+      shipment_charge_kind: ["DELIVERY", "RETURN", "COD_FEE", "OTHER"],
       shipment_status: ["PENDING", "BOOKED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "PARTIALLY_DELIVERED", "FAILED", "RETURNING", "RETURNED", "CANCELLED", "ON_HOLD"],
     },
   },

@@ -1,6 +1,6 @@
 // Staff courier operations through the CourierService abstraction:
-//   connect, disconnect, test_connection, create_shipment, create_shipments,
-//   cancel_shipment, sync_status, sync_all, tracking, delivery_cost
+//   connect, disconnect, test_connection, set_webhook_secret, create_shipment,
+//   create_shipments, cancel_shipment, sync_status, sync_all, tracking, delivery_cost
 // Credentials entered in "Connect courier" are tested against the courier,
 // then stored in Vault by the service role; they never come back to a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -41,13 +41,14 @@ const schema = z.discriminatedUnion('action', [
     cod_amount: z.number().nonnegative().optional(),
   }),
   z.object({ action: z.literal('test_connection'), courier_id: z.uuid() }),
+  z.object({ action: z.literal('set_webhook_secret'), courier_id: z.uuid(), secret: z.string().trim().min(16).max(200) }),
 ])
 
 const COURIER_COLUMNS = 'id, name, provider, api_enabled, tracking_url_template'
 const SYNCABLE = ['BOOKED', 'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'ON_HOLD', 'RETURNING']
 const BOOKABLE = ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP']
 const PERMISSION: Record<string, string> = {
-  connect: 'couriers.manage', disconnect: 'couriers.manage', test_connection: 'couriers.manage',
+  connect: 'couriers.manage', disconnect: 'couriers.manage', test_connection: 'couriers.manage', set_webhook_secret: 'couriers.manage',
 }
 
 async function loadCourier(client: SupabaseClient, id: string): Promise<CourierRow> {
@@ -257,6 +258,13 @@ Deno.serve(
             p_district: input.district, p_area: input.area ?? null,
           })
           return json(req, { cost: zone?.charge ?? null, source: 'zone' })
+        }
+        case 'set_webhook_secret': {
+          await loadCourier(client, input.courier_id)
+          await rpc(adminClient(), 'courier_webhook_secret_set', {
+            p_courier_id: input.courier_id, p_secret: input.secret, p_actor: staff!.user.id,
+          })
+          return json(req, { ok: true, hint: `••••${input.secret.slice(-4)}` })
         }
         case 'test_connection': {
           const courier = await loadCourier(client, input.courier_id)

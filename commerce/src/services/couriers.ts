@@ -74,3 +74,142 @@ export function bookShipments(orderIds: string[], courierId: string) {
   return invokeFunction<{ booked: number; results: Array<{ order_id: string; ok: boolean; tracking_number?: string | null; error?: string }> }>(
     'courier', { action: 'create_shipments', order_ids: orderIds, courier_id: courierId })
 }
+
+// ------------------------------------------------------------------ webhooks
+
+/** The address a courier posts status updates to. */
+export function courierWebhookUrl(courierId: string): string {
+  return `${String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/courier-webhook?courier=${courierId}`
+}
+
+/** Saves the secret the courier sends with each webhook (kept in Vault). */
+export function setCourierWebhookSecret(courierId: string, secret: string) {
+  return invokeFunction<{ ok: boolean; hint: string }>('courier', { action: 'set_webhook_secret', courier_id: courierId, secret })
+}
+
+export type WebhookResult = 'PROCESSED' | 'IGNORED' | 'UNMATCHED' | 'FAILED' | 'RECEIVED'
+
+export async function listWebhookEvents(f: { result?: WebhookResult | ''; courierId?: string; q?: string; page: number; pageSize: number }) {
+  let query = supabase
+    .from('courier_webhook_events')
+    .select('*, couriers(name), orders(id, order_number)', { count: 'exact' })
+    .order('received_at', { ascending: false })
+    .range((f.page - 1) * f.pageSize, f.page * f.pageSize - 1)
+  if (f.result) query = query.eq('result', f.result)
+  if (f.courierId) query = query.eq('courier_id', f.courierId)
+  if (f.q) query = query.or(`consignment_id.ilike.%${f.q.replace(/[%,()]/g, '')}%,order_ref.ilike.%${f.q.replace(/[%,()]/g, '')}%`)
+  const { data, error, count } = await query
+  if (error) throw error
+  return { items: data ?? [], total: count ?? 0 }
+}
+export type WebhookEventRow = Awaited<ReturnType<typeof listWebhookEvents>>['items'][number]
+
+export async function retryWebhookEvent(eventId: string) {
+  const { data, error } = await supabase.rpc('retry_courier_webhook', { p_event_id: eventId })
+  if (error) throw error
+  return fromJson<{ status: string; error?: string }>(data)
+}
+
+// ------------------------------------------------------------------ performance
+
+export interface CourierMetrics {
+  id: string
+  name: string
+  provider: string
+  api_enabled: boolean
+  booked: number
+  shipped: number
+  delivered: number
+  partial: number
+  returned: number
+  cancelled: number
+  in_transit: number
+  delivery_rate: number | null
+  return_rate: number | null
+  delivery_cost: number
+  return_cost: number
+  cod_fees: number
+  other_costs: number
+  total_cost: number
+  avg_cost_per_order: number | null
+  cod_expected: number
+  cod_settled: number
+  avg_delivery_hours: number | null
+}
+
+export async function courierMetrics(from: string, to: string): Promise<CourierMetrics[]> {
+  const { data, error } = await supabase.rpc('courier_metrics', { p_from: from, p_to: to })
+  if (error) throw error
+  return fromJson<CourierMetrics[]>(data) ?? []
+}
+
+// ------------------------------------------------------------------ statements
+
+export type CourierInvoiceStatus = Enums<'courier_invoice_status'>
+
+export async function listCourierInvoices(f: { courierId?: string; status?: CourierInvoiceStatus | ''; page: number; pageSize: number }) {
+  let query = supabase
+    .from('courier_invoices')
+    .select('*, couriers(name)', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range((f.page - 1) * f.pageSize, f.page * f.pageSize - 1)
+  if (f.courierId) query = query.eq('courier_id', f.courierId)
+  if (f.status) query = query.eq('status', f.status)
+  const { data, error, count } = await query
+  if (error) throw error
+  return { items: data ?? [], total: count ?? 0 }
+}
+export type CourierInvoiceRow = Awaited<ReturnType<typeof listCourierInvoices>>['items'][number]
+
+export async function getCourierInvoice(id: string) {
+  const { data, error } = await supabase
+    .from('courier_invoices')
+    .select('*, couriers(name), courier_invoice_lines(*, orders(id, order_number))')
+    .eq('id', id)
+    .order('line_no', { referencedTable: 'courier_invoice_lines' })
+    .single()
+  if (error) throw error
+  return data
+}
+export type CourierInvoiceDetail = Awaited<ReturnType<typeof getCourierInvoice>>
+
+/** Keeps the original statement file with the record (private bucket). */
+export async function uploadStatementFile(courierId: string, file: File): Promise<string> {
+  const path = `${courierId}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80)}`
+  const { error } = await supabase.storage.from('courier-invoices').upload(path, file, { contentType: file.type || undefined })
+  if (error) throw error
+  return path
+}
+
+export async function statementFileUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('courier-invoices').createSignedUrl(path, 300)
+  if (error) throw error
+  return data.signedUrl
+}
+
+export interface ImportStatementInput {
+  courier_id: string
+  invoice_number?: string
+  invoice_date?: string
+  period_start?: string
+  period_end?: string
+  payout_reported?: number | null
+  file_path?: string
+  file_name?: string
+  notes?: string
+  lines: Array<Record<string, string | number | null | undefined>>
+}
+
+export async function importCourierInvoice(input: ImportStatementInput) {
+  const { data, error } = await supabase.rpc('import_courier_invoice', { p: input as never })
+  if (error) throw error
+  return fromJson<{ invoice_id: string; status: CourierInvoiceStatus; lines: number; matched: number; mismatched: number;
+    unmatched: number; duplicates: number; payout_expected: number; payout_reported: number; difference: number }>(data)
+}
+
+export async function setCourierInvoiceStatus(id: string, status: CourierInvoiceStatus, opts: { note?: string; amountPaid?: number; reference?: string } = {}) {
+  const { error } = await supabase.rpc('set_courier_invoice_status', {
+    p_invoice_id: id, p_status: status, p_note: opts.note || undefined, p_amount_paid: opts.amountPaid, p_reference: opts.reference || undefined,
+  })
+  if (error) throw error
+}

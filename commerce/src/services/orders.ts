@@ -61,7 +61,7 @@ export async function getOrder(id: string) {
       order_status_history(*),
       order_payments(*),
       payments(*),
-      shipments(*, couriers(id, name, provider, api_enabled, tracking_url_template), shipment_events(*)),
+      shipments(*, couriers(id, name, provider, api_enabled, tracking_url_template), shipment_events(*), shipment_charges(*)),
       production_orders(*, production_items(*)),
       fraud_check:fraud_checks!orders_fraud_check_fk(*),
       fraud_reviews(*),

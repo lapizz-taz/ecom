@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, Pencil, Plug, PlugZap, Plus, RefreshCw, Unplug, Wallet } from 'lucide-react'
+import { CircleCheck, Pencil, Plug, PlugZap, Plus, RefreshCw, Unplug, Wallet, Webhook } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -22,6 +22,9 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { CourierPerformance } from '@/features/couriers/courier-performance'
+import { CourierStatements } from '@/features/couriers/courier-statements'
+import { CourierWebhookLog, WebhookSetupDialog } from '@/features/couriers/courier-webhooks'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { SHIPMENT_STATUS } from '@/lib/status'
@@ -66,14 +69,20 @@ export default function CouriersPage() {
   const [state, update] = useUrlState({ tab: 'couriers' })
   return (
     <div className="space-y-4">
-      <PageHeader title="Couriers" description="Courier accounts, parcels in transit and cash on delivery still held by couriers." />
+      <PageHeader title="Couriers" description="Courier accounts, parcel status updates, what each courier costs, and statements to check against your records." />
       <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
-        <TabsList>
+        <TabsList className="max-w-full overflow-x-auto">
           <TabsTrigger value="couriers">Connections</TabsTrigger>
+          <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="shipments">Shipments</TabsTrigger>
+          <TabsTrigger value="statements">Statements</TabsTrigger>
+          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
           <TabsTrigger value="cod">COD receivable</TabsTrigger>
         </TabsList>
+        <TabsContent value="performance"><CourierPerformance /></TabsContent>
         <TabsContent value="shipments"><Shipments /></TabsContent>
+        <TabsContent value="statements"><CourierStatements /></TabsContent>
+        <TabsContent value="webhooks"><CourierWebhookLog /></TabsContent>
         <TabsContent value="cod"><CodReceivable /></TabsContent>
         <TabsContent value="couriers"><CourierList /></TabsContent>
       </Tabs>
@@ -190,6 +199,7 @@ function CourierList() {
       id: editing?.id, name: editing?.name ?? '', provider: editing?.provider ?? 'manual', api_enabled: editing?.api_enabled ?? false,
       tracking_url_template: editing?.tracking_url_template || null, phone: editing?.phone || null, notes: editing?.notes || null,
       default_shipping_cost: editing?.default_shipping_cost ?? null, is_active: editing?.is_active ?? true,
+      config: editing?.config ?? {},
     }),
     onSuccess: () => { toast.success('Courier saved'); setEditing(null); void queryClient.invalidateQueries({ queryKey: ['couriers'] }) },
   })
@@ -198,6 +208,7 @@ function CourierList() {
     onSuccess: (r) => { (r.ok ? toast.success : toast.error)(r.message); void queryClient.invalidateQueries({ queryKey: ['couriers'] }) },
   })
   const [connecting, setConnecting] = useState<(typeof INTEGRATIONS)[number] | null>(null)
+  const [webhookFor, setWebhookFor] = useState<{ courier: CourierRow; provider: 'pathao' | 'steadfast' } | null>(null)
   const [disconnecting, setDisconnecting] = useState<CourierRow | null>(null)
   const disconnect = useMutation({
     mutationFn: (id: string) => disconnectCourier(id),
@@ -209,6 +220,7 @@ function CourierList() {
       {INTEGRATIONS.map((integration) => {
         const row = (couriers.data ?? []).find((c) => c.provider === integration.code && c.api_enabled)
           ?? (couriers.data ?? []).find((c) => c.provider === integration.code)
+          ?? (couriers.data ?? []).find((c) => c.name.trim().toLowerCase() === integration.name.toLowerCase())
         const connected = !!row?.api_enabled && row.api_status !== 'NOT_CONFIGURED'
         const hint = (row?.config as { credential_hint?: string } | null)?.credential_hint
         return (
@@ -235,6 +247,11 @@ function CourierList() {
                     <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDisconnecting(row)}><Unplug /> Disconnect</Button>
                   </>
                 )}
+                {row && (integration.code === 'pathao' || integration.code === 'steadfast') && (
+                  <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setWebhookFor({ courier: row, provider: integration.code as 'pathao' | 'steadfast' })}>
+                    <Webhook /> Webhook{(row.config as { webhook_secret_hint?: string } | null)?.webhook_secret_hint ? ' ✓' : ''}
+                  </Button>
+                )}
               </div>
             )}
           </Card>
@@ -244,6 +261,8 @@ function CourierList() {
     <ConnectCourierDialog integration={connecting} existing={connecting ? (couriers.data ?? []).find((c) => c.provider === connecting.code)
       ?? (couriers.data ?? []).find((c) => c.name.trim().toLowerCase() === connecting.name.toLowerCase()) : undefined}
       onClose={() => setConnecting(null)} onConnected={() => void queryClient.invalidateQueries({ queryKey: ['couriers'] })} />
+    {webhookFor && <WebhookSetupDialog courier={webhookFor.courier} provider={webhookFor.provider} onClose={() => setWebhookFor(null)}
+      onSaved={() => void queryClient.invalidateQueries({ queryKey: ['couriers'] })} />}
     <ConfirmDialog open={disconnecting !== null} onOpenChange={(o) => !o && setDisconnecting(null)} destructive
       title={`Disconnect ${disconnecting?.name}?`} description="The saved API keys are wiped. Booking and status sync stop until you connect again; existing shipments are kept."
       confirmLabel="Disconnect" onConfirm={() => disconnect.mutateAsync(disconnecting!.id)} />
@@ -289,6 +308,16 @@ function CourierList() {
             </Field>
             <Field label="Phone" htmlFor="cr-phone"><Input id="cr-phone" value={editing?.phone ?? ''} onChange={(e) => setEditing((c) => ({ ...c, phone: e.target.value }))} /></Field>
             <Field label="Default charge" htmlFor="cr-cost"><Input id="cr-cost" type="number" min={0} value={editing?.default_shipping_cost ?? ''} onChange={(e) => setEditing((c) => ({ ...c, default_shipping_cost: e.target.value === '' ? null : Number(e.target.value) }))} /></Field>
+            <Field label="COD fee (%)" htmlFor="cr-codfee" hint="Of the cash collected, e.g. 1 for Pathao. Used until a statement shows the real fee.">
+              <Input id="cr-codfee" type="number" min={0} max={10} step="0.1"
+                value={(editing?.config as { cod_fee_percent?: number } | null)?.cod_fee_percent ?? ''}
+                onChange={(e) => setEditing((c) => {
+                  const config = { ...((c?.config as Record<string, unknown> | null) ?? {}) }
+                  if (e.target.value === '') delete config.cod_fee_percent
+                  else config.cod_fee_percent = Number(e.target.value)
+                  return { ...c, config: config as CourierRow['config'] }
+                })} />
+            </Field>
             <Field label="Notes" htmlFor="cr-notes" className="sm:col-span-2"><Textarea id="cr-notes" rows={2} value={editing?.notes ?? ''} onChange={(e) => setEditing((c) => ({ ...c, notes: e.target.value }))} /></Field>
             {editing?.provider !== 'manual' && <label className="flex items-center gap-2 text-sm"><Switch checked={editing?.api_enabled ?? false} onCheckedChange={(v) => setEditing((c) => ({ ...c, api_enabled: v }))} /> Use API</label>}
             <label className="flex items-center gap-2 text-sm"><Switch checked={editing?.is_active ?? true} onCheckedChange={(v) => setEditing((c) => ({ ...c, is_active: v }))} /> Active</label>
