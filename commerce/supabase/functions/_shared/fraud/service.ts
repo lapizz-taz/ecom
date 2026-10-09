@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { env } from '../env.ts'
-import { CourierHistoryProvider } from './courier-history.ts'
+import { type CourierHistoryConfig, CourierHistoryProvider, type CourierHistoryService } from './courier-history.ts'
 import { HttpCourierHistoryProvider, type HttpProviderConfig, InternalHistoryProvider } from './providers.ts'
 import type { FraudCheckInput, FraudProvider, FraudProviderResult, OutcomeCounts, RecordFraudCheckPayload } from './types.ts'
 
@@ -13,11 +13,29 @@ export interface FraudSettings {
 
 /** Keys loaded from Vault by the service role (see loadFraudProviders). */
 export interface FraudSecrets {
-  courierHistory?: { api_key?: string; base_url?: string } | null
+  courierHistory?: { api_key?: string; base_url?: string; service?: CourierHistoryService } | null
 }
 
 /** Vault entry for the courier-history API key, saved from Settings → Fraud. */
 export const COURIER_HISTORY_SECRET = 'fraud.courier_history'
+
+/**
+ * The courier-history connection: the key saved from Settings → Fraud, else a
+ * function secret (BDCOURIER_API_KEY, or COURIER_HISTORY_API_KEY for LLCG).
+ * Keys saved before BD Courier was supported carry no service and are LLCG keys.
+ */
+export function courierHistoryConfig(saved: FraudSecrets['courierHistory'], timeoutMs?: number): CourierHistoryConfig | null {
+  const urlFor = (service: CourierHistoryService) => env(service === 'bdcourier' ? 'BDCOURIER_API_URL' : 'COURIER_HISTORY_URL')
+  if (saved?.api_key) {
+    const service = saved.service ?? 'llcg'
+    return { apiKey: saved.api_key, service, baseUrl: saved.base_url || urlFor(service), timeoutMs }
+  }
+  const bd = env('BDCOURIER_API_KEY')
+  if (bd) return { apiKey: bd, service: 'bdcourier', baseUrl: urlFor('bdcourier'), timeoutMs }
+  const llcg = env('COURIER_HISTORY_API_KEY')
+  if (llcg) return { apiKey: llcg, service: 'llcg', baseUrl: urlFor('llcg'), timeoutMs }
+  return null
+}
 
 /** Builds the configured providers. Credentials come from Vault or secrets only. */
 export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch, secrets: FraudSecrets = {}): FraudProvider[] {
@@ -26,16 +44,12 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
   for (const name of names) {
     if (name === 'internal') providers.push(new InternalHistoryProvider())
     if (name === 'courier_history') {
-      const apiKey = secrets.courierHistory?.api_key ?? env('COURIER_HISTORY_API_KEY')
-      if (!apiKey) {
+      const config = courierHistoryConfig(secrets.courierHistory, settings.courier_history?.timeout_ms)
+      if (!config) {
         console.warn('Courier history check is enabled but no API key is connected; skipping it')
         continue
       }
-      providers.push(new CourierHistoryProvider({
-        apiKey,
-        baseUrl: secrets.courierHistory?.base_url || env('COURIER_HISTORY_URL'),
-        timeoutMs: settings.courier_history?.timeout_ms,
-      }, fetchFn))
+      providers.push(new CourierHistoryProvider(config, fetchFn))
     }
     if (name === 'http') {
       const urlTemplate = env('FRAUD_API_URL')

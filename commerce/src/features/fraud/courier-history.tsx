@@ -1,7 +1,9 @@
 import { cn } from '@/lib/utils'
 import type { CourierHistoryResult } from '@/services/settings'
 
-const COURIER_NAMES: Record<string, string> = { pathao: 'Pathao', steadfast: 'Steadfast', redx: 'RedX', paperfly: 'Paperfly' }
+const COURIER_NAMES: Record<string, string> = {
+  pathao: 'Pathao', steadfast: 'Steadfast', redx: 'RedX', paperfly: 'Paperfly', parceldex: 'ParcelDex', courrierfast: 'CourierFast', carrybee: 'CarryBee',
+}
 
 function rateTone(rate: number | null) {
   if (rate === null) return 'text-muted-foreground'
@@ -46,6 +48,19 @@ export function CourierHistoryTable({ result, className }: { result: CourierHist
           </tbody>
         </table>
       </div>
+      {!!result.reports?.length && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-2.5 text-xs">
+          <p className="font-medium text-red-800">{result.reports.length} fraud report{result.reports.length > 1 ? 's' : ''} from other merchants</p>
+          <ul className="mt-1.5 space-y-1.5">
+            {result.reports.slice(0, 5).map((r, i) => (
+              <li key={i} className="text-muted-foreground">
+                <span className="text-foreground">{r.details || 'Reported'}</span>
+                {[r.name, r.courier, r.created_at?.slice(0, 10)].filter(Boolean).length > 0 && <> · {[r.name, r.courier, r.created_at?.slice(0, 10)].filter(Boolean).join(' · ')}</>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

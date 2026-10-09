@@ -91,6 +91,27 @@ export interface CourierHistoryResult {
   cancelled: number
   success_ratio: number | null
   name_on_record: string | null
+  service?: CourierHistoryService
+  /** Fraud reports other merchants filed against the number (BD Courier). */
+  reports?: Array<{ name: string | null; details: string | null; courier: string | null; created_at: string | null }>
+}
+
+export type CourierHistoryService = 'bdcourier' | 'llcg'
+
+export const COURIER_HISTORY_SERVICES: Record<CourierHistoryService, { label: string; url: string; keyHint: string }> = {
+  bdcourier: { label: 'BD Courier', url: 'https://api.bdcourier.com', keyHint: 'app.courier.com.bd → Developer/API → API Key' },
+  llcg: { label: 'LLCG courier fraud checker', url: 'https://llcgteam.com/courier-fraud-checker', keyHint: 'From your LLCG fraud-checker account' },
+}
+
+export interface CourierHistoryStatus {
+  /** saved = key saved from this page; server_secret = BDCOURIER_API_KEY / COURIER_HISTORY_API_KEY function secret. */
+  source: 'saved' | 'server_secret' | null
+  service: CourierHistoryService | null
+  enabled: boolean
+}
+
+export function courierHistoryStatus() {
+  return invokeFunction<CourierHistoryStatus>('fraud-check', { action: 'courier_history_status' })
 }
 
 export interface IntegrationStatus {
@@ -106,7 +127,7 @@ export async function integrationStatus(): Promise<Record<string, IntegrationSta
   return (data ?? {}) as unknown as Record<string, IntegrationStatus>
 }
 
-export function connectCourierHistory(input: { api_key: string; base_url?: string; test_phone: string }) {
+export function connectCourierHistory(input: { service: CourierHistoryService; api_key: string; base_url?: string; test_phone: string }) {
   return invokeFunction<{ ok: boolean; hint: string; providers: string[]; result: CourierHistoryResult }>(
     'fraud-check', { action: 'connect_courier_history', ...input })
 }
