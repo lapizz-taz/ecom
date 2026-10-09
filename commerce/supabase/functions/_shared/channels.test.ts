@@ -30,7 +30,7 @@ describe('Shopify', () => {
   it('sends staff to the store\'s approval screen with the scopes we need', () => {
     const url = new URL(shopifyAuthUrl('mystore.myshopify.com', 'abc123', 'st', 'https://x.supabase.co/functions/v1/channels/callback/shopify'))
     expect(url.host).toBe('mystore.myshopify.com')
-    expect(url.searchParams.get('scope')).toBe('read_orders,read_customers,read_products')
+    expect(url.searchParams.get('scope')).toBe('read_orders,read_customers,read_products,read_inventory,write_inventory,read_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders')
     expect(url.searchParams.get('state')).toBe('st')
   })
 
@@ -70,11 +70,13 @@ describe('Shopify', () => {
       if (q.includes('currentAppInstallation')) return res({ data: { shop: { name: 'My Store', currencyCode: 'BDT' }, currentAppInstallation: { accessScopes: [{ handle: 'read_orders' }, { handle: 'read_customers' }, { handle: 'read_products' }] } } })
       if (q.includes('shippingAddress')) return res({ data: { orders: { nodes: [{ name: '#1001', shippingAddress: null }] } }, errors: [{ message: 'This app is not approved to access the Order object. See https://shopify.dev/docs/apps/launch/protected-customer-data' }] })
       if (q.includes('webhookSubscriptions')) return res({ data: { webhookSubscriptions: { nodes: [
-        { id: 'gid://1', topic: 'ORDERS_CREATE', uri: 'https://x/webhook/1' }, { id: 'gid://2', topic: 'ORDERS_CANCELLED', uri: 'https://x/webhook/1' }, { id: 'gid://3', topic: 'APP_UNINSTALLED', uri: 'https://x/webhook/1' }] } } })
+        { id: 'gid://1', topic: 'ORDERS_CREATE', uri: 'https://x/webhook/1' }, { id: 'gid://2', topic: 'ORDERS_CANCELLED', uri: 'https://x/webhook/1' }, { id: 'gid://3', topic: 'APP_UNINSTALLED', uri: 'https://x/webhook/1' }, { id: 'gid://4', topic: 'ORDERS_UPDATED', uri: 'https://x/webhook/1' }] } } })
       throw new Error(`unexpected ${q}`)
     })
     const t = await new ShopifyClient('mystore.myshopify.com', 'shpat_x', fetchFn as typeof fetch).test('https://x/webhook/1', [])
-    expect(Object.fromEntries(t.checks.map((c) => [c.key, c.status]))).toEqual({ store: 'ok', scopes: 'ok', customer_data: 'fail', webhooks: 'ok', currency: 'ok' })
+    // Orders-only app: fulfilment and stock sync are flagged as warnings, not failures.
+    expect(Object.fromEntries(t.checks.map((c) => [c.key, c.status]))).toEqual({
+      store: 'ok', scopes: 'ok', fulfilment: 'warn', inventory: 'warn', customer_data: 'fail', webhooks: 'ok', currency: 'ok' })
     const [, init] = fetchFn.mock.calls[0]
     expect((init!.headers as Record<string, string>)['X-Shopify-Access-Token']).toBe('shpat_x')
   })

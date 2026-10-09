@@ -7,13 +7,16 @@
 //   POST woo_keys          {url, consumer_key, consumer_secret}   keys made by hand
 //   POST test | webhooks | sync | disconnect {channel_id}
 //   POST retry_import      {import_id, overrides}   staff fixed a failed import
-//   POST /channels/webhook/<channel_id>      orders from the store (signature checked)
+//   POST /channels/webhook/<channel_id>      orders, fulfilments, stock from the store (signature checked)
+//   POST process_jobs      run due sync jobs (cron every minute, or staff after shipping)
+//   POST import_catalog    {channel_id} Shopify locations + variants + quantities (to link and compare)
 // Every connection ends with a test, so staff see straight away whether orders
 // will come through. Tokens and keys never reach a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { type Check, ChannelError, type NormalizedOrder } from '../_shared/channels/common.ts'
-import { exchangeShopifyCode, ShopifyClient, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook } from '../_shared/channels/shopify.ts'
+import { exchangeShopifyCode, seenFromWebhook, ShopifyClient, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook } from '../_shared/channels/shopify.ts'
+import { fulfillJob, inventoryJob, type Job, type Outcome } from '../_shared/channels/sync.ts'
 import { normalizeWooOrder, siteUrl, verifyWooWebhook, WOO_CANCEL_STATUSES, WOO_IMPORT_STATUSES, WooClient, wooAuthUrl, type WooOrder } from '../_shared/channels/woocommerce.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
@@ -48,6 +51,8 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('webhooks'), channel_id: channelId }),
   z.object({ action: z.literal('disconnect'), channel_id: channelId }),
   z.object({ action: z.literal('sync'), channel_id: channelId.optional(), days: z.number().int().min(1).max(60).default(3) }),
+  z.object({ action: z.literal('process_jobs'), limit: z.number().int().min(1).max(50).default(20) }),
+  z.object({ action: z.literal('import_catalog'), channel_id: channelId }),
   z.object({ action: z.literal('retry_import'), import_id: z.string().uuid(), overrides: z.object({
     phone: z.string().trim().max(20).optional(), name: z.string().trim().max(120).optional(),
     address: z.string().trim().max(300).optional(), district: z.string().trim().max(60).optional(),
@@ -171,7 +176,15 @@ async function syncChannel(admin: SupabaseClient, c: Channel, days: number): Pro
         counts.found++
         const r = await ingest(admin, c, o, 'SYNC')
         bump(counts, r.status)
+        // Catch fulfilments a webhook missed (e.g. made by hand in Shopify).
+        if (o.fulfillments?.length) {
+          await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: o.external_id, p_fulfillments: o.fulfillments })
+        }
       }
+      // Stock sync on: refresh Shopify's numbers so differences show up.
+      if (c.settings?.inventory_sync === true) await importCatalog(admin, c).catch((e) => {
+        void logEvent({ level: 'WARN', category: 'JOB', source: 'channels', message: `${c.name}: stock refresh failed — ${(e as Error).message}`, context: { channel: c.id } })
+      })
     } else {
       for (const raw of await wooClient(c, s).ordersSince(since)) {
         if (!WOO_IMPORT_STATUSES.includes(raw.status)) continue
@@ -194,6 +207,49 @@ function bump(c: { imported: number; duplicate: number; failed: number; skipped:
   else if (status === 'DUPLICATE') c.duplicate++
   else if (status === 'FAILED') c.failed++
   else c.skipped++
+}
+
+// --- Shopify sync jobs -------------------------------------------------------------------
+
+async function importCatalog(admin: SupabaseClient, c: Channel) {
+  if (c.platform !== 'SHOPIFY') throw new HttpError(422, 'Stock sync is available for Shopify stores', 'VALIDATION')
+  const client = shopifyClient(c, await secretOf(admin, c.id))
+  const [locations, items] = await Promise.all([client.locations(), client.catalog()])
+  return rpc<{ items: number; linked: number; mapped: number }>(admin, 'channel_catalog_import', { p_channel_id: c.id, p_items: items, p_locations: locations })
+}
+
+/** Runs due jobs one by one; each one's outcome is stored (retry with back-off, or failed for a person). */
+async function processJobs(admin: SupabaseClient, limit: number) {
+  const jobs = await rpc<Job[]>(admin, 'channel_jobs_claim', { p_limit: limit })
+  const channels = new Map<string, Channel>()
+  const secrets = new Map<string, Secret>()
+  const call = <T>(fn: string, args: Record<string, unknown>) => rpc<T>(admin, fn, args)
+  const results: Array<{ id: string; kind: string; outcome: string; error?: string }> = []
+  for (const job of jobs) {
+    let out: Outcome
+    try {
+      if (!channels.has(job.channel_id)) channels.set(job.channel_id, await channelOf(admin, job.channel_id))
+      const c = channels.get(job.channel_id)!
+      if (c.status === 'DISCONNECTED') {
+        out = { outcome: 'FAILED', error: 'The store is disconnected' }
+      } else {
+        if (!secrets.has(c.id)) secrets.set(c.id, await secretOf(admin, c.id))
+        const client = () => shopifyClient(c, secrets.get(c.id)!)
+        out = job.kind === 'FULFILL'
+          ? await fulfillJob(job, call, client, {
+            notify_customer: c.settings?.notify_customer !== false, fulfill_without_tracking: c.settings?.fulfill_without_tracking === true })
+          : await inventoryJob(job, call, client)
+      }
+    } catch (error) {
+      out = { outcome: 'RETRY', error: (error as Error).message }
+    }
+    await rpc(admin, 'channel_job_finish', { p_id: job.id, p_outcome: out.outcome, p_error: out.error ?? null, p_result: out.result ?? null, p_delay_seconds: out.delay ?? null })
+    if (out.outcome === 'FAILED') {
+      void logEvent({ level: 'WARN', category: 'JOB', source: 'channels', message: `${job.kind} job failed: ${out.error}`, context: { job: job.id, channel: job.channel_id } })
+    }
+    results.push({ id: job.id, kind: job.kind, outcome: out.outcome, error: out.error })
+  }
+  return { processed: results.length, results }
 }
 
 // --- browser-facing pages -------------------------------------------------------------
@@ -281,6 +337,19 @@ async function webhook(req: Request, id: string): Promise<Response> {
       result = order ? await ingest(admin, c, order, 'WEBHOOK') : { status: 'NOT_FOUND' }
     } else if (topic === 'orders/cancelled' && body.id) {
       result = await rpc(admin, 'channel_order_cancelled', { p_channel_id: c.id, p_external_id: String(body.id), p_reason: body.cancel_reason ?? null })
+    } else if (topic === 'orders/updated' && body.id) {
+      // Only fulfilments are taken from updates: the rest of our order is ours to manage.
+      const seen = seenFromWebhook(body as Record<string, unknown>)
+      result = seen.length ? await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: String(body.id), p_fulfillments: seen }) : { status: 'NO_FULFILMENTS' }
+    } else if ((topic === 'fulfillments/create' || topic === 'fulfillments/update') && (body as { order_id?: number }).order_id) {
+      result = await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: String((body as { order_id: number }).order_id),
+        p_fulfillments: seenFromWebhook(body as Record<string, unknown>) })
+    } else if (topic === 'inventory_levels/update') {
+      const lvl = body as { inventory_item_id?: number; location_id?: number; available?: number | null }
+      if (lvl.inventory_item_id && lvl.location_id) {
+        result = await rpc(admin, 'channel_inventory_seen', { p_channel_id: c.id, p_inventory_item_id: `gid://shopify/InventoryItem/${lvl.inventory_item_id}`,
+          p_location_id: `gid://shopify/Location/${lvl.location_id}`, p_available: lvl.available ?? null })
+      }
     } else if (topic === 'app/uninstalled') {
       await rpc(admin, 'channel_update', { p_id: c.id, p: { status: 'DISCONNECTED', last_error: 'The app was uninstalled in Shopify' } })
     }
@@ -323,8 +392,9 @@ Deno.serve(
 
     const input = parse(actions, await readJson(req))
     const admin = adminClient()
-    const cron = input.action === 'sync' && !input.channel_id && await isCronRequest(req, admin)
-    const staff = cron ? null : await requireStaff(req, input.action === 'retry_import' ? 'orders.create' : 'settings.manage')
+    const cron = ((input.action === 'sync' && !input.channel_id) || input.action === 'process_jobs') && await isCronRequest(req, admin)
+    const staff = cron ? null : await requireStaff(req,
+      input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : 'settings.manage')
     const actor = staff?.user.id ?? null
 
     try {
@@ -394,6 +464,10 @@ Deno.serve(
           if (input.channel_id && !results[0].ok) throw new HttpError(502, results[0].error ?? 'Sync failed', 'SYNC_FAILED')
           return json(req, { ok: results.every((r) => r.ok), channels: results })
         }
+        case 'process_jobs':
+          return json(req, await processJobs(admin, input.limit))
+        case 'import_catalog':
+          return json(req, await importCatalog(admin, await channelOf(admin, input.channel_id)))
         case 'retry_import': {
           const row = await rpc<{ channel_id: string; payload: NormalizedOrder }>(admin, 'channel_import_for_retry', { p_import_id: input.import_id, p_overrides: input.overrides, p_actor: actor })
           const r = await ingest(admin, await channelOf(admin, row.channel_id), row.payload, 'RETRY')

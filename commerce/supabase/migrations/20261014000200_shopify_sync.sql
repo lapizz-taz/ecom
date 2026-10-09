@@ -44,7 +44,7 @@ create unique index if not exists channel_sync_jobs_open_uq on public.channel_sy
   where status in ('PENDING', 'RUNNING');
 create index if not exists channel_sync_jobs_due_idx on public.channel_sync_jobs(next_attempt_at) where status = 'PENDING';
 create index if not exists channel_sync_jobs_recent_idx on public.channel_sync_jobs(created_at desc);
-create trigger channel_sync_jobs_updated_at before update on public.channel_sync_jobs
+create or replace trigger channel_sync_jobs_updated_at before update on public.channel_sync_jobs
   for each row execute function public.set_updated_at();
 
 -- -----------------------------------------------------------------------------
@@ -79,7 +79,7 @@ create table if not exists public.channel_fulfillments (
 create unique index if not exists channel_fulfillments_app_uq on public.channel_fulfillments(order_id) where source = 'APP';
 create unique index if not exists channel_fulfillments_gid_uq on public.channel_fulfillments(fulfillment_id) where fulfillment_id is not null;
 create index if not exists channel_fulfillments_channel_idx on public.channel_fulfillments(channel_id, created_at desc);
-create trigger channel_fulfillments_updated_at before update on public.channel_fulfillments
+create or replace trigger channel_fulfillments_updated_at before update on public.channel_fulfillments
   for each row execute function public.set_updated_at();
 
 -- -----------------------------------------------------------------------------
@@ -904,3 +904,29 @@ grant execute on function public.channel_fulfillment_retry(uuid), public.order_c
   public.channel_sync_settings_save(uuid, jsonb), public.channel_variant_link(uuid, text, uuid), public.channel_inventory_reconcile(uuid, jsonb, boolean),
   public.channel_job_retry(uuid)
 to authenticated;
+
+-- A Shopify order lowered Shopify's own count when it was placed. When we
+-- import it (the order gets its store link in the same transaction that
+-- created it and reserved the stock), Shopify is already where it should be:
+-- move our "last pushed" marker down too, so this is not mistaken for a change
+-- made in Shopify and nothing is pushed twice.
+create or replace function public._orders_channel_import_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.source = 'API' and new.created_at = now() then
+    update public.sales_channel_variants m set last_pushed_qty = m.last_pushed_qty - r.qty
+    from (select variant_id, sum(quantity)::int as qty from public.stock_reservations
+          where order_id = new.id and status = 'ACTIVE' group by variant_id) r
+    where m.channel_id = new.sales_channel_id and m.variant_id = r.variant_id and m.last_pushed_qty is not null;
+  end if;
+  return new;
+end;
+$$;
+create or replace trigger orders_channel_import after update of sales_channel_id on public.orders
+  for each row when (old.sales_channel_id is null and new.sales_channel_id is not null)
+  execute function public._orders_channel_import_trigger();
+revoke all on function public._orders_channel_import_trigger() from public, anon, authenticated;

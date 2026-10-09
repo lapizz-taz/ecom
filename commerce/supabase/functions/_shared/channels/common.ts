@@ -31,6 +31,21 @@ export interface NormalizedOrder {
   gateway: string | null
   note: string | null
   attribution: { first_touch: Touch | null; last_touch: Touch | null } | null
+  /** Fulfilments the store already made (Shopify), to record ones made by hand. */
+  fulfillments?: SeenFulfillment[]
+}
+
+/** A fulfilment as the store reports it (webhook or API). */
+export interface SeenFulfillment {
+  id: string
+  status: string | null
+  display_status: string | null
+  tracking_company: string | null
+  tracking_number: string | null
+  tracking_url: string | null
+  created_at: string | null
+  /** Nothing left to fulfil on the order. */
+  all_fulfilled: boolean
 }
 
 export class ChannelError extends Error {

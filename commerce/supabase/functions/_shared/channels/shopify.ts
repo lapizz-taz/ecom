@@ -6,13 +6,28 @@
 // Webhooks are signed with the app secret (X-Shopify-Hmac-Sha256); we check
 // every one before reading it.
 import { env } from '../env.ts'
-import { type Check, ChannelError, clean, hmacBase64, hmacHex, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
+import { type Check, ChannelError, clean, hmacBase64, hmacHex, money, type NormalizedOrder, safeEqual, type SeenFulfillment, touchFrom } from './common.ts'
 
 type FetchFn = typeof fetch
 
-export const SHOPIFY_API_VERSION = '2025-07'
-export const SHOPIFY_SCOPES = ['read_orders', 'read_customers', 'read_products']
-export const SHOPIFY_TOPICS = ['ORDERS_CREATE', 'ORDERS_CANCELLED', 'APP_UNINSTALLED'] as const
+export const SHOPIFY_API_VERSION = '2026-07'
+/**
+ * Exactly what the features use:
+ *   read_orders                     import orders, read their fulfilments (+ order webhooks)
+ *   read_customers                  the order's customer name / e-mail / phone fields
+ *   read_products                   catalog import (variants, SKUs, barcodes)
+ *   read_inventory, write_inventory read and set quantities (+ inventory webhook)
+ *   read_locations                  choose the location to keep in step
+ *   read/write_merchant_managed_fulfillment_orders   create fulfilments with tracking
+ */
+export const SHOPIFY_SCOPES = [
+  'read_orders', 'read_customers', 'read_products', 'read_inventory', 'write_inventory', 'read_locations',
+  'read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders',
+]
+/** Needed for importing orders; the connection fails without them. */
+export const SHOPIFY_TOPICS = ['ORDERS_CREATE', 'ORDERS_CANCELLED', 'ORDERS_UPDATED', 'APP_UNINSTALLED'] as const
+/** Nice to have (faster fulfilment / stock news); a store that refuses them still works through orders/updated and the hourly check. */
+export const SHOPIFY_OPTIONAL_TOPICS = ['FULFILLMENTS_CREATE', 'FULFILLMENTS_UPDATE', 'INVENTORY_LEVELS_UPDATE'] as const
 
 /** "mystore", "mystore.myshopify.com" or the admin URL → "mystore.myshopify.com" (or null if it isn't one). */
 export function shopDomain(input: string): string | null {
@@ -75,7 +90,9 @@ const ORDER_FIELDS = `
   customerJourneySummary {
     firstVisit { landingPage referrerUrl occurredAt }
     lastVisit { landingPage referrerUrl occurredAt }
-  }`
+  }
+  displayFulfillmentStatus
+  fulfillments(first: 10) { id status displayStatus createdAt trackingInfo(first: 3) { company number url } }`
 
 export class ShopifyClient {
   constructor(readonly shop: string, private readonly token: string, private readonly fetchFn: FetchFn = fetch) {}
@@ -162,12 +179,143 @@ export class ShopifyClient {
   async ensureWebhooks(url: string): Promise<Array<{ id: string; topic: string }>> {
     const existing = (await this.webhooks()).filter((w) => w.url === url)
     const out: Array<{ id: string; topic: string }> = []
-    for (const topic of SHOPIFY_TOPICS) {
+    for (const topic of [...SHOPIFY_TOPICS, ...SHOPIFY_OPTIONAL_TOPICS]) {
       const have = existing.find((w) => w.topic === topic)
       if (have) { out.push({ id: have.id, topic }); continue }
-      out.push({ id: await this.createWebhook(topic, url), topic })
+      try {
+        out.push({ id: await this.createWebhook(topic, url), topic })
+      } catch (error) {
+        if ((SHOPIFY_TOPICS as readonly string[]).includes(topic)) throw error
+        // Optional: a store without that permission still works.
+      }
     }
     return out
+  }
+
+  // --- fulfilment ------------------------------------------------------------------------
+
+  /** Fulfilment orders (what can still be fulfilled) and fulfilments made so far. */
+  async fulfillmentState(orderId: string): Promise<FulfillmentState> {
+    const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    type R = { order: {
+      id: string; email: string | null; displayFulfillmentStatus: string | null
+      fulfillmentOrders: { nodes: Array<{ id: string; status: string; lineItems: { nodes: Array<{ id: string; remainingQuantity: number; lineItem: { sku: string | null; variant: { legacyResourceId: string } | null } }> } }> }
+      fulfillments: ShopifyFulfillment[]
+    } | null }
+    const d = await this.gql<R>(`query($id: ID!) { order(id: $id) {
+      id email displayFulfillmentStatus
+      fulfillmentOrders(first: 20) { nodes { id status lineItems(first: 100) { nodes { id remainingQuantity lineItem { sku variant { legacyResourceId } } } } } }
+      fulfillments(first: 20) { id status displayStatus createdAt trackingInfo(first: 3) { company number url } }
+    } }`, { id })
+    if (!d.order) throw new ChannelError('This order no longer exists in Shopify', 404, 'NOT_FOUND')
+    const all = d.order.displayFulfillmentStatus === 'FULFILLED'
+    return {
+      email: d.order.email,
+      fulfillmentOrders: d.order.fulfillmentOrders.nodes.map((fo) => ({
+        id: fo.id, status: fo.status,
+        lines: fo.lineItems.nodes.map((l) => ({ id: l.id, remaining: l.remainingQuantity, variant: l.lineItem.variant?.legacyResourceId ?? null, sku: l.lineItem.sku })),
+      })),
+      fulfillments: d.order.fulfillments.map((f) => seenFulfillment(f, all)),
+    }
+  }
+
+  /** Creates the fulfilment. Throws on any user error; returns Shopify's record. */
+  async createFulfillment(input: {
+    groups: FulfillmentGroup[]; notifyCustomer: boolean; tracking: { company: string | null; number: string | null; url: string | null } | null
+  }): Promise<SeenFulfillment> {
+    const fulfillment: Record<string, unknown> = {
+      lineItemsByFulfillmentOrder: input.groups.map((g) => ({
+        fulfillmentOrderId: g.fulfillmentOrderId,
+        fulfillmentOrderLineItems: g.lines.map((l) => ({ id: l.id, quantity: l.quantity })),
+      })),
+      notifyCustomer: input.notifyCustomer,
+    }
+    if (input.tracking?.number) {
+      fulfillment.trackingInfo = { company: input.tracking.company ?? undefined, number: input.tracking.number, ...(input.tracking.url ? { url: input.tracking.url } : {}) }
+    }
+    type R = { fulfillmentCreate: { fulfillment: ShopifyFulfillment | null; userErrors: Array<{ field: string[] | null; message: string }> } | null }
+    const { data, errors } = await this.raw<R>(`mutation($f: FulfillmentInput!) { fulfillmentCreate(fulfillment: $f) {
+      fulfillment { id status displayStatus createdAt trackingInfo(first: 3) { company number url } }
+      userErrors { field message } } }`, { f: fulfillment })
+    if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) {
+      throw new ChannelError('Shopify refused: the app needs the fulfilment permissions (write_merchant_managed_fulfillment_orders). Update the app scopes and connect again.', 403, 'ACCESS_DENIED')
+    }
+    const res = data?.fulfillmentCreate
+    if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+    if (!res.fulfillment) throw new ChannelError(`Shopify would not fulfil: ${res.userErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
+    return seenFulfillment(res.fulfillment, false)
+  }
+
+  // --- inventory --------------------------------------------------------------------------
+
+  async locations(): Promise<Array<{ id: string; name: string; active: boolean }>> {
+    const d = await this.gql<{ locations: { nodes: Array<{ id: string; name: string; isActive: boolean }> } }>(
+      '{ locations(first: 50) { nodes { id name isActive } } }')
+    return d.locations.nodes.map((l) => ({ id: l.id, name: l.name, active: l.isActive }))
+  }
+
+  /** Every variant with its inventory item and per-location available quantity (up to `max`). */
+  async catalog(max = 2000): Promise<CatalogItem[]> {
+    const out: CatalogItem[] = []
+    let after: string | null = null
+    while (out.length < max) {
+      type R = { productVariants: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<{
+        legacyResourceId: string; sku: string | null; barcode: string | null; title: string
+        product: { legacyResourceId: string; title: string; status: string }
+        inventoryItem: { id: string; tracked: boolean; inventoryLevels: { nodes: Array<{ location: { id: string; name: string }; quantities: Array<{ name: string; quantity: number }> }> } } | null
+      }> } }
+      const d: R = await this.gql<R>(`query($after: String) { productVariants(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { legacyResourceId sku barcode title product { legacyResourceId title status }
+          inventoryItem { id tracked inventoryLevels(first: 10) { nodes { location { id name } quantities(names: ["available", "on_hand"]) { name quantity } } } } } } }`,
+        { after })
+      for (const v of d.productVariants.nodes) {
+        out.push({
+          external_variant_id: String(v.legacyResourceId), external_product_id: String(v.product.legacyResourceId),
+          inventory_item_id: v.inventoryItem?.id ?? null, sku: clean(v.sku), barcode: clean(v.barcode),
+          product_title: v.product.title, variant_title: v.title, product_status: v.product.status, tracked: v.inventoryItem?.tracked ?? false,
+          levels: (v.inventoryItem?.inventoryLevels.nodes ?? []).map((l) => ({
+            location_id: l.location.id, location: l.location.name,
+            available: l.quantities.find((q) => q.name === 'available')?.quantity ?? null,
+            on_hand: l.quantities.find((q) => q.name === 'on_hand')?.quantity ?? null,
+          })),
+        })
+      }
+      if (!d.productVariants.pageInfo.hasNextPage) break
+      after = d.productVariants.pageInfo.endCursor
+    }
+    return out
+  }
+
+  /** Available quantity of one item at one location (null when not stocked there). */
+  async available(inventoryItemId: string, locationId: string): Promise<number | null> {
+    const d = await this.gql<{ inventoryItem: { inventoryLevel: { quantities: Array<{ name: string; quantity: number }> } | null } | null }>(
+      `query($id: ID!, $loc: ID!) { inventoryItem(id: $id) { inventoryLevel(locationId: $loc) { quantities(names: ["available"]) { name quantity } } } }`,
+      { id: inventoryItemId, loc: locationId })
+    if (!d.inventoryItem) throw new ChannelError('This inventory item no longer exists in Shopify', 404, 'NOT_FOUND')
+    return d.inventoryItem.inventoryLevel?.quantities.find((q) => q.name === 'available')?.quantity ?? null
+  }
+
+  /**
+   * Sets the available quantity, only if Shopify still has `from` (compare-and-set).
+   * The idempotency key makes a retried request apply once.
+   */
+  async setAvailable(inventoryItemId: string, locationId: string, quantity: number, from: number | null, key: string): Promise<void> {
+    type R = { inventorySetQuantities: { inventoryAdjustmentGroup: { id: string } | null; userErrors: Array<{ field: string[] | null; message: string; code: string | null }> } | null }
+    const { data, errors } = await this.raw<R>(`mutation($input: InventorySetQuantitiesInput!, $key: String!) {
+      inventorySetQuantities(input: $input) @idempotent(key: $key) { inventoryAdjustmentGroup { id } userErrors { field message code } } }`, {
+      key,
+      input: { name: 'available', reason: 'correction', quantities: [{ inventoryItemId, locationId, quantity, changeFromQuantity: from }] },
+    })
+    if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) {
+      throw new ChannelError('Shopify refused: the app needs write_inventory. Update the app scopes and connect again.', 403, 'ACCESS_DENIED')
+    }
+    const res = data?.inventorySetQuantities
+    if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+    if (res.userErrors.length) {
+      const stale = res.userErrors.some((e) => /CHANGE_FROM|COMPARE|stale|does not match/i.test(`${e.code} ${e.message}`))
+      throw new ChannelError(`Shopify would not set the quantity: ${res.userErrors.map((e) => e.message).join('; ')}`, 409, stale ? 'STALE' : 'USER_ERROR')
+    }
   }
 
   private async createWebhook(topic: string, url: string): Promise<string> {
@@ -203,8 +351,17 @@ export class ShopifyClient {
       checks.push({ key: 'store', label: 'Store reachable', status: 'fail', detail: e.message })
       return { checks, name: null, currency: null, scopes: [] }
     }
-    const missing = ['read_orders'].filter((s) => !info.scopes.includes(s) && !info.scopes.includes(s.replace('read_', 'write_')))
-    const soft = ['read_customers', 'read_products'].filter((s) => !info.scopes.includes(s) && !info.scopes.includes(s.replace('read_', 'write_')))
+    const has = (x: string) => info.scopes.includes(x) || info.scopes.includes(x.replace('read_', 'write_'))
+    const missing = ['read_orders'].filter((x) => !has(x))
+    const soft = ['read_customers', 'read_products'].filter((x) => !has(x))
+    const fulfil = ['write_merchant_managed_fulfillment_orders'].filter((x) => !info.scopes.includes(x))
+    const stock = ['read_inventory', 'write_inventory', 'read_locations'].filter((x) => !info.scopes.includes(x))
+    checks.push(fulfil.length
+      ? { key: 'fulfilment', label: 'Fulfilment on Shopify', status: 'warn', detail: 'Add read/write_merchant_managed_fulfillment_orders to the app, then connect again, so shipped orders are fulfilled on Shopify with tracking' }
+      : { key: 'fulfilment', label: 'Fulfilment on Shopify', status: 'ok', detail: 'Shipped orders are fulfilled on Shopify with the courier tracking link' })
+    checks.push(stock.length
+      ? { key: 'inventory', label: 'Stock sync', status: 'warn', detail: `Add ${stock.join(', ')} to the app, then connect again, to keep Shopify stock in step` }
+      : { key: 'inventory', label: 'Stock sync', status: 'ok', detail: 'Stock can be kept in step (turn it on under Shopify sync)' })
     checks.push(missing.length
       ? { key: 'scopes', label: 'Permissions', status: 'fail', detail: `Missing ${missing.join(', ')} — allow it in the app's Admin API access scopes` }
       : soft.length
@@ -255,6 +412,82 @@ export interface ShopifyOrder {
     variant: { legacyResourceId: string; sku: string | null; product: { legacyResourceId: string } | null } | null
   }> }
   customerJourneySummary?: { firstVisit: Visit | null; lastVisit: Visit | null } | null
+  displayFulfillmentStatus?: string | null
+  fulfillments?: ShopifyFulfillment[]
+}
+export interface ShopifyFulfillment {
+  id: string; status: string | null; displayStatus: string | null; createdAt: string | null
+  trackingInfo: Array<{ company: string | null; number: string | null; url: string | null }> | null
+}
+export interface FulfillmentGroup { fulfillmentOrderId: string; lines: Array<{ id: string; quantity: number; variant: string | null }> }
+export interface FulfillmentState {
+  email: string | null
+  fulfillmentOrders: Array<{ id: string; status: string; lines: Array<{ id: string; remaining: number; variant: string | null; sku: string | null }> }>
+  fulfillments: SeenFulfillment[]
+}
+export interface CatalogItem {
+  external_variant_id: string; external_product_id: string; inventory_item_id: string | null; sku: string | null; barcode: string | null
+  product_title: string; variant_title: string; product_status: string; tracked: boolean
+  levels: Array<{ location_id: string; location: string; available: number | null; on_hand: number | null }>
+}
+
+export function seenFulfillment(f: ShopifyFulfillment, allFulfilled: boolean): SeenFulfillment {
+  const t = f.trackingInfo?.[0]
+  return {
+    id: f.id, status: f.status, display_status: f.displayStatus, created_at: f.createdAt,
+    tracking_company: t?.company ?? null, tracking_number: t?.number ?? null, tracking_url: t?.url ?? null, all_fulfilled: allFulfilled,
+  }
+}
+
+/** Fulfilments in an orders/updated or fulfillments/* webhook (REST shape). */
+export function seenFromWebhook(body: Record<string, unknown>): SeenFulfillment[] {
+  type Rest = { admin_graphql_api_id?: string; id?: number; status?: string; shipment_status?: string | null; created_at?: string
+    tracking_company?: string | null; tracking_number?: string | null; tracking_numbers?: string[]; tracking_url?: string | null; tracking_urls?: string[] }
+  const list: Rest[] = Array.isArray(body.fulfillments) ? body.fulfillments as Rest[] : body.order_id ? [body as Rest] : []
+  const all = body.fulfillment_status === 'fulfilled'
+  return list.filter((f) => f.admin_graphql_api_id || f.id).map((f) => ({
+    id: f.admin_graphql_api_id ?? `gid://shopify/Fulfillment/${f.id}`,
+    status: f.status ? f.status.toUpperCase() : null, display_status: f.shipment_status ? f.shipment_status.toUpperCase() : null,
+    tracking_company: f.tracking_company ?? null, tracking_number: f.tracking_number ?? f.tracking_numbers?.[0] ?? null,
+    tracking_url: f.tracking_url ?? f.tracking_urls?.[0] ?? null, created_at: f.created_at ?? null, all_fulfilled: all,
+  }))
+}
+
+/**
+ * Which Shopify fulfilment-order lines to fulfil for what we are shipping:
+ * our quantity per Shopify variant, taken from open fulfilment orders, never
+ * more than Shopify says is remaining (so a partly fulfilled order only gets
+ * the rest, and quantities we removed stay unfulfilled).
+ */
+export function planFulfillment(
+  ours: Array<{ external_variant_id: string | null; sku: string | null; quantity: number }>,
+  fos: FulfillmentState['fulfillmentOrders'],
+): { groups: FulfillmentGroup[]; unmatched: string[] } {
+  const want = new Map<string, number>()
+  const unmatched: string[] = []
+  const open = fos.filter((fo) => ['OPEN', 'IN_PROGRESS', 'SCHEDULED'].includes(fo.status))
+  for (const l of ours) {
+    if (l.quantity <= 0) continue
+    const key = l.external_variant_id
+      ?? open.flatMap((fo) => fo.lines).find((x) => x.sku && l.sku && x.sku.toLowerCase() === l.sku.toLowerCase())?.variant
+      ?? null
+    if (!key) { unmatched.push(l.sku ?? 'item'); continue }
+    want.set(key, (want.get(key) ?? 0) + l.quantity)
+  }
+  const groups: FulfillmentGroup[] = []
+  for (const fo of open) {
+    const lines: FulfillmentGroup['lines'] = []
+    for (const line of fo.lines) {
+      const need = line.variant ? want.get(line.variant) ?? 0 : 0
+      const take = Math.min(need, line.remaining)
+      if (take > 0) {
+        lines.push({ id: line.id, quantity: take, variant: line.variant })
+        want.set(line.variant!, need - take)
+      }
+    }
+    if (lines.length) groups.push({ fulfillmentOrderId: fo.id, lines })
+  }
+  return { groups, unmatched }
 }
 interface Address { name?: string | null; firstName?: string | null; lastName?: string | null; phone: string | null; address1: string | null; address2: string | null; city: string | null; province: string | null; zip: string | null }
 interface Visit { landingPage: string | null; referrerUrl: string | null; occurredAt: string | null }
@@ -300,5 +533,6 @@ export function normalizeShopifyOrder(o: ShopifyOrder): NormalizedOrder {
     gateway: clean((o.paymentGatewayNames ?? []).join(', ')),
     note: clean(o.note),
     attribution: first || last ? { first_touch: first ?? last, last_touch: last ?? first } : null,
+    fulfillments: (o.fulfillments ?? []).map((f) => seenFulfillment(f, o.displayFulfillmentStatus === 'FULFILLED')),
   }
 }
