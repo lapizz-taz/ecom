@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { hmacBase64, hmacHex } from './channels/common.ts'
-import { normalizeShopifyOrder, ShopifyClient, type ShopifyOrder, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook } from './channels/shopify.ts'
+import { normalizeShopifyOrder, ShopifyClient, shopifyClientToken, type ShopifyOrder, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook } from './channels/shopify.ts'
 import { normalizeWooOrder, siteUrl, verifyWooWebhook, WooClient, wooAuthUrl, type WooOrder } from './channels/woocommerce.ts'
 
 const res = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -18,6 +18,27 @@ const shopifyOrder = (over: Partial<ShopifyOrder> = {}): ShopifyOrder => ({
   ...over,
 })
 
+describe('Shopify client credentials', () => {
+  it('gets a token with no redirect and knows when it runs out', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ access_token: 'shpat_x', scope: 'read_orders,write_orders', expires_in: 86399 }), { status: 200 }))
+    const t = await shopifyClientToken('mystore.myshopify.com', 'cid', 'secret', fetchFn as never)
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://mystore.myshopify.com/admin/oauth/access_token')
+    expect(String(init.body)).toBe('grant_type=client_credentials&client_id=cid&client_secret=secret')
+    expect(t.scopes).toEqual(['read_orders', 'write_orders'])
+    const hours = (Date.parse(t.expiresAt) - Date.now()) / 3_600_000
+    expect(hours).toBeGreaterThan(23.9)
+    expect(hours).toBeLessThan(24)
+  })
+
+  it('explains a refused token instead of failing silently', async () => {
+    const notInstalled = vi.fn(async () => new Response(JSON.stringify({ error: 'app_not_installed', error_description: 'The app is not installed' }), { status: 400 }))
+    await expect(shopifyClientToken('s.myshopify.com', 'a', 'b', notInstalled as never)).rejects.toThrow(/Install the app on this store first/)
+    const wrong = vi.fn(async () => new Response(JSON.stringify({ error: 'invalid_client' }), { status: 401 }))
+    await expect(shopifyClientToken('s.myshopify.com', 'a', 'b', wrong as never)).rejects.toThrow(/Check the Client ID and Client secret/)
+  })
+})
+
 describe('Shopify', () => {
   it('accepts the store name, the myshopify address or the admin URL', () => {
     expect(shopDomain('mystore')).toBe('mystore.myshopify.com')
@@ -30,7 +51,8 @@ describe('Shopify', () => {
   it('sends staff to the store\'s approval screen with the scopes we need', () => {
     const url = new URL(shopifyAuthUrl('mystore.myshopify.com', 'abc123', 'st', 'https://x.supabase.co/functions/v1/channels/callback/shopify'))
     expect(url.host).toBe('mystore.myshopify.com')
-    expect(url.searchParams.get('scope')).toBe('read_orders,read_customers,read_products,read_inventory,write_inventory,read_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders')
+    expect(url.searchParams.get('scope')).toBe('read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_returns,write_returns')
+    expect(url.searchParams.get('scope')).not.toContain('read_customers')
     expect(url.searchParams.get('state')).toBe('st')
   })
 

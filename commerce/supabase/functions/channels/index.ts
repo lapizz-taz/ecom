@@ -1,6 +1,8 @@
 // Sales channels: Shopify and WooCommerce stores whose orders come here.
+//   POST shopify_client    {shop, client_id, client_secret}  Dev Dashboard app, client credentials (no redirect)
 //   POST shopify_connect   {shop, client_id, client_secret?, return_to} → Shopify's approval screen
-//   GET  /channels/callback/shopify          Shopify sends staff back: code → token (Vault)
+//   GET  /channels/callback/shopify          Shopify sends staff back: code → token (Vault). Reached through
+//                                            <app domain>/oauth/shopify/callback so its host matches the app URL.
 //   POST shopify_token     {shop, access_token, api_secret}   custom-app token instead of OAuth
 //   POST woo_connect       {url, return_to} → the store's own WooCommerce approval screen
 //   POST /channels/callback/woocommerce      WooCommerce posts the approved API keys here
@@ -15,7 +17,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { type Check, ChannelError, type NormalizedOrder } from '../_shared/channels/common.ts'
-import { exchangeShopifyCode, seenFromWebhook, ShopifyClient, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook } from '../_shared/channels/shopify.ts'
+import {
+  exchangeShopifyCode, seenFromWebhook, ShopifyClient, shopifyClientToken, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook,
+} from '../_shared/channels/shopify.ts'
 import { fulfillJob, inventoryJob, type Job, type Outcome } from '../_shared/channels/sync.ts'
 import { normalizeWooOrder, siteUrl, verifyWooWebhook, WOO_CANCEL_STATUSES, WOO_IMPORT_STATUSES, WooClient, wooAuthUrl, type WooOrder } from '../_shared/channels/woocommerce.ts'
 import { isCronRequest } from '../_shared/cron.ts'
@@ -35,7 +39,9 @@ interface Channel {
   webhooks: Array<{ id: string | number; topic: string }>; settings: Record<string, unknown>
 }
 interface Secret {
-  mode?: 'OAUTH' | 'TOKEN' | 'KEYS'; client_id?: string; client_secret?: string; access_token?: string; api_secret?: string
+  mode?: 'OAUTH' | 'CLIENT' | 'TOKEN' | 'KEYS'; client_id?: string; client_secret?: string; access_token?: string; api_secret?: string
+  /** Client-credentials tokens last 24 hours. */
+  expires_at?: string
   consumer_key?: string; consumer_secret?: string; webhook_secret?: string
 }
 interface IngestResult { status: 'IMPORTED' | 'DUPLICATE' | 'FAILED' | 'SKIPPED'; order_id?: string; order_number?: string; phone?: string; total?: number; error?: string; import_id?: string }
@@ -43,6 +49,7 @@ interface IngestResult { status: 'IMPORTED' | 'DUPLICATE' | 'FAILED' | 'SKIPPED'
 const returnTo = z.string().url().max(500)
 const channelId = z.string().uuid()
 const actions = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('shopify_client'), shop: z.string().trim().min(3).max(200), client_id: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The Client ID is a 32-character code from the app\'s settings'), client_secret: z.string().trim().max(200).optional() }),
   z.object({ action: z.literal('shopify_connect'), shop: z.string().trim().min(3).max(200), client_id: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The Client ID is a 32-character code from the app\'s settings'), client_secret: z.string().trim().max(200).optional(), return_to: returnTo }),
   z.object({ action: z.literal('shopify_token'), shop: z.string().trim().min(3).max(200), access_token: z.string().trim().regex(/^shp[a-z]{2}_[A-Za-z0-9]{20,64}$/, 'The Admin API access token starts with shpat_'), api_secret: z.string().trim().min(16, 'Enter the app\'s API secret key').max(200) }),
   z.object({ action: z.literal('woo_connect'), url: z.string().trim().min(4).max(300), return_to: returnTo }),
@@ -61,7 +68,17 @@ const actions = z.discriminatedUnion('action', [
 
 const publicBase = () => (env('PUBLIC_SUPABASE_URL') ?? requireEnv('SUPABASE_URL')).replace(/\/+$/, '')
 const fnBase = () => `${publicBase()}/functions/v1/channels`
-export const shopifyRedirectUri = () => `${fnBase()}/callback/shopify`
+/**
+ * Shopify requires the redirect URL to be on the same host as the app URL, so
+ * Shopify sends staff back to the admin's own domain, which forwards to this
+ * function (vercel.json rewrite /oauth/shopify/callback).
+ */
+export const shopifyRedirectUri = (returnTo?: string) => {
+  try {
+    if (returnTo) return `${new URL(returnTo).origin}/oauth/shopify/callback`
+  } catch { /* fall through */ }
+  return `${fnBase()}/callback/shopify`
+}
 const webhookUrl = (id: string) => `${fnBase()}/webhook/${id}`
 const secretKey = (id: string) => `channels.${id.replace(/-/g, '')}`
 const hint = (v: string) => `••••${v.slice(-4)}`
@@ -75,6 +92,18 @@ async function secretOf(admin: SupabaseClient, id: string): Promise<Secret> {
 }
 const storeSecret = (admin: SupabaseClient, id: string, value: Secret, actor: string | null, h: string) =>
   rpc(admin, 'integration_secret_store', { p_key: secretKey(id), p_value: value, p_hint: h, p_actor: actor })
+
+/** Stored credentials, with a client-credentials token fetched again shortly before it expires. */
+async function credsOf(admin: SupabaseClient, c: Channel, force = false): Promise<Secret> {
+  const s = await secretOf(admin, c.id)
+  if (c.platform !== 'SHOPIFY' || s.mode !== 'CLIENT' || !s.client_id || !s.client_secret) return s
+  if (!force && s.access_token && s.expires_at && Date.parse(s.expires_at) > Date.now() + 10 * 60_000) return s
+  const t = await shopifyClientToken(c.shop_domain, s.client_id, s.client_secret)
+  const next = { ...s, access_token: t.accessToken, expires_at: t.expiresAt }
+  await storeSecret(admin, c.id, next, null, `App ${hint(s.client_id)}`)
+  if (t.scopes.length) await rpc(admin, 'channel_update', { p_id: c.id, p: { scopes: t.scopes } })
+  return next
+}
 
 async function channelOf(admin: SupabaseClient, id: string): Promise<Channel> {
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
@@ -93,7 +122,16 @@ function wooClient(c: Channel, s: Secret) {
 
 /** Webhooks + the connection test; the channel ends CONNECTED only when nothing failed. */
 async function finishSetup(admin: SupabaseClient, c: Channel, actor: string | null, registerHooks = true) {
-  const s = await secretOf(admin, c.id)
+  let s: Secret
+  try {
+    s = await credsOf(admin, c)
+  } catch (error) {
+    const checks: Check[] = [{ key: 'store', label: 'Store reachable', status: 'fail', detail: (error as Error).message }]
+    const channel = await rpc<Channel>(admin, 'channel_update', {
+      p_id: c.id, p_actor: actor, p: { last_test: { checks, at: new Date().toISOString() }, status: 'ERROR', last_error: (error as Error).message },
+    })
+    return { channel, checks, ok: false }
+  }
   let hooks: Array<{ id: string | number; topic: string }> = c.webhooks ?? []
   let hookError: string | null = null
   if (registerHooks) {
@@ -167,10 +205,10 @@ async function ingest(admin: SupabaseClient, c: Channel, order: NormalizedOrder,
 
 /** Pull recent orders (also catches anything a webhook missed). */
 async function syncChannel(admin: SupabaseClient, c: Channel, days: number): Promise<{ id: string; name: string; ok: boolean; error?: string; found: number; imported: number; duplicate: number; failed: number; skipped: number }> {
-  const s = await secretOf(admin, c.id)
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const counts = { found: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 }
   try {
+    const s = await credsOf(admin, c)
     if (c.platform === 'SHOPIFY') {
       for (const o of await shopifyClient(c, s).ordersSince(since)) {
         counts.found++
@@ -213,7 +251,7 @@ function bump(c: { imported: number; duplicate: number; failed: number; skipped:
 
 async function importCatalog(admin: SupabaseClient, c: Channel) {
   if (c.platform !== 'SHOPIFY') throw new HttpError(422, 'Stock sync is available for Shopify stores', 'VALIDATION')
-  const client = shopifyClient(c, await secretOf(admin, c.id))
+  const client = shopifyClient(c, await credsOf(admin, c))
   const [locations, items] = await Promise.all([client.locations(), client.catalog()])
   return rpc<{ items: number; linked: number; mapped: number }>(admin, 'channel_catalog_import', { p_channel_id: c.id, p_items: items, p_locations: locations })
 }
@@ -233,7 +271,7 @@ async function processJobs(admin: SupabaseClient, limit: number) {
       if (c.status === 'DISCONNECTED') {
         out = { outcome: 'FAILED', error: 'The store is disconnected' }
       } else {
-        if (!secrets.has(c.id)) secrets.set(c.id, await secretOf(admin, c.id))
+        if (!secrets.has(c.id)) secrets.set(c.id, await credsOf(admin, c))
         const client = () => shopifyClient(c, secrets.get(c.id)!)
         out = job.kind === 'FULFILL'
           ? await fulfillJob(job, call, client, {
@@ -319,10 +357,11 @@ async function webhook(req: Request, id: string): Promise<Response> {
   const admin = adminClient()
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
   if (!c?.id || c.status === 'DISCONNECTED') return json(req, { ok: true, ignored: 'not connected' })
-  const s = await secretOf(admin, c.id)
+  let s = await secretOf(admin, c.id)
 
   if (c.platform === 'SHOPIFY') {
-    const signing = s.mode === 'OAUTH' ? s.client_secret : s.api_secret
+    // Apps (OAuth or client credentials) sign with the client secret; a custom-app token with its API secret.
+    const signing = s.mode === 'TOKEN' ? s.api_secret : s.client_secret
     if (!signing || !(await verifyShopifyWebhook(raw, req.headers.get('x-shopify-hmac-sha256'), signing))) {
       void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'channels', message: `${c.name}: webhook with a bad signature rejected`, context: { channel: c.id } })
       throw new HttpError(401, 'Invalid signature', 'INVALID_SIGNATURE')
@@ -333,6 +372,7 @@ async function webhook(req: Request, id: string): Promise<Response> {
     const body = JSON.parse(raw || '{}') as { id?: number; admin_graphql_api_id?: string; cancel_reason?: string }
     let result: unknown = null
     if (topic === 'orders/create' && body.id) {
+      s = await credsOf(admin, c)
       const order = await shopifyClient(c, s).order(body.admin_graphql_api_id ?? String(body.id))
       result = order ? await ingest(admin, c, order, 'WEBHOOK') : { status: 'NOT_FOUND' }
     } else if (topic === 'orders/cancelled' && body.id) {
@@ -409,7 +449,24 @@ Deno.serve(
           await storeSecret(admin, c.id, { ...old, mode: old.access_token ? old.mode : 'OAUTH', client_id: input.client_id, client_secret: clientSecret }, actor, `App ${hint(input.client_id)}`)
           const state = randomHex()
           await rpc(admin, 'channel_oauth_state_create', { p_channel_id: c.id, p_state: state, p_actor: actor, p_return_to: input.return_to })
-          return json(req, { url: shopifyAuthUrl(shop, input.client_id, state, shopifyRedirectUri()), redirect_uri: shopifyRedirectUri(), channel_id: c.id })
+          const redirectUri = shopifyRedirectUri(input.return_to)
+          return json(req, { url: shopifyAuthUrl(shop, input.client_id, state, redirectUri), redirect_uri: redirectUri, channel_id: c.id })
+        }
+        case 'shopify_client': {
+          const shop = shopDomain(input.shop)
+          if (!shop) throw new HttpError(422, 'Enter the store address like mystore.myshopify.com', 'VALIDATION')
+          const c = await rpc<Channel>(admin, 'channel_upsert', { p: { platform: 'SHOPIFY', shop_domain: shop, auth_mode: 'OAUTH' }, p_actor: actor })
+          const old = await secretOf(admin, c.id)
+          const clientSecret = input.client_secret || (old.client_id === input.client_id ? old.client_secret : undefined)
+          if (!clientSecret) throw new HttpError(422, 'Enter the Client secret', 'VALIDATION')
+          // Get a token first: wrong keys or an app not installed fail here, before anything is saved.
+          const t = await shopifyClientToken(shop, input.client_id, clientSecret)
+          await storeSecret(admin, c.id, { mode: 'CLIENT', client_id: input.client_id, client_secret: clientSecret, access_token: t.accessToken, expires_at: t.expiresAt },
+            actor, `App ${hint(input.client_id)}`)
+          if (t.scopes.length) await rpc(admin, 'channel_update', { p_id: c.id, p: { scopes: t.scopes } })
+          const done = await finishSetup(admin, c, actor)
+          if (done.ok) background(syncChannel(admin, done.channel, 7))
+          return json(req, done)
         }
         case 'shopify_token': {
           const shop = shopDomain(input.shop)
@@ -446,7 +503,7 @@ Deno.serve(
           return json(req, await finishSetup(admin, await channelOf(admin, input.channel_id), actor, true))
         case 'disconnect': {
           const c = await channelOf(admin, input.channel_id)
-          const s = await secretOf(admin, c.id)
+          const s = await credsOf(admin, c).catch(() => secretOf(admin, c.id))
           try {
             if (c.platform === 'SHOPIFY' && s.access_token) await shopifyClient(c, s).removeWebhooks(c.webhooks.map((w) => String(w.id)))
             if (c.platform === 'WOOCOMMERCE' && s.consumer_key) await wooClient(c, s).removeWebhooks(c.webhooks.map((w) => Number(w.id)))

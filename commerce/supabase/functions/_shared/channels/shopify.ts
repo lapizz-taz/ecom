@@ -12,17 +12,22 @@ type FetchFn = typeof fetch
 
 export const SHOPIFY_API_VERSION = '2026-07'
 /**
- * Exactly what the features use:
- *   read_orders                     import orders, read their fulfilments (+ order webhooks)
- *   read_customers                  the order's customer name / e-mail / phone fields
- *   read_products                   catalog import (variants, SKUs, barcodes)
- *   read_inventory, write_inventory read and set quantities (+ inventory webhook)
- *   read_locations                  choose the location to keep in step
- *   read/write_merchant_managed_fulfillment_orders   create fulfilments with tracking
+ * The app's Admin API access scopes (set the same list on the app version in
+ * Shopify's Dev Dashboard):
+ *   read/write_orders              import orders, read fulfilments, optional mark-paid / cancel
+ *   read/write_draft_orders        send orders taken here (phone, Messenger) to Shopify
+ *   read/write_products            import the catalog, publish products
+ *   read/write_inventory           read and set quantities (+ inventory webhook)
+ *   read/write_locations           choose the location to keep in step
+ *   read/write_merchant_managed_fulfillment_orders   fulfil with tracking when shipped
+ *   read/write_returns             see returns made in Shopify, record ours there
+ * Customer details come with the order (protected customer data), so
+ * read_customers is not needed.
  */
 export const SHOPIFY_SCOPES = [
-  'read_orders', 'read_customers', 'read_products', 'read_inventory', 'write_inventory', 'read_locations',
-  'read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders',
+  'read_orders', 'write_orders', 'read_draft_orders', 'write_draft_orders', 'read_products', 'write_products',
+  'read_inventory', 'write_inventory', 'read_locations', 'write_locations',
+  'read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders', 'read_returns', 'write_returns',
 ]
 /** Needed for importing orders; the connection fails without them. */
 export const SHOPIFY_TOPICS = ['ORDERS_CREATE', 'ORDERS_CANCELLED', 'ORDERS_UPDATED', 'APP_UNINSTALLED'] as const
@@ -70,6 +75,39 @@ export async function exchangeShopifyCode(shop: string, clientId: string, client
   return { accessToken: body.access_token, scopes: (body.scope ?? '').split(',').filter(Boolean) }
 }
 
+/**
+ * Client credentials grant (Dev Dashboard apps installed on a store in the same
+ * organization): no redirect at all. The token lasts 24 hours and is fetched
+ * again before it runs out.
+ */
+export async function shopifyClientToken(shop: string, clientId: string, clientSecret: string, fetchFn: FetchFn = fetch) {
+  let res: Response
+  try {
+    res = await fetchFn(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret }).toString(),
+      signal: AbortSignal.timeout(20_000),
+    })
+  } catch {
+    throw new ChannelError(`Could not reach ${shop}`)
+  }
+  const body = (await res.json().catch(() => null)) as { access_token?: string; scope?: string; expires_in?: number; error?: string; error_description?: string } | null
+  if (!res.ok || !body?.access_token) {
+    const why = `${body?.error ?? ''} ${body?.error_description ?? ''}`.trim()
+    const hint = /not.?installed|installation/i.test(why)
+      ? 'Install the app on this store first (Dev Dashboard → your app → Install app), then try again.'
+      : /client|credential|secret|invalid/i.test(why) || res.status === 400 || res.status === 401
+        ? 'Check the Client ID and Client secret (Dev Dashboard → your app → Settings). The app must belong to the same organization as the store.'
+        : `HTTP ${res.status}`
+    throw new ChannelError(`Shopify did not give an access token${why ? ` (${why})` : ''}. ${hint}`, res.status === 401 ? 401 : 400, 'TOKEN_REFUSED')
+  }
+  return {
+    accessToken: body.access_token,
+    scopes: (body.scope ?? '').split(',').map((x) => x.trim()).filter(Boolean),
+    expiresAt: new Date(Date.now() + Math.max((body.expires_in ?? 86_399) - 60, 300) * 1000).toISOString(),
+  }
+}
+
 interface GqlError { message: string; extensions?: { code?: string } }
 
 const ORDER_FIELDS = `
@@ -80,7 +118,6 @@ const ORDER_FIELDS = `
   totalOutstandingSet { shopMoney { amount } }
   shippingAddress { name firstName lastName phone address1 address2 city province zip }
   billingAddress { name phone address1 address2 city province zip }
-  customer { firstName lastName email phone }
   lineItems(first: 100) { nodes {
     title variantTitle quantity currentQuantity sku
     originalUnitPriceSet { shopMoney { amount } }
@@ -353,7 +390,7 @@ export class ShopifyClient {
     }
     const has = (x: string) => info.scopes.includes(x) || info.scopes.includes(x.replace('read_', 'write_'))
     const missing = ['read_orders'].filter((x) => !has(x))
-    const soft = ['read_customers', 'read_products'].filter((x) => !has(x))
+    const soft = ['read_products'].filter((x) => !has(x))
     const fulfil = ['write_merchant_managed_fulfillment_orders'].filter((x) => !info.scopes.includes(x))
     const stock = ['read_inventory', 'write_inventory', 'read_locations'].filter((x) => !info.scopes.includes(x))
     checks.push(fulfil.length
@@ -365,8 +402,8 @@ export class ShopifyClient {
     checks.push(missing.length
       ? { key: 'scopes', label: 'Permissions', status: 'fail', detail: `Missing ${missing.join(', ')} — allow it in the app's Admin API access scopes` }
       : soft.length
-        ? { key: 'scopes', label: 'Permissions', status: 'warn', detail: `Orders OK; also allow ${soft.join(', ')} for customer names and product details` }
-        : { key: 'scopes', label: 'Permissions', status: 'ok', detail: 'Orders, customers and products' })
+        ? { key: 'scopes', label: 'Permissions', status: 'warn', detail: `Orders OK; also allow ${soft.join(', ')} for product details and the catalog` }
+        : { key: 'scopes', label: 'Permissions', status: 'ok', detail: 'Orders and products' })
 
     // Customer name, phone and address are "protected customer data" on Shopify.
     if (!missing.length) {
@@ -405,7 +442,7 @@ export interface ShopifyOrder {
   email: string | null; phone: string | null; note: string | null; displayFinancialStatus: string | null; paymentGatewayNames: string[] | null
   currentTotalPriceSet: Money | null; totalShippingPriceSet: Money | null; totalDiscountsSet: Money | null; totalOutstandingSet: Money | null
   shippingAddress: Address | null; billingAddress: Address | null
-  customer: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null } | null
+  customer?: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null } | null
   lineItems: { nodes: Array<{
     title: string; variantTitle: string | null; quantity: number; currentQuantity?: number | null; sku: string | null
     originalUnitPriceSet: Money | null; image: { url: string } | null

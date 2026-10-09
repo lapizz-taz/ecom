@@ -46,6 +46,9 @@ export async function saveChannelSettings(id: string, p: { name?: string; import
 
 const call = <T>(body: Record<string, unknown>) => invokeFunction<T>('channels', body)
 
+/** Dev Dashboard app installed on the store: client credentials, no redirect. */
+export const shopifyClientConnect = (input: { shop: string; client_id: string; client_secret?: string }) =>
+  call<SetupResult>({ action: 'shopify_client', ...input })
 export const shopifyConnect = (input: { shop: string; client_id: string; client_secret?: string; return_to: string }) =>
   call<{ url: string; redirect_uri: string; channel_id: string }>({ action: 'shopify_connect', ...input })
 export const shopifyToken = (input: { shop: string; access_token: string; api_secret: string }) =>
@@ -62,8 +65,16 @@ export const syncChannel = (id: string, days = 7) =>
 export const retryImport = (importId: string, overrides: { phone?: string; name?: string; address?: string; district?: string }) =>
   call<{ status: string; order_id?: string; order_number?: string; error?: string }>({ action: 'retry_import', import_id: importId, overrides })
 
-/** Where Shopify sends staff back after approving the app (goes in the app's allowed redirect URLs). */
-export const shopifyRedirectUri = () => `${import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '')}/functions/v1/channels/callback/shopify`
+/**
+ * Where Shopify sends staff back after approving the app (the app's allowed
+ * redirect URL). It is on this admin's own domain because Shopify requires the
+ * same host as the App URL; the domain forwards it to the channels function.
+ */
+export const shopifyRedirectUri = () => `${window.location.origin}/oauth/shopify/callback`
+/** The App URL to enter in Shopify's Dev Dashboard. */
+export const shopifyAppUrl = () => `${window.location.origin}/admin/channels`
+/** The exact scope list for the app version. */
+export const SHOPIFY_APP_SCOPES = 'read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_returns,write_returns'
 
 export async function setStoreMode(mode: StoreMode, redirectUrl: string | null): Promise<{ mode: StoreMode; redirect_url: string | null }> {
   const { data, error } = await supabase.rpc('admin_set_store_mode', { p_mode: mode, p_redirect_url: redirectUrl ?? undefined })

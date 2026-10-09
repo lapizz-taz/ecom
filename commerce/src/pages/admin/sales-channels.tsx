@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeftRight, Check, Copy, ExternalLink, Palette, Plug, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, ExternalLink, Palette, Plug, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import type { StoreMode } from '@/types/domain'
 import {
   type ChannelCheck, type ChannelImport, type ChannelPlatform, disconnectChannel, fixWebhooks, listChannelImports, listChannels,
-  retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyConnect, shopifyRedirectUri, shopifyToken, syncChannel,
+  retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, SHOPIFY_APP_SCOPES, syncChannel,
   testChannel, wooConnect, wooKeys,
 } from '@/services/channels'
 
@@ -321,13 +321,14 @@ function CopyLine({ value }: { value: string }) {
 
 function ShopifyDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
-  const [mode, setMode] = useState<'app' | 'token'>('app')
+  const [mode, setMode] = useState<'client' | 'oauth' | 'token'>('client')
   const [f, setF] = useState({ shop: '', client_id: '', client_secret: '', access_token: '', api_secret: '' })
   const [result, setResult] = useState<SetupResult | null>(null)
   const run = useMutation({
     meta: { silent: true },
     mutationFn: async () => {
-      if (mode === 'app') {
+      if (mode === 'client') return shopifyClientConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined })
+      if (mode === 'oauth') {
         const r = await shopifyConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined, return_to: returnTo() })
         window.location.href = r.url
         return null
@@ -338,30 +339,61 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
   })
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
   if (result) return <ResultDialog result={result} onClose={onClose} />
+  const app = mode !== 'token'
   return (
     <FormDialog open onOpenChange={(o) => !o && onClose()} wide title="Connect Shopify" busy={run.isPending}
-      submitLabel={mode === 'app' ? 'Continue to Shopify' : 'Connect and test'} onSubmit={() => run.mutate()}
-      disabled={!f.shop || (mode === 'app' ? !f.client_id : !f.access_token || !f.api_secret)}>
-      <Tabs value={mode} onChange={setMode} options={[['app', 'With your app (recommended)'], ['token', 'Admin API token']]} />
-      <Field label="Store address" htmlFor="sh-shop"><Input id="sh-shop" value={f.shop} onChange={set('shop')} placeholder="mystore.myshopify.com" autoComplete="off" /></Field>
-      {mode === 'app' ? <>
-        <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>In Shopify's Dev Dashboard (or Settings → Apps → Develop apps) create an app for your store.</li>
-          <li>Give it the scopes <b className="text-foreground">read_orders, read_customers, read_products</b> and ask for protected customer data: <b className="text-foreground">name, phone, address</b>.</li>
-          <li>Add this allowed redirect URL:</li>
-        </ol>
-        <CopyLine value={shopifyRedirectUri()} />
+      submitLabel={mode === 'oauth' ? 'Continue to Shopify' : 'Connect and test'} onSubmit={() => run.mutate()}
+      disabled={!f.shop || (app ? !f.client_id || !f.client_secret : !f.access_token || !f.api_secret)}>
+      <Tabs value={mode} onChange={setMode} options={[['client', 'App keys (easiest)'], ['oauth', 'Approve on Shopify'], ['token', 'Admin API token']]} />
+      {app && <ShopifySteps mode={mode} />}
+      <Field label="Store address" htmlFor="sh-shop" hint="Your myshopify.com address, e.g. mystore.myshopify.com">
+        <Input id="sh-shop" value={f.shop} onChange={set('shop')} placeholder="mystore.myshopify.com" autoComplete="off" />
+      </Field>
+      {app ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Client ID" htmlFor="sh-id"><Input id="sh-id" value={f.client_id} onChange={set('client_id')} autoComplete="off" /></Field>
           <Field label="Client secret" htmlFor="sh-secret" hint="Kept encrypted on the server"><Input id="sh-secret" type="password" value={f.client_secret} onChange={set('client_secret')} autoComplete="off" /></Field>
         </div>
-      </> : <>
-        <p className="text-sm text-muted-foreground">For a custom app made in your Shopify admin: install it, then copy its Admin API access token and API secret key.</p>
+      ) : <>
+        <p className="text-sm text-muted-foreground">Only for an older custom app made in the Shopify admin (Settings → Apps → Develop apps): copy its Admin API access token and API secret key.</p>
         <Field label="Admin API access token" htmlFor="sh-token"><Input id="sh-token" type="password" value={f.access_token} onChange={set('access_token')} placeholder="shpat_…" autoComplete="off" /></Field>
         <Field label="API secret key" htmlFor="sh-api" hint="Used to check that orders really come from Shopify"><Input id="sh-api" type="password" value={f.api_secret} onChange={set('api_secret')} autoComplete="off" /></Field>
       </>}
       {run.error && <p className="rounded-lg border border-red-600/40 p-3 text-sm" role="alert">{(run.error as Error).message}</p>}
     </FormDialog>
+  )
+}
+
+/** The Dev Dashboard steps, with the exact values to copy. */
+function ShopifySteps({ mode }: { mode: 'client' | 'oauth' }) {
+  const step = (n: number, title: string, body: ReactNode) => (
+    <li className="flex gap-3">
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-foreground text-xs font-semibold text-background">{n}</span>
+      <div className="min-w-0 flex-1 space-y-1.5 pb-1"><p className="text-sm font-medium">{title}</p><div className="space-y-1.5 text-xs text-muted-foreground">{body}</div></div>
+    </li>
+  )
+  return (
+    <details className="group rounded-lg border" open>
+      <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-medium">
+        Set up the app in Shopify (5 minutes) <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+      </summary>
+      <ol className="space-y-3 border-t px-3 py-3">
+        {step(1, 'Create the app', <p>Open <a className="underline" href="https://dev.shopify.com/dashboard" target="_blank" rel="noreferrer">dev.shopify.com</a> signed in as the <b className="text-foreground">store owner</b> → Apps → Create app → name it.</p>)}
+        {step(2, 'Create a version with these settings', <>
+          <p>App URL</p><CopyLine value={shopifyAppUrl()} />
+          {mode === 'oauth' && <><p>Redirect URL (same domain as the App URL)</p><CopyLine value={shopifyRedirectUri()} /></>}
+          <p>Scopes</p><CopyLine value={SHOPIFY_APP_SCOPES} />
+          <p>Embed app in Shopify admin: <b className="text-foreground">off</b> · Webhooks API version: <b className="text-foreground">2026-07</b> · then <b className="text-foreground">Release</b>.</p>
+        </>)}
+        {step(3, 'Allow customer details', <p>API access → Protected customer data → request <b className="text-foreground">Name, Email, Phone, Address</b> (reason: order fulfilment).</p>)}
+        {step(4, mode === 'client' ? 'Install it on your store' : 'Copy the keys', mode === 'client'
+          ? <p>In the app's overview click <b className="text-foreground">Install app</b> and choose your store.</p>
+          : <p>Settings → copy the <b className="text-foreground">Client ID</b> and <b className="text-foreground">Client secret</b>.</p>)}
+        {step(5, mode === 'client' ? 'Copy the keys here' : 'Approve', mode === 'client'
+          ? <p>Settings → <b className="text-foreground">Client ID</b> and <b className="text-foreground">Client secret</b> below. We get the access token ourselves and renew it every day — no redirect.</p>
+          : <p>Click Continue: Shopify asks you to approve, then brings you back here.</p>)}
+      </ol>
+    </details>
   )
 }
 
