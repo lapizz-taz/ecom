@@ -182,7 +182,30 @@ Seeded logins (password `Password123!` for all):
                    where status = 'PENDING' and provider in ('bkash', 'paystation')
                      and created_at < now() - interval '3 minutes' and created_at > now() - interval '3 days')
    $$);
+
+   -- Shopify / WooCommerce: fetch recent orders (and Shopify fulfilments made by hand) every hour.
+   select cron.schedule('channels-sync', '37 * * * *', $$
+     select net.http_post(
+       url := 'https://<ref>.supabase.co/functions/v1/channels',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       body := '{"action": "sync"}'::jsonb)
+     where exists (select 1 from public.sales_channels where status = 'CONNECTED')
+   $$);
+
+   -- Shopify fulfilment and stock jobs (with retries); calls the function only when a job is due.
+   select cron.schedule('channel-sync-jobs', '* * * * *', $$
+     select net.http_post(
+       url := 'https://<ref>.supabase.co/functions/v1/channels',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       body := '{"action": "process_jobs"}'::jsonb)
+     where exists (select 1 from public.channel_sync_jobs
+                   where (status = 'PENDING' and next_attempt_at <= now()) or (status = 'RUNNING' and locked_until < now()))
+   $$);
    ```
+   Shopify app setup (scopes, redirect URL, protected customer data, stock sync): see
+   [docs/shopify-app-setup.md](docs/shopify-app-setup.md).
 7. **Provider callbacks**
    - bKash and PayStation need nothing here: each payment carries its own callback URL
      (`https://<ref>.supabase.co/functions/v1/payments?callback=…`), and the reconcile job above covers customers who
