@@ -27,7 +27,7 @@ describe('courier management parcels', () => {
       const consignment = 'DLT' + Math.floor(Math.random() * 1e6)
       const ship = await value<string>(db, `select id from public.assign_courier($1, $2, $3, 70, null, $3)`, [booked.id, courier, consignment])
       await db.query(`insert into public.shipment_events(shipment_id, status, description, source, raw, occurred_at)
-        values ($1, 'OUT_FOR_DELIVERY', 'Out for delivery', 'WEBHOOK', '{"rider_name":"Karim","rider_phone":"01999000111","reason":"Customer asked to come after 5pm"}', now())`, [ship])
+        values ($1, 'OUT_FOR_DELIVERY', 'Out for delivery', 'WEBHOOK', '{"rider_name":"Karim","rider_phone":"01999000111","reason":"Customer asked to come after 5pm"}', now() + interval '1 minute')`, [ship])
 
       const before = await parcels(db, staff, { tab: 'all', q: '01711000101' })
       expect(before.items).toHaveLength(1)
