@@ -159,6 +159,17 @@ Seeded logins (password `Password123!` for all):
      where (select (value ->> 'connected')::boolean from public.settings where key = 'meta_ads')
    $$);
 
+   -- TikTok / Google Ads: campaigns and daily spend for the last 3 days, every 3 hours, only while an account is selected.
+   select cron.schedule('ad-platforms-sync', '47 */3 * * *', $$
+     select net.http_post(
+       url := 'https://<ref>.supabase.co/functions/v1/ad-platforms',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       body := '{"action": "sync", "days": 3}'::jsonb)
+     where exists (select 1 from public.ad_accounts a join public.ad_connections c on c.id = a.connection_id
+                   where a.is_selected and c.status = 'CONNECTED')
+   $$);
+
    -- Finishes bKash / PayStation payments whose customer paid but never came back to the store.
    -- Calls the function only while such a payment is waiting.
    select cron.schedule('payments-reconcile', '*/5 * * * *', $$
@@ -185,6 +196,19 @@ Seeded logins (password `Password123!` for all):
      `act_`, the USD → BDT rate and, optionally, the payment account the spend is paid from. **Test Connection** opens the
      ad account and checks the token against the app (validity, expiry, permissions); the token and secret are stored
      in Vault per account, and a new account syncs its last 30 days. VAT % on ad spend is set once for all accounts.
+   - TikTok Ads: create an app on [TikTok for Business Developers](https://business-api.tiktok.com/portal) with the
+     *Ad Account Management* and *Reporting* scopes, and set its Advertiser redirect URL to
+     `https://<ref>.supabase.co/functions/v1/ad-platforms/callback/tiktok`. Then **Ads → TikTok Ads → Connection**: save
+     the App ID and Secret, press **Connect TikTok Ads** and authorise the advertiser accounts. Every authorised
+     advertiser is synced (turn any off, set its USD rate and VAT there).
+   - Google Ads: in Google Cloud create an OAuth client (Web application) with the redirect URI
+     `https://<ref>.supabase.co/functions/v1/ad-platforms/callback/google` and enable the Google Ads API; get a developer
+     token from the manager (MCC) account's **API Center** (test-account access works only on test accounts until
+     Google approves Basic access). Then **Ads → Google Ads → Settings**: save the client ID, client secret, developer
+     token and, if you sign in through a manager, its customer ID; press **Connect Google Ads** and pick the customer
+     accounts to sync. `GOOGLE_ADS_API_VERSION` overrides the API version (default v24).
+     App secrets and the OAuth tokens are kept in Vault; orders count for a TikTok / Google campaign only when their
+     landing URL carried its `campaign_id` (templates on each page), otherwise they stay unattributed.
    - Payment accounts: **Finance → Payment Accounts** (cash, bank, bKash, card) with an opening balance and manual
      money in / out. A Meta account linked to one has each finished day's spend withdrawn the day after; if Meta later
      revises a day, the difference is posted as a correction. Movements are permanent.

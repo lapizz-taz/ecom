@@ -212,30 +212,30 @@ function MetaAccountDialog({ account, storeCurrency, onClose, onSaved }: {
   return (
     <FormDialog open onOpenChange={(o) => !o && onClose()} wide
       title={editing ? `Edit ${account!.name}` : 'Add Meta Ads Account'}
-      description="From Meta Business Settings: the app's ID and secret (App settings → Basic), and a System User access token with ads_read."
+      description="Enter your Meta Ads API credentials to track ad expenses. From Meta for Developers: the app's ID and secret (App settings → Basic), and a System User access token with ads_read."
       submitLabel={editing ? 'Save' : 'Create'} onSubmit={() => save.mutate()} busy={save.isPending} disabled={!canSubmit}>
       <Field label="Account Name" htmlFor="ma-name" required hint="A friendly name to identify this account">
         <Input id="ma-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Isolation main" maxLength={80} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="App ID" htmlFor="ma-app-id">
-          <Input id="ma-app-id" inputMode="numeric" className="font-mono" value={form.appId} onChange={(e) => set('appId', e.target.value.trim())} placeholder="1234567890" />
+        <Field label="App ID" htmlFor="ma-app-id" hint="Your Meta App ID">
+          <Input id="ma-app-id" inputMode="numeric" className="font-mono" value={form.appId} onChange={(e) => set('appId', e.target.value.trim())} placeholder="Meta App ID" />
         </Field>
-        <Field label="App Secret" htmlFor="ma-app-secret" hint={kept(!!account?.has_app_secret)}>
+        <Field label="App Secret" htmlFor="ma-app-secret" hint={kept(!!account?.has_app_secret) ?? 'Your Meta App Secret'}>
           <Input id="ma-app-secret" type="password" autoComplete="off" className="font-mono" value={form.appSecret} onChange={(e) => set('appSecret', e.target.value)}
-            placeholder={editing && account?.has_app_secret ? '••••••••' : ''} />
+            placeholder={editing && account?.has_app_secret ? '••••••••' : 'Meta App Secret'} />
         </Field>
       </div>
       <Field label="Access Token" htmlFor="ma-token" required={!editing} hint={kept(!!account?.token_hint) ?? 'Long-lived System User Access Token'}>
         <Input id="ma-token" type="password" autoComplete="off" className="font-mono text-xs" value={form.accessToken} onChange={(e) => set('accessToken', e.target.value)}
-          placeholder={editing && account?.token_hint ? account.token_hint : 'EAA…'} />
+          placeholder={editing && account?.token_hint ? account.token_hint : 'System User Access Token'} />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Ad Account ID" htmlFor="ma-act" required hint="ID without act_" error={form.adAccountId && !adIdValid ? 'Numbers only, e.g. 998877' : undefined}>
-          <Input id="ma-act" inputMode="numeric" className="font-mono" value={form.adAccountId} onChange={(e) => set('adAccountId', e.target.value.trim())} placeholder="998877665544" />
+        <Field label="Ad Account ID" htmlFor="ma-act" required hint={'Without the "act_" prefix'} error={form.adAccountId && !adIdValid ? 'Numbers only, e.g. 998877' : undefined}>
+          <Input id="ma-act" inputMode="numeric" className="font-mono" value={form.adAccountId} onChange={(e) => set('adAccountId', e.target.value.trim())} placeholder="ID without act_" />
         </Field>
         <Field label={`USD to ${storeCurrency} Rate`} htmlFor="ma-rate" required
-          hint={sameCurrency ? `This ad account bills in ${storeCurrency}, so no conversion is applied.` : 'Spend in USD is converted with this rate.'}>
+          hint={sameCurrency ? `This ad account bills in ${storeCurrency}, so no conversion is applied.` : 'Current conversion rate'}>
           <Input id="ma-rate" type="number" min="0" step="any" value={form.usdRate} onChange={(e) => set('usdRate', Number(e.target.value))} />
         </Field>
       </div>
@@ -244,7 +244,7 @@ function MetaAccountDialog({ account, storeCurrency, onClose, onSaved }: {
         <Select value={form.paymentAccountId ?? 'none'} onValueChange={(v) => set('paymentAccountId', v === 'none' ? null : v)}>
           <SelectTrigger id="ma-pay" className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">None — expense only</SelectItem>
+            <SelectItem value="none">No account selected</SelectItem>
             {(payment.data ?? []).filter((f) => f.is_active || f.id === form.paymentAccountId).map((f) => (
               <SelectItem key={f.id} value={f.id}>{f.name}{f.balance != null ? ` · ${formatMoney(f.balance)}` : ''}</SelectItem>
             ))}
@@ -255,7 +255,7 @@ function MetaAccountDialog({ account, storeCurrency, onClose, onSaved }: {
         <p className="-mt-2 text-xs text-muted-foreground">No payment accounts yet. Add your card or bank under <Link to="/admin/finance/accounts" className="underline">Finance → Payment Accounts</Link>.</p>
       )}
       <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-        <span><span className="block text-sm font-medium">Active Status</span><span className="block text-xs text-muted-foreground">Inactive accounts are not synced.</span></span>
+        <span><span className="block text-sm font-medium">Active Status</span><span className="block text-xs text-muted-foreground">Enable or disable this account</span></span>
         <Switch checked={form.isActive} onCheckedChange={(v) => set('isActive', v)} aria-label="Active" />
       </label>
 
@@ -269,7 +269,7 @@ function MetaAccountDialog({ account, storeCurrency, onClose, onSaved }: {
         </div>
         {test.kind === 'idle' && (
           <p className="text-xs text-muted-foreground">
-            {editing && account?.connection_status === 'OK' ? `Connected${account.tested_at ? ` · checked ${timeAgo(account.tested_at)}` : ''}.` : 'Not tested yet.'}
+            {editing && account?.connection_status === 'OK' ? `Connected${account.tested_at ? ` · checked ${timeAgo(account.tested_at)}` : ''}.` : 'Test your credentials before saving.'}
             {' '}Saving an active account tests it too.
           </p>
         )}

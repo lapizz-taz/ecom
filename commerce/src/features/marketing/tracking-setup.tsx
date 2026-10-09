@@ -16,8 +16,8 @@ export const TRACKING_TEMPLATES = [
     value: 'utm_source=tiktok&utm_medium=paid&utm_campaign=__CAMPAIGN_NAME__&utm_term=__AID_NAME__&utm_content=__CID_NAME__&campaign_id=__CAMPAIGN_ID__&adset_id=__AID__&ad_id=__CID__',
   },
   {
-    key: 'google', name: 'Google Ads', where: 'Turn on auto-tagging (adds gclid). Optional final URL suffix:',
-    value: 'utm_source=google&utm_medium=cpc&utm_campaign={campaignid}&utm_term={keyword}',
+    key: 'google', name: 'Google Ads', where: 'Turn on auto-tagging (adds gclid). Final URL suffix (needed to tie orders to a campaign):',
+    value: 'utm_source=google&utm_medium=cpc&utm_campaign={campaignid}&utm_term={keyword}&campaign_id={campaignid}&adset_id={adgroupid}&ad_id={creative}',
   },
 ] as const
 
