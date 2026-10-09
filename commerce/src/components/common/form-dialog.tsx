@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PAYMENT_CHANNEL } from '@/lib/status'
+import { cn } from '@/lib/utils'
 import type { Enums } from '@/types/database'
 
 /** Dialog with a form body, Cancel/Submit footer and a busy state that blocks closing. */
@@ -22,12 +23,12 @@ export function FormDialog({ open, onOpenChange, title, description, children, s
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className={wide ? 'sm:max-w-2xl' : undefined}>
+      <DialogContent className={cn('max-h-[92dvh] overflow-y-auto', wide && 'sm:max-w-2xl')}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); onSubmit() }}>
+        <form className="grid min-w-0 gap-4 [&>*]:min-w-0" onSubmit={(e) => { e.preventDefault(); onSubmit() }}>
           {children}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>

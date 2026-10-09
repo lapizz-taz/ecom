@@ -364,6 +364,37 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** What each permission is used for, so nothing is granted blindly. */
+const SHOPIFY_ACCESS: Array<{ area: string; scopes: string[]; use: string; soon?: boolean }> = [
+  { area: 'Orders', scopes: ['read_orders', 'write_orders'], use: 'Import new orders and cancellations. Changes an order in Shopify (mark paid, cancel) only when you click it.' },
+  { area: 'Fulfilment', scopes: ['read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders'], use: 'When an order is Shipped here: fulfil it on Shopify with the courier, tracking number and tracking link.' },
+  { area: 'Stock', scopes: ['read_inventory', 'write_inventory'], use: 'Keep Shopify’s available quantity equal to yours after every sale, cancel, return or purchase.' },
+  { area: 'Locations', scopes: ['read_locations', 'write_locations'], use: 'Choose which Shopify location is kept in step.' },
+  { area: 'Products', scopes: ['read_products', 'write_products'], use: 'Read the catalog to link SKUs; import Shopify products into your products.', soon: true },
+  { area: 'Draft orders', scopes: ['read_draft_orders', 'write_draft_orders'], use: 'Send orders taken here (phone, Messenger) to Shopify.', soon: true },
+  { area: 'Returns', scopes: ['read_returns', 'write_returns'], use: 'See returns made in Shopify and record yours there.', soon: true },
+]
+
+function ShopifyAccessList() {
+  return (
+    <div className="overflow-hidden rounded-lg border text-foreground">
+      {SHOPIFY_ACCESS.map((a) => (
+        <div key={a.area} className="grid gap-1 border-b px-3 py-2 last:border-0 sm:grid-cols-[7rem_minmax(0,1fr)]">
+          <p className="text-xs font-semibold">{a.area}{a.soon && <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] font-normal text-muted-foreground">next update</span>}</p>
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap gap-1">{a.scopes.map((x) => <code key={x} className="rounded bg-muted px-1.5 py-0.5 text-[11px] break-all">{x}</code>)}</div>
+            <p className="text-xs text-muted-foreground">{a.use}</p>
+          </div>
+        </div>
+      ))}
+      <div className="grid gap-1 bg-muted/40 px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
+        <p className="text-xs font-semibold">Customer data</p>
+        <p className="text-xs text-muted-foreground">Not a scope: request <b className="text-foreground">Name, Email, Phone, Address</b> under Protected customer data (step 3), or orders arrive without the customer.</p>
+      </div>
+    </div>
+  )
+}
+
 /** The Dev Dashboard steps, with the exact values to copy. */
 function ShopifySteps({ mode }: { mode: 'client' | 'oauth' }) {
   const step = (n: number, title: string, body: ReactNode) => (
@@ -373,7 +404,7 @@ function ShopifySteps({ mode }: { mode: 'client' | 'oauth' }) {
     </li>
   )
   return (
-    <details className="group rounded-lg border" open>
+    <details className="group min-w-0 rounded-lg border" open>
       <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-medium">
         Set up the app in Shopify (5 minutes) <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
       </summary>
@@ -382,7 +413,8 @@ function ShopifySteps({ mode }: { mode: 'client' | 'oauth' }) {
         {step(2, 'Create a version with these settings', <>
           <p>App URL</p><CopyLine value={shopifyAppUrl()} />
           {mode === 'oauth' && <><p>Redirect URL (same domain as the App URL)</p><CopyLine value={shopifyRedirectUri()} /></>}
-          <p>Scopes</p><CopyLine value={SHOPIFY_APP_SCOPES} />
+          <p>Scopes — copy all of them into the version</p><CopyLine value={SHOPIFY_APP_SCOPES} />
+          <ShopifyAccessList />
           <p>Embed app in Shopify admin: <b className="text-foreground">off</b> · Webhooks API version: <b className="text-foreground">2026-07</b> · then <b className="text-foreground">Release</b>.</p>
         </>)}
         {step(3, 'Allow customer details', <p>API access → Protected customer data → request <b className="text-foreground">Name, Email, Phone, Address</b> (reason: order fulfilment).</p>)}
