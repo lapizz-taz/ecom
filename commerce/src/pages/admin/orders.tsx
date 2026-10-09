@@ -223,7 +223,7 @@ export function OrdersPage({ view }: { view: View }) {
   if (view === 'web') {
     columns.push(
       { key: 'items', header: 'Items', hideOnMobile: true, cell: (o) => <p className="line-clamp-2 max-w-44 text-xs" title={o.items_preview ?? ''}>{o.items_preview ?? `${o.item_count} item(s)`}</p> },
-      { key: 'history', header: 'Record', cell: (o) => <HistoryCell h={o.courier_history} /> },
+      { key: 'history', header: 'Success Rate', cell: (o) => <SuccessRateCell h={o.courier_history} /> },
       { key: 'source', header: 'Source', hideOnMobile: true, cell: (o) => <SourceCell a={o.attribution} /> },
       { key: 'call', header: 'Call', cell: (o) => <CallCell o={o} meta={statusMeta.get(o.review_status)} /> },
       { key: 'total', header: 'Total', align: 'right', cell: (o) => <Money value={o.total_amount} className="font-medium" /> },
@@ -455,14 +455,43 @@ function emptyHint(view: View, tab: string) {
   return 'Orders will appear here as they come in.'
 }
 
-function HistoryCell({ h }: { h: OrderListItem['courier_history'] }) {
-  if (!h || h.completed === 0) return <span className="text-xs text-muted-foreground">No record</span>
-  const rate = h.delivered / h.completed
+const RATE_TONE = {
+  good: { text: 'text-emerald-600', ring: 'stroke-emerald-500' },
+  mid: { text: 'text-amber-600', ring: 'stroke-amber-500' },
+  low: { text: 'text-red-600', ring: 'stroke-red-500' },
+} as const
+
+function rateTone(rate: number, tier: string | null | undefined) {
+  if (tier === 'GOOD' || (!tier && rate >= 80)) return RATE_TONE.good
+  if (tier === 'MID' || (!tier && rate >= 50)) return RATE_TONE.mid
+  return RATE_TONE.low
+}
+
+/** Delivery success as the checkout check saw it: a ring, the rate and the parcels behind it. */
+function SuccessRateCell({ h }: { h: OrderListItem['courier_history'] }) {
+  const counted = h ? h.total ?? h.completed : 0
+  const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
+  if (!h || rate === null || (counted === 0 && !h.ranges?.length)) {
+    return <span className="text-xs text-muted-foreground">{h ? 'New customer' : 'Not checked'}</span>
+  }
+  const tone = rateTone(rate, h.tier)
+  const r = 9
+  const length = 2 * Math.PI * r
   return (
-    <span title={`${h.delivered} of ${h.completed} earlier parcels received`}
-      className={cn('text-xs font-medium tabular-nums', rate >= 0.8 ? 'text-emerald-600' : rate >= 0.5 ? 'text-amber-600' : 'text-red-600')}>
-      {h.delivered}/{h.completed} · {Math.round(rate * 100)}%
-    </span>
+    <div className="flex items-center gap-2" title={h.checked_at ? `Checked ${formatDateTime(h.checked_at)}` : undefined}>
+      <svg viewBox="0 0 24 24" className="size-7 shrink-0 -rotate-90" aria-hidden>
+        <circle cx="12" cy="12" r={r} fill="none" strokeWidth="3" className="stroke-muted" />
+        <circle cx="12" cy="12" r={r} fill="none" strokeWidth="3" strokeLinecap="round" className={tone.ring}
+          strokeDasharray={`${(length * Math.min(Math.max(rate, 0), 100)) / 100} ${length}`} />
+      </svg>
+      <div className="text-xs leading-tight tabular-nums">
+        <p>Success: <span className={cn('font-medium', tone.text)}>{Math.round(rate)}%</span></p>
+        <p>Order: <span className={cn('font-medium', tone.text)}>{h.delivered}/{counted}</span>
+</p>
+        {!!h.ranges?.length && <p className="text-muted-foreground" title="Couriers that report only a range, not exact parcels">{h.ranges.join(', ')}</p>}
+        {h.verdict && <p className="text-muted-foreground">{h.verdict}</p>}
+      </div>
+    </div>
   )
 }
 

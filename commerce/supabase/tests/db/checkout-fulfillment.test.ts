@@ -108,6 +108,26 @@ describe('delivery-success (receive rate) policy', () => {
           provider_counts: { total: 0, delivered: 0, returned: 0 }, provider_courier_score: 100, provider_parcel_floor: 50,
         })])
       expect(rateOnly.metrics).toMatchObject({ receive_rate_tier: 'GOOD', parcel_count: 50 })
+
+      // The order list shows that same rate, the parcels behind it and the reported range.
+      const check = await one<{ id: string }>(db, `select id from public.record_fraud_check($1)`, [JSON.stringify({
+        phone: '01711000779', provider: 'courier_history', providers: ['courier_history'],
+        provider_counts: { total: 3, delivered: 2, returned: 1 }, provider_courier_score: 83.34, provider_parcel_floor: 53,
+        provider_response: { courier_history: { verdict: { label: 'Review' }, couriers: [
+          { courier: 'carrybee', name: 'CarryBee', orders: 3, delivered: 2, cancelled: 1 },
+          { courier: 'steadfast', name: 'SteadFast', orders: 0, rate_only: true, parcel_range: '50+', success_ratio: 100 },
+        ] } },
+      })])
+      const p = await createProduct(db, { price: 500, stock: 5 })
+      const order = await createOrder(db, { phone: '01711000779', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      await asSystem(db)
+      await db.query(`update public.orders set fraud_check_id = $2 where id = $1`, [order.id, check.id])
+      await asUser(db, await createStaff(db, 'MANAGER'))
+      const list = await value<{ items: Array<{ courier_history: Record<string, unknown> }> }>(db,
+        `select public.admin_search_orders('{"q": "01711000779"}'::jsonb)`)
+      expect(list.items[0].courier_history).toMatchObject({
+        rate: 83.34, tier: 'GOOD', delivered: 2, total: 3, verdict: 'Review', ranges: ['SteadFast 50+'],
+      })
     }))
 
   it('follows the configured actions, thresholds and advance type', () =>

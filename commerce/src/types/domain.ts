@@ -233,7 +233,16 @@ export interface OrderListItem {
   partial_return_amount: number
   items_preview: string | null
   attribution: { source: string; channel: string; is_paid: boolean | null; campaign: string | null } | null
-  courier_history: { delivered: number; completed: number; score: number | null } | null
+  courier_history: {
+    delivered: number; completed: number; score: number | null
+    /** Parcels on record (courier network + this store) and how many failed. */
+    total?: number; cancelled?: number
+    /** The rate the checkout check used, 0–100, and its tier (GOOD / MID / LOW / NEW). */
+    rate?: number | null; tier?: string | null
+    /** Couriers that report only a range, e.g. "SteadFast 50+". */
+    ranges?: string[] | null
+    verdict?: string | null; checked_at?: string
+  } | null
 }
 
 export type ReviewStatus = Tables<'order_review_statuses'>
