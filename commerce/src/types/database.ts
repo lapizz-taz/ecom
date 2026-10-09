@@ -2808,6 +2808,11 @@ export type Database = {
           amount: number
           created_by: string | null
           created_at: string
+          source_status: string | null
+          source_review_status: string | null
+          target_review_before: string | null
+          target_review_after: string | null
+          reason: string | null
         }
         Insert: {
           id?: string
@@ -2819,6 +2824,11 @@ export type Database = {
           amount?: number
           created_by?: string | null
           created_at?: string
+          source_status?: string | null
+          source_review_status?: string | null
+          target_review_before?: string | null
+          target_review_after?: string | null
+          reason?: string | null
         }
         Update: {
           id?: string
@@ -2830,6 +2840,11 @@ export type Database = {
           amount?: number
           created_by?: string | null
           created_at?: string
+          source_status?: string | null
+          source_review_status?: string | null
+          target_review_before?: string | null
+          target_review_after?: string | null
+          reason?: string | null
         }
         Relationships: [
           {
@@ -3159,6 +3174,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
         Insert: {
           id?: string
@@ -3241,6 +3257,7 @@ export type Database = {
           sales_channel_id?: string | null
           external_order_id?: string | null
           external_order_number?: string | null
+          duplicate_reason?: string | null
         }
         Update: {
           id?: string
@@ -3323,6 +3340,7 @@ export type Database = {
           sales_channel_id?: string | null
           external_order_id?: string | null
           external_order_number?: string | null
+          duplicate_reason?: string | null
         }
         Relationships: [
           {
@@ -5070,6 +5088,10 @@ export type Database = {
           created_at: string
         }
       }
+      admin_auto_merge_scan: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       admin_block_add: {
         Args: {
           p_kind: string
@@ -5250,6 +5272,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       admin_create_production_order: {
@@ -5363,6 +5386,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       admin_duplicate_order: {
@@ -5450,6 +5474,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       admin_fraud_queue: {
@@ -5589,6 +5614,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       admin_order_customer_record: {
@@ -5896,6 +5922,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       admin_set_order_source: {
@@ -6116,6 +6143,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       admin_update_setting: {
@@ -6219,6 +6247,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       apply_shipment_status: {
@@ -6637,6 +6666,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       get_my_access: {
@@ -6705,6 +6735,12 @@ export type Database = {
           p_event: Database["public"]["Enums"]["notification_event"]
         }
         Returns: string
+      }
+      order_merge_info: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
       }
       order_set_tags: {
         Args: {
@@ -6815,6 +6851,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       production_action: {
@@ -7067,6 +7104,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       record_purchase_payment: {
@@ -7325,6 +7363,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       retry_courier_webhook: {
@@ -7670,6 +7709,7 @@ export type Database = {
           sales_channel_id: string | null
           external_order_id: string | null
           external_order_number: string | null
+          duplicate_reason: string | null
         }
       }
       update_my_profile: {

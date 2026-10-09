@@ -219,6 +219,8 @@ describe('automatic merge of repeat checkouts', () => {
 
   it('does not merge after the window, to another address, with a coupon or when switched off', () =>
     inTx(async (db) => {
+      // This tests the checkout-time merge on its own; smart-merge.test.ts covers the web-order merge.
+      await setSetting(db, 'orders', { auto_merge_web_enabled: false })
       const { variantIds } = await createProduct(db, { price: 500, stock: 50 })
       const item = [{ variantId: variantIds[0], quantity: 1 }]
       const first = await checkout(db, { phone: '01711000202', items: item })
@@ -258,6 +260,7 @@ describe('automatic merge of repeat checkouts', () => {
 describe('duplicate detection and manual merge', () => {
   it('flags repeats by phone or address and lets staff merge or dismiss', () =>
     inTx(async (db) => {
+      await setSetting(db, 'orders', { auto_merge_web_enabled: false })
       const { variantIds } = await createProduct(db, { price: 400, stock: 20 })
       const staff = await createStaff(db, 'ORDER_MANAGER')
       const a = await checkout(db, { phone: '01711000301', items: [{ variantId: variantIds[0], quantity: 1 }] })

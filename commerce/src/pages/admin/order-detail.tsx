@@ -40,7 +40,7 @@ import { imageUrl } from '@/services/catalog'
 import { listOrderMessages } from '@/services/sms'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
-  checkGatewayPayment, type OrderDetail, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
+  checkGatewayPayment, type OrderDetail, orderMergeInfo, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
 } from '@/services/orders'
 import type { OrderStatus } from '@/types/domain'
 
@@ -238,7 +238,11 @@ export default function OrderDetailPage() {
             <div className="flex items-start gap-3 text-sm">
               <Copy className="mt-0.5 size-5 text-amber-600" />
               <div>
-                <p className="font-medium">Possible duplicate of <Link to={`/admin/orders/${related.data.id}`} className="font-mono underline">{related.data.order_number}</Link></p>
+                <p className="font-medium">
+                  {o.duplicate_reason === 'APPROVED' ? 'Maybe duplicate — this customer already has ' : 'Possible duplicate of '}
+                  <Link to={`/admin/orders/${related.data.id}`} className="font-mono underline">{related.data.order_number}</Link>
+                  {o.duplicate_reason === 'APPROVED' && ' in Approved Orders'}
+                </p>
                 <p className="text-muted-foreground">
                   {related.data.customer_name} · <Money value={related.data.total_amount} /> · {formatDateTime(related.data.created_at)} · {ORDER_STATUS[related.data.status as OrderStatus].label}
                 </p>
@@ -246,13 +250,16 @@ export default function OrderDetailPage() {
             </div>
             {can('orders.update') && (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => setConfirmMerge(true)}><Layers /> Merge into {related.data.order_number}</Button>
+                {o.duplicate_reason === 'APPROVED'
+                  ? <Button size="sm" asChild><Link to={`/admin/orders/${related.data.id}`}>Open {related.data.order_number}</Link></Button>
+                  : <Button size="sm" onClick={() => setConfirmMerge(true)}><Layers /> Merge into {related.data.order_number}</Button>}
                 <Button size="sm" variant="outline" onClick={() => dismiss.mutate()} disabled={dismiss.isPending}><X /> Not a duplicate</Button>
               </div>
             )}
           </CardContent>
         </Card>
       )}
+      {(o.merged_count > 0 || o.merged_into) && <MergeInfoCard orderId={o.id} />}
       {o.merged_into && related.data && (
         <Card className="border-sky-300 bg-sky-50/60">
           <CardContent className="flex items-center gap-3 text-sm">
@@ -853,6 +860,48 @@ function CustomerMessages({ orderId }: { orderId: string }) {
                 {m.error && <p className="text-xs text-red-600">{m.error}</p>}
               </div>
               <StatusBadge value={m.status} map={MESSAGE_STATUS} />
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Shown on an order that was merged (either side): the whole group, quietly. */
+function MergeInfoCard({ orderId }: { orderId: string }) {
+  const info = useQuery({ queryKey: ['order-merge-info', orderId], queryFn: () => orderMergeInfo(orderId) })
+  const m = info.data
+  if (!m) return null
+  const ids = [m.primary.order_number, ...m.merges.map((x) => x.source?.order_number).filter(Boolean)] as string[]
+  const qty = m.items.reduce((s, i) => s + i.quantity, 0)
+  return (
+    <Card className="animate-in fade-in-0 slide-in-from-top-1 duration-300">
+      <CardContent className="space-y-3 text-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-background"><Layers className="size-4" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Yes, this order has been merged.</p>
+            <p className="text-muted-foreground">
+              Primary order <Link to={`/admin/orders/${m.primary.id}`} className="font-mono font-medium text-foreground underline">{m.primary.order_number}</Link>
+              {' · '}{ids.length} orders merged · {qty} item{qty === 1 ? '' : 's'} · <Money value={m.primary.total} /> · status {titleCase(m.primary.review_status.replace(/_/g, ' '))}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {ids.map((n, i) => <Badge key={n} variant={i === 0 ? 'default' : 'outline'} className="font-mono">{n}{i === 0 ? ' · primary' : ''}</Badge>)}
+        </div>
+        <ul className="divide-y rounded-lg border">
+          {m.merges.map((x) => (
+            <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              <span>
+                {x.source ? <Link to={`/admin/orders/${x.source.id}`} className="font-mono underline">{x.source.order_number}</Link> : 'Repeat checkout'}
+                <span className="text-muted-foreground"> · {x.kind === 'AUTO' ? 'Automatically merged' : 'Merged by staff'}{x.reason ? ` (${x.reason})` : ''}</span>
+                {x.source_review_status && x.review_after && x.source_review_status !== x.review_after && (
+                  <span className="block text-xs text-muted-foreground">Was {titleCase(x.source_review_status.replace(/_/g, ' '))} → now {titleCase(x.review_after.replace(/_/g, ' '))}</span>
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">{formatDateTime(x.at)} · +<Money value={x.amount} /></span>
             </li>
           ))}
         </ul>

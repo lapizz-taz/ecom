@@ -223,8 +223,9 @@ describe('courier statements', () => {
     inTx(async (db) => {
       const { courier } = await scenario(db)
       const staff = await createStaff(db, 'ADMIN')
+      // The store's own date (Dhaka), not the server's.
+      const today = await value<string>(db, `select ((now() at time zone public.store_timezone())::date)::text`)
       await asUser(db, staff)
-      const today = new Date().toISOString().slice(0, 10)
       const rows = await value<Array<Record<string, unknown>>>(db, `select public.courier_metrics($1::date - 1, $1::date)`, [today])
       const mine = rows.find((r) => r.id === courier)!
       expect(mine).toMatchObject({ shipped: 2, delivered: 1, returned: 1, delivery_rate: 50, return_rate: 50 })

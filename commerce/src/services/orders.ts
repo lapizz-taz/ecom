@@ -442,3 +442,28 @@ export async function linkCheckoutLead(leadId: string, orderId: string) {
   if (error) throw error
   return data
 }
+
+export interface MergeInfo {
+  primary: { id: string; order_number: string; status: string; review_status: string; total: number; created_at: string }
+  is_primary: boolean
+  merges: Array<{
+    id: string; kind: 'AUTO' | 'MANUAL'; at: string; amount: number; reason: string | null
+    items: Array<{ product_name: string; variant_title: string | null; quantity: number }>
+    source_status: string | null; source_review_status: string | null; review_after: string | null
+    source: { id: string; order_number: string; created_at: string } | null
+  }>
+  items: Array<{ name: string; variant: string | null; quantity: number; line_total: number }>
+}
+
+/** Who was merged into what, for the order page (null when the order was never merged). */
+export async function orderMergeInfo(orderId: string): Promise<MergeInfo | null> {
+  const { data, error } = await supabase.rpc('order_merge_info', { p_order_id: orderId })
+  if (error) throw error
+  return (data ?? null) as unknown as MergeInfo | null
+}
+
+export async function autoMergeScan(): Promise<{ merged: number }> {
+  const { data, error } = await supabase.rpc('admin_auto_merge_scan')
+  if (error) throw error
+  return data as unknown as { merged: number }
+}

@@ -233,6 +233,9 @@ export interface OrderListItem {
   label_print_count: number
   duplicate_status: 'SUSPECTED' | 'DISMISSED' | 'MERGED' | null
   duplicate_of_number: string | null
+  /** APPROVED = the customer already has an order in Approved Orders. */
+  duplicate_reason?: 'APPROVED' | 'PHONE' | 'ADDRESS' | null
+  duplicate_of_status?: string | null
   merged_count: number
   merged_into_number: string | null
   stage: OrderStage | 'WEB'

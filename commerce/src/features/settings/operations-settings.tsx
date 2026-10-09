@@ -1,6 +1,13 @@
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, Layers } from 'lucide-react'
 import { Link } from 'react-router'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { useAuth } from '@/features/auth/auth-context'
+import { toUserMessage } from '@/lib/errors'
+import { autoMergeScan, listReviewStatuses } from '@/services/orders'
 import { CallStatusesSettings } from './call-statuses'
-import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, useSettingDraft } from './setting-form'
+import { NumberSetting, SelectSetting, SettingCard, type SettingDraft, SwitchSetting, useSettingDraft } from './setting-form'
 
 export function OperationsSettings() {
   const orders = useSettingDraft('orders')
@@ -32,6 +39,13 @@ export function OperationsSettings() {
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberSetting s={orders} path={['auto_merge_minutes']} label="Merge window (minutes)" min={1} max={60} />
           <NumberSetting s={orders} path={['duplicate_window_hours']} label="Duplicate window (hours)" min={1} max={168} />
+        </div>
+        <div className="grid gap-3 rounded-lg border p-3">
+          <SwitchSetting s={orders} path={['auto_merge_web_enabled']} label="Merge web orders from the same customer automatically"
+            hint="Same phone number, same district, both still in Web Orders, nothing paid on the new one. Runs in the background — no pop-ups. Shopify / WooCommerce orders are flagged instead (they stay 1:1 with the store's order)." />
+          <NumberSetting s={orders} path={['auto_merge_window_hours']} label="Merge orders placed up to this many hours apart" min={0.05} max={168} />
+          <ReviewPriority s={orders} />
+          <MergeNowButton />
         </div>
       </SettingCard>
 
@@ -81,6 +95,55 @@ export function OperationsSettings() {
           hint="Off (recommended): COD stays receivable until you record the courier's settlement" />
         <SwitchSetting s={finance} path={['post_ad_spend_to_expenses']} label="Post marketing ad spend to Advertising expenses" />
       </SettingCard>
+    </div>
+  )
+}
+
+const DEFAULT_PRIORITY = ['PROCESSING', 'FOLLOW_UP', 'GOOD_NO_RESPONSE', 'NO_RESPONSE']
+
+/** Call statuses that may be merged, best first: the merged order takes the best one. */
+function ReviewPriority({ s }: { s: SettingDraft }) {
+  const statuses = useQuery({ queryKey: ['review-statuses'], queryFn: () => listReviewStatuses() })
+  const list = (s.get(['merge_review_priority']) as string[] | undefined) ?? DEFAULT_PRIORITY
+  const label = (code: string) => statuses.data?.find((x) => x.code === code)?.label ?? code
+  const open = (statuses.data ?? []).filter((x) => !x.closes_order && !list.includes(x.code))
+  const move = (i: number, d: number) => { const n = [...list]; [n[i], n[i + d]] = [n[i + d], n[i]]; s.set(['merge_review_priority'], n) }
+  return (
+    <div className="grid gap-1.5">
+      <p className="text-sm font-medium">Call status after merging <span className="font-normal text-muted-foreground">— best first</span></p>
+      <ol className="grid gap-1">
+        {list.map((code, i) => (
+          <li key={code} className="flex items-center gap-2 rounded-md border px-2 py-1 text-sm">
+            <span className="w-4 text-xs text-muted-foreground">{i + 1}</span>
+            <span className="flex-1">{label(code)}</span>
+            <Button type="button" size="icon-sm" variant="ghost" disabled={!s.canEdit || i === 0} onClick={() => move(i, -1)} aria-label="Higher"><ArrowUp /></Button>
+            <Button type="button" size="icon-sm" variant="ghost" disabled={!s.canEdit || i === list.length - 1} onClick={() => move(i, 1)} aria-label="Lower"><ArrowDown /></Button>
+            <Button type="button" size="sm" variant="ghost" disabled={!s.canEdit || list.length <= 1} onClick={() => s.set(['merge_review_priority'], list.filter((c) => c !== code))}>Remove</Button>
+          </li>
+        ))}
+      </ol>
+      {s.canEdit && open.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {open.map((x) => <Button key={x.code} type="button" size="sm" variant="outline" onClick={() => s.set(['merge_review_priority'], [...list, x.code])}>+ {x.label}</Button>)}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Orders in a status not listed here are never merged automatically. Example: Processing + Good but no response → Processing.</p>
+    </div>
+  )
+}
+
+function MergeNowButton() {
+  const { can } = useAuth()
+  const scan = useMutation({
+    mutationFn: autoMergeScan,
+    onSuccess: (r) => toast.success(r.merged ? `${r.merged} waiting order${r.merged === 1 ? '' : 's'} merged` : 'Nothing to merge'),
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  if (!can('orders.update')) return null
+  return (
+    <div>
+      <Button type="button" size="sm" variant="outline" onClick={() => scan.mutate()} disabled={scan.isPending}><Layers /> Merge waiting web orders now</Button>
+      <p className="mt-1 text-xs text-muted-foreground">Applies the saved rules to orders already in Web Orders.</p>
     </div>
   )
 }

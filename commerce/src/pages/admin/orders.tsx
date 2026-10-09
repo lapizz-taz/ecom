@@ -270,10 +270,8 @@ export function OrdersPage({ view }: { view: View }) {
           {view !== 'web' && o.label_printed_at && (
             <Badge variant="success" className="gap-0.5 text-[10px]" title={`Label printed ${formatDateTime(o.label_printed_at)}`}><Check className="size-3" /> Printed</Badge>
           )}
-          {o.duplicate_status === 'SUSPECTED' && (
-            <Badge variant="warning" className="gap-0.5 text-[10px]" title={`Possible duplicate of ${o.duplicate_of_number ?? 'another order'}`}><Copy className="size-3" /> Duplicate?</Badge>
-          )}
-          {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]"><Layers className="size-3" /> +{o.merged_count}</Badge>}
+          <DuplicateBadge o={o} />
+          {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]" title={`${o.merged_count} order(s) merged into this one`}><Layers className="size-3" /> Merged +{o.merged_count}</Badge>}
           {o.status === 'ADVANCE_REQUIRED' && <Badge variant="warning" className="text-[10px]">Advance due</Badge>}
           {o.status === 'FRAUD_REVIEW' && <Badge variant="danger" className="text-[10px]">Fraud review</Badge>}
         </div>
@@ -765,16 +763,26 @@ function IncompleteCheckouts({ q }: { q: string }) {
   )
 }
 
+/** "Maybe duplicate", or "Already approved #…" when the customer has an order in Approved Orders. */
+function DuplicateBadge({ o }: { o: OrderListItem }) {
+  if (o.duplicate_status !== 'SUSPECTED') return null
+  const approved = o.duplicate_reason === 'APPROVED'
+  return (
+    <Badge variant="warning" className="gap-0.5 text-[10px]"
+      title={approved ? `This customer already has ${o.duplicate_of_number} in Approved Orders${o.duplicate_of_status ? ` (${o.duplicate_of_status.toLowerCase().replace(/_/g, ' ')})` : ''}` : `Possible duplicate of ${o.duplicate_of_number ?? 'another order'}`}>
+      <Copy className="size-3" /> {approved ? `Already approved ${o.duplicate_of_number ?? ''}` : `Maybe duplicate${o.duplicate_of_number ? ` ${o.duplicate_of_number}` : ''}`}
+    </Badge>
+  )
+}
+
 function InvoiceCell({ o }: { o: OrderListItem }) {
   return (
     <div className="flex max-w-40 flex-wrap items-center gap-1">
       <span className="w-full font-medium">{o.order_number}</span>
       {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
       {o.sales_channel && <Badge variant="outline" className="text-[10px]" title={o.sales_channel.name}>{o.sales_channel.platform === 'SHOPIFY' ? 'Shopify' : 'Woo'} {o.sales_channel.number}</Badge>}
-      {o.duplicate_status === 'SUSPECTED' && (
-        <Badge variant="warning" className="gap-0.5 text-[10px]" title={`Possible duplicate of ${o.duplicate_of_number ?? 'another order'}`}><Copy className="size-3" /> Duplicate?</Badge>
-      )}
-      {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]"><Layers className="size-3" /> +{o.merged_count}</Badge>}
+      <DuplicateBadge o={o} />
+      {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]" title={`${o.merged_count} order(s) merged into this one`}><Layers className="size-3" /> Merged +{o.merged_count}</Badge>}
     </div>
   )
 }
