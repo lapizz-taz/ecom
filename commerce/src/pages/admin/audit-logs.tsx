@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/common/page-header'
 import { Pagination } from '@/components/common/pagination'
 import { SearchInput } from '@/components/common/search-input'
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/common/states'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -50,13 +51,14 @@ const show = (v: unknown) => (v === undefined ? '—' : v === null ? 'null' : ty
 
 export default function AuditLogsPage() {
   const { staff, nameOf } = useStaffDirectory()
-  const [state, update] = useUrlState({ action: '', entity: '', actor: '', from: '', to: '', page: '1' })
+  const [state, update] = useUrlState({ action: '', entity: '', actor: '', from: '', to: '', view: '', page: '1' })
+  const deletions = state.view === 'deletions'
   const page = Number(state.page) || 1
   const [open, setOpen] = useState<Set<string>>(new Set())
   const logs = useQuery({
     queryKey: ['audit-logs', state],
     placeholderData: keepPreviousData,
-    queryFn: () => listAuditLogs({ action: state.action, entityType: state.entity, actorId: state.actor || undefined, from: state.from, to: state.to, page, pageSize: PAGE_SIZE }),
+    queryFn: () => listAuditLogs({ action: state.action, deletions, entityType: state.entity, actorId: state.actor || undefined, from: state.from, to: state.to, page, pageSize: PAGE_SIZE }),
   })
   const toggle = (id: string) => setOpen((s) => {
     const next = new Set(s)
@@ -67,7 +69,13 @@ export default function AuditLogsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Audit log" description="Every sensitive action and settings change, with who did it and what changed. Entries cannot be edited or deleted." />
+      <PageHeader
+        title={deletions ? 'Deletion log' : 'Audit log'}
+        description={deletions
+          ? 'Everything removed or disconnected, with who did it and the record as it was. Entries cannot be edited or deleted.'
+          : 'Every sensitive action and settings change, with who did it and what changed. Entries cannot be edited or deleted.'}
+        actions={<Button size="sm" variant="outline" onClick={() => update({ view: deletions ? '' : 'deletions', page: '1' })}>{deletions ? 'Show everything' : 'Deletions only'}</Button>}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput value={state.action} onChange={(action) => update({ action })} placeholder="Action, e.g. order. or settings" />
         <Select value={state.entity || 'all'} onValueChange={(v) => update({ entity: v === 'all' ? '' : v })}>

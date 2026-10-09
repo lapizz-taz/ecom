@@ -1,195 +1,83 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Activity, BadgePercent, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, Factory, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquare,
-  Package, ScanBarcode, ScrollText, Search, Settings, ShieldAlert, ShoppingCart, Truck, UserCog, Users, Wallet, Warehouse,
+  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, Moon, Plus, ScanBarcode, Search, ShieldAlert, Sun, UserCog,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
-import { Link, Navigate, NavLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
-import { useAdminTheme } from '@/hooks/use-admin-theme'
+import { CommandPalette } from '@/features/shell/command-palette'
+import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
+import { type ShellAction, SidebarNav } from '@/features/shell/sidebar'
+import { ContactDialog, HelpDialog, ReportIssueDialog } from '@/features/shell/support-dialogs'
+import { WhatsNew } from '@/features/shell/whats-new'
+import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { queueCounts, statusCounts } from '@/services/orders'
 
-interface NavItem {
-  label: string
-  to: string
-  icon?: ReactNode
-  permission?: string
-  children?: Array<{ label: string; to: string; permission?: string }>
+const COLLAPSED_KEY = 'admin-sidebar-collapsed'
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
 }
 
-interface NavSection {
-  label?: string
-  items: NavItem[]
+/** Live counts for the menu badges. */
+function useNavCounts(enabled: boolean, canFraud: boolean): NavCounts {
+  const queue = useQuery({ queryKey: ['orders', 'queue-counts'], queryFn: queueCounts, enabled, staleTime: 30_000, refetchInterval: 120_000 })
+  const status = useQuery({ queryKey: ['orders', 'status-counts'], queryFn: statusCounts, enabled: enabled && canFraud, staleTime: 30_000, refetchInterval: 120_000 })
+  return { queue: queue.data, status: status.data }
 }
 
-/** One level of nesting at most; sections keep the list scannable. */
-const NAV: NavSection[] = [
-  {
-    items: [{ label: 'Dashboard', to: '/admin', icon: <LayoutDashboard />, permission: 'dashboard.view' }],
-  },
-  {
-    label: 'Operations',
-    items: [
-      {
-        label: 'Orders', to: '/admin/orders/web', icon: <ShoppingCart />, permission: 'orders.view',
-        children: [
-          { label: 'Web orders', to: '/admin/orders/web' },
-          { label: 'Approved orders', to: '/admin/orders/approved' },
-          { label: 'All orders', to: '/admin/orders' },
-          { label: 'Fraud review', to: '/admin/orders/fraud', permission: 'fraud.view' },
-        ],
-      },
-      {
-        label: 'Fulfilment', to: '/admin/scan', icon: <ScanBarcode />, permission: 'orders.fulfill',
-        children: [
-          { label: 'Scan parcels', to: '/admin/scan' },
-          { label: 'Labels to print', to: '/admin/orders/approved?print=1' },
-        ],
-      },
-      { label: 'Customers', to: '/admin/customers', icon: <Users />, permission: 'customers.view' },
-      { label: 'Couriers', to: '/admin/couriers', icon: <Truck />, permission: 'couriers.view' },
-    ],
-  },
-  {
-    label: 'Catalog',
-    items: [
-      { label: 'Products', to: '/admin/products', icon: <Package />, permission: 'products.view' },
-      {
-        label: 'Inventory', to: '/admin/inventory', icon: <Warehouse />, permission: 'inventory.view',
-        children: [
-          { label: 'Stock', to: '/admin/inventory' },
-          { label: 'Movements', to: '/admin/inventory/movements' },
-          { label: 'Adjustments', to: '/admin/inventory/adjustments' },
-          { label: 'Purchases', to: '/admin/purchases', permission: 'purchases.view' },
-        ],
-      },
-      { label: 'Production', to: '/admin/production', icon: <Factory />, permission: 'production.view' },
-    ],
-  },
-  {
-    label: 'Growth',
-    items: [
-      {
-        label: 'Marketing', to: '/admin/marketing', icon: <Megaphone />, permission: 'marketing.view',
-        children: [
-          { label: 'Campaigns & ad spend', to: '/admin/marketing' },
-          { label: 'Coupons', to: '/admin/coupons', permission: 'coupons.manage' },
-        ],
-      },
-      { label: 'SMS', to: '/admin/sms', icon: <MessageSquare />, permission: 'sms.view' },
-    ],
-  },
-  {
-    label: 'Business',
-    items: [
-      {
-        label: 'Finance', to: '/admin/finance', icon: <Wallet />, permission: 'finance.view',
-        children: [
-          { label: 'Overview', to: '/admin/finance' },
-          { label: 'Income', to: '/admin/finance/income' },
-          { label: 'Expenses', to: '/admin/finance/expenses' },
-          { label: 'Refunds', to: '/admin/finance/refunds' },
-          { label: 'Profit & loss', to: '/admin/finance/profit-loss' },
-          { label: 'Cash flow', to: '/admin/finance/cash-flow' },
-        ],
-      },
-      { label: 'Reports', to: '/admin/reports', icon: <BarChart3 />, permission: 'reports.view' },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { label: 'Settings', to: '/admin/settings', icon: <Settings />, permission: 'settings.view' },
-      { label: 'Users & roles', to: '/admin/users', icon: <UserCog />, permission: 'users.manage' },
-      { label: 'Audit log', to: '/admin/audit-logs', icon: <ScrollText />, permission: 'audit.view' },
-      { label: 'System log', to: '/admin/system-logs', icon: <Activity />, permission: 'audit.view' },
-    ],
-  },
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+}
+
+/** Ctrl/Cmd+K search, Ctrl/Cmd+B menu, ? help, and "G then a letter" to jump. */
+function useShortcuts(handlers: { search: () => void; toggleMenu: () => void; help: () => void }, can: (p: string) => boolean) {
+  const navigate = useNavigate()
+  const pendingG = useRef(0)
+  const ref = useRef(handlers)
+  ref.current = handlers
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); ref.current.search(); return }
+      if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); ref.current.toggleMenu(); return }
+      if (mod || e.altKey || isTyping(e.target)) return
+      if (e.key === '?') { e.preventDefault(); ref.current.help(); return }
+      const key = e.key.toLowerCase()
+      if (key === 'g') { pendingG.current = Date.now(); return }
+      if (Date.now() - pendingG.current < 1200 && GO_SHORTCUTS[key]) {
+        pendingG.current = 0
+        const target = GO_SHORTCUTS[key]
+        if (!target.permission || can(target.permission)) { e.preventDefault(); navigate(target.to) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navigate, can])
+}
+
+const THEMES: Array<{ value: AdminTheme; label: string; icon: typeof Sun }> = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
 ]
-
-function isActive(pathname: string, search: string, to: string): boolean {
-  const [path, query] = to.split('?')
-  if (query) return pathname === path && search.includes(query)
-  return pathname === path
-}
-
-function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  const { can } = useAuth()
-  const { pathname, search } = useLocation()
-  const [openGroup, setOpenGroup] = useState<string | null>(null)
-  const anyQueryActive = NAV.some((sec) => sec.items.some((it) => it.children?.some((c) => c.to.includes('?') && isActive(pathname, search, c.to))))
-
-  return (
-    <nav className="grid gap-5 px-3 py-2 text-sm" aria-label="Admin">
-      {NAV.map((section, i) => {
-        const items = section.items.filter((item) => !item.permission || can(item.permission))
-        if (!items.length) return null
-        return (
-          <div key={section.label ?? i} className="grid gap-0.5">
-            {section.label && <p className="px-3 pb-1.5 text-[11px] font-medium tracking-[0.08em] text-sidebar-muted/70 uppercase">{section.label}</p>}
-            {items.map((item) => {
-              // A section is current when its own page (or a page under it) is open,
-              // or when one of its links matches exactly, query string included.
-              const queryMatch = item.children?.some((c) => c.to.includes('?') && isActive(pathname, search, c.to)) ?? false
-              const pathMatch = item.children?.some((c) => !c.to.includes('?') && (pathname === c.to || pathname.startsWith(`${c.to}/`))) ?? false
-              const ownedElsewhere = !queryMatch && anyQueryActive
-              const base = item.to.split('?')[0]
-              const inGroup = item.to !== '/admin' && (queryMatch
-                || (!ownedElsewhere && (pathMatch || pathname === base || pathname.startsWith(`${base}/`))))
-              const expanded = item.children && (openGroup === item.label || (openGroup === null && inGroup))
-              return (
-                <div key={item.label}>
-                  <div className="flex items-center">
-                    <NavLink
-                      to={item.to}
-                      end={item.to === '/admin'}
-                      onClick={onNavigate}
-                      className={({ isActive: active }) => cn(
-                        'flex flex-1 items-center gap-3 rounded-lg px-3 py-[7px] text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4 [&_svg]:shrink-0',
-                        (active || inGroup) && 'bg-brand-soft font-medium text-brand hover:bg-brand-soft hover:text-brand',
-                      )}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </NavLink>
-                    {item.children && (
-                      <button type="button" className="ml-0.5 rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground" aria-label={`Toggle ${item.label}`}
-                        aria-expanded={!!expanded} onClick={() => setOpenGroup(expanded ? '' : item.label)}>
-                        <ChevronDown className={cn('size-3.5 transition-transform duration-200 ease-out', expanded && 'rotate-180')} />
-                      </button>
-                    )}
-                  </div>
-                  {expanded && (
-                    <div className="enter my-1 ml-[21px] grid border-l border-sidebar-border pl-3">
-                      {item.children!.filter((c) => !c.permission || can(c.permission)).map((child) => (
-                        <Link key={child.to} to={child.to} onClick={onNavigate}
-                          className={cn('rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted transition-colors hover:text-sidebar-foreground',
-                            isActive(pathname, search, child.to) && (child.to.includes('?') || !anyQueryActive) && 'font-medium text-sidebar-foreground')}>
-                          {child.label}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
-    </nav>
-  )
-}
 
 /** New storefront orders appear as they arrive (Supabase Realtime). */
 function useNewOrderAlerts(enabled: boolean) {
@@ -238,9 +126,18 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const matches = useMatches()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [q, setQ] = useState('')
+  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [dialog, setDialog] = useState<ShellAction | null>(null)
   const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')))
+  const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')))
+  const theme = useAdminThemePreference()
   useAdminTheme()
+
+  const toggleCollapsed = useCallback(() => setCollapsed((c) => {
+    try { localStorage.setItem(COLLAPSED_KEY, c ? '0' : '1') } catch { /* private mode */ }
+    return !c
+  }), [])
+  useShortcuts({ search: () => setDialog('search'), toggleMenu: toggleCollapsed, help: () => setDialog('help') }, can)
 
   useEffect(() => {
     document.title = `Admin · ${config?.store.name ?? 'Store'}`
@@ -264,83 +161,105 @@ export default function AdminLayout() {
 
   const required = [...matches].reverse().map((m) => (m.handle as { permission?: string } | undefined)?.permission).find(Boolean)
   const allowed = !required || can(required)
+  const onAction = (action: ShellAction) => { setMobileOpen(false); setDialog(action) }
+  const ThemeIcon = THEMES.find((t) => t.value === theme)?.icon ?? Moon
 
-  const search = (e: React.FormEvent) => {
-    e.preventDefault()
-    navigate(`/admin/orders?q=${encodeURIComponent(q.trim())}`)
-    setQ('')
-  }
-
-  const sidebar = (
+  const sidebar = (rail: boolean) => (
     <div className="flex h-full flex-col text-sidebar-foreground">
-      <div className="flex h-16 items-center gap-2.5 px-6">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-foreground text-sm font-bold text-sidebar">
+      <div className={cn('flex h-16 shrink-0 items-center gap-2.5', rail ? 'justify-center px-2' : 'px-5')}>
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-foreground">
           {initials(config?.store.name ?? 'S')}
         </div>
-        <span className="truncate text-[15px] font-semibold tracking-tight">{config?.store.name ?? 'Store'}</span>
-      </div>
-      <div className="flex-1 overflow-y-auto pb-4"><SidebarNav onNavigate={() => setMobileOpen(false)} /></div>
-      <div className="border-t border-sidebar-border p-3">
-        <Link to="/admin/account" onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sidebar-accent">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold">{initials(access.full_name || access.email)}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{access.full_name || access.email}</span>
-            <span className="block truncate text-xs text-sidebar-muted">{access.role_name}</span>
+        {!rail && (
+          <span className="min-w-0">
+            <span className="block truncate text-[15px] leading-tight font-semibold tracking-tight">{config?.store.name ?? 'Store'}</span>
+            <span className="block truncate text-[11px] text-sidebar-muted">{access.role_name}</span>
           </span>
-        </Link>
+        )}
+      </div>
+      {!rail && (
+        <div className="px-3 pb-1">
+          <button type="button" onClick={() => onAction('search')}
+            className="flex h-9 w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 text-[13px] text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground">
+            <Search className="size-3.5" /> Quick Search
+            <kbd className="ml-auto rounded border border-sidebar-border px-1.5 text-[10px]">Ctrl K</kbd>
+          </button>
+        </div>
+      )}
+      <div className="flex-1 overflow-y-auto pb-4">
+        <SidebarNav counts={counts} collapsed={rail} onAction={onAction}
+          onToggleCollapsed={mobileOpen ? undefined : toggleCollapsed} onNavigate={() => setMobileOpen(false)} />
       </div>
     </div>
   )
 
   return (
     <div className="flex min-h-dvh bg-background">
-      <aside className="no-print sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">{sidebar}</aside>
+      <aside className={cn('no-print sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out lg:flex',
+        collapsed ? 'w-16' : 'w-64')}>
+        {sidebar(collapsed)}
+      </aside>
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 gap-0 border-0 bg-sidebar p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          {sidebar}
+          {sidebar(false)}
         </SheetContent>
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur sm:px-6">
+        <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-1 border-b bg-background/90 px-2 backdrop-blur sm:gap-1.5 sm:px-4">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu /></Button>
-          {can('orders.view') && (
-            <form onSubmit={search} className="relative w-full max-w-md">
-              <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search orders, phone, tracking, SKU…" className="h-10 rounded-full border-border bg-card pl-10 shadow-none" aria-label="Search orders" />
-            </form>
-          )}
-          <div className="ml-auto flex items-center gap-1.5">
-            {can('orders.fulfill') && (
-              <Button size="sm" variant="outline" asChild className="hidden rounded-full sm:inline-flex"><Link to="/admin/scan"><ScanBarcode /> Scan</Link></Button>
-            )}
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setDialog('search')} aria-label="Quick search (Ctrl K)">
+            <Search /> <span className="hidden sm:inline">Search</span>
+            <kbd className="ml-1 hidden rounded border px-1 text-[10px] md:inline">Ctrl K</kbd>
+          </Button>
+          <nav className="hidden items-center gap-0.5 md:flex" aria-label="Shortcuts">
+            {can('orders.create') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/new"><Plus /> New Order</Link></Button>}
+            {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/web"><Globe /> Web Order List</Link></Button>}
+            {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/approved"><ClipboardCheck /> Order List</Link></Button>}
+            {can('orders.fulfill') && <Button variant="ghost" size="sm" asChild className="hidden xl:inline-flex"><Link to="/admin/scan"><ScanBarcode /> Scan</Link></Button>}
+          </nav>
+          <div className="ml-auto flex items-center gap-0.5">
             {can('orders.create') && (
-              <Button size="sm" asChild className="hidden rounded-full sm:inline-flex"><Link to="/admin/orders/new"><ClipboardList /> New order</Link></Button>
+              <Button size="icon" variant="ghost" asChild className="md:hidden" aria-label="New order"><Link to="/admin/orders/new"><Plus /></Link></Button>
             )}
+            <WhatsNew />
             {can('orders.view') && (
-              <Button variant="ghost" size="icon" className="relative" aria-label="New orders"
+              <Button variant="ghost" size="icon" className="relative" aria-label={alerts.unseen ? `${alerts.unseen} new orders` : 'New orders'}
                 onClick={() => { alerts.reset(); navigate('/admin/orders/web') }}>
                 <Bell />
-                {alerts.unseen > 0 && <span className="absolute top-1 right-1 size-2 rounded-full bg-red-500" />}
+                {alerts.unseen > 0 && (
+                  <span className="absolute top-1 right-1 min-w-4 rounded-full bg-red-500 px-1 text-[10px] leading-4 font-medium text-white">{alerts.unseen > 9 ? '9+' : alerts.unseen}</span>
+                )}
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <span className="flex size-6 items-center justify-center rounded-full bg-muted text-[11px] font-medium">{initials(access.full_name || access.email)}</span>
-                  <span className="hidden max-w-32 truncate sm:inline">{access.full_name || access.email}</span>
+                <Button variant="ghost" size="icon" aria-label={`Colour mode: ${theme}`}><ThemeIcon /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Colour mode</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setAdminTheme(v as AdminTheme)}>
+                  {THEMES.map((t) => <DropdownMenuRadioItem key={t.value} value={t.value}><t.icon /> {t.label}</DropdownMenuRadioItem>)}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2 pl-1.5">
+                  <span className="flex size-7 items-center justify-center rounded-full bg-brand-soft text-[11px] font-semibold text-brand">{initials(access.full_name || access.email)}</span>
+                  <span className="hidden max-w-32 truncate lg:inline">{access.full_name || access.email}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <p className="truncate text-sm font-medium">{access.full_name || access.email}</p>
-                  <p className="text-xs text-muted-foreground">{access.role_name}</p>
+                  <p className="text-xs text-muted-foreground">{access.role_name} · {config?.store.name ?? 'Store'}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link to="/admin/account"><UserCog /> My account</Link></DropdownMenuItem>
                 <DropdownMenuItem asChild><a href="/" target="_blank" rel="noreferrer"><BadgePercent /> View store</a></DropdownMenuItem>
-                <DropdownMenuItem asChild><Link to="/admin/inventory?status=LOW_STOCK"><Boxes /> Low stock</Link></DropdownMenuItem>
+                {can('inventory.view') && <DropdownMenuItem asChild><Link to="/admin/inventory?status=LOW_STOCK"><Boxes /> Low stock</Link></DropdownMenuItem>}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => signOut().then(() => navigate('/admin/login'))}><LogOut /> Sign out</DropdownMenuItem>
               </DropdownMenuContent>
@@ -351,6 +270,11 @@ export default function AdminLayout() {
           {allowed ? <Outlet /> : <PermissionDenied />}
         </main>
       </div>
+
+      <CommandPalette open={dialog === 'search'} onOpenChange={(o) => setDialog(o ? 'search' : null)} />
+      <HelpDialog open={dialog === 'help'} onOpenChange={(o) => setDialog(o ? 'help' : null)} />
+      <ContactDialog open={dialog === 'contact'} onOpenChange={(o) => setDialog(o ? 'contact' : null)} />
+      <ReportIssueDialog open={dialog === 'report'} onOpenChange={(o) => setDialog(o ? 'report' : null)} />
     </div>
   )
 }

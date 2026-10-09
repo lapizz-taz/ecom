@@ -4490,6 +4490,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      admin_global_search: {
+        Args: {
+          p_q: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
       admin_integration_status: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -5868,6 +5875,13 @@ export type Database = {
       report_inventory_valuation: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      report_issue: {
+        Args: {
+          p_message: string
+          p_context?: Json
+        }
+        Returns: number
       }
       report_meta_ads: {
         Args: {

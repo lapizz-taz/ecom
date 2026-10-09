@@ -407,3 +407,20 @@
     padding: 0 !important;
   }
 }
+
+/* Admin in light mode: white surfaces, a light sidebar and a violet accent
+   (dark mode keeps the black-and-grey palette above). */
+.admin:not(.dark) {
+  --background: #f7f7f8;
+  --card: #ffffff;
+  --brand: #6d3fc0;
+  --brand-foreground: #ffffff;
+  --brand-soft: rgb(109 63 192 / 0.09);
+  --ring: #8d6ad1;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #18181b;
+  --sidebar-muted: #6b6b74;
+  --sidebar-accent: #f1f1f3;
+  --sidebar-border: #e6e6e9;
+  --selection: rgb(109 63 192 / 0.16);
+}
