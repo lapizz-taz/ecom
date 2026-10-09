@@ -317,7 +317,7 @@ function UnmappedTab({ o, channelId, onDone }: { o: SyncOverview; channelId: str
           <li key={u.external_variant_id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{u.title}</p>
-              <p className="text-xs text-muted-foreground"><span className="font-mono">{u.sku ?? 'no SKU'}</span> · {REASON[u.reason]}{u.available !== null ? ` · ${u.available} in Shopify` : ''}</p>
+              <p className="text-xs text-muted-foreground">{u.sku && <><span className="font-mono">{u.sku}</span> · </>}{REASON[u.reason]}{u.available !== null ? ` · ${u.available} in Shopify` : ''}</p>
             </div>
             {can('inventory.adjust') && <VariantPicker onPick={(variant) => link.mutate({ ext: u.external_variant_id, variant })} />}
           </li>
