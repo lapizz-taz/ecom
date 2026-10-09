@@ -58,7 +58,7 @@ create table public.meta_campaigns (
   stop_time timestamptz,
   created_time timestamptz,
   updated_time timestamptz,
-  marketing_campaign_id uuid references public.marketing_campaigns(id) on delete set null,
+  marketing_campaign_id uuid references public.marketing_campaigns(id),
   synced_at timestamptz not null default now()
 );
 
@@ -213,7 +213,7 @@ $$;
 
 -- Applies one sync: structure (campaigns, ad sets, ads) and the insights for
 -- [since, until]. With "complete": true, insight rows in that window that
--- Meta no longer reports are zeroed (never deleted).
+-- Meta no longer reports are zeroed (never removed).
 create or replace function public.meta_ads_apply_sync(p jsonb)
 returns jsonb
 language plpgsql
@@ -282,7 +282,7 @@ begin
     thumbnail_url = excluded.thumbnail_url, title = excluded.title, body = excluded.body, synced_at = now();
   get diagnostics v_ads = row_count;
 
-  -- Archived or deleted items only appear in insights: keep their names.
+  -- Archived or removed items only appear in insights: keep their names.
   insert into public.meta_campaigns(id, account_id, name)
   select distinct on (i ->> 'campaign_id') i ->> 'campaign_id', v_account,
          left(coalesce(nullif(i ->> 'campaign_name', ''), 'Campaign ' || (i ->> 'campaign_id')), 300)
