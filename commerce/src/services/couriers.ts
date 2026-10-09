@@ -61,18 +61,44 @@ export function syncAllShipments(courierId?: string) {
 
 export type CourierProviderCode = 'steadfast' | 'pathao' | 'redx'
 
-/** Tests the credentials with the courier, then stores them server-side (Vault). */
-export function connectCourier(input: { courier_id?: string; provider: CourierProviderCode; name?: string; credentials: Record<string, string | boolean> }) {
+/** Booking options kept on the courier (not secret; keys stay in Vault). */
+export interface CourierOptions {
+  account_phone?: string
+  store_id?: string
+  item_type?: 1 | 2
+  allow_without_zone?: boolean
+  send_weight?: boolean
+  default_note?: string
+  send_product_names?: boolean
+}
+export interface PathaoStore { id: string; name: string; address: string | null; active: boolean }
+export type CourierConfig = CourierOptions & { stores?: PathaoStore[]; stores_synced_at?: string; credential_hint?: string; webhook_secret_hint?: string }
+export const courierConfig = (c: { config: unknown } | null | undefined): CourierConfig => (c?.config ?? {}) as CourierConfig
+
+/** Tests the credentials with the courier, then stores them server-side (Vault) with the options. */
+export function connectCourier(input: {
+  courier_id?: string; provider: CourierProviderCode; name?: string; credentials: Record<string, string | boolean>; options?: CourierOptions; is_active?: boolean
+}) {
   return invokeFunction<{ courier_id: string; ok: boolean; message: string }>('courier', { action: 'connect', ...input })
+}
+
+/** Changes booking options without touching the saved keys. */
+export function saveCourierOptions(courierId: string, options: CourierOptions, isActive?: boolean) {
+  return invokeFunction<{ ok: boolean }>('courier', { action: 'save_options', courier_id: courierId, options, is_active: isActive })
+}
+
+/** Pathao pickup stores — from keys being entered, or from the saved connection (which also refreshes the saved list). */
+export function courierStores(input: { courier_id?: string; credentials?: Record<string, string> }) {
+  return invokeFunction<{ stores: PathaoStore[] }>('courier', { action: 'courier_stores', ...input })
 }
 
 export function disconnectCourier(courierId: string) {
   return invokeFunction<{ ok: boolean }>('courier', { action: 'disconnect', courier_id: courierId })
 }
 
-export function bookShipments(orderIds: string[], courierId: string) {
+export function bookShipments(orderIds: string[], courierId: string, storeId?: string) {
   return invokeFunction<{ booked: number; results: Array<{ order_id: string; ok: boolean; tracking_number?: string | null; error?: string }> }>(
-    'courier', { action: 'create_shipments', order_ids: orderIds, courier_id: courierId })
+    'courier', { action: 'create_shipments', order_ids: orderIds, courier_id: courierId, store_id: storeId || undefined })
 }
 
 // ------------------------------------------------------------------ webhooks

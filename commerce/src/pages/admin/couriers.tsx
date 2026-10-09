@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, KeyRound, Pencil, Plug, PlugZap, Plus, RefreshCw, Unplug, Wallet, Webhook } from 'lucide-react'
-import { useState } from 'react'
+import { CircleCheck, Copy, KeyRound, Pencil, Plug, PlugZap, Plus, RefreshCw, Settings2, Unplug, Wallet, Webhook } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -29,7 +29,8 @@ import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { SHIPMENT_STATUS } from '@/lib/status'
 import {
-  codReceivable, connectCourier, type CourierProviderCode, type CourierRow, disconnectCourier, listCouriers, listShipments, saveCourier,
+  codReceivable, connectCourier, courierConfig, type CourierOptions, type CourierProviderCode, type CourierRow, courierStores,
+  courierWebhookUrl, disconnectCourier, listCouriers, listShipments, type PathaoStore, saveCourier, saveCourierOptions,
   settleCod, type ShipmentRow, syncAllShipments, syncShipment, testCourierConnection,
 } from '@/services/couriers'
 import type { CodReceivableItem } from '@/types/domain'
@@ -58,7 +59,6 @@ const INTEGRATIONS: Array<{ code: CourierProviderCode; name: string; color: stri
     where: 'Pathao merchant panel → Developers API', sandbox: true, fields: [
       { key: 'client_id', label: 'Client ID' }, { key: 'client_secret', label: 'Client secret', secret: true },
       { key: 'username', label: 'Account email', placeholder: 'you@shop.com', login: true }, { key: 'password', label: 'Account password', secret: true, login: true },
-      { key: 'store_id', label: 'Store ID', placeholder: 'e.g. 12345' },
     ],
   },
   {
@@ -243,7 +243,7 @@ function CourierList() {
             {can('couriers.manage') && (
               <div className="mt-auto flex flex-wrap gap-2">
                 <Button size="sm" variant={connected ? 'outline' : 'default'} className="rounded-full" onClick={() => setConnecting(integration)}>
-                  <PlugZap /> {connected ? 'Update keys' : 'Connect'}
+                  {connected ? <Settings2 /> : <PlugZap />} {connected ? 'Settings' : 'Connect'}
                 </Button>
                 {connected && row && (
                   <>
@@ -264,7 +264,8 @@ function CourierList() {
     </div>
     <ConnectCourierDialog integration={connecting} existing={connecting ? (couriers.data ?? []).find((c) => c.provider === connecting.code)
       ?? (couriers.data ?? []).find((c) => c.name.trim().toLowerCase() === connecting.name.toLowerCase()) : undefined}
-      onClose={() => setConnecting(null)} onConnected={() => void queryClient.invalidateQueries({ queryKey: ['couriers'] })} />
+      onClose={() => setConnecting(null)} onConnected={() => void queryClient.invalidateQueries({ queryKey: ['couriers'] })}
+      onWebhook={(c) => { const p = connecting?.code as 'pathao' | 'steadfast'; setConnecting(null); setWebhookFor({ courier: c, provider: p }) }} />
     {webhookFor && <WebhookSetupDialog courier={webhookFor.courier} provider={webhookFor.provider} onClose={() => setWebhookFor(null)}
       onSaved={() => void queryClient.invalidateQueries({ queryKey: ['couriers'] })} />}
     <ConfirmDialog open={disconnecting !== null} onOpenChange={(o) => !o && setDisconnecting(null)} destructive
@@ -337,76 +338,230 @@ function CourierList() {
   )
 }
 
-/** Enter API keys once; they are tested with the courier, then stored encrypted server-side. */
-function ConnectCourierDialog({ integration, existing, onClose, onConnected }: {
+/**
+ * The courier's settings in one form: keys (tested, then stored encrypted on the
+ * server and never shown again), pickup store, how parcels are sent, webhook and
+ * whether the courier is active. Options can be changed later without re-entering keys.
+ */
+function ConnectCourierDialog({ integration, existing, onClose, onConnected, onWebhook }: {
   integration: (typeof INTEGRATIONS)[number] | null
   existing: CourierRow | undefined
   onClose: () => void
   onConnected: () => void
+  onWebhook: (courier: CourierRow) => void
 }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [sandbox, setSandbox] = useState(false)
   const [name, setName] = useState('')
-  const connect = useMutation({
+  const [opts, setOpts] = useState<CourierOptions>({})
+  const [active, setActive] = useState(true)
+  const [stores, setStores] = useState<PathaoStore[]>([])
+  const [checked, setChecked] = useState<{ ok: boolean; message: string } | null>(null)
+  const code = integration?.code
+  const connected = !!existing?.api_enabled && existing.api_status !== 'NOT_CONFIGURED'
+
+  useEffect(() => {
+    if (!integration) return
+    const cfg = courierConfig(existing)
+    setValues({}); setName(''); setChecked(null); setSandbox(false)
+    setOpts({
+      account_phone: cfg.account_phone ?? '', store_id: cfg.store_id ?? '', item_type: cfg.item_type ?? 2,
+      allow_without_zone: cfg.allow_without_zone ?? false, send_weight: cfg.send_weight ?? true,
+      default_note: cfg.default_note ?? '', send_product_names: cfg.send_product_names ?? false,
+    })
+    setStores(cfg.stores ?? [])
+    setActive(existing?.is_active ?? true)
+  }, [integration]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const set = <K extends keyof CourierOptions>(k: K, v: CourierOptions[K]) => setOpts((o) => ({ ...o, [k]: v }))
+  const filled = (k: string) => !!values[k]?.trim()
+  const keysEntered = integration?.fields.some((f) => filled(f.key)) ?? false
+  const loginFields = integration?.fields.filter((f) => f.optional) ?? []
+  const keysIncomplete = integration?.fields.some((f) => !f.optional && !filled(f.key))
+    || (loginFields.some((f) => filled(f.key)) && loginFields.some((f) => !filled(f.key)))
+  // Keys are needed to connect; a saved connection can change its options alone.
+  const blocked = (connected ? keysEntered && keysIncomplete : keysIncomplete) || (code === 'pathao' && !opts.store_id)
+  const trimmed = () => Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v !== ''))
+  const options = (): CourierOptions => {
+    const o: CourierOptions = { default_note: opts.default_note?.trim() ?? '', send_product_names: !!opts.send_product_names }
+    if (code === 'pathao') Object.assign(o, {
+      account_phone: opts.account_phone?.trim() ?? '', store_id: opts.store_id ?? '', item_type: opts.item_type ?? 2,
+      allow_without_zone: !!opts.allow_without_zone, send_weight: opts.send_weight !== false,
+    })
+    return o
+  }
+
+  const save = useMutation({
     meta: { silent: true },
-    mutationFn: () => connectCourier({
-      courier_id: existing?.id,
-      provider: integration!.code,
-      name: existing ? undefined : name.trim() || integration!.name,
-      credentials: { ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v !== '')), ...(integration!.sandbox ? { sandbox } : {}) },
-    }),
+    mutationFn: async () => {
+      if (!keysEntered && existing) {
+        await saveCourierOptions(existing.id, options(), active)
+        return { message: `${existing.name} settings saved` }
+      }
+      return connectCourier({
+        courier_id: existing?.id, provider: integration!.code, name: existing ? undefined : name.trim() || integration!.name,
+        credentials: { ...trimmed(), ...(integration!.sandbox ? { sandbox } : {}) }, options: options(), is_active: active,
+      })
+    },
     onSuccess: (r) => { toast.success(r.message); setValues({}); onConnected(); onClose() },
   })
-  const filled = (k: string) => !!values[k]?.trim()
-  const loginFields = integration?.fields.filter((f) => f.optional) ?? []
-  const missing = integration?.fields.some((f) => !f.optional && !filled(f.key))
-    || (loginFields.some((f) => filled(f.key)) && loginFields.some((f) => !filled(f.key)))
+  const test = useMutation({
+    meta: { silent: true },
+    mutationFn: async (): Promise<{ ok: boolean; message: string; stores?: PathaoStore[] }> => {
+      if (code === 'pathao' && (keysEntered || existing)) {
+        const r = await courierStores(keysEntered ? { credentials: { ...trimmed(), ...(sandbox ? { sandbox: 'true' } : {}) } } : { courier_id: existing!.id })
+        return { ok: true, message: `Signed in to Pathao · ${r.stores.length} pickup store${r.stores.length === 1 ? '' : 's'} found`, stores: r.stores }
+      }
+      if (existing && !keysEntered) return testCourierConnection(existing.id)
+      return { ok: true, message: 'The keys are tested with the courier when you save.' }
+    },
+    onSuccess: (r) => {
+      setChecked(r)
+      if (r.stores) {
+        setStores(r.stores)
+        if (!opts.store_id && r.stores.length) set('store_id', (r.stores.find((s) => s.active) ?? r.stores[0]).id)
+      }
+    },
+    onError: (e) => setChecked({ ok: false, message: e.message }),
+  })
+  const toggle = (label: string, hint: string, on: boolean, change: (v: boolean) => void) => (
+    <label className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
+      <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{hint}</span></span>
+      <Switch checked={on} onCheckedChange={change} />
+    </label>
+  )
+  const section = (title: string) => <p className="pt-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</p>
+  const webhookUrl = existing && (code === 'pathao' || code === 'steadfast') ? `${courierWebhookUrl(existing.id)}&provider=${code}` : null
+
   return (
-    <Dialog open={integration !== null} onOpenChange={(o) => { if (!o) { connect.reset(); setValues({}); onClose() } }}>
-      <DialogContent>
+    <Dialog open={integration !== null} onOpenChange={(o) => { if (!o) { save.reset(); test.reset(); setValues({}); onClose() } }}>
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Connect {integration?.name}</DialogTitle>
-          <DialogDescription>Find these in: {integration?.where}. We test them with {integration?.name} first, then store them encrypted on the server — they are never shown again.</DialogDescription>
+          <DialogTitle>{connected ? `${integration?.name} settings` : `Connect ${integration?.name}`}</DialogTitle>
+          <DialogDescription>
+            Keys are in: {integration?.where}. They are tested with {integration?.name}, then stored encrypted on the server and never shown again.
+            {connected && ' Leave the key fields empty to keep the saved ones.'}
+          </DialogDescription>
         </DialogHeader>
-        <form id="connect-courier" className="grid gap-3" onSubmit={(e) => { e.preventDefault(); connect.mutate() }}>
-          {!existing && (
-            <Field label="Name in your admin" htmlFor="cc-name"><Input id="cc-name" value={name} placeholder={integration?.name} onChange={(e) => setName(e.target.value)} /></Field>
-          )}
-          {integration?.fields.filter((f) => !f.login).map((f) => (
-            <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required>
-              <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'text'} autoComplete="off" placeholder={f.placeholder}
-                value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
-            </Field>
-          ))}
+        <form id="connect-courier" className="grid gap-3" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
+          {section('Account')}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {!existing && (
+              <Field label="Name in your admin" htmlFor="cc-name"><Input id="cc-name" value={name} placeholder={integration?.name} onChange={(e) => setName(e.target.value)} /></Field>
+            )}
+            {code === 'pathao' && (
+              <Field label="Account mobile number" htmlFor="cc-phone">
+                <Input id="cc-phone" inputMode="tel" value={opts.account_phone ?? ''} placeholder="01XXXXXXXXX" onChange={(e) => set('account_phone', e.target.value)} />
+              </Field>
+            )}
+            {integration?.fields.filter((f) => !f.login).map((f) => (
+              <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required={!connected}>
+                <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'text'} autoComplete="off"
+                  placeholder={connected ? 'Saved — enter to replace' : f.placeholder}
+                  value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
+              </Field>
+            ))}
+          </div>
           {integration?.fields.some((f) => f.login) && (
             <div className="grid gap-3 rounded-lg border p-3">
               <div>
                 <p className="flex items-center gap-1.5 text-sm font-medium"><KeyRound className="size-4" /> {integration.name} account login{integration.fields.some((f) => f.login && f.optional) && <span className="font-normal text-muted-foreground">· optional</span>}</p>
                 <p className="text-xs text-muted-foreground">
-                  {integration.code === 'pathao'
+                  {code === 'pathao'
                     ? 'The email and password of your Pathao merchant account — Pathao needs them to issue API access.'
-                    : `The email and password you use on the ${integration.name} merchant panel, kept with the keys for account-level tracking. Fill both or leave both empty.`}
-                  {' '}Encrypted on the server; never shown again.
+                    : `The email and password you use on the ${integration.name} merchant panel. Fill both or leave both empty.`}
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {integration.fields.filter((f) => f.login).map((f) => (
-                  <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required={!f.optional}>
-                    <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'email'} autoComplete={f.secret ? 'new-password' : 'off'} placeholder={f.placeholder}
+                  <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required={!f.optional && !connected}>
+                    <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'email'} autoComplete={f.secret ? 'new-password' : 'off'}
+                      placeholder={connected ? 'Saved — enter to replace' : f.placeholder}
                       value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
                   </Field>
                 ))}
               </div>
             </div>
           )}
-          {integration?.sandbox && (
-            <label className="flex items-center gap-2 text-sm"><Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox / test account</label>
+          <div className="flex flex-wrap items-center gap-3">
+            {integration?.sandbox && <label className="flex items-center gap-2 text-sm"><Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox / test account</label>}
+            {(code === 'pathao' ? (keysEntered && !keysIncomplete) || connected : connected && !keysEntered) && (
+              <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => test.mutate()} disabled={test.isPending}>
+                {test.isPending ? <Spinner /> : <Plug />} Test connection
+              </Button>
+            )}
+          </div>
+          {checked && <p className={`rounded-lg p-2.5 text-sm ${checked.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`} role="status">{checked.message}</p>}
+
+          {code === 'pathao' && (
+            <>
+              {section('Pickup store')}
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Default store" className="min-w-56 flex-1" hint={stores.length > 1 ? 'You can pick another store when uploading parcels.' : undefined}>
+                  {stores.length ? (
+                    <Select value={opts.store_id || undefined} onValueChange={(v) => { if (v) set('store_id', v) }}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Choose a store" /></SelectTrigger>
+                      <SelectContent>{stores.map((st) => <SelectItem key={st.id} value={st.id}>{st.name} · {st.id}{st.active ? '' : ' (inactive)'}</SelectItem>)}</SelectContent>
+                    </Select>
+                  ) : (
+                    <Input value={opts.store_id ?? ''} inputMode="numeric" placeholder="Sync stores, or type the store ID" onChange={(e) => set('store_id', e.target.value.replace(/\D/g, ''))} />
+                  )}
+                </Field>
+                <Button type="button" variant="outline" onClick={() => test.mutate()} disabled={test.isPending || (!connected && (!keysEntered || !!keysIncomplete))}>
+                  {test.isPending ? <Spinner /> : <RefreshCw />} Sync stores
+                </Button>
+              </div>
+              {section('Parcels')}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Field label="Item type">
+                  <Select value={String(opts.item_type ?? 2)} onValueChange={(v) => set('item_type', v === '1' ? 1 : 2)}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="2">Parcel</SelectItem><SelectItem value="1">Document</SelectItem></SelectContent>
+                  </Select>
+                </Field>
+                <div />
+                {toggle('Allow order without zone', 'If the address can’t be matched to a Pathao zone, book it anyway and let Pathao read the address', !!opts.allow_without_zone, (v) => set('allow_without_zone', v))}
+                {toggle('Send parcel weight', 'Total of the product weights; off sends Pathao’s minimum (0.5 kg)', opts.send_weight !== false, (v) => set('send_weight', v))}
+              </div>
+            </>
           )}
-          {connect.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{connect.error.message}</p>}
+
+          {section('Shipping note')}
+          <div className="grid gap-2">
+            <Field label="Default shipping note" htmlFor="cc-note" hint="Sent with every parcel unless the order has its own note">
+              <Textarea id="cc-note" rows={2} maxLength={200} value={opts.default_note ?? ''} placeholder="e.g. Call before delivery. Handle with care."
+                onChange={(e) => set('default_note', e.target.value)} />
+            </Field>
+            {(code === 'pathao' || code === 'steadfast') && toggle('Send product names', 'Adds “2× Canvas Tote, 1× Cap” as the item description', !!opts.send_product_names, (v) => set('send_product_names', v))}
+          </div>
+
+          {webhookUrl && existing && (
+            <>
+              {section('Webhook')}
+              <div className="grid gap-2 rounded-lg border p-3">
+                <Field label="Callback URL">
+                  <div className="flex gap-2">
+                    <Input readOnly value={webhookUrl} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+                    <Button type="button" variant="outline" size="icon" aria-label="Copy URL" onClick={() => void navigator.clipboard.writeText(webhookUrl).then(() => toast.success('URL copied'))}><Copy /></Button>
+                  </div>
+                </Field>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{courierConfig(existing).webhook_secret_hint ? `Secret saved (ends ${courierConfig(existing).webhook_secret_hint!.slice(-4)})` : 'No webhook secret yet — status updates can’t arrive until you set one.'}</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => onWebhook(existing)}><Webhook /> {courierConfig(existing).webhook_secret_hint ? 'New secret' : 'Set secret'}</Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {section('Status')}
+          {toggle('Active', 'Inactive couriers are hidden when booking parcels; saved keys are kept', active, setActive)}
+          {save.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{save.error.message}</p>}
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" form="connect-courier" disabled={missing || connect.isPending}>{connect.isPending ? <Spinner /> : <PlugZap />} Test & connect</Button>
+          <Button type="submit" form="connect-courier" disabled={!!blocked || save.isPending}>
+            {save.isPending ? <Spinner /> : <PlugZap />} {connected && !keysEntered ? 'Save settings' : 'Test & connect'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

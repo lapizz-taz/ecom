@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mapPathaoStatus, mapRedxStatus, matchByName, PathaoProvider, RedxProvider } from './courier/providers.ts'
-import { buildCourierProvider, credentialHint, invalidCredentialFields, missingCredentialFields } from './courier/registry.ts'
+import { mapPathaoStatus, mapRedxStatus, matchByName, PathaoProvider, RedxProvider, SteadfastProvider } from './courier/providers.ts'
+import { buildCourierProvider, courierOptions, credentialHint, invalidCredentialFields, itemDescription, missingCredentialFields } from './courier/registry.ts'
 import { parse, placeOrderSchema } from './schemas.ts'
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -82,6 +82,63 @@ describe('Pathao courier provider', () => {
     const result = await new PathaoProvider({ clientId: 'cid-unique-3', clientSecret: 's', username: 'u', password: 'p', storeId: '9' }, fetchFn).testConnection()
     expect(result.ok).toBe(false)
     expect(result.message).toMatch(/store 9 was not found/)
+  })
+})
+
+describe('Pathao booking options', () => {
+  const signIn = () => jsonResponse({ access_token: 'tok', expires_in: 3600 })
+  const cities = () => jsonResponse({ data: { data: [{ city_id: 1, city_name: 'Dhaka' }] } })
+  const zones = () => jsonResponse({ data: { data: [{ zone_id: 10, zone_name: 'Dhanmondi' }] } })
+  const booked = () => jsonResponse({ data: { consignment_id: 'DL9', order_status: 'Pending' } })
+
+  it('lets Pathao read the address when no zone matches, only when allowed', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(signIn()).mockResolvedValueOnce(cities()).mockResolvedValueOnce(zones()).mockResolvedValueOnce(booked())
+    const pathao = new PathaoProvider({ clientId: 'opt-1', clientSecret: 's', username: 'u', password: 'p', storeId: '1', allowWithoutZone: true }, fetchFn)
+    await pathao.createShipment({ ...request, area: 'Uttara' })
+    const sent = JSON.parse(fetchFn.mock.calls[3][1].body)
+    expect(sent).not.toHaveProperty('recipient_city')
+    expect(sent).not.toHaveProperty('recipient_zone')
+    expect(sent.recipient_address).toContain('Uttara')
+  })
+
+  it('never books without a zone when the lookup itself failed', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(signIn()).mockResolvedValueOnce(jsonResponse({ message: 'server error' }, 500))
+    const pathao = new PathaoProvider({ clientId: 'opt-2', clientSecret: 's', username: 'u', password: 'p', storeId: '1', allowWithoutZone: true }, fetchFn)
+    await expect(pathao.createShipment(request)).rejects.toThrow(/server error/)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses the store picked for the order, the item type, product names, and the weight switch', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(signIn()).mockResolvedValueOnce(cities()).mockResolvedValueOnce(zones()).mockResolvedValueOnce(booked())
+    const pathao = new PathaoProvider({ clientId: 'opt-3', clientSecret: 's', username: 'u', password: 'p', storeId: '1', itemType: 1, sendWeight: false }, fetchFn)
+    await pathao.createShipment({ ...request, area: 'Dhanmondi', storeId: '55', weightGrams: 3000, itemDescription: '2× Tote' })
+    expect(JSON.parse(fetchFn.mock.calls[3][1].body)).toMatchObject({ store_id: 55, item_type: 1, item_weight: 0.5, item_description: '2× Tote', recipient_zone: 10 })
+  })
+
+  it('asks for a pickup store before booking', async () => {
+    const pathao = new PathaoProvider({ clientId: 'opt-4', clientSecret: 's', username: 'u', password: 'p', storeId: '' }, vi.fn())
+    await expect(pathao.createShipment(request)).rejects.toThrow(/choose a pickup store/)
+  })
+
+  it('lists the pickup stores and connects without one chosen yet', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(signIn())
+      .mockResolvedValueOnce(jsonResponse({ data: { data: [{ store_id: 5, store_name: 'Main', store_address: 'Mirpur', is_active: 1 }, { store_id: 6, store_name: 'Old', is_active: 0 }] } }))
+    const pathao = new PathaoProvider({ clientId: 'opt-5', clientSecret: 's', username: 'u', password: 'p', storeId: '' }, fetchFn)
+    expect(await pathao.listStores()).toEqual([
+      { id: '5', name: 'Main', address: 'Mirpur', active: true }, { id: '6', name: 'Old', address: null, active: false }])
+  })
+
+  it('reads options from the courier settings and builds the item text', () => {
+    expect(missingCredentialFields('pathao', { client_id: 'a', client_secret: 'b', username: 'u@x.com', password: 'p' })).toEqual([])
+    expect(courierOptions({ store_id: '5', credential_hint: '••••', default_note: '', send_weight: false })).toEqual({ store_id: '5', send_weight: false })
+    expect(itemDescription([{ quantity: 2, product_name: 'Canvas Tote' }, { quantity: 1, product_name: ' Cap ' }])).toBe('2× Canvas Tote, 1× Cap')
+    expect(itemDescription([{ quantity: 1, product_name: 'x'.repeat(300) }])!.length).toBe(200)
+    expect(itemDescription([])).toBeNull()
+  })
+
+  it('sends product names to Steadfast as the item description', () => {
+    const body = new SteadfastProvider({ apiKey: 'k', secretKey: 's' }).buildOrder({ ...request, itemDescription: '1× Cap', note: 'Call first' })
+    expect(body).toMatchObject({ item_description: '1× Cap', note: 'Call first' })
   })
 })
 

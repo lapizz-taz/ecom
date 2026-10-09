@@ -10,6 +10,34 @@ export interface CourierRow {
   provider: string
   api_enabled: boolean
   tracking_url_template: string | null
+  config?: Record<string, unknown> | null
+}
+
+/**
+ * Booking options a courier keeps in couriers.config (not secret, so staff can
+ * see and change them without re-entering keys).
+ */
+export interface CourierOptions {
+  account_phone?: string
+  store_id?: string
+  item_type?: 1 | 2
+  allow_without_zone?: boolean
+  send_weight?: boolean
+  default_note?: string
+  send_product_names?: boolean
+}
+export const OPTION_KEYS = ['account_phone', 'store_id', 'item_type', 'allow_without_zone', 'send_weight', 'default_note', 'send_product_names'] as const
+
+export function courierOptions(config: Record<string, unknown> | null | undefined): CourierOptions {
+  const c = config ?? {}
+  return Object.fromEntries(OPTION_KEYS.filter((k) => c[k] !== undefined && c[k] !== null && c[k] !== '').map((k) => [k, c[k]])) as CourierOptions
+}
+
+/** "2× Canvas Tote, 1× Cap" for the courier's item description. */
+export function itemDescription(items: Array<{ quantity: number; product_name: string | null }>, max = 200): string | null {
+  const text = items.filter((i) => i.product_name).map((i) => `${i.quantity}× ${i.product_name!.trim()}`).join(', ')
+  if (!text) return null
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
 export type CourierCredentials = Record<string, string | boolean | number | null | undefined>
@@ -17,7 +45,8 @@ export type CourierCredentials = Record<string, string | boolean | number | null
 /** Fields each courier needs to connect, in the order the admin form shows them. */
 export const COURIER_FIELDS: Record<string, string[]> = {
   steadfast: ['api_key', 'secret_key'],
-  pathao: ['client_id', 'client_secret', 'username', 'password', 'store_id'],
+  // The pickup store is chosen from the account's stores and kept with the options.
+  pathao: ['client_id', 'client_secret', 'username', 'password'],
   redx: ['access_token'],
 }
 
@@ -66,7 +95,7 @@ export function credentialHint(provider: string, creds: CourierCredentials): str
 }
 
 /** Builds a provider from explicit credentials (used to test before saving). */
-export function buildCourierProvider(provider: string, creds: CourierCredentials, trackingTemplate?: string | null): CourierProvider {
+export function buildCourierProvider(provider: string, creds: CourierCredentials, trackingTemplate?: string | null, options: CourierOptions = {}): CourierProvider {
   const sandbox = creds.sandbox === true || creds.sandbox === 'true'
   switch (provider) {
     case 'steadfast':
@@ -77,7 +106,8 @@ export function buildCourierProvider(provider: string, creds: CourierCredentials
     case 'pathao':
       return new PathaoProvider({
         clientId: text(creds.client_id), clientSecret: text(creds.client_secret), username: text(creds.username),
-        password: text(creds.password), storeId: text(creds.store_id), sandbox, trackingTemplate,
+        password: text(creds.password), storeId: text(options.store_id) || text(creds.store_id), sandbox, trackingTemplate,
+        itemType: options.item_type === 1 ? 1 : 2, allowWithoutZone: options.allow_without_zone === true, sendWeight: options.send_weight !== false,
       })
     case 'redx':
       return new RedxProvider({ accessToken: text(creds.access_token), sandbox, trackingTemplate })
@@ -113,5 +143,5 @@ export async function courierProviderFor(admin: SupabaseClient, courier: Courier
   if (!creds || missingCredentialFields(courier.provider, creds).length) {
     throw new HttpError(503, `${courier.name} is not connected. Connect it under Couriers.`, 'PROVIDER_NOT_CONFIGURED')
   }
-  return buildCourierProvider(courier.provider, creds, courier.tracking_url_template)
+  return buildCourierProvider(courier.provider, creds, courier.tracking_url_template, courierOptions(courier.config))
 }

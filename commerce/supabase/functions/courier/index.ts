@@ -1,5 +1,5 @@
 // Staff courier operations through the CourierService abstraction:
-//   connect, disconnect, test_connection, set_webhook_secret, create_shipment,
+//   connect, save_options, courier_stores, disconnect, test_connection, set_webhook_secret, create_shipment,
 //   create_shipments, cancel_shipment, sync_status, sync_all, tracking, delivery_cost
 // Credentials entered in "Connect courier" are tested against the courier,
 // then stored in Vault by the service role; they never come back to a browser.
@@ -8,14 +8,25 @@ import { z } from 'zod'
 import { env } from '../_shared/env.ts'
 import {
   buildCourierProvider, COURIER_FIELDS, COURIER_TRACKING, type CourierCredentials, courierProviderFor, type CourierRow,
-  COURIER_OPTIONAL_FIELDS, credentialHint, invalidCredentialFields, missingCredentialFields,
+  COURIER_OPTIONAL_FIELDS, type CourierOptions, courierOptions, credentialHint, invalidCredentialFields, itemDescription,
+  missingCredentialFields,
 } from '../_shared/courier/registry.ts'
+import { PathaoProvider, type PathaoStore } from '../_shared/courier/providers.ts'
 import { CourierNotSupportedError } from '../_shared/courier/types.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const credential = z.union([z.string().trim().max(500), z.boolean(), z.number()])
+const options = z.object({
+  account_phone: z.string().trim().max(20).regex(/^[0-9+\- ]*$/, 'Use digits for the phone number').optional(),
+  store_id: z.string().trim().regex(/^\d{0,12}$/, 'Store ID is a number').optional(),
+  item_type: z.union([z.literal(1), z.literal(2)]).optional(),
+  allow_without_zone: z.boolean().optional(),
+  send_weight: z.boolean().optional(),
+  default_note: z.string().trim().max(200).optional(),
+  send_product_names: z.boolean().optional(),
+}).strict()
 
 const schema = z.discriminatedUnion('action', [
   z.object({
@@ -24,10 +35,21 @@ const schema = z.discriminatedUnion('action', [
     provider: z.enum(['steadfast', 'pathao', 'redx']),
     name: z.string().trim().min(2).max(60).optional(),
     credentials: z.record(z.string().regex(/^[a-z_]+$/), credential),
+    options: options.optional(),
+    is_active: z.boolean().optional(),
+  }),
+  z.object({ action: z.literal('save_options'), courier_id: z.uuid(), options, is_active: z.boolean().optional() }),
+  // Pathao pickup stores, from the saved login (courier_id) or from keys being entered.
+  z.object({
+    action: z.literal('courier_stores'), courier_id: z.uuid().optional(),
+    credentials: z.record(z.string().regex(/^[a-z_]+$/), credential).optional(),
   }),
   z.object({ action: z.literal('disconnect'), courier_id: z.uuid() }),
-  z.object({ action: z.literal('create_shipment'), order_id: z.uuid(), courier_id: z.uuid(), note: z.string().max(300).optional() }),
-  z.object({ action: z.literal('create_shipments'), order_ids: z.array(z.uuid()).min(1).max(50), courier_id: z.uuid() }),
+  z.object({
+    action: z.literal('create_shipment'), order_id: z.uuid(), courier_id: z.uuid(), note: z.string().max(300).optional(),
+    store_id: z.string().regex(/^\d{1,12}$/).optional(),
+  }),
+  z.object({ action: z.literal('create_shipments'), order_ids: z.array(z.uuid()).min(1).max(50), courier_id: z.uuid(), store_id: z.string().regex(/^\d{1,12}$/).optional() }),
   z.object({ action: z.literal('cancel_shipment'), shipment_id: z.uuid() }),
   z.object({ action: z.literal('sync_status'), shipment_id: z.uuid() }),
   z.object({ action: z.literal('sync_all'), courier_id: z.uuid().optional() }),
@@ -44,11 +66,34 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('set_webhook_secret'), courier_id: z.uuid(), secret: z.string().trim().min(16).max(200) }),
 ])
 
-const COURIER_COLUMNS = 'id, name, provider, api_enabled, tracking_url_template'
+const COURIER_COLUMNS = 'id, name, provider, api_enabled, tracking_url_template, config'
 const SYNCABLE = ['BOOKED', 'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'ON_HOLD', 'RETURNING']
 const BOOKABLE = ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP']
 const PERMISSION: Record<string, string> = {
   connect: 'couriers.manage', disconnect: 'couriers.manage', test_connection: 'couriers.manage', set_webhook_secret: 'couriers.manage',
+  save_options: 'couriers.manage', courier_stores: 'couriers.manage',
+}
+
+/** Merges booking options (and the store list) into couriers.config; keys never go there. */
+async function saveOptions(client: SupabaseClient, courierId: string, patch: CourierOptions & { stores?: PathaoStore[]; stores_synced_at?: string }, isActive?: boolean) {
+  const { data, error } = await client.from('couriers').select('config').eq('id', courierId).maybeSingle()
+  if (error || !data) throw new HttpError(404, 'Courier not found', 'NOT_FOUND')
+  const config = { ...((data.config as Record<string, unknown> | null) ?? {}) }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue
+    if (v === '') delete config[k]
+    else config[k] = v
+  }
+  const update: Record<string, unknown> = { config }
+  if (isActive !== undefined) update.is_active = isActive
+  const { error: saveError } = await client.from('couriers').update(update).eq('id', courierId)
+  if (saveError) throw new HttpError(500, 'Could not save the courier settings', 'INTERNAL')
+  return config
+}
+
+function pathaoFrom(provider: unknown): PathaoProvider {
+  if (!(provider instanceof PathaoProvider)) throw new HttpError(422, 'Pickup stores are a Pathao feature', 'NOT_SUPPORTED')
+  return provider
 }
 
 async function loadCourier(client: SupabaseClient, id: string): Promise<CourierRow> {
@@ -95,10 +140,10 @@ async function syncOne(client: SupabaseClient, shipmentId: string) {
 }
 
 /** Books one order with the courier's API and records the shipment. */
-async function bookOrder(client: SupabaseClient, orderId: string, courier: CourierRow, note?: string | null) {
+async function bookOrder(client: SupabaseClient, orderId: string, courier: CourierRow, note?: string | null, storeId?: string | null) {
   const { data: order, error } = await client
     .from('orders')
-    .select('id, order_number, status, customer_name, customer_phone, shipping_address, shipping_area, shipping_district, cod_amount, order_items(quantity), shipments(id, courier_id, tracking_number, is_active)')
+    .select('id, order_number, status, customer_name, customer_phone, shipping_address, shipping_area, shipping_district, cod_amount, order_items(quantity, product_name, product_variants(weight_grams)), shipments(id, courier_id, tracking_number, is_active)')
     .eq('id', orderId)
     .maybeSingle()
   if (error || !order) throw new HttpError(404, 'Order not found', 'NOT_FOUND')
@@ -111,6 +156,12 @@ async function bookOrder(client: SupabaseClient, orderId: string, courier: Couri
     throw new HttpError(409, `${order.order_number} is already booked (${active.tracking_number})`, 'ALREADY_BOOKED')
   }
   const provider = await courierProviderFor(adminClient(), courier)
+  const opts = courierOptions(courier.config)
+  const items = order.order_items as unknown as Array<{ quantity: number; product_name: string | null; product_variants: { weight_grams: number | null } | null }>
+  // Weight only when every item has one; otherwise the courier's minimum is used.
+  const weightGrams = items.every((i) => i.product_variants?.weight_grams)
+    ? items.reduce((s, i) => s + i.quantity * Number(i.product_variants!.weight_grams), 0) : null
+  const parcelNote = note?.trim() || opts.default_note || null
   const created = await provider.createShipment({
     orderNumber: order.order_number,
     recipientName: order.customer_name,
@@ -119,15 +170,18 @@ async function bookOrder(client: SupabaseClient, orderId: string, courier: Couri
     district: order.shipping_district,
     area: order.shipping_area,
     codAmount: Number(order.cod_amount),
-    itemCount: (order.order_items as Array<{ quantity: number }>).reduce((s, i) => s + i.quantity, 0),
-    note: note ?? null,
+    itemCount: items.reduce((s, i) => s + i.quantity, 0),
+    weightGrams,
+    note: parcelNote,
+    itemDescription: opts.send_product_names ? itemDescription(items) : null,
+    storeId: storeId ?? null,
   })
   return rpc(client, 'assign_courier', {
     p_order_id: order.id,
     p_courier_id: courier.id,
     p_tracking_number: created.trackingNumber,
     p_shipping_cost: created.cost ?? null,
-    p_note: note ?? null,
+    p_note: parcelNote,
     p_consignment_id: created.consignmentId,
     p_provider_payload: created.raw as Record<string, unknown>,
   })
@@ -160,8 +214,11 @@ Deno.serve(
           const creds: CourierCredentials = Object.fromEntries(
             [...COURIER_FIELDS[input.provider], ...(COURIER_OPTIONAL_FIELDS[input.provider] ?? []), 'sandbox']
               .filter((k) => k in input.credentials && input.credentials[k] !== '').map((k) => [k, input.credentials[k]]))
-          const test = await buildCourierProvider(input.provider, creds).testConnection()
+          const opts = (input.options ?? {}) as CourierOptions
+          const built = buildCourierProvider(input.provider, creds, null, opts)
+          const test = await built.testConnection()
           if (!test.ok) throw new HttpError(422, `Could not connect: ${test.message}`, 'CONNECTION_FAILED')
+          const stores = built instanceof PathaoProvider ? await built.listStores() : undefined
 
           let courierId = input.courier_id
           if (!courierId) {
@@ -182,7 +239,41 @@ Deno.serve(
             p_hint: credentialHint(input.provider, creds),
             p_actor: staff!.user.id,
           })
+          await saveOptions(client, courierId!, { ...opts, ...(stores ? { stores, stores_synced_at: new Date().toISOString() } : {}) }, input.is_active)
           return json(req, { courier_id: courierId, ok: true, message: test.message })
+        }
+        case 'save_options': {
+          const courier = await loadCourier(client, input.courier_id)
+          const opts = input.options as CourierOptions
+          const known = (courier.config?.stores as PathaoStore[] | undefined) ?? []
+          if (courier.provider === 'pathao' && opts.store_id && known.length && !known.some((s) => s.id === opts.store_id)) {
+            throw new HttpError(422, `Store ${opts.store_id} is not on this Pathao account — sync the stores first`, 'VALIDATION')
+          }
+          const config = await saveOptions(client, input.courier_id, opts, input.is_active)
+          return json(req, { ok: true, options: courierOptions(config) })
+        }
+        case 'courier_stores': {
+          let provider
+          if (input.credentials && Object.keys(input.credentials).length) {
+            const missing = missingCredentialFields('pathao', input.credentials as CourierCredentials)
+            if (missing.length) throw new HttpError(422, `Fill in: ${missing.join(', ').replace(/_/g, ' ')}`, 'VALIDATION')
+            provider = buildCourierProvider('pathao', input.credentials as CourierCredentials)
+          } else if (input.courier_id) {
+            const courier = await loadCourier(client, input.courier_id)
+            provider = await courierProviderFor(adminClient(), { ...courier, api_enabled: true })
+          } else {
+            throw new HttpError(422, 'Enter the Pathao keys first', 'VALIDATION')
+          }
+          let stores: PathaoStore[]
+          try {
+            stores = await pathaoFrom(provider).listStores()
+          } catch (e) {
+            if (e instanceof HttpError) throw e
+            throw new HttpError(422, (e as Error).message, 'CONNECTION_FAILED')
+          }
+          // Saved connection: remember the list so orders can pick a store without asking Pathao.
+          if (input.courier_id && !input.credentials) await saveOptions(client, input.courier_id, { stores, stores_synced_at: new Date().toISOString() })
+          return json(req, { stores })
         }
         case 'disconnect': {
           await loadCourier(client, input.courier_id)
@@ -191,14 +282,14 @@ Deno.serve(
         }
         case 'create_shipment': {
           const courier = await loadCourier(client, input.courier_id)
-          return json(req, { shipment: await bookOrder(client, input.order_id, courier, input.note) })
+          return json(req, { shipment: await bookOrder(client, input.order_id, courier, input.note, input.store_id) })
         }
         case 'create_shipments': {
           const courier = await loadCourier(client, input.courier_id)
           const results: Array<{ order_id: string; ok: boolean; tracking_number?: string | null; error?: string }> = []
           for (const orderId of input.order_ids) {
             try {
-              const shipment = await bookOrder(client, orderId, courier) as { tracking_number: string | null }
+              const shipment = await bookOrder(client, orderId, courier, null, input.store_id) as { tracking_number: string | null }
               results.push({ order_id: orderId, ok: true, tracking_number: shipment.tracking_number })
             } catch (e) {
               results.push({ order_id: orderId, ok: false, error: e instanceof HttpError || e instanceof Error ? e.message : String(e) })

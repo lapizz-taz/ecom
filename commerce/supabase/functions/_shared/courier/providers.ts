@@ -97,6 +97,7 @@ export class SteadfastProvider implements CourierProvider {
       recipient_address: [request.recipientAddress, request.area, request.district].filter(Boolean).join(', ').slice(0, 250),
       cod_amount: Math.max(0, Math.round(request.codAmount)),
       note: request.note ?? undefined,
+      item_description: request.itemDescription ?? undefined,
     }
   }
 
@@ -190,10 +191,22 @@ export interface PathaoConfig {
   clientSecret: string
   username: string
   password: string
+  /** Default pickup store (a parcel can name another one). */
   storeId: string
   sandbox?: boolean
   trackingTemplate?: string | null
+  /** 1 = document, 2 = parcel (default). */
+  itemType?: 1 | 2
+  /** Book without city/zone when the address can't be matched; Pathao then reads the address itself. */
+  allowWithoutZone?: boolean
+  /** Send the real weight (default); off sends Pathao's minimum, 0.5 kg. */
+  sendWeight?: boolean
 }
+
+export interface PathaoStore { id: string; name: string; address: string | null; active: boolean }
+
+/** Raised when an address can't be matched to a Pathao city or zone. */
+class PathaoLocationError extends Error {}
 
 const pathaoTokens = new Map<string, { token: string; expiresAt: number }>()
 
@@ -243,29 +256,38 @@ export class PathaoProvider implements CourierProvider {
   async resolveLocation(district: string, area?: string | null): Promise<{ cityId: number; zoneId: number }> {
     const cities = await this.call<{ data: { data: Array<{ city_id: number; city_name: string }> } }>('/city-list')
     const city = matchByName(cities.data.data, (c) => c.city_name, district)
-    if (!city) throw new Error(`Pathao: no city matches "${district}"`)
+    if (!city) throw new PathaoLocationError(`Pathao: no city matches "${district}"`)
     const zones = await this.call<{ data: { data: Array<{ zone_id: number; zone_name: string }> } }>(`/cities/${city.city_id}/zone-list`)
     const zone = matchByName(zones.data.data, (z) => z.zone_name, area) ?? matchByName(zones.data.data, (z) => z.zone_name, district)
-    if (!zone) throw new Error(`Pathao: no zone in ${city.city_name} matches "${area ?? district}" — add the area (thana) to the order`)
+    if (!zone) throw new PathaoLocationError(`Pathao: no zone in ${city.city_name} matches "${area ?? district}" — add the area (thana) to the order`)
     return { cityId: city.city_id, zoneId: zone.zone_id }
   }
 
   async createShipment(request: ShipmentRequest): Promise<ShipmentCreated> {
-    const { cityId, zoneId } = await this.resolveLocation(request.district, request.area)
+    const storeId = request.storeId || this.config.storeId
+    if (!storeId) throw new Error('Pathao: choose a pickup store under Couriers → Pathao')
+    let location: { cityId: number; zoneId: number } | null = null
+    try {
+      location = await this.resolveLocation(request.district, request.area)
+    } catch (error) {
+      // Only an unmatched address may go without a zone; a failed request never does.
+      if (!(error instanceof PathaoLocationError) || !this.config.allowWithoutZone) throw error
+    }
+    const weightKg = this.config.sendWeight === false ? 0.5 : Math.max((request.weightGrams ?? 500) / 1000, 0.5)
     const body = await this.call<{ data: { consignment_id: string; order_status: string; delivery_fee?: number } }>('/orders', {
       method: 'POST',
       body: JSON.stringify({
-        store_id: Number(this.config.storeId),
+        store_id: Number(storeId),
         merchant_order_id: request.orderNumber,
         recipient_name: request.recipientName.slice(0, 100),
         recipient_phone: request.recipientPhone,
         recipient_address: [request.recipientAddress, request.area, request.district].filter(Boolean).join(', ').slice(0, 220),
-        recipient_city: cityId,
-        recipient_zone: zoneId,
+        ...(location ? { recipient_city: location.cityId, recipient_zone: location.zoneId } : {}),
         delivery_type: 48,
-        item_type: 2,
+        item_type: this.config.itemType ?? 2,
         item_quantity: Math.max(request.itemCount, 1),
-        item_weight: Math.max((request.weightGrams ?? 500) / 1000, 0.5),
+        item_weight: Math.round(weightKg * 10) / 10,
+        item_description: request.itemDescription ?? undefined,
         amount_to_collect: Math.max(0, Math.round(request.codAmount)),
         special_instruction: request.note ?? undefined,
       }),
@@ -303,12 +325,21 @@ export class PathaoProvider implements CourierProvider {
     return Promise.resolve(null)
   }
 
+  /** The pickup stores on this Pathao account. */
+  async listStores(): Promise<PathaoStore[]> {
+    const body = await this.call<{ data: { data: Array<{ store_id: number; store_name: string; store_address?: string; is_active?: number | boolean }> } }>('/stores')
+    return body.data.data.map((s) => ({
+      id: String(s.store_id), name: s.store_name, address: s.store_address ?? null, active: s.is_active === undefined ? true : !!s.is_active,
+    }))
+  }
+
   async testConnection(): Promise<{ ok: boolean; message: string }> {
     try {
-      const body = await this.call<{ data: { data: Array<{ store_id: number; store_name: string }> } }>('/stores')
-      const store = body.data.data.find((s) => String(s.store_id) === String(this.config.storeId))
+      const stores = await this.listStores()
+      if (!this.config.storeId) return { ok: true, message: `Signed in to Pathao — ${stores.length} pickup store${stores.length === 1 ? '' : 's'} found; choose one` }
+      const store = stores.find((s) => s.id === String(this.config.storeId))
       if (!store) return { ok: false, message: `Signed in, but store ${this.config.storeId} was not found in this Pathao account` }
-      return { ok: true, message: `Connected to Pathao store "${store.store_name}"` }
+      return { ok: true, message: `Connected to Pathao store "${store.name}"` }
     } catch (error) {
       return { ok: false, message: (error as Error).message }
     }

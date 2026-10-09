@@ -26,6 +26,10 @@ export interface ShipmentRequest {
   itemCount: number
   weightGrams?: number | null
   note?: string | null
+  /** What is in the parcel ("2× Tote, 1× Cap"), when the courier is set to send product names. */
+  itemDescription?: string | null
+  /** Pickup store for this parcel (Pathao); the courier's default store otherwise. */
+  storeId?: string | null
 }
 
 export interface ShipmentRef {

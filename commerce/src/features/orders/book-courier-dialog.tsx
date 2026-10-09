@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { bookShipments, listCouriers } from '@/services/couriers'
+import { bookShipments, courierConfig, listCouriers } from '@/services/couriers'
 
 type RowStatus = 'QUEUED' | 'UPLOADING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
 interface Row { id: string; status: RowStatus; tracking: string | null; message: string }
@@ -45,6 +45,11 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   const connected = (couriers.data ?? []).filter((c) => c.api_enabled)
   const [courierId, setCourierId] = useState('')
   const chosen = connected.find((c) => c.id === courierId) ?? connected[0]
+  // Pathao: pick the pickup store for this batch (the default store unless changed).
+  const cfg = courierConfig(chosen)
+  const stores = chosen?.provider === 'pathao' ? (cfg.stores ?? []).filter((s) => s.active || s.id === cfg.store_id) : []
+  const [storeId, setStoreId] = useState('')
+  const store = stores.find((s) => s.id === storeId)?.id ?? cfg.store_id ?? ''
   const [rows, setRows] = useState<Row[] | null>(null)
   const [running, setRunning] = useState(false)
   const stop = useRef(false)
@@ -76,7 +81,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
       }
       patch(id, { status: 'UPLOADING', message: 'Processing…' })
       try {
-        const r = await bookShipments([id], chosen.id)
+        const r = await bookShipments([id], chosen.id, stores.length ? store : undefined)
         const res = r.results[0]
         if (res?.ok) patch(id, { status: 'SUCCESS', tracking: res.tracking_number ?? null, message: res.tracking_number ? 'Booked' : 'Booked (no tracking ID yet)' })
         else patch(id, { status: 'FAILED', message: res?.error ?? 'The courier did not accept this parcel' })
@@ -107,10 +112,18 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
             {couriers.isLoading ? <Spinner /> : connected.length === 0 ? (
               <p className="text-sm text-muted-foreground">No courier is connected yet. <Link to="/admin/couriers" className="underline">Connect Steadfast, Pathao or RedX</Link> first.</p>
             ) : (
-              <Select value={chosen?.id} onValueChange={setCourierId}>
-                <SelectTrigger aria-label="Courier"><SelectValue /></SelectTrigger>
-                <SelectContent>{connected.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Select value={chosen?.id} onValueChange={(v) => { setCourierId(v); setStoreId('') }}>
+                  <SelectTrigger aria-label="Courier" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>{connected.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                </Select>
+                {stores.length > 1 && (
+                  <Select value={store} onValueChange={(v) => { if (v) setStoreId(v) }}>
+                    <SelectTrigger aria-label="Pickup store" className="w-full"><SelectValue placeholder="Pickup store" /></SelectTrigger>
+                    <SelectContent>{stores.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}{s.id === cfg.store_id ? ' · default' : ''}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
+              </div>
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
