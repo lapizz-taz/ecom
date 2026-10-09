@@ -54,6 +54,9 @@ export function AttributionReport() {
   const totals = r?.totals
   const spend = r?.spend ?? null
   const attributed = totals ? totals.orders - totals.unattributed : 0
+  const profit = r && totals
+    ? toNumber(totals.revenue) - toNumber(r.costs.products) - toNumber(r.costs.delivery) - toNumber(r.costs.returns) - toNumber(spend ?? 0)
+    : null
 
   // Breadcrumb of what the report is narrowed to.
   type Crumb = { label: string; clear: Record<string, string> }
@@ -120,9 +123,14 @@ export function AttributionReport() {
         </span>
       ),
     },
+    { key: 'cogs', header: 'Product cost', align: 'right', hideOnMobile: true, cell: (row) => <Money value={row.product_cost} muted /> },
     {
-      key: 'net', header: 'Net', align: 'right', hideOnMobile: true,
-      cell: (row) => <Money value={row.net_revenue} className={toNumber(row.net_revenue) < 0 ? 'text-red-600' : undefined} />,
+      key: 'profit', header: 'Net profit', align: 'right',
+      cell: (row) => (
+        <span title={`Delivered revenue − product cost − courier costs${row.ad_spend === null ? '' : ' − ad spend'}`}>
+          <Money value={row.net_profit} className={toNumber(row.net_profit) < 0 ? 'text-red-600' : 'text-emerald-700'} />
+        </span>
+      ),
     },
     {
       key: 'cpo', header: 'Cost / order', align: 'right', hideOnMobile: true,
@@ -182,8 +190,8 @@ export function AttributionReport() {
         <StatCard label="Ad spend" value={spend === null ? '—' : formatMoney(spend)}
           hint={r?.spend_tracked === false ? 'Ad spend can’t be split by product' : 'Meta (synced) and other campaigns'} />
         <StatCard label="ROAS" value={spend && totals ? ratio(totals.revenue / spend) : '—'} hint="Delivered revenue ÷ ad spend" />
-        <StatCard label="Cost per delivered order" value={spend && totals?.delivered ? formatMoney(spend / totals.delivered) : '—'}
-          hint={r ? `Courier ${formatMoney(toNumber(r.costs.delivery) + toNumber(r.costs.returns))}` : undefined} />
+        <StatCard label="Net profit" value={profit === null ? '—' : formatMoney(profit)} tone={profit !== null && profit < 0 ? 'negative' : 'positive'}
+          hint={r ? `after goods ${formatMoney(r.costs.products)} · courier ${formatMoney(toNumber(r.costs.delivery) + toNumber(r.costs.returns))}${spend ? ` · ${formatMoney(spend / Math.max(totals?.delivered ?? 0, 1))} ads / delivered` : ''}` : undefined} />
       </div>
 
       {chart.length > 1 && (
@@ -205,7 +213,8 @@ export function AttributionReport() {
         <span>
           An order counts for a campaign, ad set or ad only when the link the customer clicked carried its id (set the URL parameters under
           Meta Ads → Tracking). Orders that arrived without tracking data are shown as Unknown and never get ad spend. Ad spend is what Meta
-          reports, converted at your rate; revenue and ROAS use delivered orders only.
+          reports, converted at your rate. Revenue, ROAS and net profit use delivered orders only; net profit is delivered revenue minus the
+          cost of the goods kept, courier delivery, COD and return charges, and ad spend.
         </span>
       </p>
     </div>

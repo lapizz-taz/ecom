@@ -352,6 +352,19 @@ export interface FinanceOverview extends ProfitLoss {
   outstanding_amount: number
   supplier_payables: number
   unresolved_advances: number
+  // Cost and collection breakdown
+  courier_charges: number
+  courier_cod_fees: number
+  return_charges: number
+  marketing_costs: number
+  sms_costs: number
+  payment_fees: number
+  other_expenses: number
+  discounts: number
+  gross_sales: number
+  order_value: number
+  cod_collected: number
+  online_collected: number
 }
 
 export interface DashboardOverview {

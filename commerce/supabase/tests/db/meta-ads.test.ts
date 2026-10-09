@@ -156,6 +156,9 @@ describe('attribution report', () => {
       expect(num(fb.revenue)).toBeGreaterThan(0)
       expect(num(fb.roas)).toBeCloseTo(num(fb.revenue) / 900, 2)
       expect(num(fb.cost_per_order)).toBe(450)
+      // Profit counts the cost of goods only for delivered orders (cost 400 each here).
+      expect(num(fb.product_cost)).toBe(400)
+      expect(num(fb.net_profit)).toBeCloseTo(num(fb.revenue) - 400 - num(fb.delivery_cost) - num(fb.return_cost) - 900, 2)
       expect(row(r.rows, 'Instagram Ads')).toMatchObject({ orders: 1, delivered: 1, ad_spend: 200 })
       expect(row(r.rows, 'Google')).toMatchObject({ orders: 1, ad_spend: null, roas: null })
       // No tracking data: Unknown, and no ad spend is ever assigned to it.

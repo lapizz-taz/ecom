@@ -108,7 +108,15 @@ export const NAV: NavSection[] = [
   {
     label: 'Growth',
     items: [
-      { label: 'Ads', to: '/admin/marketing', icon: <Megaphone />, permission: 'marketing.view' },
+      {
+        label: 'Ads', to: '/admin/marketing', icon: <Megaphone />, permission: 'marketing.view',
+        children: [
+          { label: 'Attribution & Profit', to: '/admin/marketing' },
+          { label: 'Meta Ads', to: '/admin/marketing?tab=meta' },
+          { label: 'Campaigns & Spend', to: '/admin/marketing?tab=campaigns' },
+          { label: 'Tracking Setup', to: '/admin/marketing?tab=tracking' },
+        ],
+      },
       {
         label: 'Marketing', to: '/admin/coupons', icon: <TrendingUp />, permission: 'coupons.manage',
         children: [

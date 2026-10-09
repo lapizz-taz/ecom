@@ -21,6 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { AttributionReport } from '@/features/marketing/attribution-report'
+import { MetaAds } from '@/features/marketing/meta-ads'
 import { TrackingSetup } from '@/features/marketing/tracking-setup'
 import { BarsChart } from '@/features/reports/charts'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -38,7 +40,7 @@ const ratio = (v: number | null) => (v === null ? '—' : `${formatNumber(v, 2)}
 export default function MarketingPage() {
   const { can } = useAuth()
   const queryClient = useQueryClient()
-  const [state, update] = useUrlState({ tab: 'campaigns', campaign: '' })
+  const [state, update] = useUrlState({ tab: 'overview', campaign: '' })
   const performance = useQuery({ queryKey: ['marketing', 'performance'], queryFn: campaignPerformance })
   const campaigns = useQuery({ queryKey: ['marketing', 'campaigns'], queryFn: listCampaigns })
   const [editingCampaign, setEditingCampaign] = useState<Partial<Tables<'marketing_campaigns'>> | null>(null)
@@ -83,32 +85,45 @@ export default function MarketingPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Marketing"
-        description="Daily ad spend per campaign. Spend is posted to Advertising expenses automatically; delivered orders that carry the campaign's UTM tag are attributed to it."
-        actions={
+        title="Ads & Marketing"
+        description="Where orders come from and what they earn after ad spend, product cost and courier charges — from real orders and deliveries, not clicks."
+        actions={state.tab === 'campaigns' && (
           <Can permission="marketing.manage">
             <Button size="sm" variant="outline" onClick={() => setEditingCampaign({ platform: 'META', status: 'ACTIVE' })}><Plus /> Campaign</Button>
             <Button size="sm" onClick={() => setEditingSpend({ spend_date: isoDateToday() })} disabled={!campaigns.data?.length}><Plus /> Add spend</Button>
           </Can>
-        }
+        )}
       />
-      <TrackingSetup />
-      {!performance.data ? <CardsSkeleton count={4} /> : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Ad spend (all time)" value={<Money value={spend} />} />
-          <StatCard label="ROAS" value={spend > 0 ? ratio(total('reported_revenue') / spend) : '—'} hint={<>on <Money value={total('reported_revenue')} /> reported revenue</>} />
-          <StatCard label="Cost per order" value={reportedOrders > 0 ? <Money value={spend / reportedOrders} /> : '—'} hint={`${formatNumber(reportedOrders)} reported orders`} />
-          <StatCard label="Profit after ad spend" value={<Money value={total('profit_after_ad_spend')} />} tone={total('profit_after_ad_spend') < 0 ? 'negative' : 'positive'}
-            hint="gross profit of attributed delivered orders − spend" />
-        </div>
-      )}
 
-      <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
-        <TabsList><TabsTrigger value="campaigns">Campaigns</TabsTrigger><TabsTrigger value="spend">Daily spend</TabsTrigger></TabsList>
-        <TabsContent value="campaigns" className="space-y-4">
+      <Tabs value={state.tab === 'spend' ? 'campaigns' : state.tab} onValueChange={(v) => update({ tab: v })}>
+        <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+          <TabsList>
+            <TabsTrigger value="overview">Attribution & profit</TabsTrigger>
+            <TabsTrigger value="meta">Meta Ads</TabsTrigger>
+            <TabsTrigger value="campaigns">Campaigns & spend</TabsTrigger>
+            <TabsTrigger value="tracking">Tracking setup</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="overview" className="pt-2"><AttributionReport /></TabsContent>
+        <TabsContent value="meta" className="pt-2"><MetaAds /></TabsContent>
+        <TabsContent value="tracking" className="pt-2"><TrackingSetup /></TabsContent>
+        <TabsContent value="campaigns" className="space-y-4 pt-2">
+          <p className="text-sm text-muted-foreground">
+            Campaigns from other platforms (Google, TikTok…) and spend you enter by hand. Meta campaigns appear here by themselves once Meta Ads
+            is connected. Spend is posted to Advertising expenses; the order and revenue figures below are what each platform reports.
+          </p>
+          {!performance.data ? <CardsSkeleton count={4} /> : (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard label="Ad spend (all time)" value={<Money value={spend} />} />
+              <StatCard label="Reported ROAS" value={spend > 0 ? ratio(total('reported_revenue') / spend) : '—'} hint={<>on <Money value={total('reported_revenue')} /> platform-reported revenue</>} />
+              <StatCard label="Cost per reported order" value={reportedOrders > 0 ? <Money value={spend / reportedOrders} /> : '—'} hint={`${formatNumber(reportedOrders)} reported orders`} />
+              <StatCard label="Profit after ad spend" value={<Money value={total('profit_after_ad_spend')} />} tone={total('profit_after_ad_spend') < 0 ? 'negative' : 'positive'}
+                hint="gross profit of attributed delivered orders − spend" />
+            </div>
+          )}
           {rows.some((r) => toNumber(r.spend) > 0) && (
             <Card>
-              <CardHeader><CardTitle className="text-sm">Spend vs revenue by campaign</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-sm">Spend vs reported revenue by campaign</CardTitle></CardHeader>
               <CardContent>
                 <BarsChart format="money" xKey="name" data={rows.filter((r) => toNumber(r.spend) > 0).slice(0, 12).map((r) => ({ name: r.name, spend: toNumber(r.spend), revenue: toNumber(r.reported_revenue) }))}
                   series={[{ key: 'spend', label: 'Spend', slot: 1 }, { key: 'revenue', label: 'Reported revenue', slot: 2 }]} />
@@ -118,9 +133,10 @@ export default function MarketingPage() {
           <DataTable columns={columns} rows={performance.data} rowKey={(c) => c.campaign_id ?? c.name ?? ''} loading={performance.isFetching} error={performance.error}
             onRetry={() => performance.refetch()} onRowClick={(c) => update({ tab: 'spend', campaign: c.campaign_id ?? '' })}
             empty={<EmptyState icon={<Megaphone className="size-5" />} title="No campaigns yet" description="Create a campaign, then log its daily spend." />} />
-        </TabsContent>
-        <TabsContent value="spend">
-          <SpendList campaigns={campaigns.data ?? []} onEdit={setEditingSpend} onChanged={refresh} />
+          {(state.tab === 'spend' || state.campaign) && <SpendList campaigns={campaigns.data ?? []} onEdit={setEditingSpend} onChanged={refresh} />}
+          {state.tab !== 'spend' && !state.campaign && (
+            <Button variant="outline" size="sm" onClick={() => update({ tab: 'spend' })}>Show daily spend</Button>
+          )}
         </TabsContent>
       </Tabs>
 

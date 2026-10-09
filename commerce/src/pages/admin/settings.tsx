@@ -33,7 +33,7 @@ export default function SettingsPage() {
           : 'You can view settings but not change them.'}
       />
       <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
           <TabsList>{tabs.map((t) => <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>)}</TabsList>
         </div>
         {tabs.map((t) => <TabsContent key={t.key} value={t.key} className="pt-2">{t.render()}</TabsContent>)}

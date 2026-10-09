@@ -14,6 +14,8 @@ import { useDateRange } from '@/hooks/use-date-range'
 import { useRealtimeInvalidate } from '@/hooks/use-realtime'
 import { formatPercent, toNumber } from '@/lib/format'
 import { expensesByCategory, financeOverview } from '@/services/finance'
+import { cn } from '@/lib/utils'
+import type { FinanceOverview } from '@/types/domain'
 
 export default function FinanceOverviewPage() {
   const { can } = useAuth()
@@ -55,6 +57,8 @@ export default function FinanceOverviewPage() {
             <StatCard label="Other income" value={<Money value={f.other_income} />} hint="retained advances and other" icon={<TrendingUp />} to={`/admin/finance/income${qs}`} />
           </section>
 
+          <Breakdown f={f} qs={qs} />
+
           <section>
             <h2 className="mb-2 text-sm font-medium text-muted-foreground">Balances right now</h2>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -90,6 +94,71 @@ export default function FinanceOverviewPage() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/** Gross revenue down to net profit, and how the money came in. */
+function Breakdown({ f, qs }: { f: FinanceOverview; qs: string }) {
+  const lines: Array<{ label: string; value: number; minus?: boolean; strong?: boolean; to?: string; hint?: string }> = [
+    { label: 'Gross revenue', value: toNumber(f.gross_sales) + toNumber(f.delivery_income), strong: true, hint: 'delivered orders, before discounts' },
+    { label: 'Product sales', value: toNumber(f.gross_sales) },
+    { label: 'Delivery charges collected', value: toNumber(f.delivery_income) },
+    { label: 'Discounts', value: toNumber(f.discounts), minus: true },
+    { label: 'Refunds', value: toNumber(f.refunds), minus: true, to: `/admin/finance/refunds${qs}` },
+    { label: 'Net revenue', value: toNumber(f.net_revenue), strong: true },
+    { label: 'Product cost', value: toNumber(f.cogs), minus: true },
+    { label: 'Courier charges', value: toNumber(f.courier_charges), minus: true, to: '/admin/couriers?tab=statements' },
+    { label: 'COD fees', value: toNumber(f.courier_cod_fees), minus: true },
+    { label: 'Return charges', value: toNumber(f.return_charges), minus: true },
+    { label: 'Marketing (ads)', value: toNumber(f.marketing_costs), minus: true, to: '/admin/marketing' },
+    { label: 'SMS', value: toNumber(f.sms_costs), minus: true, to: '/admin/sms' },
+    { label: 'Payment gateway fees', value: toNumber(f.payment_fees), minus: true },
+    { label: 'Other expenses', value: toNumber(f.other_expenses), minus: true, to: `/admin/finance/expenses${qs}` },
+    { label: 'Other income', value: toNumber(f.other_income), to: `/admin/finance/income${qs}` },
+    { label: 'Net profit', value: toNumber(f.net_profit), strong: true },
+  ]
+  const collected = toNumber(f.cod_collected) + toNumber(f.online_collected)
+  return (
+    <div className="grid gap-4 lg:grid-cols-5">
+      <Card className="lg:col-span-3">
+        <CardHeader><CardTitle className="text-sm">From revenue to profit</CardTitle></CardHeader>
+        <CardContent>
+          <dl className="divide-y text-sm">
+            {lines.map((l) => (
+              <div key={l.label} className={cn('flex items-center justify-between gap-3 py-1.5', l.strong && 'font-medium')}>
+                <dt className={cn(!l.strong && 'pl-3 text-muted-foreground')}>
+                  {l.to ? <Link to={l.to} className="hover:underline">{l.label}</Link> : l.label}
+                  {l.hint && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{l.hint}</span>}
+                </dt>
+                <dd className={cn('tabular-nums', l.label === 'Net profit' && (l.value < 0 ? 'text-red-600' : 'text-emerald-600'))}>
+                  {l.minus && l.value > 0 ? '−' : ''}<Money value={l.value} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader><CardTitle className="text-sm">How customers paid</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          <div className="flex justify-between"><span className="text-muted-foreground">Order value (not cancelled)</span><Money value={f.order_value} /></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Cash on delivery collected</span><Money value={f.cod_collected} /></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Paid online (bKash, Nagad, gateways)</span><Money value={f.online_collected} /></div>
+          {collected > 0 && (
+            <div>
+              <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+                <div className="bg-chart-1" style={{ width: `${(100 * toNumber(f.cod_collected)) / collected}%` }} />
+                <div className="bg-chart-3" style={{ width: `${(100 * toNumber(f.online_collected)) / collected}%` }} />
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {formatPercent((100 * toNumber(f.cod_collected)) / collected)} cash on delivery · {formatPercent((100 * toNumber(f.online_collected)) / collected)} online
+              </p>
+            </div>
+          )}
+          <div className="flex justify-between border-t pt-3"><span className="text-muted-foreground">Still with couriers (COD receivable)</span><Money value={f.cod_receivable} /></div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

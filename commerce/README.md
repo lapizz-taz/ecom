@@ -149,6 +149,16 @@ Seeded logins (password `Password123!` for all):
        body := '{"action": "sync_all"}'::jsonb)
    $$);
 
+   -- Meta Ads: spend, impressions, clicks and conversions for the last 3 days, every 3 hours, only while connected.
+   select cron.schedule('meta-ads-sync', '17 */3 * * *', $$
+     select net.http_post(
+       url := 'https://<ref>.supabase.co/functions/v1/meta-ads',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       body := '{"action": "sync", "days": 3}'::jsonb)
+     where (select (value ->> 'connected')::boolean from public.settings where key = 'meta_ads')
+   $$);
+
    -- Finishes bKash / PayStation payments whose customer paid but never came back to the store.
    -- Calls the function only while such a payment is waiting.
    select cron.schedule('payments-reconcile', '*/5 * * * *', $$
@@ -170,6 +180,10 @@ Seeded logins (password `Password123!` for all):
    - SMS: connect the provider on the **SMS** page (Alpha SMS / sms.net.bd, BulkSMSBD, SSL Wireless, or any gateway with
      an HTTP send URL). The key is tested (balance check where the provider has one) and stored in Vault; nothing is
      configured as a function secret. SSL Wireless only accepts whitelisted server IPs.
+   - Meta Ads: **Ads → Meta Ads → Connect**. Paste a long-lived token (Business Settings → System users → Generate token)
+     with `ads_read` (and `pages_show_list` for the Page / Instagram names), pick the ad account; it is tested, stored in
+     Vault and the last 30 days are synced. Set the exchange rate (ad account currency → yours) and VAT % there.
+     Paste the URL parameters from **Ads → Tracking setup** into every ad so orders carry the campaign, ad set and ad.
    - Pathao and Steadfast status webhooks: **Couriers → Connections → Webhook** shows the callback URL
      (`…/functions/v1/courier-webhook?courier=<id>&provider=pathao|steadfast`) and a secret to paste into the courier's
      panel. Pathao sends it in `X-PATHAO-Signature`, Steadfast as `Authorization: Bearer …`; it is kept in Vault.
@@ -180,7 +194,9 @@ Seeded logins (password `Password123!` for all):
 | --- | --- |
 | `ALLOWED_ORIGINS`, `STOREFRONT_URL` | CORS for public functions; links in emails and payment redirects. Without `STOREFRONT_URL` the *Website* from **Settings → Store** is used |
 | `CRON_SECRET` | Authenticates pg_cron calls to `notifications-dispatch`, `courier` and `payment-webhook?reconcile=1`. `payment-webhook` and `notifications-dispatch` also accept the `cron_secret` the migrations keep in Vault, so their jobs need no extra secret |
-| `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
+| `BDCOURIER_API_KEY`, `BDCOURIER_API_URL` (optional) | BD Courier (api.bdcourier.com) key for the courier history check, used when no key is saved in Settings |
+| `META_APP_SECRET` (optional) | Adds `appsecret_proof` to Meta Graph API calls (recommended when the app requires it). `META_GRAPH_VERSION` overrides the API version (default v23.0) |
+| `COURIER_HISTORY_API_KEY`, `COURIER_HISTORY_URL` (optional) | Fallback LLCG key for the courier history check. Normally it is connected in **Settings → Fraud & advance → Courier history check**: the key is tested with a real lookup, then stored encrypted in Supabase Vault and never returned to a browser |
 | `FRAUD_API_URL` (with `{phone}`), `FRAUD_API_KEY`, `FRAUD_API_AUTH_HEADER`, `FRAUD_API_AUTH_SCHEME` | Optional other courier-history API with configurable field mapping |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` (all optional) | Fallback bKash Merchant API (tokenized checkout) credentials. Normally connected in **Settings → Payments**: tested by granting a token, then stored encrypted in Supabase Vault |
 | `PAYSTATION_MERCHANT_ID`, `PAYSTATION_PASSWORD`, `PAYSTATION_TOKEN`, `PAYSTATION_BASE_URL` (all optional) | Fallback PayStation credentials, likewise normally connected in **Settings → Payments** |
@@ -291,6 +307,16 @@ Messages tab and the System log. Delivery reports are fetched where the provider
 SMS posts its cost to Finance (category *SMS*) against its order — the estimate from *Cost per SMS* first, then one
 adjustment when the provider reports the actual charge — so don't add SMS top-ups as expenses. A problem while
 queueing a message is written to the System log and never stops the order change itself.
+
+**Ads & attribution.** Every order keeps where it came from (first and last touch: UTM tags, fbclid / gclid / ttclid,
+referrer, landing page). An order belongs to a Meta campaign, ad set or ad only when its link carried that id; orders without
+tracking data stay *Unknown* and never get ad spend. Meta spend is synced per ad, day and placement (Facebook, Instagram,
+Messenger…) and converted with the rate and VAT set on the Meta Ads tab; it posts to *Advertising* in Finance. The
+*Attribution & profit* report groups orders by source, medium, campaign, ad set, ad, day or product and shows orders,
+approved, shipped, delivered, cancelled and returned counts, delivered revenue, ad spend, courier delivery / COD / return
+charges, the cost of the goods kept, net profit, cost per (delivered) order and ROAS — all from real orders and deliveries.
+Gateway fees: set *bKash / PayStation fee you pay (%)* under **Settings → Payments**; each successful payment posts it to
+*Payment fees*.
 
 **Finance.** Product revenue, delivery income and cost of goods are posted when an order is delivered (accrual). Advances, COD
 settlements and online payments are cash movements, not revenue. Refunds on delivered orders reduce revenue; refunds of

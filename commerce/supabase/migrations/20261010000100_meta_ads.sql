@@ -607,12 +607,19 @@ begin
     join public.finance_categories c on c.id = ft.category_id
     where ft.order_id in (select order_id from o) and c.code in ('COURIER', 'COD_FEES', 'RETURNS')
     group by ft.order_id
+  ), goods as (
+    -- cost of the goods the customer kept (returned units come back to stock)
+    select oi.order_id, sum(oi.unit_cost * greatest(oi.quantity - coalesce(oi.returned_quantity, 0), 0)) as product_cost
+    from public.order_items oi
+    where oi.order_id in (select order_id from o)
+    group by oi.order_id
   ), ok as (
     -- one row per order and group (products can put an order in several groups)
     select o.*, coalesce(k.delivery_cost, 0) as delivery_cost, coalesce(k.return_cost, 0) as return_cost,
-      g.key, g.label, g.revenue_part
+      coalesce(gd.product_cost, 0) as product_cost, g.key, g.label, g.revenue_part, g.cost_part
     from o
     left join costs k on k.order_id = o.order_id
+    left join goods gd on gd.order_id = o.order_id
     cross join lateral (
       select case p_group
                when 'source' then o.source when 'medium' then o.medium
@@ -626,10 +633,11 @@ begin
                when 'adset' then coalesce(o.adset_name, case when o.adset_key is null then 'No ad set' else 'Ad set ' || o.adset_key end)
                when 'ad' then coalesce(o.ad_name, case when o.ad_key is null then 'No ad' else 'Ad ' || o.ad_key end)
                else o.d::text end as label,
-             null::numeric as revenue_part
+             null::numeric as revenue_part, null::numeric as cost_part
       where p_group <> 'product'
       union all
-      select oi.product_id::text, max(oi.product_name), sum(oi.line_total)
+      select oi.product_id::text, max(oi.product_name), sum(oi.line_total),
+             sum(oi.unit_cost * greatest(oi.quantity - coalesce(oi.returned_quantity, 0), 0))
       from public.order_items oi where p_group = 'product' and oi.order_id = o.order_id
       group by oi.product_id
     ) g
@@ -660,6 +668,7 @@ begin
       count(distinct order_id) filter (where is_returned) as returned,
       sum(coalesce(revenue_part, total_amount)) filter (where not is_cancelled) as order_value,
       sum(coalesce(revenue_part, total_amount)) filter (where is_delivered) as revenue,
+      sum(coalesce(cost_part, product_cost)) filter (where is_delivered) as product_cost,
       sum(delivery_cost) filter (where p_group <> 'product') as delivery_cost,
       sum(return_cost) filter (where p_group <> 'product') as return_cost
     from ok group by key
@@ -668,7 +677,7 @@ begin
       coalesce(g.orders, 0) as orders, coalesce(g.approved, 0) as approved, coalesce(g.shipped, 0) as shipped,
       coalesce(g.delivered, 0) as delivered, coalesce(g.cancelled, 0) as cancelled, coalesce(g.returned, 0) as returned,
       coalesce(g.order_value, 0) as order_value, coalesce(g.revenue, 0) as revenue,
-      coalesce(g.delivery_cost, 0) as delivery_cost, coalesce(g.return_cost, 0) as return_cost,
+      coalesce(g.product_cost, 0) as product_cost, coalesce(g.delivery_cost, 0) as delivery_cost, coalesce(g.return_cost, 0) as return_cost,
       s.spend, s.impressions, s.clicks
     from g full join s on s.key = g.key
   )
@@ -680,7 +689,9 @@ begin
         'cancelled', cancelled, 'returned', returned, 'order_value', order_value, 'revenue', revenue,
         'delivery_cost', delivery_cost, 'return_cost', return_cost, 'ad_spend', spend,
         'impressions', impressions, 'clicks', clicks,
+        'product_cost', product_cost,
         'net_revenue', revenue - delivery_cost - return_cost - coalesce(spend, 0),
+        'net_profit', revenue - product_cost - delivery_cost - return_cost - coalesce(spend, 0),
         'cost_per_order', case when spend is not null and orders > 0 then round(spend / orders, 2) end,
         'cost_per_delivered', case when spend is not null and delivered > 0 then round(spend / delivered, 2) end,
         'roas', case when spend > 0 then round(revenue / spend, 2) end)
@@ -696,8 +707,9 @@ begin
         'paid', count(distinct order_id) filter (where is_paid))
       from o),
     'spend', case when v_spend_ok then (select coalesce(sum(spend), 0) from s) end,
-    'costs', (select jsonb_build_object('delivery', coalesce(sum(delivery_cost), 0), 'returns', coalesce(sum(return_cost), 0))
-              from (select distinct order_id, delivery_cost, return_cost from ok) x)
+    'costs', (select jsonb_build_object('delivery', coalesce(sum(delivery_cost), 0), 'returns', coalesce(sum(return_cost), 0),
+                'products', coalesce(sum(product_cost) filter (where is_delivered), 0))
+              from (select distinct order_id, delivery_cost, return_cost, product_cost, is_delivered from ok) x)
   ) into v_result;
   return v_result;
 end;

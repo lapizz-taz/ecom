@@ -48,9 +48,9 @@ export interface AttributionFilters { source?: string; medium?: string; campaign
 export interface AttributionRow {
   key: string; label: string
   orders: number; approved: number; shipped: number; delivered: number; cancelled: number; returned: number
-  order_value: number; revenue: number; delivery_cost: number; return_cost: number
+  order_value: number; revenue: number; product_cost: number; delivery_cost: number; return_cost: number
   ad_spend: number | null; impressions: number | null; clicks: number | null
-  net_revenue: number; cost_per_order: number | null; cost_per_delivered: number | null; roas: number | null
+  net_revenue: number; net_profit: number; cost_per_order: number | null; cost_per_delivered: number | null; roas: number | null
 }
 export interface AttributionReport {
   group: AttributionGroup
@@ -58,7 +58,7 @@ export interface AttributionReport {
   rows: AttributionRow[]
   totals: { orders: number; delivered: number; cancelled: number; returned: number; revenue: number; order_value: number; unattributed: number; paid: number }
   spend: number | null
-  costs: { delivery: number; returns: number }
+  costs: { delivery: number; returns: number; products: number }
 }
 
 export async function attributionReport(from: string, to: string, group: AttributionGroup, filters: AttributionFilters) {

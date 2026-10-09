@@ -40,6 +40,10 @@ export function PaymentSettings() {
           <TextSetting s={s} path={['providers', 'paystation', 'label']} label="PayStation button at checkout" placeholder="Nagad, Rocket or card" />
           <SwitchSetting s={s} path={['providers', 'paystation', 'pay_with_charge']} label="Customer pays the PayStation fee"
             hint="Off: the store absorbs the gateway charge" />
+          <NumberSetting s={s} path={['providers', 'bkash', 'fee_percent']} label="bKash fee you pay (%)" min={0} max={20} step={0.01}
+            hint="Posted to Payment fees in Finance for every bKash payment, e.g. 1.5" />
+          <NumberSetting s={s} path={['providers', 'paystation', 'fee_percent']} label="PayStation fee you pay (%)" min={0} max={20} step={0.01}
+            hint="Leave 0 when the customer pays the fee" />
         </div>
 
         <div className="rounded-lg border p-4">
