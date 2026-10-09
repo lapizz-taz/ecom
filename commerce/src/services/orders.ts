@@ -26,6 +26,62 @@ export interface OrderFilters {
   review_status?: string
   stage?: string
   follow_up_due?: boolean
+  tags?: string[]
+  employee?: string
+  product_code?: string
+  product_name?: string
+  /** With a product filter: only orders that contain nothing else. */
+  only_product?: boolean
+  qty_min?: number
+  qty_max?: number
+  customer_orders_min?: number
+  customer_orders_max?: number
+  success_min?: number
+  success_max?: number
+  web_source?: string
+  channel?: string
+  reference?: string
+  uploaded?: 'yes' | 'no'
+}
+
+export interface OrderFilterOptions {
+  tags: Array<{ name: string; color: string }>
+  employees: Array<{ id: string; name: string }>
+  sources: string[]
+  channels: string[]
+}
+
+export async function orderFilterOptions(): Promise<OrderFilterOptions> {
+  const { data, error } = await supabase.rpc('admin_order_filter_options')
+  if (error) throw error
+  return fromJson<OrderFilterOptions>(data)
+}
+
+export async function setOrderTags(ids: string[], add: string[], remove: string[] = []) {
+  const { data, error } = await supabase.rpc('order_set_tags', { p_order_ids: ids, p_add: add, p_remove: remove })
+  if (error) throw error
+  return data
+}
+
+export interface CourierLineRecord {
+  courier: string; name?: string; orders: number; delivered: number; cancelled: number
+  success_ratio?: number | null; rate_only?: boolean; parcel_range?: string | null
+}
+export interface OrderCustomerRecord {
+  ours: { total: number; delivered: number; cancelled: number; returned: number; in_progress: number; by_stage: Record<string, number> | null }
+  check: {
+    id: string; checked_at: string; provider: string; rate: number | null; tier: string | null
+    total: number; delivered: number; cancelled: number
+    couriers: CourierLineRecord[] | null
+    verdict: { label?: string | null; reasons?: string[] } | null
+  } | null
+  shipment: { courier: string; provider: string; tracking_number: string | null; consignment_id: string | null; cod_amount: number | null; uploaded: boolean; tracking_url: string | null } | null
+}
+
+export async function orderCustomerRecord(orderId: string): Promise<OrderCustomerRecord> {
+  const { data, error } = await supabase.rpc('admin_order_customer_record', { p_order_id: orderId })
+  if (error) throw error
+  return fromJson<OrderCustomerRecord>(data)
 }
 
 export async function searchOrders(filters: OrderFilters, sort = 'created_at', direction: 'asc' | 'desc' = 'desc', limit = 25, offset = 0): Promise<Paged<OrderListItem>> {

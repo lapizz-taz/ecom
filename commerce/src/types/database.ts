@@ -2891,6 +2891,24 @@ export type Database = {
         }
         Relationships: []
       }
+      order_tags: {
+        Row: {
+          name: string
+          color: string
+          created_at: string
+        }
+        Insert: {
+          name: string
+          color?: string
+          created_at?: string
+        }
+        Update: {
+          name?: string
+          color?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           id: string
@@ -2969,6 +2987,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
         Insert: {
           id?: string
@@ -3047,6 +3066,7 @@ export type Database = {
           assigned_at?: string | null
           client_ip?: string | null
           user_agent?: string | null
+          tags?: string[]
         }
         Update: {
           id?: string
@@ -3125,6 +3145,7 @@ export type Database = {
           assigned_at?: string | null
           client_ip?: string | null
           user_agent?: string | null
+          tags?: string[]
         }
         Relationships: [
           {
@@ -4636,6 +4657,14 @@ export type Database = {
         }
         Returns: string
       }
+      _tracking_url: {
+        Args: {
+          p_provider: string
+          p_template: string
+          p_tracking: string
+        }
+        Returns: string
+      }
       ad_account_update: {
         Args: {
           p_id: string
@@ -4902,6 +4931,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       admin_create_production_order: {
@@ -5011,6 +5041,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       admin_duplicate_order: {
@@ -5094,6 +5125,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       admin_fraud_queue: {
@@ -5229,7 +5261,18 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
+      }
+      admin_order_customer_record: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
+      }
+      admin_order_filter_options: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       admin_order_queue_counts: {
         Args: Record<PropertyKey, never>
@@ -5294,6 +5337,17 @@ export type Database = {
           is_active: boolean
           created_at: string
           updated_at: string
+        }
+      }
+      admin_save_order_tag: {
+        Args: {
+          p_name: string
+          p_color: string
+        }
+        Returns: {
+          name: string
+          color: string
+          created_at: string
         }
       }
       admin_save_product: {
@@ -5460,6 +5514,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       admin_set_order_source: {
@@ -5669,6 +5724,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       admin_update_setting: {
@@ -5768,6 +5824,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       apply_shipment_status: {
@@ -6110,6 +6167,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       get_my_access: {
@@ -6178,6 +6236,14 @@ export type Database = {
           p_event: Database["public"]["Enums"]["notification_event"]
         }
         Returns: string
+      }
+      order_set_tags: {
+        Args: {
+          p_order_ids: string[]
+          p_add?: string[]
+          p_remove?: string[]
+        }
+        Returns: number
       }
       order_stage: {
         Args: {
@@ -6276,6 +6342,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       production_action: {
@@ -6524,6 +6591,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       record_purchase_payment: {
@@ -6770,6 +6838,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       retry_courier_webhook: {
@@ -7091,6 +7160,7 @@ export type Database = {
           assigned_at: string | null
           client_ip: string | null
           user_agent: string | null
+          tags: string[]
         }
       }
       update_my_profile: {

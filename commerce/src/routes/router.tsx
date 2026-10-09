@@ -58,6 +58,7 @@ export const router = createBrowserRouter([
       admin('orders/auto-pick', () => import('@/pages/admin/auto-pick'), 'orders.view'),
       admin('orders/call-center', () => import('@/pages/admin/call-center'), 'orders.view'),
       admin('orders/dashboard', () => import('@/pages/admin/orders-dashboard'), 'orders.view'),
+      admin('orders/:id/edit', () => import('@/pages/admin/order-edit'), 'orders.update'),
       admin('orders/:id', () => import('@/pages/admin/order-detail'), 'orders.view'),
       admin('orders/:id/invoice', () => import('@/pages/admin/order-print'), 'orders.view'),
       admin('orders/:id/packing-slip', () => import('@/pages/admin/order-print'), 'orders.view'),

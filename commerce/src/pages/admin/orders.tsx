@@ -1,8 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlarmClock, Check, ChevronDown, Copy, Download, Filter, Layers, MessageCircle, PackageCheck, Phone, Plus, Printer, ShieldAlert, ShoppingBag, Truck, Wallet,
+  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer, ShieldAlert,
+  ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { Can } from '@/components/common/permission-gate'
@@ -25,6 +26,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
+import { EMPTY_FILTERS, type FilterValues, filtersFromValues, OrderFilterButton } from '@/features/orders/order-filter-panel'
 import { paidBadge } from '@/features/orders/order-source-card'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -34,10 +37,9 @@ import {
   NEEDS_REASON, ORDER_STAGES, ORDER_STATUS, type OrderStage, PAYMENT_METHOD, PAYMENT_STATUS, RISK_LEVEL, STAGE,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
-import { bookShipments, listCouriers } from '@/services/couriers'
 import {
-  approveOrders, bulkTransition, exportOrders, fulfillmentSummary, listCheckoutLeads, listReviewStatuses, type OrderFilters, queueCounts,
-  searchOrders, setWebOrderStatus, updateCheckoutLead,
+  approveOrders, bulkTransition, exportOrders, fulfillmentSummary, listCheckoutLeads, listReviewStatuses, type OrderFilters, orderFilterOptions,
+  queueCounts, searchOrders, setOrderTags, setWebOrderStatus, updateCheckoutLead,
 } from '@/services/orders'
 import type { CheckoutLead, OrderListItem, OrderStatus, ReviewStatus } from '@/types/domain'
 
@@ -67,9 +69,10 @@ export function OrdersPage({ view }: { view: View }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [state, update] = useUrlState({
-    tab: view === 'web' ? 'PROCESSING' : 'all', q: '', payment_status: '', risk_level: '', source: '', district: '', date_from: '', date_to: '',
-    sort: 'created_at', dir: 'desc', page: '1', print: '', due: '', dupes: '', advance: '',
+    ...EMPTY_FILTERS,
+    tab: view === 'web' ? 'PROCESSING' : 'all', q: '', sort: 'created_at', dir: 'desc', page: '1', print: '', due: '', dupes: '', advance: '',
   })
+  const filterValues = useMemo(() => Object.fromEntries(Object.keys(EMPTY_FILTERS).map((k) => [k, state[k as keyof FilterValues]])) as FilterValues, [state])
   const page = Number(state.page) || 1
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkTarget, setBulkTarget] = useState<OrderStatus | null>(null)
@@ -97,8 +100,8 @@ export function OrdersPage({ view }: { view: View }) {
     if (view === 'approved') {
       const approved = counts.data?.approved ?? {}
       return [
-        { key: 'all', label: 'All', count: Object.values(approved).reduce((a, b) => a + (b ?? 0), 0), hint: null },
         ...ORDER_STAGES.map((s) => ({ key: s.key, label: s.label, count: approved[s.key] ?? 0, hint: s.hint })),
+        { key: 'all', label: 'All', count: Object.values(approved).reduce((a, b) => a + (b ?? 0), 0), hint: null },
       ]
     }
     return []
@@ -107,7 +110,7 @@ export function OrdersPage({ view }: { view: View }) {
   const followUpTab = view === 'web' && statusMeta.get(state.tab)?.needs_follow_up
   const sort = followUpTab && state.sort === 'created_at' ? 'follow_up_at' : state.sort
   const dir = followUpTab && state.sort === 'created_at' ? 'asc' : state.dir
-  const filters: OrderFilters = useMemo(() => ({
+  const baseFilters = useMemo((): OrderFilters => ({
     q: state.q || undefined,
     queue: view === 'all' ? undefined : view,
     review_status: view === 'web' && !['all', 'incomplete'].includes(state.tab) ? state.tab : undefined,
@@ -115,14 +118,13 @@ export function OrdersPage({ view }: { view: View }) {
     follow_up_due: state.due === '1' || undefined,
     duplicates: state.dupes === '1' || undefined,
     statuses: state.print === '1' ? ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP'] : state.advance === '1' ? ['ADVANCE_REQUIRED'] : undefined,
-    label: state.print === '1' ? 'not_printed' : undefined,
-    payment_status: state.payment_status || undefined,
-    risk_level: state.risk_level || undefined,
-    source: state.source || undefined,
-    district: state.district || undefined,
-    date_from: state.date_from || undefined,
-    date_to: state.date_to || undefined,
-  }), [state, view])
+  }), [state.q, state.tab, state.due, state.dupes, state.print, state.advance, view])
+  const withValues = (values: FilterValues): OrderFilters => {
+    const f = { ...baseFilters, ...filtersFromValues(values) }
+    if (state.print === '1') f.label = 'not_printed'
+    return f
+  }
+  const filters = useMemo(() => withValues(filterValues), [baseFilters, filterValues]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const showLeads = view === 'web' && state.tab === 'incomplete'
   const orders = useQuery({
@@ -137,6 +139,18 @@ export function OrdersPage({ view }: { view: View }) {
     void queryClient.invalidateQueries({ queryKey: ['orders'] })
     void queryClient.invalidateQueries({ queryKey: ['fulfillment-summary'] })
   }
+  const tagOptions = useQuery({ queryKey: ['order-filter-options'], queryFn: orderFilterOptions, staleTime: 60_000, enabled: can('orders.update') })
+  const tagOrders = useMutation({
+    mutationFn: ({ ids, add, remove }: { ids: string[]; add: string[]; remove?: string[] }) => setOrderTags(ids, add, remove),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['orders'] })
+      void queryClient.invalidateQueries({ queryKey: ['order-filter-options'] })
+    },
+  })
+  const tagCell = (o: OrderListItem) => (
+    <TagsCell tags={o.tags ?? []} known={(tagOptions.data?.tags ?? []).map((t) => t.name)} canEdit={can('orders.update')}
+      onChange={(add, remove) => tagOrders.mutate({ ids: [o.id], add, remove })} />
+  )
   const bulk = useMutation({
     mutationFn: ({ to, note }: { to: OrderStatus; note: string }) => bulkTransition([...selected], to, note),
     onSuccess: (r) => { reportBatch(r.updated, r.failed, 'moved'); refresh() },
@@ -189,12 +203,61 @@ export function OrdersPage({ view }: { view: View }) {
     setSelected(new Set())
     update({ tab, print: '', due: '', dupes: '', advance: '' })
   }
-  const activeFilters = ['payment_status', 'risk_level', 'source', 'district', 'date_from', 'date_to'].filter((k) => state[k as keyof typeof state]).length
   const stageMoves = view === 'approved' && state.tab !== 'all'
     ? ORDER_STAGES.find((s) => s.key === state.tab)?.moves ?? []
     : ALL_MOVES
 
-  const columns: Column<OrderListItem>[] = [
+  const columns: Column<OrderListItem>[] = view === 'approved' ? [
+    {
+      key: 'date', header: 'Date',
+      cell: (o) => (
+        <div className="whitespace-nowrap text-xs">
+          <p className="font-medium text-foreground" title={formatDateTime(o.created_at)}>{formatDateTime(o.created_at)}</p>
+          {o.updated_at && <p className="text-muted-foreground">Updated {timeAgo(o.updated_at)}</p>}
+        </div>
+      ),
+    },
+    { key: 'order', header: 'Invoice', primary: true, cell: (o) => <InvoiceCell o={o} /> },
+    { key: 'customer', header: 'Customer', cell: (o) => <CustomerCell o={o} /> },
+    { key: 'note', header: 'Note', hideOnMobile: true, cell: (o) => <NoteCell o={o} /> },
+    { key: 'products', header: 'Products', cell: (o) => <ProductsCell o={o} /> },
+    { key: 'tags', header: 'Tags', hideOnMobile: true, cell: tagCell },
+    {
+      key: 'print', header: 'Print', align: 'center',
+      cell: (o) => o.label_printed_at
+        ? <span title={`Printed ${o.label_print_count}× · last ${formatDateTime(o.label_printed_at)}`} className="inline-flex text-emerald-600"><Check className="size-5" aria-label="Printed" /></span>
+        : <span className="text-muted-foreground" aria-label="Not printed">—</span>,
+    },
+    {
+      key: 'total', header: 'Total', align: 'right',
+      cell: (o) => (
+        <div>
+          <Money value={o.total_amount} className="font-medium" />
+          {Number(o.cod_amount) > 0 && Number(o.cod_amount) !== Number(o.total_amount) && <p className="text-xs text-muted-foreground">COD <Money value={o.cod_amount} /></p>}
+          {o.payment_status !== 'UNPAID' && <p className="text-xs text-muted-foreground">{PAYMENT_STATUS[o.payment_status].label}</p>}
+        </div>
+      ),
+    },
+    { key: 'upload', header: 'Upload', cell: (o) => <UploadCell o={o} /> },
+    { key: 'user', header: 'User', hideOnMobile: true, cell: (o) => <span className="text-xs">{o.handled_by ?? '—'}</span> },
+    {
+      key: 'actions', header: '', align: 'right',
+      cell: (o) => (
+        <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {can('orders.update') && (
+            <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Edit order">
+              <Link to={`/admin/orders/${o.id}/edit`} aria-label={`Edit ${o.order_number}`}><Pencil /></Link>
+            </Button>
+          )}
+          {can('orders.override') && (
+            <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Super Edit — override status or courier details">
+              <Link to={`/admin/orders/super-edit?order=${o.id}`} aria-label={`Super Edit ${o.order_number}`}><ShieldAlert /></Link>
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ] : [
     {
       key: 'order', header: 'Order', primary: true,
       cell: (o) => (
@@ -214,7 +277,7 @@ export function OrdersPage({ view }: { view: View }) {
         </div>
       ),
     },
-    ...(view === 'web' ? [] : [{ key: 'date', header: view === 'approved' ? 'Placed' : 'Date', cell: (o: OrderListItem) => <span title={formatDateTime(o.created_at)} className="text-muted-foreground">{timeAgo(o.created_at)}</span> }]),
+    ...(view === 'web' ? [] : [{ key: 'date', header: 'Date', cell: (o: OrderListItem) => <span title={formatDateTime(o.created_at)} className="text-muted-foreground">{timeAgo(o.created_at)}</span> }]),
     {
       key: 'customer', header: 'Customer',
       cell: (o) => <div className="max-w-48"><p className="truncate">{o.customer_name}</p><p className="text-xs text-muted-foreground">{o.customer_phone} · {o.shipping_district}</p></div>,
@@ -225,6 +288,7 @@ export function OrdersPage({ view }: { view: View }) {
       { key: 'items', header: 'Items', hideOnMobile: true, cell: (o) => <p className="line-clamp-2 max-w-44 text-xs" title={o.items_preview ?? ''}>{o.items_preview ?? `${o.item_count} item(s)`}</p> },
       { key: 'history', header: 'Success Rate', cell: (o) => <SuccessRateCell h={o.courier_history} /> },
       { key: 'source', header: 'Source', hideOnMobile: true, cell: (o) => <SourceCell a={o.attribution} /> },
+      { key: 'tags', header: 'Tags', hideOnMobile: true, cell: tagCell },
       { key: 'call', header: 'Call', cell: (o) => <CallCell o={o} meta={statusMeta.get(o.review_status)} /> },
       { key: 'total', header: 'Total', align: 'right', cell: (o) => <Money value={o.total_amount} className="font-medium" /> },
       {
@@ -236,30 +300,22 @@ export function OrdersPage({ view }: { view: View }) {
         ),
       },
     )
-  } else {
+  } else if (view === 'all') {
     columns.push(
       { key: 'stage', header: 'Stage', cell: (o) => <StageCell o={o} meta={statusMeta.get(o.review_status)} /> },
       { key: 'payment', header: 'Payment', cell: (o) => <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} /> },
-      { key: 'courier', header: 'Courier', hideOnMobile: true, cell: (o) => o.courier_name ? <span className="text-xs">{o.courier_name}<br /><span className="text-muted-foreground">{o.tracking_number}</span></span> : <span className="text-muted-foreground">—</span> },
+      { key: 'courier', header: 'Courier', hideOnMobile: true, cell: (o) => <UploadCell o={o} /> },
+      { key: 'risk', header: 'Risk', cell: (o) => <StatusBadge value={o.risk_level} map={RISK_LEVEL} />, hideOnMobile: true },
+      {
+        key: 'total', header: 'Total', align: 'right',
+        cell: (o) => (
+          <div>
+            <Money value={o.total_amount} className="font-medium" />
+            {Number(o.cod_amount) > 0 && Number(o.cod_amount) !== Number(o.total_amount) && <p className="text-xs text-muted-foreground">COD <Money value={o.cod_amount} /></p>}
+          </div>
+        ),
+      },
     )
-    if (view === 'all') columns.push({ key: 'risk', header: 'Risk', cell: (o) => <StatusBadge value={o.risk_level} map={RISK_LEVEL} />, hideOnMobile: true })
-    columns.push({
-      key: 'total', header: 'Total', align: 'right',
-      cell: (o) => (
-        <div>
-          <Money value={o.total_amount} className="font-medium" />
-          {Number(o.cod_amount) > 0 && Number(o.cod_amount) !== Number(o.total_amount) && <p className="text-xs text-muted-foreground">COD <Money value={o.cod_amount} /></p>}
-        </div>
-      ),
-    })
-    if (view === 'approved' && can('orders.override')) columns.push({
-      key: 'override', header: '', align: 'right',
-      cell: (o) => (
-        <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Super Edit — override status or courier details">
-          <Link to={`/admin/orders/super-edit?order=${o.id}`} onClick={(e) => e.stopPropagation()} aria-label={`Super Edit ${o.order_number}`}><ShieldAlert /></Link>
-        </Button>
-      ),
-    })
   }
 
   const chips: Array<{ key: string; label: string; icon: typeof Truck; value: number | undefined; active: boolean; alert?: boolean; onClick: () => void }> =
@@ -326,27 +382,11 @@ export function OrdersPage({ view }: { view: View }) {
         <SearchInput value={state.q} onChange={(q) => update({ q })} placeholder={showLeads ? 'Phone or name' : 'Order #, phone, name, tracking, SKU, address'} className="sm:w-96" />
         {!showLeads && (
           <>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm"><Filter /> Filters{activeFilters > 0 && <Badge variant="secondary">{activeFilters}</Badge>}</Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="grid w-80 gap-3">
-                <FilterSelect label="Payment" value={state.payment_status} onChange={(v) => update({ payment_status: v })}
-                  options={Object.entries(PAYMENT_STATUS).map(([k, v]) => ({ value: k, label: v.label }))} />
-                <FilterSelect label="Risk level" value={state.risk_level} onChange={(v) => update({ risk_level: v })}
-                  options={Object.entries(RISK_LEVEL).map(([k, v]) => ({ value: k, label: v.label }))} />
-                <FilterSelect label="Placed by" value={state.source} onChange={(v) => update({ source: v })}
-                  options={[{ value: 'STOREFRONT', label: 'Website' }, { value: 'ADMIN', label: 'Staff' }]} />
-                <div className="grid gap-1"><span className="text-xs text-muted-foreground">District</span>
-                  <Input className="h-8" defaultValue={state.district} onBlur={(e) => update({ district: e.target.value.trim() })} placeholder="e.g. Dhaka" />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="grid gap-1"><span className="text-xs text-muted-foreground">From</span><Input type="date" className="h-8" value={state.date_from} onChange={(e) => update({ date_from: e.target.value })} /></div>
-                  <div className="grid gap-1"><span className="text-xs text-muted-foreground">To</span><Input type="date" className="h-8" value={state.date_to} onChange={(e) => update({ date_to: e.target.value })} /></div>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => update({ payment_status: '', risk_level: '', source: '', district: '', date_from: '', date_to: '' })}>Clear filters</Button>
-              </PopoverContent>
-            </Popover>
+            <OrderFilterButton view={view} values={filterValues}
+              onApply={(v) => update(v)}
+              incomplete={showLeads}
+              onIncomplete={view === 'web' ? (on) => selectTab(on ? 'incomplete' : 'PROCESSING') : undefined}
+              countFor={async (v) => (await searchOrders(withValues(v), 'created_at', 'desc', 1, 0)).total} />
             <Select value={`${state.sort}:${state.dir}`} onValueChange={(v) => { const [s, d] = v.split(':'); update({ sort: s, dir: d }) }}>
               <SelectTrigger size="sm" className="w-44" aria-label="Sort"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -354,6 +394,8 @@ export function OrdersPage({ view }: { view: View }) {
                 <SelectItem value="created_at:asc">Oldest first</SelectItem>
                 <SelectItem value="total_amount:desc">Highest value</SelectItem>
                 <SelectItem value="total_amount:asc">Lowest value</SelectItem>
+                {view === 'web' && <SelectItem value="success_rate:desc">Best success rate</SelectItem>}
+                {view === 'web' && <SelectItem value="success_rate:asc">Lowest success rate</SelectItem>}
               </SelectContent>
             </Select>
           </>
@@ -389,6 +431,10 @@ export function OrdersPage({ view }: { view: View }) {
                   </Select>
                 )}
               </>
+            )}
+            {can('orders.update') && (
+              <BulkTagButton known={(tagOptions.data?.tags ?? []).map((t) => t.name)}
+                onAdd={(tag) => tagOrders.mutate({ ids: [...selected], add: [tag] }, { onSuccess: () => toast.success(`Tagged ${selected.size} order(s) "${tag}"`) })} />
             )}
             <Button variant="ghost" size="sm" className="rounded-full" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
@@ -714,61 +760,156 @@ function IncompleteCheckouts({ q }: { q: string }) {
   )
 }
 
-/** Books the selected orders with a connected courier's API in one go. */
-function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, onDone }: {
-  open: boolean
-  onOpenChange: (o: boolean) => void
-  orderIds: string[]
-  orderNumber: (id: string) => string
-  onDone: () => void
-}) {
-  const couriers = useQuery({ queryKey: ['couriers', 'active'], queryFn: () => listCouriers(true), enabled: open })
-  const connected = (couriers.data ?? []).filter((c) => c.api_enabled)
-  const [courierId, setCourierId] = useState('')
-  const book = useMutation({
-    mutationFn: () => bookShipments(orderIds, courierId || connected[0]?.id),
-    onSuccess: (r) => {
-      if (r.booked) toast.success(`${r.booked} parcel(s) booked`)
-      for (const f of r.results.filter((x) => !x.ok).slice(0, 4)) toast.error(`${orderNumber(f.order_id)}: ${f.error}`)
-      onDone()
-      onOpenChange(false)
-    },
-  })
+function InvoiceCell({ o }: { o: OrderListItem }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Book {orderIds.length} parcel{orderIds.length === 1 ? '' : 's'} with a courier</DialogTitle>
-          <DialogDescription>Each order is sent to the courier's API; the tracking number is saved and printed on the label. Orders already booked are skipped.</DialogDescription>
-        </DialogHeader>
-        {couriers.isLoading ? <Spinner /> : connected.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No courier is connected yet. <Link to="/admin/couriers" className="underline">Connect Steadfast, Pathao or RedX</Link> first.</p>
-        ) : (
-          <Select value={courierId || connected[0].id} onValueChange={setCourierId}>
-            <SelectTrigger aria-label="Courier"><SelectValue /></SelectTrigger>
-            <SelectContent>{connected.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-          </Select>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => book.mutate()} disabled={!connected.length || book.isPending}>{book.isPending ? <Spinner /> : <Truck />} Book parcels</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="flex max-w-40 flex-wrap items-center gap-1">
+      <span className="w-full font-medium">{o.order_number}</span>
+      {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
+      {o.duplicate_status === 'SUSPECTED' && (
+        <Badge variant="warning" className="gap-0.5 text-[10px]" title={`Possible duplicate of ${o.duplicate_of_number ?? 'another order'}`}><Copy className="size-3" /> Duplicate?</Badge>
+      )}
+      {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]"><Layers className="size-3" /> +{o.merged_count}</Badge>}
+    </div>
   )
 }
 
-function FilterSelect({ label, value, onChange, options }: { label: ReactNode; value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
+/** Name, phone with the delivery success rate, quick call / WhatsApp and the address. */
+function CustomerCell({ o }: { o: OrderListItem }) {
+  const h = o.courier_history
+  const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
+  const tone = rate !== null && h && (h.total ?? h.completed) > 0 ? rateTone(rate, h.tier) : null
+  const wa = waNumber(o.customer_phone)
   return (
-    <div className="grid gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <Select value={value || 'all'} onValueChange={(v) => onChange(v === 'all' ? '' : v)}>
-        <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All</SelectItem>
-          {options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-        </SelectContent>
-      </Select>
+    <div className="max-w-60 space-y-0.5 text-xs" onClick={(e) => e.stopPropagation()}>
+      <p className="flex items-center gap-1 text-sm font-medium">
+        <span className="truncate">{o.customer_name}</span>
+        <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Copy name"
+          onClick={() => { void navigator.clipboard.writeText(o.customer_name); toast.success('Name copied') }}><Copy className="size-3" /></button>
+      </p>
+      <p className="flex items-center gap-1.5">
+        <span className="tabular-nums">{o.customer_phone}</span>
+        {tone && rate !== null && (
+          <span className={cn('font-semibold tabular-nums', tone.text)} title={`Delivery success ${Math.round(rate)}% · ${h!.delivered}/${h!.total ?? h!.completed} parcels`}>
+            {Math.round(rate)}%
+          </span>
+        )}
+        <a href={`tel:${o.customer_phone}`} className="text-sky-600 hover:opacity-80" aria-label={`Call ${o.customer_name}`}><Phone className="size-3.5" /></a>
+        {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="text-emerald-600 hover:opacity-80" aria-label={`WhatsApp ${o.customer_name}`}><MessageCircle className="size-3.5" /></a>}
+      </p>
+      <p className="line-clamp-2 text-muted-foreground" title={o.shipping_address}>{o.shipping_address ?? o.shipping_district}{o.shipping_address && !o.shipping_address.includes(o.shipping_district) ? `, ${o.shipping_district}` : ''}</p>
     </div>
+  )
+}
+
+function NoteCell({ o }: { o: OrderListItem }) {
+  const note = o.customer_note || o.review_note
+  return note
+    ? <p className="line-clamp-3 max-w-40 text-xs" title={note}>{note}</p>
+    : <span className="text-xs text-muted-foreground">—</span>
+}
+
+const STAGE_DOT: Record<string, string> = {
+  success: 'bg-emerald-500', info: 'bg-sky-500', warning: 'bg-amber-500', danger: 'bg-red-500', violet: 'bg-violet-500', neutral: 'bg-zinc-400',
+}
+
+function ProductsCell({ o }: { o: OrderListItem }) {
+  const stage = o.stage !== 'WEB' ? STAGE[o.stage as OrderStage] : null
+  const lines = o.lines ?? []
+  return (
+    <div className="max-w-64 space-y-1.5">
+      {stage && (
+        <p className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase">
+          <span className={cn('size-1.5 rounded-full', STAGE_DOT[stage.variant] ?? STAGE_DOT.neutral)} />{stage.label}
+          {ORDER_STATUS[o.status].label !== stage.label && <span className="font-normal text-muted-foreground normal-case">· {ORDER_STATUS[o.status].label}</span>}
+        </p>
+      )}
+      {lines.length === 0 ? <p className="text-xs text-muted-foreground">{o.items_preview ?? `${o.item_count} item(s)`}</p> : lines.map((l, i) => (
+        <div key={i} className="flex items-center gap-2">
+          {l.image_url
+            ? <img src={l.image_url} alt="" className="size-8 shrink-0 rounded-md border bg-muted object-cover" loading="lazy"
+                onError={(e) => { e.currentTarget.removeAttribute('src') }} />
+            : <div className="size-8 shrink-0 rounded-md border bg-muted" />}
+          <div className="min-w-0 text-xs leading-tight">
+            <p className="truncate font-medium" title={l.name}>{l.name}{l.variant ? ` · ${l.variant}` : ''}</p>
+            <p className="truncate text-muted-foreground">{l.sku ? `${l.sku} · ` : ''}Qty: {l.quantity}</p>
+          </div>
+        </div>
+      ))}
+      {o.item_count > lines.reduce((a, l) => a + l.quantity, 0) && <p className="text-xs text-muted-foreground">+ more items</p>}
+    </div>
+  )
+}
+
+/** ✓✓ and the tracking link once the parcel is booked with a courier's API. */
+function UploadCell({ o }: { o: OrderListItem }) {
+  const s = o.shipment
+  if (!s) return <span className="text-xs text-muted-foreground">—</span>
+  const code = s.consignment_id ?? s.tracking_number
+  return (
+    <div className="max-w-44 text-xs" onClick={(e) => e.stopPropagation()}>
+      <p className="flex items-center gap-1">
+        {s.uploaded && <CheckCheck className="size-4 shrink-0 text-emerald-600" aria-label="Uploaded to courier" />}
+        {code && s.tracking_url
+          ? <a href={s.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 truncate font-mono text-sky-600 underline-offset-2 hover:underline" title={`Track on ${s.courier}`}>{code}<ExternalLink className="size-3 shrink-0" /></a>
+          : <span className="truncate font-mono">{code ?? 'Not booked'}</span>}
+      </p>
+      <p className="text-muted-foreground">{s.courier}</p>
+    </div>
+  )
+}
+
+const TAG_LIMIT = 40
+
+function TagsCell({ tags, known, canEdit, onChange }: { tags: string[]; known: string[]; canEdit: boolean; onChange: (add: string[], remove: string[]) => void }) {
+  const [text, setText] = useState('')
+  const add = (t: string) => { const v = t.trim().slice(0, TAG_LIMIT); if (v && !tags.includes(v)) onChange([v], []); setText('') }
+  return (
+    <div className="flex max-w-40 flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {tags.map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
+      {canEdit && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size="icon" variant="outline" className="size-6" aria-label="Edit tags"><Plus className="size-3" /></Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="grid w-60 gap-2 p-3">
+            <form onSubmit={(e) => { e.preventDefault(); add(text) }} className="flex gap-1.5">
+              <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={TAG_LIMIT} placeholder="New tag" className="h-8" aria-label="New tag" />
+              <Button type="submit" size="sm" className="h-8" disabled={!text.trim()}>Add</Button>
+            </form>
+            {[...new Set([...tags, ...known])].length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {[...new Set([...tags, ...known])].map((t) => {
+                  const on = tags.includes(t)
+                  return (
+                    <button key={t} type="button" aria-pressed={on} onClick={() => (on ? onChange([], [t]) : onChange([t], []))}
+                      className={cn('press rounded-full border px-2 py-0.5 text-xs', on ? 'border-foreground bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}>
+                      {t}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
+    </div>
+  )
+}
+
+function BulkTagButton({ known, onAdd }: { known: string[]; onAdd: (tag: string) => void }) {
+  const [text, setText] = useState('')
+  return (
+    <Popover>
+      <PopoverTrigger asChild><Button size="sm" variant="outline" className="rounded-full"><Tag /> Tag</Button></PopoverTrigger>
+      <PopoverContent align="start" className="grid w-60 gap-2 p-3">
+        <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) { onAdd(text.trim().slice(0, TAG_LIMIT)); setText('') } }} className="flex gap-1.5">
+          <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={TAG_LIMIT} placeholder="Tag name" className="h-8" aria-label="Tag name" />
+          <Button type="submit" size="sm" className="h-8" disabled={!text.trim()}>Add</Button>
+        </form>
+        <div className="flex flex-wrap gap-1">
+          {known.map((t) => <button key={t} type="button" onClick={() => onAdd(t)} className="press rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">{t}</button>)}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

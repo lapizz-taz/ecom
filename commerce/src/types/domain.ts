@@ -232,6 +232,17 @@ export interface OrderListItem {
   last_contact_at: string | null
   partial_return_amount: number
   items_preview: string | null
+  updated_at?: string
+  shipping_address?: string
+  customer_note?: string | null
+  tags?: string[]
+  customer_total_orders?: number | null
+  handled_by?: string | null
+  lines?: Array<{ name: string; variant: string | null; sku: string | null; quantity: number; image_url: string | null }> | null
+  shipment?: {
+    courier: string; provider: string; tracking_number: string | null; consignment_id: string | null; status: string
+    booked_at: string; uploaded: boolean; tracking_url: string | null
+  } | null
   attribution: { source: string; channel: string; is_paid: boolean | null; campaign: string | null } | null
   courier_history: {
     delivered: number; completed: number; score: number | null

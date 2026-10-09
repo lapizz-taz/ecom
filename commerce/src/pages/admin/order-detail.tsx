@@ -206,7 +206,8 @@ export default function OrderDetailPage() {
             <DropdownMenuContent align="end" className="w-52">
               {can('orders.update') && EDITABLE.includes(status) && (
                 <>
-                  <DropdownMenuItem onClick={() => setDialog('edit')}><Pencil /> Edit order</DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}/edit`}><Pencil /> Edit order</Link></DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDialog('edit')}><Pencil /> Quick edit details</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setDialog('items')}><Package /> Edit items</DropdownMenuItem>
                 </>
               )}
