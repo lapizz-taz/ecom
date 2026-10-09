@@ -92,6 +92,12 @@ import_map = "./functions/import_map.json"
 verify_jwt = false
 import_map = "./functions/import_map.json"
 
+# Shopify / WooCommerce: OAuth callbacks and webhooks come from the stores
+# (signatures checked in the function); staff actions check the session there.
+[functions.channels]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
 [functions.admin-users]
 verify_jwt = true
 import_map = "./functions/import_map.json"

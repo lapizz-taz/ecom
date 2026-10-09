@@ -1,6 +1,6 @@
 import {
   BarChart3, Boxes, ClipboardCheck, Globe, HelpCircle, LayoutDashboard, LifeBuoy, Megaphone, MessageSquare, Search, Settings,
-  ShieldCheck, ShoppingBag, TrendingUp, UserCog, Users, Wallet,
+  ShieldCheck, ShoppingBag, Store, TrendingUp, UserCog, Users, Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { QueueCounts } from '@/types/domain'
@@ -84,6 +84,14 @@ export const NAV: NavSection[] = [
           { label: 'Stock Movements', to: '/admin/inventory/movements' },
           { label: 'Adjustments', to: '/admin/inventory/adjustments' },
           { label: 'Production', to: '/admin/production', permission: 'production.view' },
+        ],
+      },
+      {
+        label: 'Store', to: '/admin/channels', icon: <Store />, permission: 'settings.view',
+        children: [
+          { label: 'Sales Channels', to: '/admin/channels' },
+          { label: 'Channel Imports', to: '/admin/channels?imports=FAILED', permission: 'orders.view' },
+          { label: 'Theme', to: '/admin/store/theme', permission: 'settings.manage' },
         ],
       },
       {

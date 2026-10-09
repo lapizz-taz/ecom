@@ -1,4 +1,4 @@
-import { Menu, Search, ShoppingBag, User } from 'lucide-react'
+import { Menu, MessageCircle, Search, ShoppingBag, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
 import { CartDrawer } from '@/features/cart/cart-drawer'
+import { resolveTheme, themeStyle, useStorefront, useThemeFont } from '@/features/storefront/theme'
+import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { cartCount, useCart } from '@/features/cart/cart-store'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useQuery } from '@tanstack/react-query'
@@ -19,6 +21,10 @@ function useCategories() {
 
 export default function StorefrontLayout() {
   const { data: config } = useStoreConfig()
+  const sf = useStorefront(config?.storefront)
+  const theme = resolveTheme(sf)
+  useThemeFont(theme.font)
+  const wa = theme.whatsapp ? waNumber(theme.whatsapp) : null
   const { data: categories } = useCategories()
   const items = useCart((s) => s.items)
   const setOpen = useCart((s) => s.setOpen)
@@ -50,18 +56,18 @@ export default function StorefrontLayout() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col" style={themeStyle(theme)}>
       <ScrollRestoration />
-      {config?.storefront.announcement && (
-        <div className="bg-primary px-4 py-2 text-center text-xs text-primary-foreground">{config.storefront.announcement}</div>
+      {sf?.announcement && (
+        <div className="bg-primary px-4 py-2 text-center text-xs text-primary-foreground">{sf.announcement}</div>
       )}
       <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
+        <div className="relative mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu /></Button>
-          <Link to="/" className="text-lg font-semibold tracking-tight">
+          <Link to="/" className={cn('text-lg font-semibold tracking-tight', theme.logo_position === 'center' && 'md:absolute md:left-1/2 md:-translate-x-1/2')}>
             {config?.store.logo_url ? <img src={config.store.logo_url} alt={storeName} className="h-7" /> : storeName}
           </Link>
-          <nav className="ml-6 hidden items-center gap-5 text-sm md:flex">
+          <nav className={cn('hidden items-center gap-5 text-sm md:flex', theme.logo_position === 'center' ? 'order-first' : 'ml-6')}>
             <NavLink to="/shop" className={({ isActive }) => cn('text-muted-foreground hover:text-foreground', isActive && 'text-foreground')}>Shop all</NavLink>
             {nav.map((c) => (
               <NavLink key={c.id} to={`/collection/${c.slug}`} className={({ isActive }) => cn('text-muted-foreground hover:text-foreground', isActive && 'text-foreground')}>
@@ -126,10 +132,22 @@ export default function StorefrontLayout() {
             <Link to="/policies/terms" className="text-muted-foreground hover:text-foreground">Terms</Link>
           </div>
         </div>
+        {theme.payment_badges && config && (
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 pb-6 text-[11px] text-muted-foreground">
+            {[...(config.payments.cod_enabled ? ['Cash on delivery'] : []), ...config.payments.providers.map((p) => p.label)]
+              .filter((p, i, all) => all.indexOf(p) === i).map((p) => <span key={p} className="rounded-md border px-2 py-1">{p}</span>)}
+          </div>
+        )}
         <p className="border-t py-4 text-center text-xs text-muted-foreground">
-          {config?.storefront.footer_text || `© ${new Date().getFullYear()} ${storeName}`}
+          {sf?.footer_text || `© ${new Date().getFullYear()} ${storeName}`}
         </p>
       </footer>
+      {wa && (
+        <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" aria-label="Chat on WhatsApp"
+          className="fixed right-4 bottom-4 z-40 grid size-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105">
+          <MessageCircle className="size-5" />
+        </a>
+      )}
       <CartDrawer />
     </div>
   )

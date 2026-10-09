@@ -97,6 +97,8 @@ export interface StoreConfig {
     hero_cta_link?: string
     featured_category_slugs?: string[]
     footer_text?: string
+    /** Theme builder: colours, font, home-page sections (see features/storefront/theme). */
+    theme?: Record<string, unknown>
   }
   policies: Record<string, string>
   delivery: {
@@ -205,6 +207,8 @@ export interface OrderListItem {
   fraud_status: Enums<'fraud_status'>
   risk_level: Enums<'risk_level'> | null
   source: Enums<'order_source'>
+  /** Shopify / WooCommerce store the order came from, with its own order number. */
+  sales_channel?: { id: string; platform: 'SHOPIFY' | 'WOOCOMMERCE'; name: string; number: string | null } | null
   customer_id: string
   customer_name: string
   customer_phone: string

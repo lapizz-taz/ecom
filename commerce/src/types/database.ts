@@ -299,6 +299,136 @@ export type Database = {
           },
         ]
       }
+      channel_oauth_states: {
+        Row: {
+          state: string
+          channel_id: string
+          created_by: string | null
+          return_to: string
+          expires_at: string
+          used_at: string | null
+        }
+        Insert: {
+          state: string
+          channel_id: string
+          created_by?: string | null
+          return_to: string
+          expires_at: string
+          used_at?: string | null
+        }
+        Update: {
+          state?: string
+          channel_id?: string
+          created_by?: string | null
+          return_to?: string
+          expires_at?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_oauth_states_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_order_imports: {
+        Row: {
+          id: string
+          channel_id: string
+          external_id: string
+          external_number: string | null
+          status: string
+          order_id: string | null
+          payload: Json
+          overrides: Json
+          error: string | null
+          warnings: string[]
+          attempts: number
+          received_via: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          external_id: string
+          external_number?: string | null
+          status: string
+          order_id?: string | null
+          payload: Json
+          overrides?: Json
+          error?: string | null
+          warnings?: string[]
+          attempts?: number
+          received_via?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          external_id?: string
+          external_number?: string | null
+          status?: string
+          order_id?: string | null
+          payload?: Json
+          overrides?: Json
+          error?: string | null
+          warnings?: string[]
+          attempts?: number
+          received_via?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_order_imports_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_order_imports_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_webhook_deliveries: {
+        Row: {
+          channel_id: string
+          delivery_id: string
+          topic: string | null
+          received_at: string
+        }
+        Insert: {
+          channel_id: string
+          delivery_id: string
+          topic?: string | null
+          received_at?: string
+        }
+        Update: {
+          channel_id?: string
+          delivery_id?: string
+          topic?: string | null
+          received_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_webhook_deliveries_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checkout_leads: {
         Row: {
           id: string
@@ -3026,6 +3156,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
         Insert: {
           id?: string
@@ -3105,6 +3238,9 @@ export type Database = {
           client_ip?: string | null
           user_agent?: string | null
           tags?: string[]
+          sales_channel_id?: string | null
+          external_order_id?: string | null
+          external_order_number?: string | null
         }
         Update: {
           id?: string
@@ -3184,6 +3320,9 @@ export type Database = {
           client_ip?: string | null
           user_agent?: string | null
           tags?: string[]
+          sales_channel_id?: string | null
+          external_order_id?: string | null
+          external_order_number?: string | null
         }
         Relationships: [
           {
@@ -3241,6 +3380,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_review_statuses"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "orders_sales_channel_id_fkey"
+            columns: ["sales_channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4082,6 +4228,122 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      sales_channel_variants: {
+        Row: {
+          channel_id: string
+          external_variant_id: string
+          external_product_id: string | null
+          variant_id: string
+          created_at: string
+        }
+        Insert: {
+          channel_id: string
+          external_variant_id: string
+          external_product_id?: string | null
+          variant_id: string
+          created_at?: string
+        }
+        Update: {
+          channel_id?: string
+          external_variant_id?: string
+          external_product_id?: string | null
+          variant_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_channel_variants_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_channel_variants_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_channels: {
+        Row: {
+          id: string
+          platform: string
+          name: string
+          shop_domain: string
+          status: string
+          auth_mode: string | null
+          scopes: string[]
+          currency: string | null
+          settings: Json
+          webhooks: Json
+          last_test: Json | null
+          last_tested_at: string | null
+          last_sync_at: string | null
+          last_order_at: string | null
+          last_error: string | null
+          orders_imported: number
+          created_by: string | null
+          connected_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          platform: string
+          name: string
+          shop_domain: string
+          status?: string
+          auth_mode?: string | null
+          scopes?: string[]
+          currency?: string | null
+          settings?: Json
+          webhooks?: Json
+          last_test?: Json | null
+          last_tested_at?: string | null
+          last_sync_at?: string | null
+          last_order_at?: string | null
+          last_error?: string | null
+          orders_imported?: number
+          created_by?: string | null
+          connected_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          platform?: string
+          name?: string
+          shop_domain?: string
+          status?: string
+          auth_mode?: string | null
+          scopes?: string[]
+          currency?: string | null
+          settings?: Json
+          webhooks?: Json
+          last_test?: Json | null
+          last_tested_at?: string | null
+          last_sync_at?: string | null
+          last_order_at?: string | null
+          last_error?: string | null
+          orders_imported?: number
+          created_by?: string | null
+          connected_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_channels_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settings: {
         Row: {
@@ -4970,6 +5232,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       admin_create_production_order: {
@@ -5080,6 +5345,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       admin_duplicate_order: {
@@ -5164,6 +5432,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       admin_fraud_queue: {
@@ -5300,6 +5571,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       admin_order_customer_record: {
@@ -5553,6 +5827,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       admin_set_order_source: {
@@ -5763,6 +6040,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       admin_update_setting: {
@@ -5863,6 +6143,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       apply_shipment_status: {
@@ -5972,6 +6255,12 @@ export type Database = {
         Args: {
           p_scope?: string
           p_skip?: string[]
+        }
+        Returns: Json
+      }
+      channel_imports_list: {
+        Args: {
+          p: Json
         }
         Returns: Json
       }
@@ -6266,6 +6555,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       get_my_access: {
@@ -6441,6 +6733,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       production_action: {
@@ -6690,6 +6985,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       record_purchase_payment: {
@@ -6945,6 +7243,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       retry_courier_webhook: {
@@ -6990,6 +7291,17 @@ export type Database = {
           foreign_currency: string | null
           exchange_rate: number | null
         }
+      }
+      sales_channel_settings_save: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      sales_channels_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       scan_parcel: {
         Args: {
@@ -7272,6 +7584,9 @@ export type Database = {
           client_ip: string | null
           user_agent: string | null
           tags: string[]
+          sales_channel_id: string | null
+          external_order_id: string | null
+          external_order_number: string | null
         }
       }
       update_my_profile: {
