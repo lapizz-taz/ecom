@@ -89,6 +89,27 @@ describe('delivery-success (receive rate) policy', () => {
       expect((await evaluate(db, { provider_status: 'ERROR', courier_score: 95, delivered_orders: 20, failed_delivery_orders: 1 })).decision).toBe('ALLOW')
     }))
 
+  it('uses the courier service\'s own rate and counts a "50+" range as history', () =>
+    inTx(async (db) => {
+      await enablePolicy(db, { min_parcels: 3 })
+      await asService(db)
+      // BD Courier: CarryBee 2 of 3, Steadfast 100% (rate only, 50+) → their overall 83.34%.
+      const both = await one<{ courier_score: string; metrics: { receive_rate_tier: string } }>(db,
+        `select courier_score, metrics from public.record_fraud_check($1)`, [JSON.stringify({
+          phone: '01711000777', provider: 'courier_history', providers: ['courier_history'],
+          provider_counts: { total: 3, delivered: 2, returned: 1 }, provider_courier_score: 83.34, provider_parcel_floor: 53,
+        })])
+      expect(num(both.courier_score)).toBe(83.34)
+      expect(both.metrics.receive_rate_tier).toBe('GOOD')
+      // Only Steadfast's rate: not a new customer.
+      const rateOnly = await one<{ metrics: { receive_rate_tier: string; parcel_count: number } }>(db,
+        `select metrics from public.record_fraud_check($1)`, [JSON.stringify({
+          phone: '01711000778', provider: 'courier_history', providers: ['courier_history'],
+          provider_counts: { total: 0, delivered: 0, returned: 0 }, provider_courier_score: 100, provider_parcel_floor: 50,
+        })])
+      expect(rateOnly.metrics).toMatchObject({ receive_rate_tier: 'GOOD', parcel_count: 50 })
+    }))
+
   it('follows the configured actions, thresholds and advance type', () =>
     inTx(async (db) => {
       await enablePolicy(db, { good_min: 90, actions: { GOOD: 'COD', MID: 'ADVANCE', LOW: 'BLOCK', NEW: 'ADVANCE' }, advance_type: 'DELIVERY_CHARGE' })

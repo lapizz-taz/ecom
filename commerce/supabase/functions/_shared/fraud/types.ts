@@ -26,6 +26,8 @@ export interface FraudProviderResult {
   /** Delivery success ratio across the courier network, 0–100. */
   courierScore?: number
   counts: OutcomeCounts
+  /** Fewest parcels the number certainly has, including ranges like "50+". */
+  parcelFloor?: number
   recommendation?: string
   raw?: unknown
   error?: string
@@ -47,6 +49,7 @@ export interface RecordFraudCheckPayload {
   provider_risk_score?: number
   provider_courier_score?: number
   provider_counts: OutcomeCounts
+  provider_parcel_floor?: number
   provider_response: Record<string, unknown>
   recommendation?: string
   context?: Record<string, unknown>

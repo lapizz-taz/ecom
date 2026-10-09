@@ -125,6 +125,7 @@ export class FraudDetectionService {
       provider_risk_score: maxDefined(results.map((r) => r.riskScore)),
       provider_courier_score: maxDefined(results.map((r) => r.courierScore)),
       provider_counts: counts,
+      provider_parcel_floor: maxDefined(results.filter((r) => r.ok).map((r) => r.parcelFloor)),
       provider_response: Object.fromEntries(results.map((r) => [r.provider, r.raw ?? (r.error ? { error: r.error } : null)])),
       recommendation: results.find((r) => r.recommendation)?.recommendation,
       context: extras.context,

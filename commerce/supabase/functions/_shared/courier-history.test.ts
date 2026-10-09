@@ -126,7 +126,7 @@ describe('courier-history check (BD Courier)', () => {
   it('reads parcels per courier, the summary and merchant fraud reports', () => {
     const s = summarizeBdCourier(bd)!
     expect(s.couriers.map((c) => c.courier)).toEqual(['steadfast', 'pathao', 'redx', 'parceldex'])
-    expect(s.couriers[0]).toEqual({ courier: 'steadfast', orders: 200, delivered: 175, cancelled: 25 })
+    expect(s.couriers[0]).toMatchObject({ courier: 'steadfast', orders: 200, delivered: 175, cancelled: 25, rate_only: false })
     expect(s).toMatchObject({ service: 'bdcourier', total: 430, delivered: 360, cancelled: 70, success_ratio: 83.72 })
     expect(s.reports).toEqual([{ name: 'John Doe', details: 'Fraud reported by merchant', courier: 'SteadFast', created_at: '2024-01-01T00:00:00.000000Z' }])
     // A new number: nothing on record.
@@ -136,6 +136,45 @@ describe('courier-history check (BD Courier)', () => {
     expect(summarizeBdCourier({ status: 'success', data: { pathao: { total_parcel: 10, success_parcel: 6, cancelled_parcel: 1 } } }))
       .toMatchObject({ total: 10, delivered: 6, cancelled: 1, success_ratio: 60 })
     expect(summarizeBdCourier({ status: 'error', message: 'Unauthenticated.' })).toBeNull()
+  })
+
+  // What the live API returns when a courier (Steadfast) only reports a rate and a range.
+  const rateOnly = {
+    status: 'success',
+    data: {
+      pathao: { name: 'Pathao', total_parcel: 0, success_parcel: 0, cancelled_parcel: 0, success_ratio: 0 },
+      steadfast: {
+        name: 'SteadFast', rate_only: true, parcel_range: '50+', volume_band: 'high', total_parcel: 0, success_parcel: 0,
+        cancelled_parcel: 0, success_ratio: 100, notice: 'SteadFast reports a success rate only.',
+      },
+      carrybee: { name: 'CarryBee', total_parcel: 3, success_parcel: 2, cancelled_parcel: 1, success_ratio: 66.67 },
+      summary: {
+        total_parcel: 3, success_parcel: 2, cancelled_parcel: 1, success_ratio: 83.34,
+        calculation_note: 'Success rate is the average of each courier success rate (CarryBee 66.67%, SteadFast 100%).',
+      },
+      risk_verdict: { label: 'Review', level: 'review', action: 'Confirm order details before dispatch', reasons: ['Moderate delivery success rate (83.3%)'] },
+    },
+    reports: [],
+  }
+
+  it('matches the BD Courier app: rate-only couriers, their overall rate and verdict', async () => {
+    const s = summarizeBdCourier(rateOnly)!
+    expect(s).toMatchObject({ total: 3, delivered: 2, cancelled: 1, success_ratio: 83.34, ratio_source: 'provider', parcel_floor: 53 })
+    expect(s.couriers.find((c) => c.courier === 'steadfast')).toMatchObject({ name: 'SteadFast', rate_only: true, parcel_range: '50+', success_ratio: 100, orders: 0 })
+    expect(s.couriers.find((c) => c.courier === 'carrybee')).toMatchObject({ success_ratio: 66.67, orders: 3 })
+    expect(s.couriers.find((c) => c.courier === 'pathao')?.success_ratio).toBeNull()
+    expect(s.couriers.map((c) => c.courier)).not.toContain('risk_verdict')
+    expect(s.verdict).toEqual({ label: 'Review', level: 'review', action: 'Confirm order details before dispatch', reasons: ['Moderate delivery success rate (83.3%)'] })
+    expect(s.calculation_note).toMatch(/average of each courier/)
+    // The decision uses BD Courier's own 83.34%, not 2 of 3 parcels.
+    const r = await new CourierHistoryProvider({ apiKey: 'k' }, vi.fn().mockResolvedValue(jsonResponse(rateOnly))).checkCustomer({ phone: '01712345678' })
+    expect(r).toMatchObject({ ok: true, courierScore: 83.34, parcelFloor: 53, counts: { total: 3, delivered: 2, returned: 1 } })
+    const payload = await new FraudDetectionService([new CourierHistoryProvider({ apiKey: 'k' }, vi.fn().mockResolvedValue(jsonResponse(rateOnly)))])
+      .check({ phone: '01712345678' })
+    expect(payload).toMatchObject({ provider_courier_score: 83.34, provider_parcel_floor: 53 })
+    // Only a rate-only courier: still history, not a "new customer".
+    const onlySteadfast = summarizeBdCourier({ status: 'success', data: { steadfast: rateOnly.data.steadfast, summary: { total_parcel: 0, success_parcel: 0, cancelled_parcel: 0, success_ratio: 100 } } })
+    expect(onlySteadfast).toMatchObject({ total: 0, success_ratio: 100, parcel_floor: 50 })
   })
 
   it('POSTs the cleaned number with the key as a Bearer token (never in the URL)', async () => {

@@ -37,6 +37,23 @@ export interface CourierLine {
   orders: number
   cancelled: number
   delivered: number
+  /** Display name as the service writes it, e.g. "SteadFast". */
+  name?: string
+  /** The courier's own success rate, 0–100, when the service reports one. */
+  success_ratio?: number | null
+  /** Only a rate (and maybe a parcel range) is known, not parcel counts. */
+  rate_only?: boolean
+  /** e.g. "50+" when the courier only reports a range. */
+  parcel_range?: string | null
+  notice?: string | null
+}
+
+/** The service's own verdict for the number (BD Courier). Staff only. */
+export interface CourierVerdict {
+  label: string | null
+  level: string | null
+  action: string | null
+  reasons: string[]
 }
 
 export interface FraudReport {
@@ -57,6 +74,16 @@ export interface CourierHistorySummary {
   name_on_record: string | null
   /** Fraud reports other merchants filed against the number (BD Courier). Staff only. */
   reports?: FraudReport[]
+  /** 'provider' when success_ratio is the service's own figure (it may average couriers' rates). */
+  ratio_source?: 'provider' | 'counts'
+  /** How the service worked out its rate, in its own words. */
+  calculation_note?: string | null
+  verdict?: CourierVerdict | null
+  /**
+   * Fewest parcels the number certainly has: counted parcels plus the lower end
+   * of any reported range ("50+" → 50). Used only for the "enough history" check.
+   */
+  parcel_floor?: number
 }
 
 /** 01XXXXXXXXX for a Bangladeshi mobile number (+880 / 880 / 0 prefixes), else null. */
@@ -100,6 +127,18 @@ export function summarizeCourierHistory(body: unknown): CourierHistorySummary | 
 
 const text = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null)
 
+/** A 0–100 rate, or null. */
+function ratio(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(/[%,\s]/g, ''))
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100) / 100 : null
+}
+
+/** Lower end of a parcel range: "50+" → 50, "10-49" → 10, "7" → 7. */
+export function rangeFloor(range: unknown): number {
+  const m = /(\d+)/.exec(String(range ?? ''))
+  return m ? Number(m[1]) : 0
+}
+
 /**
  * Reads a BD Courier `/courier-check` answer:
  *   { status: 'success', data: { pathao: { total_parcel, success_parcel, cancelled_parcel, … }, …, summary }, reports: [] }
@@ -113,18 +152,41 @@ export function summarizeBdCourier(body: unknown): CourierHistorySummary | null 
   const data = root.data as Record<string, unknown>
   const couriers: CourierLine[] = []
   for (const [key, value] of Object.entries(data)) {
-    if (key === 'summary' || !value || typeof value !== 'object') continue
+    if (key === 'summary' || !value || typeof value !== 'object' || Array.isArray(value)) continue
     const row = value as Record<string, unknown>
+    // data also carries non-courier entries (risk_verdict…): couriers have parcel fields.
+    if (!('total_parcel' in row) && !('success_ratio' in row) && row.rate_only !== true) continue
     const orders = count(row.total_parcel)
     const delivered = Math.min(count(row.success_parcel), orders)
     const cancelled = Math.min(count(row.cancelled_parcel), orders - delivered)
-    couriers.push({ courier: key.trim().toLowerCase(), orders, cancelled, delivered })
+    // Some couriers (Steadfast) only report a success rate and a range like "50+".
+    const rateOnly = row.rate_only === true
+    const range = text(row.parcel_range, 20)
+    couriers.push({
+      courier: key.trim().toLowerCase(), orders, cancelled, delivered,
+      name: text(row.name, 40) ?? undefined,
+      success_ratio: orders > 0 || rateOnly ? ratio(row.success_ratio) : null,
+      rate_only: rateOnly,
+      parcel_range: range,
+      notice: text(row.notice, 300),
+    })
   }
   const sum = (k: 'orders' | 'delivered' | 'cancelled') => couriers.reduce((s, c) => s + c[k], 0)
   const summary = (data.summary ?? {}) as Record<string, unknown>
   const total = data.summary ? count(summary.total_parcel) : sum('orders')
   const delivered = Math.min(data.summary ? count(summary.success_parcel) : sum('delivered'), total)
   const cancelled = Math.min(data.summary ? count(summary.cancelled_parcel) : sum('cancelled'), total - delivered)
+  // BD Courier's own overall rate averages each courier's rate, so a rate-only
+  // courier counts; use it as is (it is what their app shows).
+  const providerRatio = data.summary ? ratio(summary.success_ratio) : null
+  const hasHistory = total > 0 || couriers.some((c) => c.rate_only && c.success_ratio !== null)
+  const verdictRaw = (data.risk_verdict ?? root.risk_verdict) as Record<string, unknown> | undefined
+  const verdict = verdictRaw && typeof verdictRaw === 'object'
+    ? {
+      label: text(verdictRaw.label, 40), level: text(verdictRaw.level, 20), action: text(verdictRaw.action, 200),
+      reasons: (Array.isArray(verdictRaw.reasons) ? verdictRaw.reasons : []).map((r) => text(r, 200)).filter((r): r is string => !!r).slice(0, 5),
+    }
+    : null
   const reports = (Array.isArray(root.reports) ? root.reports : [])
     .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
     .slice(0, 20)
@@ -135,9 +197,13 @@ export function summarizeBdCourier(body: unknown): CourierHistorySummary | null 
     total,
     delivered,
     cancelled,
-    success_ratio: total > 0 ? Math.round((delivered / total) * 10000) / 100 : null,
+    success_ratio: !hasHistory ? null : providerRatio ?? (total > 0 ? Math.round((delivered / total) * 10000) / 100 : null),
+    ratio_source: hasHistory && providerRatio !== null ? 'provider' : 'counts',
     name_on_record: null,
     reports,
+    calculation_note: text(summary.calculation_note, 600),
+    verdict,
+    parcel_floor: total + couriers.filter((c) => c.rate_only).reduce((s, c) => s + rangeFloor(c.parcel_range), 0),
   }
 }
 
@@ -216,6 +282,9 @@ export class CourierHistoryProvider implements FraudProvider {
         // A parcel cancelled at the door counts as a return. The database merges
         // these counts with the store's own orders and works out the rate.
         counts: { total: summary.total, delivered: summary.delivered, returned: summary.cancelled },
+        // The service's own overall rate (it counts rate-only couriers such as Steadfast).
+        courierScore: summary.ratio_source === 'provider' && summary.success_ratio !== null ? summary.success_ratio : undefined,
+        parcelFloor: summary.parcel_floor,
         raw: summary,
       }
     } catch (error) {

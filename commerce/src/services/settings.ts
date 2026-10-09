@@ -84,12 +84,31 @@ export type { Json }
 // ---------------------------------------------------------------------------
 // Courier-history check (key saved in Vault by the fraud-check function)
 // ---------------------------------------------------------------------------
+export interface CourierHistoryLine {
+  courier: string
+  orders: number
+  cancelled: number
+  delivered: number
+  name?: string
+  /** The courier's own rate (BD Courier); null when it has no parcels. */
+  success_ratio?: number | null
+  /** Only a rate and a range such as "50+" are known (Steadfast). */
+  rate_only?: boolean
+  parcel_range?: string | null
+  notice?: string | null
+}
+
 export interface CourierHistoryResult {
-  couriers: Array<{ courier: string; orders: number; cancelled: number; delivered: number }>
+  couriers: CourierHistoryLine[]
   total: number
   delivered: number
   cancelled: number
   success_ratio: number | null
+  /** 'provider': the service's own overall rate (BD Courier averages each courier's rate). */
+  ratio_source?: 'provider' | 'counts'
+  calculation_note?: string | null
+  verdict?: { label: string | null; level: string | null; action: string | null; reasons: string[] } | null
+  parcel_floor?: number
   name_on_record: string | null
   service?: CourierHistoryService
   /** Fraud reports other merchants filed against the number (BD Courier). */
