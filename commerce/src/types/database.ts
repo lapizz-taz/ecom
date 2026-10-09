@@ -7,6 +7,212 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: "12.2.3" }
   public: {
     Tables: {
+      ad_accounts: {
+        Row: {
+          id: string
+          platform: string
+          connection_id: string | null
+          external_id: string
+          login_customer_id: string | null
+          name: string | null
+          currency: string | null
+          timezone: string | null
+          is_manager: boolean
+          is_selected: boolean
+          usd_rate: number
+          tax_percent: number
+          last_sync_at: string | null
+          last_sync_status: string | null
+          last_sync_error: string | null
+          last_sync_since: string | null
+          last_sync_until: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          platform: string
+          connection_id?: string | null
+          external_id: string
+          login_customer_id?: string | null
+          name?: string | null
+          currency?: string | null
+          timezone?: string | null
+          is_manager?: boolean
+          is_selected?: boolean
+          usd_rate?: number
+          tax_percent?: number
+          last_sync_at?: string | null
+          last_sync_status?: string | null
+          last_sync_error?: string | null
+          last_sync_since?: string | null
+          last_sync_until?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          platform?: string
+          connection_id?: string | null
+          external_id?: string
+          login_customer_id?: string | null
+          name?: string | null
+          currency?: string | null
+          timezone?: string | null
+          is_manager?: boolean
+          is_selected?: boolean
+          usd_rate?: number
+          tax_percent?: number
+          last_sync_at?: string | null
+          last_sync_status?: string | null
+          last_sync_error?: string | null
+          last_sync_since?: string | null
+          last_sync_until?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_accounts_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "ad_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_connections: {
+        Row: {
+          id: string
+          platform: string
+          external_user: string | null
+          display_name: string | null
+          token_hint: string | null
+          status: string
+          last_error: string | null
+          connected_by: string | null
+          connected_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          platform: string
+          external_user?: string | null
+          display_name?: string | null
+          token_hint?: string | null
+          status?: string
+          last_error?: string | null
+          connected_by?: string | null
+          connected_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          platform?: string
+          external_user?: string | null
+          display_name?: string | null
+          token_hint?: string | null
+          status?: string
+          last_error?: string | null
+          connected_by?: string | null
+          connected_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_connections_connected_by_fkey"
+            columns: ["connected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_oauth_states: {
+        Row: {
+          state: string
+          platform: string
+          created_by: string
+          return_to: string
+          expires_at: string
+          used_at: string | null
+          created_at: string
+        }
+        Insert: {
+          state: string
+          platform: string
+          created_by: string
+          return_to: string
+          expires_at: string
+          used_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          state?: string
+          platform?: string
+          created_by?: string
+          return_to?: string
+          expires_at?: string
+          used_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_oauth_states_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_platform_stats: {
+        Row: {
+          account_id: string
+          campaign_id: string
+          date: string
+          spend: number
+          cost: number
+          impressions: number
+          clicks: number
+          conversions: number
+          conversion_value: number
+          synced_at: string
+        }
+        Insert: {
+          account_id: string
+          campaign_id: string
+          date: string
+          spend?: number
+          cost?: number
+          impressions?: number
+          clicks?: number
+          conversions?: number
+          conversion_value?: number
+          synced_at?: string
+        }
+        Update: {
+          account_id?: string
+          campaign_id?: string
+          date?: string
+          spend?: number
+          cost?: number
+          impressions?: number
+          clicks?: number
+          conversions?: number
+          conversion_value?: number
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_platform_stats_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "ad_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           id: string
@@ -1587,6 +1793,7 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          ad_account_id: string | null
         }
         Insert: {
           id?: string
@@ -1603,6 +1810,7 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          ad_account_id?: string | null
         }
         Update: {
           id?: string
@@ -1619,8 +1827,17 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          ad_account_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "marketing_campaigns_ad_account_id_fkey"
+            columns: ["ad_account_id"]
+            isOneToOne: false
+            referencedRelation: "ad_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       marketing_spend: {
         Row: {
@@ -4418,6 +4635,47 @@ export type Database = {
           p_ts: string
         }
         Returns: string
+      }
+      ad_account_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: {
+          id: string
+          platform: string
+          connection_id: string | null
+          external_id: string
+          login_customer_id: string | null
+          name: string | null
+          currency: string | null
+          timezone: string | null
+          is_manager: boolean
+          is_selected: boolean
+          usd_rate: number
+          tax_percent: number
+          last_sync_at: string | null
+          last_sync_status: string | null
+          last_sync_error: string | null
+          last_sync_since: string | null
+          last_sync_until: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      ad_platform_overview: {
+        Args: {
+          p_platform: string
+        }
+        Returns: Json
+      }
+      ad_platform_report: {
+        Args: {
+          p_platform: string
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
       }
       add_order_note: {
         Args: {

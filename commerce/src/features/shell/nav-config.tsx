@@ -111,6 +111,8 @@ export const NAV: NavSection[] = [
         children: [
           { label: 'Attribution & Profit', to: '/admin/marketing' },
           { label: 'Meta Ads', to: '/admin/marketing?tab=meta' },
+          { label: 'TikTok Ads', to: '/admin/marketing/tiktok' },
+          { label: 'Google Ads', to: '/admin/marketing/google' },
           { label: 'Campaigns & Spend', to: '/admin/marketing?tab=campaigns' },
           { label: 'Tracking Setup', to: '/admin/marketing?tab=tracking' },
         ],

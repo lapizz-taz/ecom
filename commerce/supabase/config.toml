@@ -87,6 +87,11 @@ import_map = "./functions/import_map.json"
 verify_jwt = false
 import_map = "./functions/import_map.json"
 
+# OAuth callbacks from TikTok / Google arrive without a JWT; staff actions check the session in code.
+[functions.ad-platforms]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
 [functions.admin-users]
 verify_jwt = true
 import_map = "./functions/import_map.json"
