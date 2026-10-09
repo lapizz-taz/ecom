@@ -844,7 +844,7 @@ function ProductsCell({ o }: { o: OrderListItem }) {
 function UploadCell({ o }: { o: OrderListItem }) {
   const s = o.shipment
   if (!s) return <span className="text-xs text-muted-foreground">—</span>
-  const code = s.consignment_id ?? s.tracking_number
+  const code = s.tracking_number ?? s.consignment_id
   return (
     <div className="max-w-44 text-xs" onClick={(e) => e.stopPropagation()}>
       <p className="flex items-center gap-1">
