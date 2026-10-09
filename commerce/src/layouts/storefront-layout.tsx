@@ -1,4 +1,4 @@
-import { Menu, MessageCircle, Search, ShoppingBag, User } from 'lucide-react'
+import { ExternalLink, Menu, MessageCircle, Search, ShoppingBag, Store, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
 import { CartDrawer } from '@/features/cart/cart-drawer'
-import { resolveTheme, themeStyle, useStorefront, useThemeFont } from '@/features/storefront/theme'
+import { isThemePreview, resolveTheme, themeStyle, useStorefront, useThemeFont } from '@/features/storefront/theme'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { cartCount, useCart } from '@/features/cart/cart-store'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -45,6 +45,12 @@ export default function StorefrontLayout() {
   }, [config?.store.name])
 
   const storeName = config?.store.name ?? 'Store'
+  // Closed when the business sells only through Shopify / WooCommerce (or switched
+  // the store off). Order tracking stays open for past customers.
+  const closed = !!sf?.mode && sf.mode !== 'OWN' && !isThemePreview()
+  if (closed && !location.pathname.startsWith('/track-order') && !location.pathname.startsWith('/policies')) {
+    return <StoreClosed name={storeName} logo={config?.store.logo_url} url={sf?.redirect_url ?? null} phone={config?.store.phone} style={themeStyle(theme)} />
+  }
   const nav = (categories ?? []).filter((c) => !c.parent_id && c.product_count > 0).slice(0, 5)
   const count = cartCount(items)
 
@@ -149,6 +155,27 @@ export default function StorefrontLayout() {
         </a>
       )}
       <CartDrawer />
+    </div>
+  )
+}
+
+function StoreClosed({ name, logo, url, phone, style }: { name: string; logo?: string | null; url: string | null; phone?: string | null; style: React.CSSProperties }) {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-background px-4" style={style}>
+      <div className="w-full max-w-sm space-y-5 text-center animate-in fade-in-0 zoom-in-95 duration-500">
+        <span className="mx-auto grid size-12 place-items-center rounded-full border"><Store className="size-5" /></span>
+        <div className="space-y-1.5">
+          {logo ? <img src={logo} alt={name} className="mx-auto h-8" /> : <p className="text-xl font-semibold tracking-tight">{name}</p>}
+          <p className="text-sm text-muted-foreground">
+            {url ? 'Our shop has moved. Browse the full collection and order on our online store.' : 'We are not taking orders on this site right now.'}
+          </p>
+        </div>
+        {url && <Button asChild className="w-full"><a href={url} rel="noreferrer">Visit our store <ExternalLink /></a></Button>}
+        <div className="flex justify-center gap-4 text-xs text-muted-foreground">
+          <Link to="/track-order" className="hover:text-foreground">Track an order</Link>
+          {phone && <a href={`tel:${phone}`} className="hover:text-foreground">{phone}</a>}
+        </div>
+      </div>
     </div>
   )
 }

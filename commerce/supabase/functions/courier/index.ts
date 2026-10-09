@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { env } from '../_shared/env.ts'
 import {
   buildCourierProvider, COURIER_FIELDS, COURIER_TRACKING, type CourierCredentials, courierProviderFor, type CourierRow,
-  credentialHint, missingCredentialFields,
+  COURIER_OPTIONAL_FIELDS, credentialHint, invalidCredentialFields, missingCredentialFields,
 } from '../_shared/courier/registry.ts'
 import { CourierNotSupportedError } from '../_shared/courier/types.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -153,10 +153,13 @@ Deno.serve(
       switch (input.action) {
         case 'connect': {
           const missing = missingCredentialFields(input.provider, input.credentials as CourierCredentials)
-          if (missing.length) throw new HttpError(422, `Fill in: ${missing.join(', ').replace(/_/g, ' ')}`, 'VALIDATION')
-          // Only the known fields are kept (plus the sandbox switch).
+          if (missing.length) throw new HttpError(422, `Fill in: ${missing.join(', ').replace(/_/g, ' ').replace('panel ', 'account ')}`, 'VALIDATION')
+          const invalid = invalidCredentialFields(input.provider, input.credentials as CourierCredentials)
+          if (invalid.length) throw new HttpError(422, `Check the ${invalid.join(', ')}`, 'VALIDATION')
+          // Only the known fields are kept (plus the sandbox switch); empty optional ones are left out.
           const creds: CourierCredentials = Object.fromEntries(
-            [...COURIER_FIELDS[input.provider], 'sandbox'].filter((k) => k in input.credentials).map((k) => [k, input.credentials[k]]))
+            [...COURIER_FIELDS[input.provider], ...(COURIER_OPTIONAL_FIELDS[input.provider] ?? []), 'sandbox']
+              .filter((k) => k in input.credentials && input.credentials[k] !== '').map((k) => [k, input.credentials[k]]))
           const test = await buildCourierProvider(input.provider, creds).testConnection()
           if (!test.ok) throw new HttpError(422, `Could not connect: ${test.message}`, 'CONNECTION_FAILED')
 

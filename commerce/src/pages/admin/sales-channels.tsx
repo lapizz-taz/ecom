@@ -17,9 +17,10 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import type { StoreMode } from '@/types/domain'
 import {
   type ChannelCheck, type ChannelImport, type ChannelPlatform, disconnectChannel, fixWebhooks, listChannelImports, listChannels,
-  retryImport, type SalesChannel, saveChannelSettings, type SetupResult, shopifyConnect, shopifyRedirectUri, shopifyToken, syncChannel,
+  retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyConnect, shopifyRedirectUri, shopifyToken, syncChannel,
   testChannel, wooConnect, wooKeys,
 } from '@/services/channels'
 
@@ -54,6 +55,8 @@ export default function SalesChannelsPage() {
     setParams((p) => { p.delete('connected'); p.delete('error'); p.delete('success'); p.delete('user_id'); p.delete('woo'); return p }, { replace: true })
   }, [params, setParams, queryClient])
 
+  const config = useStoreConfig()
+  const storeOpen = (config.data?.storefront.mode ?? 'OWN') === 'OWN'
   const live = (channels.data ?? []).filter((c) => c.status !== 'DISCONNECTED')
   const old = (channels.data ?? []).filter((c) => c.status === 'DISCONNECTED')
 
@@ -61,9 +64,11 @@ export default function SalesChannelsPage() {
     <div className="space-y-5">
       <PageHeader title="Sales channels" description="Where your orders come from. Orders from a connected store land in Web Orders like any other order." />
 
+      <StoreModeCard manage={manage} channels={live} />
+
       <div className="grid gap-3 md:grid-cols-3">
         <SourceCard mark={<Palette className="size-4" />} title="Your store" subtitle={window.location.host}
-          status={<Pill className="bg-foreground text-background">Online</Pill>}
+          status={storeOpen ? <Pill className="bg-foreground text-background">Online</Pill> : <Pill className="bg-muted text-muted-foreground">Off</Pill>}
           actions={<>
             {manage && <Button size="sm" asChild><Link to="/admin/store/theme">Edit theme</Link></Button>}
             <Button size="sm" variant="outline" asChild><a href="/" target="_blank" rel="noreferrer"><ExternalLink /> View</a></Button>
@@ -96,6 +101,82 @@ export default function SalesChannelsPage() {
       {dialog === 'SHOPIFY' && <ShopifyDialog onClose={() => setDialog(null)} />}
       {dialog === 'WOOCOMMERCE' && <WooDialog onClose={() => setDialog(null)} />}
     </div>
+  )
+}
+
+const MODES: Array<{ value: StoreMode; title: string; detail: string }> = [
+  { value: 'OWN', title: 'Our store', detail: 'Customers order on this website.' },
+  { value: 'SHOPIFY', title: 'Shopify', detail: 'You sell on Shopify. This website closes and sends visitors there.' },
+  { value: 'WOOCOMMERCE', title: 'WooCommerce', detail: 'You sell on your WordPress store. This website closes and sends visitors there.' },
+  { value: 'OFF', title: 'No website', detail: 'Phone, Facebook and walk-in orders only. This website is closed.' },
+]
+
+/** Which store customers buy from. Anything but "Our store" closes this website (and the
+ *  database refuses website orders), while Shopify / WooCommerce orders keep arriving. */
+function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesChannel[] }) {
+  const queryClient = useQueryClient()
+  const config = useStoreConfig()
+  const saved = config.data?.storefront.mode ?? 'OWN'
+  const savedUrl = config.data?.storefront.redirect_url ?? ''
+  const [mode, setMode] = useState<StoreMode>(saved)
+  const [url, setUrl] = useState(savedUrl)
+  useEffect(() => { setMode(saved); setUrl(savedUrl) }, [saved, savedUrl])
+
+  const platform = mode === 'SHOPIFY' || mode === 'WOOCOMMERCE' ? mode : null
+  const suggested = platform ? channels.find((c) => c.platform === platform) : undefined
+  const save = useMutation({
+    mutationFn: () => setStoreMode(mode, platform ? (url.trim() || null) : null),
+    onSuccess: (r) => {
+      toast.success(r.mode === 'OWN' ? 'Your website is taking orders' : 'Your website is closed to new orders')
+      void queryClient.invalidateQueries({ queryKey: ['store-config'] })
+    },
+    onError: (e) => toast.error((e as Error).message),
+  })
+  const dirty = mode !== saved || (platform !== null && url.trim() !== savedUrl)
+  const notConnected = platform && !channels.some((c) => c.platform === platform && c.status === 'CONNECTED')
+
+  return (
+    <Card className="gap-3">
+      <CardContent className="space-y-3">
+        <div>
+          <p className="font-semibold">Where do customers buy?</p>
+          <p className="text-sm text-muted-foreground">Pick one. You can change it any time; orders already placed are not affected.</p>
+        </div>
+        <div role="radiogroup" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {MODES.map((m) => (
+            <button key={m.value} type="button" role="radio" aria-checked={mode === m.value} disabled={!manage}
+              onClick={() => { setMode(m.value); if (!url && m.value !== 'OWN' && m.value !== 'OFF') setUrl(suggested ? `https://${suggested.shop_domain}` : '') }}
+              className={cn('rounded-lg border p-3 text-left transition-all duration-200 disabled:cursor-not-allowed',
+                mode === m.value ? 'border-foreground bg-foreground/[0.03] shadow-sm' : 'hover:border-foreground/40')}>
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <span className={cn('grid size-4 place-items-center rounded-full border transition-colors', mode === m.value && 'border-foreground bg-foreground')}>
+                  {mode === m.value && <Check className="size-3 text-background" />}
+                </span>
+                {m.title}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">{m.detail}</span>
+            </button>
+          ))}
+        </div>
+        {platform && (
+          <div className="grid gap-2 sm:max-w-md animate-in fade-in-0 slide-in-from-top-1 duration-200">
+            <Field label={`Your ${platform === 'SHOPIFY' ? 'Shopify' : 'WooCommerce'} store address`} hint="Visitors to this website are sent here.">
+              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://yourshop.com" disabled={!manage} />
+            </Field>
+            {notConnected && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><AlertTriangle className="size-3.5" />
+                Connect your {platform === 'SHOPIFY' ? 'Shopify' : 'WooCommerce'} store below so its orders arrive here.</p>
+            )}
+          </div>
+        )}
+        {manage && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save'}</Button>
+            {dirty && <Button size="sm" variant="ghost" onClick={() => { setMode(saved); setUrl(savedUrl) }}>Cancel</Button>}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -124,6 +124,7 @@ export default function ProductPage() {
               <PriceTag price={variant?.price ?? product.price} compareAt={variant?.compare_at_price ?? product.compare_at_price} className="text-lg" />
               {(variant?.compare_at_price ?? 0) > (variant?.price ?? 0) && <Badge variant="destructive">Sale</Badge>}
             </div>
+            {product.short_description && <p className="text-sm leading-relaxed text-muted-foreground">{product.short_description}</p>}
           </div>
 
           {product.option_names.map((name) => (
@@ -164,6 +165,12 @@ export default function ProductPage() {
             <div className="space-y-2 border-t pt-5">
               <h2 className="font-medium">Description</h2>
               <p className="text-sm leading-relaxed whitespace-pre-line text-muted-foreground">{product.description}</p>
+            </div>
+          )}
+          {(product.shipping_note || product.warranty) && (
+            <div className="grid gap-3 border-t pt-5 text-sm">
+              {product.shipping_note && <div><p className="font-medium">Shipping</p><p className="whitespace-pre-line text-muted-foreground">{product.shipping_note}</p></div>}
+              {product.warranty && <div><p className="font-medium">Warranty</p><p className="whitespace-pre-line text-muted-foreground">{product.warranty}</p></div>}
             </div>
           )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t pt-5 text-sm">

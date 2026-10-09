@@ -161,6 +161,24 @@ export async function listCourierInvoices(f: { courierId?: string; status?: Cour
 }
 export type CourierInvoiceRow = Awaited<ReturnType<typeof listCourierInvoices>>['items'][number]
 
+/** Totals across statements for the invoice page header. */
+export async function courierInvoiceSummary() {
+  const { data, error } = await supabase.from('courier_invoices').select('difference, status, payout_reported, line_count, matched_count').limit(2000)
+  if (error) throw error
+  const rows = data ?? []
+  const diff = (r: { difference: number | null }) => Number(r.difference ?? 0)
+  return {
+    statements: rows.length,
+    correct: rows.filter((r) => Math.abs(diff(r)) < 1).length,
+    shortCount: rows.filter((r) => diff(r) <= -1).length,
+    short: rows.filter((r) => diff(r) <= -1).reduce((s, r) => s - diff(r), 0),
+    overCount: rows.filter((r) => diff(r) >= 1).length,
+    over: rows.filter((r) => diff(r) >= 1).reduce((s, r) => s + diff(r), 0),
+    received: rows.reduce((s, r) => s + Number(r.payout_reported ?? 0), 0),
+    flagged: rows.reduce((s, r) => s + (r.line_count - r.matched_count), 0),
+  }
+}
+
 export async function getCourierInvoice(id: string) {
   const { data, error } = await supabase
     .from('courier_invoices')
@@ -212,4 +230,27 @@ export async function setCourierInvoiceStatus(id: string, status: CourierInvoice
     p_invoice_id: id, p_status: status, p_note: opts.note || undefined, p_amount_paid: opts.amountPaid, p_reference: opts.reference || undefined,
   })
   if (error) throw error
+}
+
+// Courier Management --------------------------------------------------------------
+export type ParcelTab = 'all' | 'pending_entry' | 'assigned' | 'cancelled' | 'return_pending' | 'returned' | 'damage_lost' | 'delivered'
+export interface Parcel {
+  id: string; order_number: string; created_at: string; status: string; tab: ParcelTab
+  customer: { name: string; phone: string; address: string; area: string | null; district: string | null }
+  customer_note: string | null; total: number; cod_amount: number; amount_paid: number
+  products: Array<{ name: string; variant: string | null; qty: number; image: string | null; damaged: number; returned: number }>
+  item_count: number
+  courier: { id: string; name: string; provider: string | null; tracking_url_template: string | null } | null
+  shipment: { id: string; status: string; consignment_id: string | null; tracking_number: string | null; booked_at: string; shipping_cost: number | null; cod_collected: number | null; delivered_at: string | null } | null
+  attempts: number; rider: { name?: string; phone?: string } | null; rider_note: string | null; last_update_at: string | null
+  tags: string[]; in_charge: { id: string; name: string } | null
+}
+export interface ParcelPage { counts: Record<ParcelTab, number>; total: number; items: Parcel[] }
+
+export async function courierParcels(f: { tab: ParcelTab; q?: string; courierId?: string; page: number; pageSize: number }): Promise<ParcelPage> {
+  const { data, error } = await supabase.rpc('courier_parcels', {
+    p: { tab: f.tab, q: f.q || null, courier_id: f.courierId || null, limit: f.pageSize, offset: (f.page - 1) * f.pageSize },
+  })
+  if (error) throw error
+  return data as unknown as ParcelPage
 }

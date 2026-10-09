@@ -6,6 +6,8 @@ export interface StockFilters {
   status?: 'LOW_STOCK' | 'OUT_OF_STOCK' | 'IN_STOCK' | ''
   page: number
   pageSize: number
+  /** Include products whose stock is not counted (product list "Variations"). */
+  all?: boolean
 }
 
 export async function listStock(f: StockFilters) {
@@ -13,10 +15,10 @@ export async function listStock(f: StockFilters) {
     .from('inventory_overview')
     .select('*', { count: 'exact' })
     .eq('variant_active', true)
-    .eq('track_inventory', true)
-    .order('available', { ascending: true })
-    .order('product_name')
+    .order(f.all ? 'product_name' : 'available', { ascending: true })
+    .order(f.all ? 'variant_title' : 'product_name')
     .range((f.page - 1) * f.pageSize, f.page * f.pageSize - 1)
+  if (!f.all) query = query.eq('track_inventory', true)
   if (f.q) query = query.or(`product_name.ilike.%${f.q.replace(/[%,()]/g, ' ')}%,sku.ilike.%${f.q.replace(/[%,()]/g, ' ')}%`)
   if (f.status) query = query.eq('stock_status', f.status)
   const { data, error, count } = await query

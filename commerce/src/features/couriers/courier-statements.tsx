@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, FileDown, FileUp, Wallet } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -30,14 +30,42 @@ import {
   type ColumnMapping, findHeaderRow, guessMapping, readStatementFile, STATEMENT_FIELDS, type StatementField, toLines,
 } from './statement-parse'
 
-function Difference({ value, className }: { value: number | string; className?: string }) {
+/** What the courier paid against what they should have: correct, short or over. */
+export function Difference({ value, className }: { value: number | string; className?: string }) {
   const n = toNumber(value)
-  if (Math.abs(n) < 1) return <span className={cn('text-emerald-700', className)}>Matches</span>
-  return <span className={cn('font-medium text-red-700', className)}>{n > 0 ? '+' : '−'}{formatMoney(Math.abs(n))}</span>
+  if (Math.abs(n) < 1) return <span className={cn('inline-flex items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-xs font-medium text-background', className)}><CheckCircle2 className="size-3" />Correct</span>
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-foreground/60 ring-inset', className)}>
+      <AlertTriangle className="size-3" />{n < 0 ? 'Short' : 'Over'} {formatMoney(Math.abs(n))}
+    </span>
+  )
+}
+
+/** Plain-words verdict shown at the top of a statement. */
+export function Verdict({ difference, flagged, courier }: { difference: number | string | null; flagged: number; courier?: string | null }) {
+  const n = toNumber(difference ?? 0)
+  const who = courier ?? 'The courier'
+  const ok = Math.abs(n) < 1
+  return (
+    <div className={cn('flex items-start gap-3 rounded-lg border p-4 animate-in fade-in-0 slide-in-from-top-1 duration-300', ok ? 'border-foreground/20 bg-muted/40' : 'border-foreground/60')}>
+      <span className={cn('grid size-9 shrink-0 place-items-center rounded-full', ok ? 'bg-foreground text-background' : 'ring-2 ring-foreground')}>
+        {ok ? <CheckCircle2 className="size-5" /> : <AlertTriangle className="size-5" />}
+      </span>
+      <div className="text-sm">
+        <p className="text-base font-semibold">
+          {ok ? `${who} paid you correctly` : n < 0 ? `${who} paid ${formatMoney(Math.abs(n))} less than it should` : `${who} paid ${formatMoney(n)} more than expected`}
+        </p>
+        <p className="text-muted-foreground">
+          {flagged ? `${flagged} parcel${flagged === 1 ? '' : 's'} differ from your records — see the flagged list below.` : 'Every parcel matches your records.'}
+          {!ok && n < 0 && ' Raise the flagged parcels with the courier before marking it paid.'}
+        </p>
+      </div>
+    </div>
+  )
 }
 
 /** Courier statements: upload, compare with our parcels, verify and record the payout. */
-export function CourierStatements() {
+export function CourierStatements({ hideUpload }: { hideUpload?: boolean } = {}) {
   const { can } = useAuth()
   const [state, update] = useUrlState({ courier: '', sstatus: '', page: '1', statement: '' })
   const page = Number(state.page) || 1
@@ -66,7 +94,7 @@ export function CourierStatements() {
     },
     { key: 'expected', header: 'Expected payout', align: 'right', hideOnMobile: true, cell: (i) => <Money value={i.payout_expected} muted /> },
     { key: 'reported', header: 'Statement payout', align: 'right', cell: (i) => <Money value={i.payout_reported} /> },
-    { key: 'diff', header: 'Difference', align: 'right', cell: (i) => <Difference value={i.difference ?? 0} /> },
+    { key: 'diff', header: 'Verdict', align: 'right', cell: (i) => <Difference value={i.difference ?? 0} /> },
     { key: 'status', header: 'Status', cell: (i) => <StatusBadge value={i.status} map={COURIER_INVOICE_STATUS} /> },
   ]
   return (
@@ -83,7 +111,7 @@ export function CourierStatements() {
             {Object.entries(COURIER_INVOICE_STATUS).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        {can('couriers.manage') && <Button size="sm" className="ml-auto" onClick={() => setUploading(true)}><FileUp /> Upload statement</Button>}
+        {can('couriers.manage') && !hideUpload && <Button size="sm" className="ml-auto" onClick={() => setUploading(true)}><FileUp /> Upload statement</Button>}
       </div>
       <DataTable columns={columns} rows={invoices.data?.items} rowKey={(i) => i.id} loading={invoices.isFetching} error={invoices.error}
         onRetry={() => invoices.refetch()} onRowClick={(i) => update({ statement: i.id }, { resetPage: false })}
@@ -95,7 +123,7 @@ export function CourierStatements() {
   )
 }
 
-function UploadStatementDialog({ onClose, onImported }: { onClose: () => void; onImported: (id: string) => void }) {
+export function UploadStatementDialog({ onClose, onImported, initialFile }: { onClose: () => void; onImported: (id: string) => void; initialFile?: File }) {
   const queryClient = useQueryClient()
   const couriers = useQuery({ queryKey: ['couriers'], queryFn: () => listCouriers(true) })
   const [courierId, setCourierId] = useState('')
@@ -109,6 +137,7 @@ function UploadStatementDialog({ onClose, onImported }: { onClose: () => void; o
   const headers = rows[headerRow] ?? []
   const parsed = useMemo(() => (rows.length ? toLines(rows, headerRow, mapping) : null), [rows, headerRow, mapping])
   const hasRef = mapping.consignment_id !== undefined || mapping.order_ref !== undefined
+  useEffect(() => { if (initialFile) void pick(initialFile) }, [initialFile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function pick(f: File | undefined) {
     setReadError(null)
@@ -231,7 +260,7 @@ function Compare({ actual, expected }: { actual: number | string | null; expecte
   )
 }
 
-function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
+export function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<'flagged' | 'all'>('flagged')
@@ -301,11 +330,13 @@ function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
               </DialogDescription>
             </DialogHeader>
 
+            <Verdict difference={inv.difference} flagged={inv.line_count - inv.matched_count} courier={inv.couriers?.name} />
+
             <div className="grid gap-3 sm:grid-cols-4">
               {[
                 ['Expected payout', <Money key="e" value={inv.payout_expected} />],
                 ['Statement payout', <Money key="r" value={inv.payout_reported} />],
-                ['Difference', <Difference key="d" value={inv.difference ?? 0} />],
+                ['Verdict', <Difference key="d" value={inv.difference ?? 0} />],
                 [locked ? 'Amount paid' : 'Outstanding', <Money key="p" value={locked ? inv.amount_paid : inv.payout_reported} />],
               ].map(([label, v]) => (
                 <div key={label as string} className="rounded-lg border p-3">

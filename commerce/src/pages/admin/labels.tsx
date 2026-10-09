@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Palette, Printer } from 'lucide-react'
+import { ArrowLeft, FileText, Palette, Printer, StickyNote } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { normalizeTemplate, pageCss, PAPERS, type PaperId, paperOf } from '@/features/fulfillment/label-template'
+import { measuredHeight, normalizeTemplate, pageCss, PAPERS, type PaperId, paperOf } from '@/features/fulfillment/label-template'
 import { printInFrame } from '@/features/fulfillment/print-frame'
 import { LabelPages, type LabelStore } from '@/features/fulfillment/shipping-label'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -27,18 +28,20 @@ function storedPaper(): PaperId | null {
   }
 }
 
-/** Print shipping labels for one or many orders with the Label builder design; every print is recorded. */
+/** Print shipping labels (or invoices) for one or many orders with the builder's design; every label print is recorded. */
 export default function LabelsPage() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
+  const kind = params.get('kind') === 'invoice' ? 'invoice' : 'label'
   const ids = useMemo(() => (params.get('ids') ?? '').split(',').filter(Boolean), [params])
   const { data: config } = useStoreConfig()
   const queryClient = useQueryClient()
   const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings, staleTime: 60_000 })
   const fulfillment = (settings.data?.fulfillment ?? {}) as Record<string, unknown>
-  const saved = useMemo(() => normalizeTemplate(fulfillment.label_template, fulfillment), [fulfillment])
-  // A different paper can be picked for this print run (remembered on this computer).
+  const saved = useMemo(() => kind === 'invoice' ? normalizeTemplate(fulfillment.invoice_template, {}, 'invoice')
+    : normalizeTemplate(fulfillment.label_template, fulfillment), [fulfillment, kind])
+  // A different paper can be picked for this label run (remembered on this computer).
   const [paperId, setPaperId] = useState<PaperId | null>(storedPaper)
-  const template = paperId && paperId !== saved.paper ? { ...saved, paper: paperId } : saved
+  const template = kind === 'label' && paperId && paperId !== saved.paper && PAPERS.some((p) => p.id === paperId && p.id !== 'A4' && p.id !== 'A5') ? { ...saved, paper: paperId } : saved
   const paper = paperOf(template)
   const [confirmReprint, setConfirmReprint] = useState(false)
   const pagesRef = useRef<HTMLDivElement>(null)
@@ -53,11 +56,17 @@ export default function LabelsPage() {
 
   const print = useMutation({
     mutationFn: async () => {
+      const css = pageCss(paper, template.grow ? measuredHeight(pagesRef.current, paper) : undefined)
+      if (kind === 'invoice') {
+        await printInFrame(pagesRef.current?.innerHTML ?? '', css, `Invoices ${printable[0]?.order_number ?? ''}`)
+        return null
+      }
       const result = await markLabelsPrinted(printable.map((o) => o.id), template.paper)
-      await printInFrame(pagesRef.current?.innerHTML ?? '', pageCss(paper), `Labels ${printable[0]?.order_number ?? ''}`)
+      await printInFrame(pagesRef.current?.innerHTML ?? '', css, `Labels ${printable[0]?.order_number ?? ''}`)
       return result
     },
     onSuccess: (r) => {
+      if (!r) { toast.success(`${printable.length} invoice(s) sent to the printer`); return }
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
       void queryClient.invalidateQueries({ queryKey: ['label-orders'] })
       void queryClient.invalidateQueries({ queryKey: ['fulfillment-summary'] })
@@ -65,7 +74,7 @@ export default function LabelsPage() {
     },
   })
 
-  const start = () => (already.length ? setConfirmReprint(true) : print.mutate())
+  const start = () => (kind === 'label' && already.length ? setConfirmReprint(true) : print.mutate())
 
   if (!ids.length) return <EmptyState title="No orders selected" description="Select orders in the list and choose Print labels." />
   if (orders.isLoading || settings.isLoading) return <LoadingState label="Preparing labels…" />
@@ -77,35 +86,43 @@ export default function LabelsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/approved?print=1"><ArrowLeft /> Orders</Link></Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">Shipping labels</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{kind === 'invoice' ? 'Invoices' : 'Shipping labels'}</h1>
           <p className="text-sm text-muted-foreground">
-            {printable.length} label{printable.length === 1 ? '' : 's'} on {sheets} {paper.sheet ? 'A4 sheet' : 'label'}{sheets === 1 ? '' : 's'}
-            {already.length > 0 && <> · <span className="text-amber-700">{already.length} already printed</span></>}
+            {printable.length} {kind === 'invoice' ? 'invoice' : 'label'}{printable.length === 1 ? '' : 's'} on {sheets} {paper.sheet ? 'A4 sheet' : kind === 'invoice' ? 'page' : 'label'}{sheets === 1 ? '' : 's'}
+            {kind === 'label' && already.length > 0 && <> · <span className="font-medium">{already.length} already printed</span></>}
             {orders.data!.length > printable.length && <> · {orders.data!.length - printable.length} cancelled skipped</>}
           </p>
         </div>
-        <Select value={template.paper} onValueChange={(v) => {
+        <div className="flex rounded-lg border p-0.5">
+          {(['label', 'invoice'] as const).map((k) => (
+            <button key={k} type="button" onClick={() => setParams((p) => { if (k === 'invoice') p.set('kind', 'invoice'); else p.delete('kind'); return p }, { replace: true })}
+              className={cn('flex items-center gap-1.5 rounded-md px-3 py-1 text-sm transition-colors [&_svg]:size-3.5', kind === k ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}>
+              {k === 'label' ? <><StickyNote /> Label</> : <><FileText /> Invoice</>}
+            </button>
+          ))}
+        </div>
+        {kind === 'label' && <Select value={template.paper} onValueChange={(v) => {
           setPaperId(v as PaperId)
           try { localStorage.setItem(PAPER_KEY, v) } catch { /* private mode: not remembered */ }
         }}>
           <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {PAPERS.map((p) => <SelectItem key={p.id} value={p.id} title={p.hint}>{p.label}</SelectItem>)}
+            {PAPERS.filter((p) => p.id !== 'A4' && p.id !== 'A5').map((p) => <SelectItem key={p.id} value={p.id} title={p.hint}>{p.label}</SelectItem>)}
           </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" asChild><Link to="/admin/settings?tab=labels"><Palette /> Edit design</Link></Button>
+        </Select>}
+        <Button variant="outline" size="sm" asChild><Link to="/admin/label-builder"><Palette /> Edit design</Link></Button>
         <Button size="lg" className="rounded-full" onClick={start} disabled={!printable.length || print.isPending}>
-          {print.isPending ? <Spinner /> : <Printer />} Print {printable.length} label{printable.length === 1 ? '' : 's'}
+          {print.isPending ? <Spinner /> : <Printer />} Print {printable.length} {kind === 'invoice' ? 'invoice' : 'label'}{printable.length === 1 ? '' : 's'}
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
         In the print dialog choose your label printer, paper size {paper.sheet ? 'A4' : `${paper.width} × ${paper.height} mm`}, margins “None” and scale 100%.
       </p>
 
-      {already.length > 0 && (
+      {kind === 'label' && already.length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
           {already.map((o) => (
-            <Badge key={o.id} variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
+            <Badge key={o.id} variant="outline">
               {o.order_number} · printed {o.label_print_count}× · {formatDateTime(o.label_printed_at!)}
             </Badge>
           ))}

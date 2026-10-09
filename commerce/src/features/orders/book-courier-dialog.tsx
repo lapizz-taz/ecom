@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { bookShipments, type CourierRow, listCouriers } from '@/services/couriers'
+import { bookShipments, listCouriers } from '@/services/couriers'
 
 type RowStatus = 'QUEUED' | 'UPLOADING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
 interface Row { id: string; status: RowStatus; tracking: string | null; message: string }
@@ -21,7 +21,7 @@ const STATUS: Record<RowStatus, { label: string; className: string }> = {
   SKIPPED: { label: 'Stopped', className: 'bg-muted text-muted-foreground' },
 }
 
-const trackingUrl = (c: CourierRow | undefined, code: string) => {
+export const trackingUrl = (c: { tracking_url_template: string | null; provider: string | null } | null | undefined, code: string) => {
   const template = c?.tracking_url_template ?? (c?.provider === 'steadfast' ? 'https://steadfast.com.bd/t/{tracking}'
     : c?.provider === 'pathao' ? 'https://merchant.pathao.com/tracking?consignment_id={tracking}'
     : c?.provider === 'redx' ? 'https://redx.com.bd/track-parcel/?trackingId={tracking}' : null)

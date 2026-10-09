@@ -126,7 +126,8 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
               </>
             )
             const control = item.to ? (
-              <Link to={item.to} onClick={onNavigate} className={cn(itemClass(active), 'relative')} aria-current={item.to === current ? 'page' : undefined}>{inner}</Link>
+              <Link to={item.to} onClick={() => { if (item.children?.length) setOpen((o) => ({ ...o, [item.label]: true })); onNavigate?.() }}
+                className={cn(itemClass(active), 'relative')} aria-current={item.to === current ? 'page' : undefined}>{inner}</Link>
             ) : (
               <button type="button" onClick={() => onAction(item.action!)} className={cn(itemClass(false), 'relative')}>{inner}</button>
             )
@@ -147,18 +148,26 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
                     </button>
                   )}
                 </div>
-                {expanded && (
-                  <div className="enter my-1 ml-[21px] grid border-l border-sidebar-border pl-3">
-                    {item.children!.map((child) => (
-                      <Fragment key={child.to}>
-                        <Link to={child.to} onClick={onNavigate} aria-current={child.to === current ? 'page' : undefined}
-                          className={cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted transition-colors hover:text-sidebar-foreground',
-                            child.to === current && 'bg-sidebar-accent font-medium text-sidebar-foreground')}>
-                          <span className="min-w-0 flex-1 truncate">{child.label}</span>
-                          <Badge value={child.badge?.(counts)} className="bg-sidebar-accent text-sidebar-muted" />
-                        </Link>
-                      </Fragment>
-                    ))}
+                {!collapsed && !!item.children?.length && (
+                  // Height animates with grid rows 0fr → 1fr; links are inert while closed.
+                  <div className={cn('grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none',
+                    expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')} inert={!expanded}>
+                    <div className="overflow-hidden">
+                      <div className="my-1 ml-[21px] grid border-l border-sidebar-border pl-3">
+                        {item.children!.map((child, ci) => (
+                          <Fragment key={child.to}>
+                            <Link to={child.to} onClick={onNavigate} aria-current={child.to === current ? 'page' : undefined}
+                              style={{ transitionDelay: expanded ? `${Math.min(ci, 8) * 25}ms` : '0ms' }}
+                              className={cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted transition-[color,background-color,transform,opacity] duration-300 hover:translate-x-0.5 hover:text-sidebar-foreground motion-reduce:transition-none',
+                                expanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0',
+                                child.to === current && 'bg-sidebar-accent font-medium text-sidebar-foreground')}>
+                              <span className="min-w-0 flex-1 truncate">{child.label}</span>
+                              <Badge value={child.badge?.(counts)} className="bg-sidebar-accent text-sidebar-muted" />
+                            </Link>
+                          </Fragment>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

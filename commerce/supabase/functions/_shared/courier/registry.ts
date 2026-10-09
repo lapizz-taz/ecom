@@ -21,6 +21,15 @@ export const COURIER_FIELDS: Record<string, string[]> = {
   redx: ['access_token'],
 }
 
+/**
+ * Optional merchant-panel login (account email + password) kept with the keys,
+ * encrypted like them. Pathao already needs its login to issue API tokens.
+ */
+export const COURIER_OPTIONAL_FIELDS: Record<string, string[]> = {
+  steadfast: ['panel_email', 'panel_password'],
+  redx: ['panel_email', 'panel_password'],
+}
+
 export const COURIER_TRACKING: Record<string, string> = {
   steadfast: 'https://steadfast.com.bd/t/{tracking}',
   pathao: 'https://merchant.pathao.com/tracking?consignment_id={tracking}',
@@ -30,13 +39,30 @@ export const COURIER_TRACKING: Record<string, string> = {
 const text = (v: unknown) => (v === undefined || v === null ? '' : String(v).trim())
 
 export function missingCredentialFields(provider: string, creds: CourierCredentials): string[] {
-  return (COURIER_FIELDS[provider] ?? []).filter((f) => !text(creds[f]))
+  const missing = (COURIER_FIELDS[provider] ?? []).filter((f) => !text(creds[f]))
+  // The optional login is all or nothing.
+  const optional = COURIER_OPTIONAL_FIELDS[provider] ?? []
+  if (optional.some((f) => text(creds[f]))) missing.push(...optional.filter((f) => !text(creds[f])))
+  return missing
 }
 
-/** Masked hint shown in the admin ("••••3f9a"); never the secret itself. */
+/** Problems with the values themselves (e.g. a login email that is not an email). */
+export function invalidCredentialFields(provider: string, creds: CourierCredentials): string[] {
+  const email = text(creds[provider === 'pathao' ? 'username' : 'panel_email'])
+  return email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? ['account email'] : []
+}
+
+/** Masks an email for display: ra•••@shop.com. */
+export function maskEmail(email: string): string {
+  const [user, domain] = email.split('@')
+  return domain ? `${user.slice(0, 2)}•••@${domain}` : '•••'
+}
+
+/** Masked hint shown in the admin ("••••3f9a · ra•••@shop.com"); never the secret itself. */
 export function credentialHint(provider: string, creds: CourierCredentials): string {
   const main = text(creds[COURIER_FIELDS[provider]?.[0] ?? ''])
-  return main ? `••••${main.slice(-4)}` : '••••'
+  const email = text(creds[provider === 'pathao' ? 'username' : 'panel_email'])
+  return [main ? `••••${main.slice(-4)}` : '••••', email ? maskEmail(email) : null].filter(Boolean).join(' · ')
 }
 
 /** Builds a provider from explicit credentials (used to test before saving). */

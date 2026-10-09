@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mapPathaoStatus, mapRedxStatus, matchByName, PathaoProvider, RedxProvider } from './courier/providers.ts'
-import { buildCourierProvider, credentialHint, missingCredentialFields } from './courier/registry.ts'
+import { buildCourierProvider, credentialHint, invalidCredentialFields, missingCredentialFields } from './courier/registry.ts'
 import { parse, placeOrderSchema } from './schemas.ts'
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -18,6 +18,16 @@ describe('courier registry', () => {
     expect(credentialHint('steadfast', { api_key: 'key-1234abcd' })).toBe('••••abcd')
     expect(buildCourierProvider('pathao', { client_id: 'c' }).code).toBe('pathao')
     expect(buildCourierProvider('something-else', {}).code).toBe('manual')
+  })
+
+  it('takes an optional account login, both parts or neither, and shows only a masked email', () => {
+    expect(missingCredentialFields('steadfast', { api_key: 'a', secret_key: 'b' })).toEqual([])
+    expect(missingCredentialFields('steadfast', { api_key: 'a', secret_key: 'b', panel_email: 'shop@x.com' })).toEqual(['panel_password'])
+    expect(invalidCredentialFields('redx', { access_token: 't', panel_email: 'not-an-email', panel_password: 'p' })).toEqual(['account email'])
+    expect(invalidCredentialFields('pathao', { username: 'owner@shop.com' })).toEqual([])
+    const hint = credentialHint('steadfast', { api_key: 'key-1234abcd', panel_email: 'rahim@shop.com', panel_password: 'secret-pass' })
+    expect(hint).toBe('••••abcd · ra•••@shop.com')
+    expect(hint).not.toContain('secret-pass')
   })
 
   it('matches cities, zones and areas by name', () => {

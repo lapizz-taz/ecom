@@ -3932,6 +3932,11 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          short_description: string | null
+          shipping_note: string | null
+          warranty: string | null
+          admin_note: string | null
+          extra_category_ids: string[]
         }
         Insert: {
           id?: string
@@ -3957,6 +3962,11 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          short_description?: string | null
+          shipping_note?: string | null
+          warranty?: string | null
+          admin_note?: string | null
+          extra_category_ids?: string[]
         }
         Update: {
           id?: string
@@ -3982,6 +3992,11 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          short_description?: string | null
+          shipping_note?: string | null
+          warranty?: string | null
+          admin_note?: string | null
+          extra_category_ids?: string[]
         }
         Relationships: [
           {
@@ -5610,6 +5625,17 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_product_quick_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      admin_product_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       admin_quote_order: {
         Args: {
           p_items: Json
@@ -5690,6 +5716,46 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          short_description: string | null
+          shipping_note: string | null
+          warranty: string | null
+          admin_note: string | null
+          extra_category_ids: string[]
+        }
+      }
+      admin_save_product_full: {
+        Args: {
+          p_payload: Json
+        }
+        Returns: {
+          id: string
+          name: string
+          slug: string
+          sku: string | null
+          description: string | null
+          category_id: string | null
+          brand: string | null
+          tags: string[]
+          status: Database["public"]["Enums"]["product_status"]
+          option_names: string[]
+          cost_price: number
+          price: number
+          compare_at_price: number | null
+          weight_grams: number | null
+          low_stock_threshold: number | null
+          track_inventory: boolean
+          requires_production: boolean
+          is_featured: boolean
+          seo_title: string | null
+          seo_description: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+          short_description: string | null
+          shipping_note: string | null
+          warranty: string | null
+          admin_note: string | null
+          extra_category_ids: string[]
         }
       }
       admin_save_purchase_order: {
@@ -5874,6 +5940,13 @@ export type Database = {
           note: string | null
           attributed_at: string
         }
+      }
+      admin_set_store_mode: {
+        Args: {
+          p_mode: string
+          p_redirect_url?: string
+        }
+        Returns: Json
       }
       admin_set_user_role: {
         Args: {
@@ -6282,6 +6355,12 @@ export type Database = {
         Args: {
           p_from: string
           p_to: string
+        }
+        Returns: Json
+      }
+      courier_parcels: {
+        Args: {
+          p: Json
         }
         Returns: Json
       }
@@ -7451,6 +7530,10 @@ export type Database = {
           p_offset?: number
         }
         Returns: Json
+      }
+      storefront_mode: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       storefront_quote: {
         Args: {

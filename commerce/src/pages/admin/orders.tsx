@@ -418,7 +418,10 @@ export function OrdersPage({ view }: { view: View }) {
             ) : (
               <>
                 {can('orders.fulfill') && (
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>
+                  <>
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}&kind=invoice`)}><Printer /> Print invoices</Button>
+                  </>
                 )}
                 {can('shipments.manage') && (
                   <Button size="sm" variant="outline" className="rounded-full" onClick={() => setBookOpen(true)}><Truck /> Book courier</Button>

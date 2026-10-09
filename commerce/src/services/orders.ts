@@ -317,8 +317,9 @@ export async function labelOrders(ids: string[]) {
     .from('orders')
     .select(`id, order_number, status, created_at, customer_name, customer_phone, shipping_address, shipping_area, shipping_city,
       shipping_district, shipping_postal_code, total_amount, amount_paid, cod_amount, payment_method, customer_note,
+      subtotal, delivery_charge, delivery_discount, discount_total, delivery_method,
       label_printed_at, label_print_count,
-      order_items(product_name, variant_title, sku, quantity),
+      order_items(product_name, variant_title, sku, quantity, unit_price, line_subtotal),
       shipments(is_active, tracking_number, consignment_id, couriers(name))`)
     .in('id', ids.slice(0, 200))
   if (error) throw error

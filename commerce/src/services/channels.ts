@@ -1,4 +1,5 @@
 import { invokeFunction } from '@/lib/functions'
+import type { StoreMode } from '@/types/domain'
 import { asJson, fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
 
@@ -63,3 +64,9 @@ export const retryImport = (importId: string, overrides: { phone?: string; name?
 
 /** Where Shopify sends staff back after approving the app (goes in the app's allowed redirect URLs). */
 export const shopifyRedirectUri = () => `${import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '')}/functions/v1/channels/callback/shopify`
+
+export async function setStoreMode(mode: StoreMode, redirectUrl: string | null): Promise<{ mode: StoreMode; redirect_url: string | null }> {
+  const { data, error } = await supabase.rpc('admin_set_store_mode', { p_mode: mode, p_redirect_url: redirectUrl ?? undefined })
+  if (error) throw error
+  return fromJson(data)
+}

@@ -5,7 +5,9 @@ import type { Enums, TablesInsert, TablesUpdate } from '@/types/database'
 export interface AdminProductFilters {
   q?: string
   status?: Enums<'product_status'> | ''
+  statuses?: Enums<'product_status'>[]
   categoryId?: string
+  sort?: 'newest' | 'oldest' | 'name' | 'price_desc' | 'price_asc' | 'cost_desc'
   page: number
   pageSize: number
 }
@@ -13,12 +15,14 @@ export interface AdminProductFilters {
 export async function listAdminProducts(f: AdminProductFilters) {
   let query = supabase
     .from('products')
-    .select('id, name, slug, sku, status, price, compare_at_price, cost_price, is_featured, requires_production, track_inventory, created_at, categories(name), product_variants(id, sku, is_active, inventory(on_hand, reserved, available)), product_images(url, is_primary, position)', { count: 'exact' })
-    .order('created_at', { ascending: false })
+    .select('id, name, slug, sku, status, price, compare_at_price, cost_price, is_featured, requires_production, track_inventory, low_stock_threshold, description, short_description, extra_category_ids, created_at, categories(name), product_variants(id, sku, title, is_active, inventory(on_hand, reserved, available)), product_images(url, is_primary, position)', { count: 'exact' })
     .range((f.page - 1) * f.pageSize, f.page * f.pageSize - 1)
+  const [col, asc] = ({ newest: ['created_at', false], oldest: ['created_at', true], name: ['name', true], price_desc: ['price', false], price_asc: ['price', true], cost_desc: ['cost_price', false] } as const)[f.sort ?? 'newest']
+  query = query.order(col, { ascending: asc }).order('name').order('id')
+  if (f.statuses?.length) query = query.in('status', f.statuses)
   if (f.q) query = query.or(`name.ilike.%${f.q.replace(/[%,()]/g, ' ')}%,sku.ilike.%${f.q.replace(/[%,()]/g, ' ')}%`)
   if (f.status) query = query.eq('status', f.status)
-  if (f.categoryId) query = query.eq('category_id', f.categoryId)
+  if (f.categoryId) query = query.or(`category_id.eq.${f.categoryId},extra_category_ids.cs.{${f.categoryId}}`)
   const { data, error, count } = await query
   if (error) throw error
   return { items: data ?? [], total: count ?? 0 }
@@ -59,6 +63,11 @@ export interface ProductPayload {
   is_featured: boolean
   seo_title?: string | null
   seo_description?: string | null
+  short_description?: string | null
+  extra_category_ids?: string[]
+  shipping_note?: string | null
+  warranty?: string | null
+  admin_note?: string | null
   variants: Array<{
     id?: string
     sku: string
@@ -77,7 +86,7 @@ export interface ProductPayload {
 }
 
 export async function saveProduct(payload: ProductPayload) {
-  const { data, error } = await supabase.rpc('admin_save_product', { p_payload: asJson(payload) })
+  const { data, error } = await supabase.rpc('admin_save_product_full', { p_payload: asJson(payload) })
   if (error) throw error
   return data
 }
@@ -85,6 +94,20 @@ export async function saveProduct(payload: ProductPayload) {
 export async function setProductStatus(id: string, status: Enums<'product_status'>) {
   const { error } = await supabase.from('products').update({ status }).eq('id', id)
   if (error) throw error
+}
+
+/** One-field edits from the product list (server checks products.manage). */
+export async function quickUpdateProduct(id: string, changes: { cost_price?: number; price?: number; active?: boolean; track_inventory?: boolean }) {
+  const { data, error } = await supabase.rpc('admin_product_quick_update', { p_id: id, p: asJson(changes) })
+  if (error) throw error
+  return data as unknown as { id: string; cost_price: number; price: number; status: Enums<'product_status'>; track_inventory: boolean }
+}
+
+export interface ProductStats { products: number; active: number; inactive: number; variants: number; stock: number; sell_value: number; cost_value: number; low_stock: number }
+export async function productStats(): Promise<ProductStats> {
+  const { data, error } = await supabase.rpc('admin_product_stats')
+  if (error) throw error
+  return data as unknown as ProductStats
 }
 
 export async function deleteProduct(id: string) {
@@ -101,10 +124,11 @@ export async function listCategories() {
 
 export async function saveCategory(values: TablesInsert<'categories'> & { id?: string }) {
   const { id, ...rest } = values
-  const { error } = id
-    ? await supabase.from('categories').update(rest as TablesUpdate<'categories'>).eq('id', id)
-    : await supabase.from('categories').insert(rest)
+  const { data, error } = id
+    ? await supabase.from('categories').update(rest as TablesUpdate<'categories'>).eq('id', id).select().single()
+    : await supabase.from('categories').insert(rest).select().single()
   if (error) throw error
+  return data
 }
 
 export async function deleteCategory(id: string) {
@@ -130,6 +154,14 @@ export async function uploadProductImage(productId: string, file: File, position
     await supabase.storage.from(BUCKET).remove([path])
     throw error
   }
+}
+
+/** Adds an image by address (no upload). */
+export async function addProductImageUrl(productId: string, url: string, position: number, primary: boolean) {
+  const clean = url.trim()
+  if (!/^https:\/\/\S+$/i.test(clean)) throw new Error('VALIDATION: image address must start with https://')
+  const { error } = await supabase.from('product_images').insert({ product_id: productId, url: clean, position, is_primary: primary, alt: null })
+  if (error) throw error
 }
 
 export async function deleteProductImage(image: { id: string; storage_path: string | null }) {

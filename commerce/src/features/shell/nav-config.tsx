@@ -71,8 +71,8 @@ export const NAV: NavSection[] = [
           { label: 'Preorders', to: '/admin/orders/approved?tab=PRE_ORDER', badge: (c) => c.queue?.approved?.PRE_ORDER },
           { label: 'Super Edit', to: '/admin/orders/super-edit', permission: 'orders.override' },
           { label: 'Scan To Update', to: '/admin/scan', permission: 'orders.fulfill' },
-          { label: 'Courier Invoice Upload', to: '/admin/couriers?tab=statements', permission: 'couriers.view' },
-          { label: 'Courier Management', to: '/admin/couriers', permission: 'couriers.view' },
+          { label: 'Courier Invoice Upload', to: '/admin/courier-invoices', permission: 'couriers.view' },
+          { label: 'Courier Management', to: '/admin/courier-management', permission: 'couriers.view' },
         ],
       },
       {
@@ -170,7 +170,7 @@ export const NAV: NavSection[] = [
           { label: 'Delivery Charges', to: '/admin/settings?tab=delivery' },
           { label: 'Fraud & Advance', to: '/admin/settings?tab=fraud' },
           { label: 'Order Settings', to: '/admin/settings?tab=operations' },
-          { label: 'Label Builder', to: '/admin/settings?tab=labels' },
+          { label: 'Label & Invoice Builder', to: '/admin/label-builder' },
           { label: 'Templates', to: '/admin/settings?tab=notifications' },
           { label: 'Finance Categories', to: '/admin/settings?tab=finance', permission: 'finance.view' },
         ],
@@ -205,7 +205,7 @@ export const MORE_PAGES: (NavChild & { parent: string })[] = [
   { parent: 'Web Orders', label: 'Customer Verification', to: '/admin/orders/fraud', permission: 'fraud.view' },
   { parent: 'Web Orders', label: 'All Orders', to: '/admin/orders', permission: 'orders.view' },
   { parent: 'Approved Orders', label: 'Labels to Print', to: '/admin/orders/approved?print=1', permission: 'orders.fulfill' },
-  { parent: 'Approved Orders', label: 'Label Builder', to: '/admin/settings?tab=labels', permission: 'settings.view' },
+  { parent: 'Approved Orders', label: 'Label & Invoice Builder', to: '/admin/label-builder', permission: 'settings.view' },
   { parent: 'Approved Orders', label: 'Pending Returns', to: '/admin/orders/approved?tab=PENDING_RETURN', permission: 'orders.view' },
   { parent: 'Approved Orders', label: 'Webhook Logs', to: '/admin/couriers?tab=webhooks', permission: 'couriers.view' },
 ]

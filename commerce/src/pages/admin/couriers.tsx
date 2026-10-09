@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, Pencil, Plug, PlugZap, Plus, RefreshCw, Unplug, Wallet, Webhook } from 'lucide-react'
+import { CircleCheck, KeyRound, Pencil, Plug, PlugZap, Plus, RefreshCw, Unplug, Wallet, Webhook } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -41,26 +41,30 @@ const PROVIDERS = [
   { value: 'redx', label: 'RedX (API)' },
 ]
 
-interface CredentialField { key: string; label: string; secret?: boolean; placeholder?: string }
+interface CredentialField { key: string; label: string; secret?: boolean; placeholder?: string; optional?: boolean; login?: boolean }
+const LOGIN_FIELDS: CredentialField[] = [
+  { key: 'panel_email', label: 'Account email', placeholder: 'you@shop.com', optional: true, login: true },
+  { key: 'panel_password', label: 'Account password', secret: true, optional: true, login: true },
+]
 const INTEGRATIONS: Array<{ code: CourierProviderCode; name: string; color: string; blurb: string; where: string; sandbox?: boolean; fields: CredentialField[] }> = [
   {
     code: 'steadfast', name: 'Steadfast', color: 'bg-[#00b795] text-white', blurb: 'Book parcels, print tracking on labels, live status updates.',
     where: 'Steadfast portal → Settings → API', fields: [
-      { key: 'api_key', label: 'API key' }, { key: 'secret_key', label: 'Secret key', secret: true },
+      { key: 'api_key', label: 'API key' }, { key: 'secret_key', label: 'Secret key', secret: true }, ...LOGIN_FIELDS,
     ],
   },
   {
     code: 'pathao', name: 'Pathao', color: 'bg-[#e1252e] text-white', blurb: 'Merchant API — city and zone are matched from the order address.',
     where: 'Pathao merchant panel → Developers API', sandbox: true, fields: [
       { key: 'client_id', label: 'Client ID' }, { key: 'client_secret', label: 'Client secret', secret: true },
-      { key: 'username', label: 'Merchant login email', placeholder: 'you@shop.com' }, { key: 'password', label: 'Merchant password', secret: true },
+      { key: 'username', label: 'Account email', placeholder: 'you@shop.com', login: true }, { key: 'password', label: 'Account password', secret: true, login: true },
       { key: 'store_id', label: 'Store ID', placeholder: 'e.g. 12345' },
     ],
   },
   {
     code: 'redx', name: 'RedX', color: 'bg-[#e8202a] text-white', blurb: 'Open API — delivery area is matched from the order address.',
     where: 'RedX merchant panel → Developer / API access', sandbox: true, fields: [
-      { key: 'access_token', label: 'API access token', secret: true },
+      { key: 'access_token', label: 'API access token', secret: true }, ...LOGIN_FIELDS,
     ],
   },
 ]
@@ -349,11 +353,14 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected }: {
       courier_id: existing?.id,
       provider: integration!.code,
       name: existing ? undefined : name.trim() || integration!.name,
-      credentials: { ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()])), ...(integration!.sandbox ? { sandbox } : {}) },
+      credentials: { ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v !== '')), ...(integration!.sandbox ? { sandbox } : {}) },
     }),
     onSuccess: (r) => { toast.success(r.message); setValues({}); onConnected(); onClose() },
   })
-  const missing = integration?.fields.some((f) => !values[f.key]?.trim())
+  const filled = (k: string) => !!values[k]?.trim()
+  const loginFields = integration?.fields.filter((f) => f.optional) ?? []
+  const missing = integration?.fields.some((f) => !f.optional && !filled(f.key))
+    || (loginFields.some((f) => filled(f.key)) && loginFields.some((f) => !filled(f.key)))
   return (
     <Dialog open={integration !== null} onOpenChange={(o) => { if (!o) { connect.reset(); setValues({}); onClose() } }}>
       <DialogContent>
@@ -365,12 +372,33 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected }: {
           {!existing && (
             <Field label="Name in your admin" htmlFor="cc-name"><Input id="cc-name" value={name} placeholder={integration?.name} onChange={(e) => setName(e.target.value)} /></Field>
           )}
-          {integration?.fields.map((f) => (
+          {integration?.fields.filter((f) => !f.login).map((f) => (
             <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required>
               <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'text'} autoComplete="off" placeholder={f.placeholder}
                 value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
             </Field>
           ))}
+          {integration?.fields.some((f) => f.login) && (
+            <div className="grid gap-3 rounded-lg border p-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-medium"><KeyRound className="size-4" /> {integration.name} account login{integration.fields.some((f) => f.login && f.optional) && <span className="font-normal text-muted-foreground">· optional</span>}</p>
+                <p className="text-xs text-muted-foreground">
+                  {integration.code === 'pathao'
+                    ? 'The email and password of your Pathao merchant account — Pathao needs them to issue API access.'
+                    : `The email and password you use on the ${integration.name} merchant panel, kept with the keys for account-level tracking. Fill both or leave both empty.`}
+                  {' '}Encrypted on the server; never shown again.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {integration.fields.filter((f) => f.login).map((f) => (
+                  <Field key={f.key} label={f.label} htmlFor={`cc-${f.key}`} required={!f.optional}>
+                    <Input id={`cc-${f.key}`} type={f.secret ? 'password' : 'email'} autoComplete={f.secret ? 'new-password' : 'off'} placeholder={f.placeholder}
+                      value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
+                  </Field>
+                ))}
+              </div>
+            </div>
+          )}
           {integration?.sandbox && (
             <label className="flex items-center gap-2 text-sm"><Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox / test account</label>
           )}

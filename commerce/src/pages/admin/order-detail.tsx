@@ -211,7 +211,7 @@ export default function OrderDetailPage() {
                   <DropdownMenuItem onClick={() => setDialog('items')}><Package /> Edit items</DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}/invoice`}><FileText /> Print invoice</Link></DropdownMenuItem>
+              <DropdownMenuItem asChild><Link to={`/admin/labels?ids=${o.id}&kind=invoice`}><FileText /> Print invoice</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}/packing-slip`}><Printer /> Packing slip</Link></DropdownMenuItem>
               {can('orders.create') && <DropdownMenuItem onClick={() => duplicate.mutate()}><Copy /> Duplicate order</DropdownMenuItem>}
               {can('fraud.review') && inReview && <DropdownMenuItem onClick={() => fraudCheck.mutate()}><RefreshCw /> Re-run fraud check</DropdownMenuItem>}

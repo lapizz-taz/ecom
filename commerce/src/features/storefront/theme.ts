@@ -123,6 +123,12 @@ function startListening() {
   window.parent.postMessage({ type: 'theme-preview-ready' }, window.location.origin)
 }
 
+/** True inside the theme builder's preview frame. */
+export function isThemePreview(): boolean {
+  if (typeof window === 'undefined' || window.parent === window) return false
+  try { return new URLSearchParams(window.location.search).has('theme_preview') || !!sessionStorage.getItem('theme_preview') } catch { return false }
+}
+
 /** The storefront settings to render: the builder's draft while previewing, else the saved ones. */
 export function useStorefront(saved: Storefront | undefined): Storefront | undefined {
   const draft = useSyncExternalStore((l) => { startListening(); listeners.add(l); return () => { listeners.delete(l) } }, () => preview, () => null)

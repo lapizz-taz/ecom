@@ -7,6 +7,8 @@ export type OrderStatus = Enums<'order_status'>
 export type PaymentMethod = Enums<'payment_method'>
 
 // ---------------------------------------------------------------- storefront
+export type StoreMode = 'OWN' | 'SHOPIFY' | 'WOOCOMMERCE' | 'OFF'
+
 export interface ProductCard {
   id: string
   name: string
@@ -38,6 +40,9 @@ export interface ProductVariantPublic {
 
 export interface ProductDetail extends ProductCard {
   description: string | null
+  short_description?: string | null
+  shipping_note?: string | null
+  warranty?: string | null
   sku: string | null
   option_names: string[]
   seo_title: string | null
@@ -99,6 +104,9 @@ export interface StoreConfig {
     footer_text?: string
     /** Theme builder: colours, font, home-page sections (see features/storefront/theme). */
     theme?: Record<string, unknown>
+    /** OWN = this store takes orders; otherwise it is closed (enforced when an order is placed). */
+    mode?: StoreMode
+    redirect_url?: string | null
   }
   policies: Record<string, string>
   delivery: {

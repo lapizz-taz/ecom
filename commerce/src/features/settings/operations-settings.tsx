@@ -36,7 +36,7 @@ export function OperationsSettings() {
       </SettingCard>
 
       <SettingCard setting={fulfillment} title="Labels & scanning"
-        description={<>Label size, what is printed and in what order: <Link to="/admin/settings?tab=labels" className="underline">Label builder</Link>.</>}>
+        description={<>Label size, what is printed and in what order: <Link to="/admin/label-builder" className="underline">Label builder</Link>.</>}>
         <SwitchSetting s={fulfillment} path={['require_label_before_rts']} label="Require a printed label before 'Ready to ship'"
           hint="The scanner refuses parcels whose label was never printed" />
       </SettingCard>
