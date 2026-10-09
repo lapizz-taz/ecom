@@ -1,12 +1,13 @@
 import JsBarcode from 'jsbarcode'
-import { useEffect, useRef } from 'react'
+import { type CSSProperties, useEffect, useRef } from 'react'
 
 /** Code 128 barcode as crisp SVG (prints sharply on thermal printers). */
-export function Barcode({ value, height = 48, barWidth = 1.8, className }: {
+export function Barcode({ value, height = 48, barWidth = 1.8, className, style }: {
   value: string
   height?: number
   barWidth?: number
   className?: string
+  style?: CSSProperties
 }) {
   const ref = useRef<SVGSVGElement>(null)
   useEffect(() => {
@@ -19,5 +20,5 @@ export function Barcode({ value, height = 48, barWidth = 1.8, className }: {
       ref.current.replaceChildren()
     }
   }, [value, height, barWidth])
-  return <svg ref={ref} className={className} role="img" aria-label={`Barcode ${value}`} preserveAspectRatio="none" />
+  return <svg ref={ref} className={className} style={style} role="img" aria-label={`Barcode ${value}`} preserveAspectRatio="none" />
 }

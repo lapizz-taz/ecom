@@ -1,5 +1,6 @@
+import { Link } from 'react-router'
 import { CallStatusesSettings } from './call-statuses'
-import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, TextSetting, useSettingDraft } from './setting-form'
+import { NumberSetting, SelectSetting, SettingCard, SwitchSetting, useSettingDraft } from './setting-form'
 
 export function OperationsSettings() {
   const orders = useSettingDraft('orders')
@@ -34,16 +35,8 @@ export function OperationsSettings() {
         </div>
       </SettingCard>
 
-      <SettingCard setting={fulfillment} title="Labels & scanning">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SelectSetting s={fulfillment} path={['label_size']} label="Default label size" options={[
-            { value: '100x150', label: '4 × 6 in (100 × 150 mm) thermal' }, { value: '75x100', label: '3 × 4 in (75 × 100 mm) thermal' },
-            { value: 'A4', label: 'A4 — 4 labels per sheet' },
-          ]} />
-          <TextSetting s={fulfillment} path={['label_note']} label="Footer note on labels" placeholder="e.g. Please call before delivery" />
-        </div>
-        <SwitchSetting s={fulfillment} path={['show_cod_on_label']} label="Print the amount to collect (COD)" />
-        <SwitchSetting s={fulfillment} path={['show_items_on_label']} label="Print the item list" />
+      <SettingCard setting={fulfillment} title="Labels & scanning"
+        description={<>Label size, what is printed and in what order: <Link to="/admin/settings?tab=labels" className="underline">Label builder</Link>.</>}>
         <SwitchSetting s={fulfillment} path={['require_label_before_rts']} label="Require a printed label before 'Ready to ship'"
           hint="The scanner refuses parcels whose label was never printed" />
       </SettingCard>

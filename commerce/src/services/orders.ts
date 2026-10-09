@@ -271,6 +271,14 @@ export async function labelOrders(ids: string[]) {
 }
 export type LabelOrder = Awaited<ReturnType<typeof labelOrders>>[number]
 
+/** The newest approved order, to preview the label design with real data. */
+export async function latestLabelOrder(): Promise<LabelOrder | null> {
+  const { data, error } = await supabase.from('orders').select('id').not('confirmed_at', 'is', null)
+    .order('confirmed_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw error
+  return data ? (await labelOrders([data.id]))[0] ?? null : null
+}
+
 export async function scanParcel(code: string, action: ScanAction, courierId?: string | null): Promise<ScanResult> {
   const { data, error } = await supabase.rpc('scan_parcel', { p_code: code, p_action: action, p_courier_id: courierId || undefined })
   if (error) throw error

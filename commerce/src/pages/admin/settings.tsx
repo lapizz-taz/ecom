@@ -4,6 +4,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { DeliverySettings } from '@/features/settings/delivery-settings'
 import { FinanceCategories } from '@/features/settings/finance-categories'
 import { FraudSettings } from '@/features/settings/fraud-settings'
+import { LabelBuilder } from '@/features/settings/label-builder'
 import { NotificationSettings } from '@/features/settings/notification-settings'
 import { OperationsSettings } from '@/features/settings/operations-settings'
 import { PaymentSettings } from '@/features/settings/payment-settings'
@@ -16,6 +17,7 @@ const TABS = [
   { key: 'payments', label: 'Payments', render: () => <PaymentSettings /> },
   { key: 'fraud', label: 'Fraud & advance', render: () => <FraudSettings /> },
   { key: 'operations', label: 'Orders & operations', render: () => <OperationsSettings /> },
+  { key: 'labels', label: 'Label builder', render: () => <LabelBuilder /> },
   { key: 'notifications', label: 'Notifications', render: () => <NotificationSettings /> },
   { key: 'finance', label: 'Finance categories', permission: 'finance.view', render: () => <FinanceCategories /> },
 ]

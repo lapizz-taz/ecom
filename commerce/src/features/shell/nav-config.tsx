@@ -158,6 +158,7 @@ export const NAV: NavSection[] = [
           { label: 'Delivery Charges', to: '/admin/settings?tab=delivery' },
           { label: 'Fraud & Advance', to: '/admin/settings?tab=fraud' },
           { label: 'Order Settings', to: '/admin/settings?tab=operations' },
+          { label: 'Label Builder', to: '/admin/settings?tab=labels' },
           { label: 'Templates', to: '/admin/settings?tab=notifications' },
           { label: 'Finance Categories', to: '/admin/settings?tab=finance', permission: 'finance.view' },
         ],
@@ -192,6 +193,7 @@ export const MORE_PAGES: (NavChild & { parent: string })[] = [
   { parent: 'Web Orders', label: 'Customer Verification', to: '/admin/orders/fraud', permission: 'fraud.view' },
   { parent: 'Web Orders', label: 'All Orders', to: '/admin/orders', permission: 'orders.view' },
   { parent: 'Approved Orders', label: 'Labels to Print', to: '/admin/orders/approved?print=1', permission: 'orders.fulfill' },
+  { parent: 'Approved Orders', label: 'Label Builder', to: '/admin/settings?tab=labels', permission: 'settings.view' },
   { parent: 'Approved Orders', label: 'Pending Returns', to: '/admin/orders/approved?tab=PENDING_RETURN', permission: 'orders.view' },
   { parent: 'Approved Orders', label: 'Webhook Logs', to: '/admin/couriers?tab=webhooks', permission: 'couriers.view' },
 ]

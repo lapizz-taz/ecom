@@ -380,12 +380,6 @@
   .press:active:not(:disabled) { transform: none; }
 }
 
-/* Shipping labels: one label per printed page at the chosen size. */
-@media print {
-  .label-sheet { gap: 0 !important; padding: 0 !important; background: white !important; }
-  .label-sheet > .shipping-label { break-after: page; border: 0 !important; box-shadow: none !important; margin: 0 !important; }
-}
-
 @media print {
   .dark {
     color-scheme: light;
