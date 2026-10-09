@@ -70,7 +70,7 @@ export function OrdersPage({ view }: { view: View }) {
   const navigate = useNavigate()
   const [state, update] = useUrlState({
     ...EMPTY_FILTERS,
-    tab: view === 'web' ? 'PROCESSING' : 'all', q: '', sort: 'created_at', dir: 'desc', page: '1', print: '', due: '', dupes: '', advance: '',
+    tab: view === 'web' ? 'PROCESSING' : view === 'approved' ? 'PENDING' : 'all', q: '', sort: 'created_at', dir: 'desc', page: '1', print: '', due: '', dupes: '', advance: '',
   })
   const filterValues = useMemo(() => Object.fromEntries(Object.keys(EMPTY_FILTERS).map((k) => [k, state[k as keyof FilterValues]])) as FilterValues, [state])
   const page = Number(state.page) || 1
@@ -220,7 +220,7 @@ export function OrdersPage({ view }: { view: View }) {
     { key: 'order', header: 'Invoice', primary: true, cell: (o) => <InvoiceCell o={o} /> },
     { key: 'customer', header: 'Customer', cell: (o) => <CustomerCell o={o} /> },
     { key: 'note', header: 'Note', hideOnMobile: true, cell: (o) => <NoteCell o={o} /> },
-    { key: 'products', header: 'Products', cell: (o) => <ProductsCell o={o} /> },
+    { key: 'products', header: 'Products', cell: (o) => <ProductsCell o={o} showStage={state.tab === 'all'} /> },
     { key: 'tags', header: 'Tags', hideOnMobile: true, cell: tagCell },
     {
       key: 'print', header: 'Print', align: 'center',
@@ -234,7 +234,7 @@ export function OrdersPage({ view }: { view: View }) {
         <div>
           <Money value={o.total_amount} className="font-medium" />
           {Number(o.cod_amount) > 0 && Number(o.cod_amount) !== Number(o.total_amount) && <p className="text-xs text-muted-foreground">COD <Money value={o.cod_amount} /></p>}
-          {o.payment_status !== 'UNPAID' && <p className="text-xs text-muted-foreground">{PAYMENT_STATUS[o.payment_status].label}</p>}
+          {o.payment_status === 'PAID' && <p className="text-xs font-medium text-emerald-600">Paid</p>}
         </div>
       ),
     },
@@ -366,7 +366,7 @@ export function OrdersPage({ view }: { view: View }) {
       )}
 
       {tabs.length > 0 && (
-        <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist">
+        <div className={cn('flex gap-1', view === 'approved' ? 'flex-wrap rounded-2xl border bg-card p-1' : '-mx-1 overflow-x-auto px-1 pb-1')} role="tablist">
           {tabs.map((t) => (
             <button key={t.key} type="button" role="tab" aria-selected={state.tab === t.key} onClick={() => selectTab(t.key)} title={t.hint ?? undefined}
               className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-colors',
@@ -812,23 +812,29 @@ const STAGE_DOT: Record<string, string> = {
   success: 'bg-emerald-500', info: 'bg-sky-500', warning: 'bg-amber-500', danger: 'bg-red-500', violet: 'bg-violet-500', neutral: 'bg-zinc-400',
 }
 
-function ProductsCell({ o }: { o: OrderListItem }) {
+function ProductThumb({ src }: { src: string | null | undefined }) {
+  const [broken, setBroken] = useState(false)
+  if (!src || broken) return <div className="size-8 shrink-0 rounded-md border bg-muted" />
+  return <img src={src} alt="" className="size-8 shrink-0 rounded-md border bg-muted object-cover" loading="lazy" onError={() => setBroken(true)} />
+}
+
+function ProductsCell({ o, showStage }: { o: OrderListItem; showStage: boolean }) {
   const stage = o.stage !== 'WEB' ? STAGE[o.stage as OrderStage] : null
   const lines = o.lines ?? []
+  // On a stage tab the stage is already known; only the finer status (e.g. "In transit") is worth a line.
+  const detail = stage && o.stage !== 'PENDING' && ORDER_STATUS[o.status].label !== stage.label ? ORDER_STATUS[o.status].label : null
   return (
     <div className="max-w-64 space-y-1.5">
-      {stage && (
+      {stage && showStage && (
         <p className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase">
           <span className={cn('size-1.5 rounded-full', STAGE_DOT[stage.variant] ?? STAGE_DOT.neutral)} />{stage.label}
-          {ORDER_STATUS[o.status].label !== stage.label && <span className="font-normal text-muted-foreground normal-case">· {ORDER_STATUS[o.status].label}</span>}
+          {detail && <span className="font-normal text-muted-foreground normal-case">· {detail}</span>}
         </p>
       )}
+      {!showStage && detail && <p className="text-[11px] text-muted-foreground">{detail}</p>}
       {lines.length === 0 ? <p className="text-xs text-muted-foreground">{o.items_preview ?? `${o.item_count} item(s)`}</p> : lines.map((l, i) => (
         <div key={i} className="flex items-center gap-2">
-          {l.image_url
-            ? <img src={l.image_url} alt="" className="size-8 shrink-0 rounded-md border bg-muted object-cover" loading="lazy"
-                onError={(e) => { e.currentTarget.removeAttribute('src') }} />
-            : <div className="size-8 shrink-0 rounded-md border bg-muted" />}
+          <ProductThumb src={l.image_url} />
           <div className="min-w-0 text-xs leading-tight">
             <p className="truncate font-medium" title={l.name}>{l.name}{l.variant ? ` · ${l.variant}` : ''}</p>
             <p className="truncate text-muted-foreground">{l.sku ? `${l.sku} · ` : ''}Qty: {l.quantity}</p>
@@ -864,12 +870,13 @@ function TagsCell({ tags, known, canEdit, onChange }: { tags: string[]; known: s
   const [text, setText] = useState('')
   const add = (t: string) => { const v = t.trim().slice(0, TAG_LIMIT); if (v && !tags.includes(v)) onChange([v], []); setText('') }
   return (
-    <div className="flex max-w-40 flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      {tags.map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
+    <div className="flex max-w-36 flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {tags.slice(0, 2).map((t) => <Badge key={t} variant="secondary" className="px-1.5 text-[10px]">{t}</Badge>)}
+      {tags.length > 2 && <Badge variant="outline" className="px-1.5 text-[10px]" title={tags.slice(2).join(', ')}>+{tags.length - 2}</Badge>}
       {canEdit && (
         <Popover>
           <PopoverTrigger asChild>
-            <Button size="icon" variant="outline" className="size-6" aria-label="Edit tags"><Plus className="size-3" /></Button>
+            <Button size="icon" variant="ghost" className="size-6 rounded-full border border-dashed text-muted-foreground" aria-label="Edit tags"><Plus className="size-3" /></Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="grid w-60 gap-2 p-3">
             <form onSubmit={(e) => { e.preventDefault(); add(text) }} className="flex gap-1.5">

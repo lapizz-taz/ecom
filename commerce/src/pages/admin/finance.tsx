@@ -36,8 +36,7 @@ export default function FinanceOverviewPage() {
         <DateRangeFilter value={range} onChange={setRange} />
         {can('finance.manage') && (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" asChild><Link to="/admin/finance/expenses?new=1"><TrendingDown /> Add expense</Link></Button>
-            <Button size="sm" variant="outline" asChild><Link to="/admin/finance/income?new=1"><TrendingUp /> Add income</Link></Button>
+            <Button size="sm" variant="outline" asChild><Link to="/admin/finance/income-expense?tab=expense"><TrendingDown /> Income &amp; expense</Link></Button>
             <Button size="sm" variant="outline" asChild><Link to={`/admin/finance/profit-loss${qs}`}><FileText /> Profit &amp; loss</Link></Button>
             <Button size="sm" variant="outline" asChild><Link to={`/admin/finance/cash-flow${qs}`}><Banknote /> Cash flow</Link></Button>
           </div>

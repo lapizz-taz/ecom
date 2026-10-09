@@ -127,3 +127,73 @@ export async function ordersAwaitingAdvanceResolution() {
   if (error) throw error
   return data ?? []
 }
+
+// ---------------------------------------------------------------- income & expense ledger
+export type LedgerType = 'EXPENSE' | 'INCOME'
+export interface LedgerCategory {
+  id: string; code: string; name: string; color: string; manual: boolean; subcategories: string[]; total: number; count: number
+}
+export interface LedgerDay { date: string; total: number; cells: Record<string, { amount: number; count: number; usd: number | null }> }
+export interface Ledger { total: number; count: number; usd_total: number | null; categories: LedgerCategory[]; days: LedgerDay[] }
+
+export async function financeLedger(type: LedgerType, from: string, to: string): Promise<Ledger> {
+  const { data, error } = await supabase.rpc('finance_ledger', { p_type: type, p_from: from, p_to: to })
+  if (error) throw error
+  return fromJson<Ledger>(data)
+}
+
+export interface LedgerEntry {
+  id: string; txn_number: string; type: LedgerType; date: string; amount: number
+  foreign_amount: number | null; foreign_currency: string | null; exchange_rate: number | null
+  category: { id: string; name: string; code: string; color: string }
+  sub_category: string | null; account: { id: string; name: string } | null
+  notes: string | null; reference: string | null; source: string; order_number: string | null
+  reversed: boolean; is_reversal: boolean; editable: boolean; created_by: string | null; created_at: string
+}
+export interface EntryFilters {
+  type?: LedgerType; category_id?: string; sub_category?: string; account_id?: string; q?: string
+  from?: string; to?: string; show_reversed?: boolean; limit?: number; offset?: number
+}
+
+export async function financeEntries(f: EntryFilters): Promise<{ total: number; sum: number; items: LedgerEntry[] }> {
+  const clean = Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined && v !== ''))
+  const { data, error } = await supabase.rpc('finance_entries', { p: asJson(clean) })
+  if (error) throw error
+  return fromJson(data)
+}
+
+export interface EntryInput {
+  type: LedgerType; category_id: string; amount?: number; txn_date: string; sub_category?: string | null
+  account_id?: string | null; notes?: string | null; reference?: string | null
+  foreign_amount?: number | null; foreign_currency?: string | null; exchange_rate?: number | null
+}
+
+export async function createEntry(input: EntryInput) {
+  const { data, error } = await supabase.rpc('create_finance_transaction', { p: asJson(input) })
+  if (error) throw error
+  return data
+}
+
+export async function updateEntry(id: string, input: EntryInput, reason?: string) {
+  const { data, error } = await supabase.rpc('finance_entry_update', { p_id: id, p: asJson(input), p_reason: reason })
+  if (error) throw error
+  return data
+}
+
+export interface LedgerOverview {
+  income: number; expense: number; income_count: number; expense_count: number
+  series: Array<{ date: string; income: number; expense: number }>
+  by_category: Array<{ type: LedgerType; name: string; color: string; total: number }>
+  by_account: Array<{ name: string; income: number | null; expense: number | null }>
+}
+
+export async function financeLedgerOverview(from: string, to: string): Promise<LedgerOverview> {
+  const { data, error } = await supabase.rpc('finance_ledger_overview', { p_from: from, p_to: to })
+  if (error) throw error
+  return fromJson<LedgerOverview>(data)
+}
+
+export async function updateCategoryLook(id: string, patch: { name?: string; color?: string; subcategories?: string[]; is_active?: boolean }) {
+  const { error } = await supabase.from('finance_categories').update(patch).eq('id', id)
+  if (error) throw error
+}

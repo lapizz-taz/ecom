@@ -1133,6 +1133,7 @@ export type Database = {
           spend_date: string | null
           created_by: string | null
           created_at: string
+          finance_transaction_id: string | null
         }
         Insert: {
           id?: string
@@ -1146,6 +1147,7 @@ export type Database = {
           spend_date?: string | null
           created_by?: string | null
           created_at?: string
+          finance_transaction_id?: string | null
         }
         Update: {
           id?: string
@@ -1159,6 +1161,7 @@ export type Database = {
           spend_date?: string | null
           created_by?: string | null
           created_at?: string
+          finance_transaction_id?: string | null
         }
         Relationships: [
           {
@@ -1173,6 +1176,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_account_movements_finance_transaction_id_fkey"
+            columns: ["finance_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "finance_transactions"
             referencedColumns: ["id"]
           },
           {
@@ -1242,6 +1252,8 @@ export type Database = {
           sort_order: number
           created_at: string
           updated_at: string
+          color: string | null
+          subcategories: string[]
         }
         Insert: {
           id?: string
@@ -1256,6 +1268,8 @@ export type Database = {
           sort_order?: number
           created_at?: string
           updated_at?: string
+          color?: string | null
+          subcategories?: string[]
         }
         Update: {
           id?: string
@@ -1270,6 +1284,8 @@ export type Database = {
           sort_order?: number
           created_at?: string
           updated_at?: string
+          color?: string | null
+          subcategories?: string[]
         }
         Relationships: []
       }
@@ -1294,6 +1310,11 @@ export type Database = {
           reverses_id: string | null
           created_by: string | null
           created_at: string
+          sub_category: string | null
+          account_id: string | null
+          foreign_amount: number | null
+          foreign_currency: string | null
+          exchange_rate: number | null
         }
         Insert: {
           id?: string
@@ -1315,6 +1336,11 @@ export type Database = {
           reverses_id?: string | null
           created_by?: string | null
           created_at?: string
+          sub_category?: string | null
+          account_id?: string | null
+          foreign_amount?: number | null
+          foreign_currency?: string | null
+          exchange_rate?: number | null
         }
         Update: {
           id?: string
@@ -1336,8 +1362,20 @@ export type Database = {
           reverses_id?: string | null
           created_by?: string | null
           created_at?: string
+          sub_category?: string | null
+          account_id?: string | null
+          foreign_amount?: number | null
+          foreign_currency?: string | null
+          exchange_rate?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "finance_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "finance_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "finance_transactions_category_id_fkey"
             columns: ["category_id"]
@@ -5982,6 +6020,11 @@ export type Database = {
           reverses_id: string | null
           created_by: string | null
           created_at: string
+          sub_category: string | null
+          account_id: string | null
+          foreign_amount: number | null
+          foreign_currency: string | null
+          exchange_rate: number | null
         }
       }
       current_role_code: {
@@ -6038,6 +6081,7 @@ export type Database = {
           spend_date: string | null
           created_by: string | null
           created_at: string
+          finance_transaction_id: string | null
         }
       }
       finance_account_movements_list: {
@@ -6066,6 +6110,60 @@ export type Database = {
       }
       finance_accounts_list: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      finance_entries: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      finance_entry_update: {
+        Args: {
+          p_id: string
+          p: Json
+          p_reason?: string
+        }
+        Returns: {
+          id: string
+          txn_number: string
+          type: Database["public"]["Enums"]["finance_type"]
+          category_id: string
+          amount: number
+          txn_date: string
+          is_cash: boolean
+          payment_channel: Database["public"]["Enums"]["payment_channel"] | null
+          reference: string | null
+          order_id: string | null
+          customer_id: string | null
+          supplier_id: string | null
+          purchase_order_id: string | null
+          notes: string | null
+          source: Database["public"]["Enums"]["data_source"]
+          source_key: string | null
+          reverses_id: string | null
+          created_by: string | null
+          created_at: string
+          sub_category: string | null
+          account_id: string | null
+          foreign_amount: number | null
+          foreign_currency: string | null
+          exchange_rate: number | null
+        }
+      }
+      finance_ledger: {
+        Args: {
+          p_type: string
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      finance_ledger_overview: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
         Returns: Json
       }
       finance_overview: {
@@ -6644,6 +6742,14 @@ export type Database = {
           created_at: string
         }
       }
+      report_ads: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_platform?: string
+        }
+        Returns: Json
+      }
       report_advance_payments: {
         Args: {
           p_from: string
@@ -6878,6 +6984,11 @@ export type Database = {
           reverses_id: string | null
           created_by: string | null
           created_at: string
+          sub_category: string | null
+          account_id: string | null
+          foreign_amount: number | null
+          foreign_currency: string | null
+          exchange_rate: number | null
         }
       }
       scan_parcel: {

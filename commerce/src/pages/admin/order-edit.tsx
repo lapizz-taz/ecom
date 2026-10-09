@@ -225,7 +225,7 @@ export default function OrderEditPage() {
               <div key={l.variant_id} className="grid gap-3 rounded-xl border p-3">
                 <div className="flex gap-3">
                   {l.image
-                    ? <img src={l.image} alt="" className="size-16 shrink-0 rounded-lg border bg-muted object-cover" onError={(e) => { e.currentTarget.removeAttribute('src') }} />
+                    ? <img src={l.image} alt="" className="size-16 shrink-0 rounded-lg border bg-muted object-cover" onError={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==' }} />
                     : <div className="size-16 shrink-0 rounded-lg border bg-muted" />}
                   <div className="min-w-0 flex-1 text-sm">
                     <p className="font-mono text-xs text-muted-foreground">{l.sku}</p>

@@ -173,3 +173,32 @@ export async function metaPerformance(from: string, to: string, level: 'campaign
   if (error) throw error
   return fromJson<MetaPerformanceRow[]>(data)
 }
+
+// ---------------------------------------------------------------- ads hub
+export type AdPlatformCode = 'META' | 'TIKTOK' | 'GOOGLE' | 'OTHER'
+export type CampaignVerdict = 'SCALE' | 'KEEP' | 'FIX' | 'STOP' | 'WAIT'
+export interface AdsCampaign {
+  key: string; name: string; platform: AdPlatformCode; spend: number; impressions: number; clicks: number
+  orders: number; delivered: number; returned: number; cancelled: number; in_progress: number
+  revenue: number; cogs: number; courier_cost: number; profit: number
+  delivery_rate: number | null; return_rate: number | null; cancel_rate: number | null
+  cost_per_order: number | null; cost_per_delivered: number | null; roas: number | null
+  score: number | null; grade: 'A' | 'B' | 'C' | 'D' | null; verdict: CampaignVerdict; unknown: boolean
+}
+export interface AdsReport {
+  totals: {
+    spend: number; impressions: number; clicks: number; orders: number; delivered: number; returned: number; cancelled: number
+    in_progress: number; revenue: number; cogs: number; courier_cost: number; profit: number; unknown_campaign_orders: number; spend_usd: number | null
+  }
+  platforms: Array<{ platform: AdPlatformCode; spend: number; orders: number; delivered: number; returned: number; cancelled: number; revenue: number; profit: number; delivery_rate: number | null; roas: number | null }>
+  campaigns: AdsCampaign[]
+  days: Array<{ date: string; spend: number; orders: number; delivered: number; revenue: number }>
+  hours: Array<{ hour: number; orders: number; delivered: number }>
+  products: Array<{ name: string; quantity: number; orders: number; delivered: number; returned: number }>
+}
+
+export async function adsReport(from: string, to: string, platform?: AdPlatformCode | ''): Promise<AdsReport> {
+  const { data, error } = await supabase.rpc('report_ads', { p_from: from, p_to: to, p_platform: platform || undefined })
+  if (error) throw error
+  return fromJson<AdsReport>(data)
+}

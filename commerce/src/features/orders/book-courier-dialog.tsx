@@ -1,20 +1,38 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Truck } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { ExternalLink, RotateCcw, Square, Truck } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Spinner } from '@/components/common/states'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { bookShipments, listCouriers } from '@/services/couriers'
+import { bookShipments, type CourierRow, listCouriers } from '@/services/couriers'
 
-type Result = Awaited<ReturnType<typeof bookShipments>>
+type RowStatus = 'QUEUED' | 'UPLOADING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
+interface Row { id: string; status: RowStatus; tracking: string | null; message: string }
+
+const STATUS: Record<RowStatus, { label: string; className: string }> = {
+  QUEUED: { label: 'Queued', className: 'bg-muted text-muted-foreground' },
+  UPLOADING: { label: 'Uploading', className: 'bg-violet-500/20 text-violet-600 dark:text-violet-300' },
+  SUCCESS: { label: 'Success', className: 'bg-emerald-500/15 text-emerald-600' },
+  FAILED: { label: 'Failed', className: 'bg-red-500/15 text-red-600' },
+  SKIPPED: { label: 'Stopped', className: 'bg-muted text-muted-foreground' },
+}
+
+const trackingUrl = (c: CourierRow | undefined, code: string) => {
+  const template = c?.tracking_url_template ?? (c?.provider === 'steadfast' ? 'https://steadfast.com.bd/t/{tracking}'
+    : c?.provider === 'pathao' ? 'https://merchant.pathao.com/tracking?consignment_id={tracking}'
+    : c?.provider === 'redx' ? 'https://redx.com.bd/track-parcel/?trackingId={tracking}' : null)
+  return template ? template.replace('{tracking}', encodeURIComponent(code)) : null
+}
 
 /**
- * Books the selected orders with a connected courier's API in one go. While
- * the courier answers, parcels roll into a van; afterwards each order shows
- * its tracking number or why it was not booked.
+ * Books the selected orders with a courier one parcel at a time, so each row
+ * shows live: queued → uploading → its tracking ID or the courier's reason.
+ * A van drives along the road as parcels go out. Orders already booked are
+ * skipped by the server.
  */
 export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, onDone }: {
   open: boolean
@@ -26,60 +44,65 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   const couriers = useQuery({ queryKey: ['couriers', 'active'], queryFn: () => listCouriers(true), enabled: open })
   const connected = (couriers.data ?? []).filter((c) => c.api_enabled)
   const [courierId, setCourierId] = useState('')
-  const [result, setResult] = useState<Result | null>(null)
   const chosen = connected.find((c) => c.id === courierId) ?? connected[0]
-  const book = useMutation({
-    mutationFn: () => bookShipments(orderIds, chosen!.id),
-    onSuccess: (r) => { setResult(r); onDone() },
-  })
-  // A fresh start each time the dialog opens.
-  useEffect(() => { if (open) { setResult(null); book.reset() } }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [rows, setRows] = useState<Row[] | null>(null)
+  const [running, setRunning] = useState(false)
+  const stop = useRef(false)
+  // Order numbers are read once, so they survive the list refreshing underneath.
+  const names = useRef(new Map<string, string>())
 
-  const busy = book.isPending
-  const failed = result?.results.filter((r) => !r.ok) ?? []
-  const n = orderIds.length
+  useEffect(() => {
+    if (!open) return
+    setRows(null)
+    setRunning(false)
+    stop.current = false
+    names.current = new Map(orderIds.map((id) => [id, orderNumber(id)]))
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const patch = (id: string, next: Partial<Row>) => setRows((rs) => rs?.map((r) => (r.id === id ? { ...r, ...next } : r)) ?? null)
+
+  async function run(ids: string[]) {
+    if (!chosen) return
+    stop.current = false
+    setRunning(true)
+    setRows((rs) => {
+      const base = rs ?? orderIds.map((id) => ({ id, status: 'QUEUED' as RowStatus, tracking: null, message: 'Waiting…' }))
+      return base.map((r) => (ids.includes(r.id) ? { ...r, status: 'QUEUED', tracking: null, message: 'Waiting…' } : r))
+    })
+    for (const id of ids) {
+      if (stop.current) {
+        patch(id, { status: 'SKIPPED', message: 'Stopped before upload' })
+        continue
+      }
+      patch(id, { status: 'UPLOADING', message: 'Processing…' })
+      try {
+        const r = await bookShipments([id], chosen.id)
+        const res = r.results[0]
+        if (res?.ok) patch(id, { status: 'SUCCESS', tracking: res.tracking_number ?? null, message: res.tracking_number ? 'Booked' : 'Booked (no tracking ID yet)' })
+        else patch(id, { status: 'FAILED', message: res?.error ?? 'The courier did not accept this parcel' })
+      } catch (e) {
+        patch(id, { status: 'FAILED', message: (e as Error).message })
+      }
+    }
+    setRunning(false)
+    onDone()
+  }
+
+  const total = rows?.length ?? orderIds.length
+  const done = rows?.filter((r) => r.status === 'SUCCESS' || r.status === 'FAILED' || r.status === 'SKIPPED').length ?? 0
+  const success = rows?.filter((r) => r.status === 'SUCCESS').length ?? 0
+  const failed = rows?.filter((r) => r.status === 'FAILED').length ?? 0
+  const pct = total ? (done / total) * 100 : 0
+  const finished = rows !== null && !running
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent showCloseButton={!busy} className="sm:max-w-md">
-        {busy ? (
-          <div className="grid justify-items-center gap-4 py-4 text-center" role="status" aria-live="polite">
-            <BookingScene />
-            <div>
-              <DialogTitle className="text-base">Booking {n} parcel{n === 1 ? '' : 's'} with {chosen?.name}</DialogTitle>
-              <DialogDescription className="mt-1">Sending each order to {chosen?.name}. Keep this open; it takes a few seconds per parcel.</DialogDescription>
-            </div>
-          </div>
-        ) : result ? (
-          <div className="grid gap-4">
-            <div className="grid justify-items-center gap-3 pt-2 text-center">
-              <ResultMark ok={failed.length === 0} />
-              <div>
-                <DialogTitle className="text-base">
-                  {result.booked > 0 ? `${result.booked} parcel${result.booked === 1 ? '' : 's'} booked with ${chosen?.name}` : 'No parcels were booked'}
-                </DialogTitle>
-                <DialogDescription className="mt-1">
-                  {failed.length ? `${failed.length} could not be booked; fix them and try again.` : 'Tracking numbers are saved and print on the labels.'}
-                </DialogDescription>
-              </div>
-            </div>
-            <ul className="max-h-60 divide-y overflow-y-auto rounded-xl border text-sm">
-              {result.results.map((r, i) => (
-                <li key={r.order_id} className="pop-in flex items-start justify-between gap-3 px-3 py-2" style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}>
-                  <span className="font-medium">{orderNumber(r.order_id)}</span>
-                  {r.ok
-                    ? <span className="font-mono text-xs text-emerald-600">{r.tracking_number ?? 'Booked'}</span>
-                    : <span className="max-w-60 text-right text-xs text-red-600">{r.error}</span>}
-                </li>
-              ))}
-            </ul>
-            <DialogFooter><Button onClick={() => onOpenChange(false)}>Done</Button></DialogFooter>
-          </div>
-        ) : (
+    <Dialog open={open} onOpenChange={(o) => !running && onOpenChange(o)}>
+      <DialogContent showCloseButton={!running} className="gap-4 sm:max-w-2xl">
+        {rows === null ? (
           <>
             <DialogHeader>
-              <DialogTitle>Book {n} parcel{n === 1 ? '' : 's'} with a courier</DialogTitle>
-              <DialogDescription>Each order is sent to the courier's API; the tracking number is saved and printed on the label. Orders already booked are skipped.</DialogDescription>
+              <DialogTitle>Upload {orderIds.length} parcel{orderIds.length === 1 ? '' : 's'} to a courier</DialogTitle>
+              <DialogDescription>Each order is sent to the courier's API one by one; you see every tracking ID as it comes back. Orders already booked are skipped.</DialogDescription>
             </DialogHeader>
             {couriers.isLoading ? <Spinner /> : connected.length === 0 ? (
               <p className="text-sm text-muted-foreground">No courier is connected yet. <Link to="/admin/couriers" className="underline">Connect Steadfast, Pathao or RedX</Link> first.</p>
@@ -89,10 +112,71 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
                 <SelectContent>{connected.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             )}
-            {book.error && <p className="text-sm text-red-600">{(book.error as Error).message}</p>}
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button onClick={() => book.mutate()} disabled={!chosen}><Truck /> Book parcels</Button>
+              <Button onClick={() => void run(orderIds)} disabled={!chosen}><Truck /> Start upload</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-3 pr-6">
+              <div>
+                <DialogTitle className="text-base">{chosen?.name} upload progress</DialogTitle>
+                <DialogDescription className="sr-only">Live status of each parcel being booked</DialogDescription>
+              </div>
+              <Badge className={cn('shrink-0', running ? 'bg-violet-500/20 text-violet-600 dark:text-violet-300' : failed ? 'bg-amber-500/15 text-amber-600' : 'bg-emerald-500/15 text-emerald-600')}>
+                {running ? `Processing (${done}/${total})` : failed ? `Done · ${failed} failed` : 'All booked'}
+              </Badge>
+            </div>
+
+            <Road pct={pct} running={running} rows={rows} />
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm" aria-live="polite">
+              <span className="font-medium tabular-nums">Progress: {done} / {total}</span>
+              <span className="tabular-nums"><span className="text-emerald-600">Success: {success}</span> <span className="ml-3 text-red-600">Failed: {failed}</span></span>
+            </div>
+
+            <div className="max-h-72 overflow-auto rounded-xl border">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="px-3 py-2 text-left font-medium">Order ID</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                    <th className="px-3 py-2 text-left font-medium">Tracking ID</th>
+                    <th className="px-3 py-2 text-left font-medium">Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const url = r.tracking ? trackingUrl(chosen, r.tracking) : null
+                    return (
+                      <tr key={r.id} className={cn('border-b last:border-0 transition-colors', r.status === 'UPLOADING' && 'bg-violet-500/5')}>
+                        <td className="px-3 py-2 font-medium whitespace-nowrap">{names.current.get(r.id) ?? r.id.slice(0, 8)}</td>
+                        <td className="px-3 py-2">
+                          <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase', STATUS[r.status].className)}>
+                            {r.status === 'UPLOADING' && <span className="size-1.5 animate-pulse rounded-full bg-current" />}{STATUS[r.status].label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                          {r.tracking ? (url
+                            ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-600 hover:underline">{r.tracking}<ExternalLink className="size-3" /></a>
+                            : r.tracking) : '—'}
+                        </td>
+                        <td className={cn('px-3 py-2 text-xs', r.status === 'FAILED' ? 'text-red-600' : 'text-muted-foreground')}>{r.message}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <DialogFooter className="gap-2 sm:justify-between">
+              {running ? (
+                <Button variant="outline" onClick={() => { stop.current = true }}><Square /> Stop after this parcel</Button>
+              ) : failed > 0 ? (
+                <Button variant="outline" onClick={() => void run(rows.filter((r) => r.status === 'FAILED').map((r) => r.id))}><RotateCcw /> Retry failed</Button>
+              ) : <span />}
+              <Button variant={finished ? 'default' : 'ghost'} disabled={running} onClick={() => onOpenChange(false)}>Close</Button>
             </DialogFooter>
           </>
         )}
@@ -101,35 +185,32 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   )
 }
 
-function BookingScene() {
+/** The road: one checkpoint per parcel (green booked, red failed); the van drives to the current progress. */
+function Road({ pct, running, rows }: { pct: number; running: boolean; rows: Row[] }) {
   return (
-    <div className="relative h-24 w-64 overflow-hidden" aria-hidden>
-      {[0, 0.55, 1.1].map((delay) => (
-        <div key={delay} className="booking-parcel absolute bottom-6 left-16 size-6 rounded-[5px] border-2 border-amber-700/70 bg-amber-400"
-          style={{ animationDelay: `${delay}s` }}>
-          <div className="mx-auto h-full w-1 bg-amber-700/40" />
-        </div>
+    <div className="relative h-16 select-none" aria-hidden>
+      <div className="absolute inset-x-0 bottom-3 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
+      </div>
+      <div className={cn('absolute inset-x-0 bottom-1 h-0.5 opacity-30', running && 'booking-road')} />
+      {rows.length <= 40 && rows.map((r, i) => (
+        <span key={r.id} title={r.status}
+          className={cn('absolute bottom-2.5 size-2.5 -translate-x-1/2 rounded-[3px] border transition-colors',
+            r.status === 'SUCCESS' ? 'border-emerald-600 bg-emerald-500' : r.status === 'FAILED' ? 'border-red-600 bg-red-500'
+              : r.status === 'UPLOADING' ? 'animate-pulse border-violet-500 bg-violet-400' : 'border-amber-700/60 bg-amber-400/80')}
+          style={{ left: `${((i + 1) / rows.length) * 100}%` }} />
       ))}
-      <svg viewBox="0 0 72 44" className="booking-van absolute right-6 bottom-4 h-14 w-24 text-foreground">
-        <rect x="2" y="6" width="42" height="26" rx="3" className="fill-current" />
-        <path d="M44 14h14l10 10v8H44z" className="fill-current" />
-        <path d="M48 17h9l6 6h-15z" className="fill-background/80" />
-        <circle cx="14" cy="34" r="6" className="fill-background stroke-current" strokeWidth="3" />
-        <circle cx="56" cy="34" r="6" className="fill-background stroke-current" strokeWidth="3" />
-      </svg>
-      <div className="booking-road absolute inset-x-0 bottom-3 h-0.5 opacity-40" />
-    </div>
-  )
-}
-
-function ResultMark({ ok }: { ok: boolean }) {
-  return (
-    <div className={cn('pop-in grid size-14 place-items-center rounded-full', ok ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600')}>
-      {ok ? (
-        <svg viewBox="0 0 24 24" className="size-8" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path className="draw-check" d="M5 12.5l4.5 4.5L19 7.5" />
+      <div className="absolute bottom-4 transition-[left] duration-700 ease-out" style={{ left: `calc(${pct}% - ${pct * 0.56}px)` }}>
+        <svg viewBox="0 0 72 44" className={cn('h-9 w-14 text-foreground', running && 'booking-van')}>
+          <rect x="2" y="6" width="42" height="26" rx="3" className="fill-current" />
+          <rect x="8" y="12" width="10" height="9" rx="1.5" className="fill-amber-400" />
+          <rect x="21" y="12" width="10" height="9" rx="1.5" className="fill-amber-400" />
+          <path d="M44 14h14l10 10v8H44z" className="fill-current" />
+          <path d="M48 17h9l6 6h-15z" className="fill-sky-300/80" />
+          <circle cx="14" cy="34" r="6" className="fill-background stroke-current" strokeWidth="3" />
+          <circle cx="56" cy="34" r="6" className="fill-background stroke-current" strokeWidth="3" />
         </svg>
-      ) : <AlertTriangle className="size-7" />}
+      </div>
     </div>
   )
 }
