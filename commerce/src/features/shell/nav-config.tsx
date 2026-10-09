@@ -91,7 +91,8 @@ export const NAV: NavSection[] = [
         children: [
           { label: 'Sales Channels', to: '/admin/channels' },
           { label: 'Channel Imports', to: '/admin/channels?imports=FAILED', permission: 'orders.view' },
-          { label: 'Theme', to: '/admin/store/theme', permission: 'settings.manage' },
+          { label: 'Shopify Sync', to: '/admin/store/shopify-sync', permission: 'inventory.view' },
+      { label: 'Theme', to: '/admin/store/theme', permission: 'settings.manage' },
         ],
       },
       {

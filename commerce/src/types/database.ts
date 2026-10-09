@@ -299,6 +299,152 @@ export type Database = {
           },
         ]
       }
+      channel_catalog_items: {
+        Row: {
+          channel_id: string
+          external_variant_id: string
+          external_product_id: string | null
+          inventory_item_id: string | null
+          sku: string | null
+          barcode: string | null
+          product_title: string | null
+          variant_title: string | null
+          product_status: string | null
+          tracked: boolean
+          levels: Json
+          imported_at: string
+        }
+        Insert: {
+          channel_id: string
+          external_variant_id: string
+          external_product_id?: string | null
+          inventory_item_id?: string | null
+          sku?: string | null
+          barcode?: string | null
+          product_title?: string | null
+          variant_title?: string | null
+          product_status?: string | null
+          tracked?: boolean
+          levels?: Json
+          imported_at?: string
+        }
+        Update: {
+          channel_id?: string
+          external_variant_id?: string
+          external_product_id?: string | null
+          inventory_item_id?: string | null
+          sku?: string | null
+          barcode?: string | null
+          product_title?: string | null
+          variant_title?: string | null
+          product_status?: string | null
+          tracked?: boolean
+          levels?: Json
+          imported_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_catalog_items_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_fulfillments: {
+        Row: {
+          id: string
+          channel_id: string
+          order_id: string
+          external_order_id: string
+          source: string
+          status: string
+          fulfillment_id: string | null
+          fulfillment_order_ids: string[]
+          line_items: Json
+          courier: string | null
+          tracking_number: string | null
+          tracking_url: string | null
+          shipped_at: string | null
+          shopify_status: string | null
+          notify_requested: boolean
+          notification_status: string | null
+          notification_note: string | null
+          attempts: number
+          last_error: string | null
+          fulfilled_at: string | null
+          synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          order_id: string
+          external_order_id: string
+          source?: string
+          status?: string
+          fulfillment_id?: string | null
+          fulfillment_order_ids?: string[]
+          line_items?: Json
+          courier?: string | null
+          tracking_number?: string | null
+          tracking_url?: string | null
+          shipped_at?: string | null
+          shopify_status?: string | null
+          notify_requested?: boolean
+          notification_status?: string | null
+          notification_note?: string | null
+          attempts?: number
+          last_error?: string | null
+          fulfilled_at?: string | null
+          synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          order_id?: string
+          external_order_id?: string
+          source?: string
+          status?: string
+          fulfillment_id?: string | null
+          fulfillment_order_ids?: string[]
+          line_items?: Json
+          courier?: string | null
+          tracking_number?: string | null
+          tracking_url?: string | null
+          shipped_at?: string | null
+          shopify_status?: string | null
+          notify_requested?: boolean
+          notification_status?: string | null
+          notification_note?: string | null
+          attempts?: number
+          last_error?: string | null
+          fulfilled_at?: string | null
+          synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_fulfillments_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_fulfillments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_oauth_states: {
         Row: {
           state: string
@@ -396,6 +542,68 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_sync_jobs: {
+        Row: {
+          id: string
+          channel_id: string
+          kind: string
+          ref_id: string
+          status: string
+          attempts: number
+          max_attempts: number
+          next_attempt_at: string
+          locked_until: string | null
+          payload: Json
+          last_error: string | null
+          result: Json | null
+          created_at: string
+          updated_at: string
+          done_at: string | null
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          kind: string
+          ref_id: string
+          status?: string
+          attempts?: number
+          max_attempts?: number
+          next_attempt_at?: string
+          locked_until?: string | null
+          payload?: Json
+          last_error?: string | null
+          result?: Json | null
+          created_at?: string
+          updated_at?: string
+          done_at?: string | null
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          kind?: string
+          ref_id?: string
+          status?: string
+          attempts?: number
+          max_attempts?: number
+          next_attempt_at?: string
+          locked_until?: string | null
+          payload?: Json
+          last_error?: string | null
+          result?: Json | null
+          created_at?: string
+          updated_at?: string
+          done_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_sync_jobs_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
             referencedColumns: ["id"]
           },
         ]
@@ -4269,6 +4477,14 @@ export type Database = {
           external_product_id: string | null
           variant_id: string
           created_at: string
+          inventory_item_id: string | null
+          sku: string | null
+          shopify_available: number | null
+          last_pushed_qty: number | null
+          sync_status: string
+          last_error: string | null
+          synced_at: string | null
+          mismatch_since: string | null
         }
         Insert: {
           channel_id: string
@@ -4276,6 +4492,14 @@ export type Database = {
           external_product_id?: string | null
           variant_id: string
           created_at?: string
+          inventory_item_id?: string | null
+          sku?: string | null
+          shopify_available?: number | null
+          last_pushed_qty?: number | null
+          sync_status?: string
+          last_error?: string | null
+          synced_at?: string | null
+          mismatch_since?: string | null
         }
         Update: {
           channel_id?: string
@@ -4283,6 +4507,14 @@ export type Database = {
           external_product_id?: string | null
           variant_id?: string
           created_at?: string
+          inventory_item_id?: string | null
+          sku?: string | null
+          shopify_available?: number | null
+          last_pushed_qty?: number | null
+          sync_status?: string
+          last_error?: string | null
+          synced_at?: string | null
+          mismatch_since?: string | null
         }
         Relationships: [
           {
@@ -4323,6 +4555,8 @@ export type Database = {
           connected_at: string | null
           created_at: string
           updated_at: string
+          locations: Json
+          catalog_imported_at: string | null
         }
         Insert: {
           id?: string
@@ -4345,6 +4579,8 @@ export type Database = {
           connected_at?: string | null
           created_at?: string
           updated_at?: string
+          locations?: Json
+          catalog_imported_at?: string | null
         }
         Update: {
           id?: string
@@ -4367,6 +4603,8 @@ export type Database = {
           connected_at?: string | null
           created_at?: string
           updated_at?: string
+          locations?: Json
+          catalog_imported_at?: string | null
         }
         Relationships: [
           {
@@ -6360,11 +6598,52 @@ export type Database = {
         }
         Returns: Json
       }
+      channel_fulfillment_retry: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
+      }
       channel_imports_list: {
         Args: {
           p: Json
         }
         Returns: Json
+      }
+      channel_inventory_overview: {
+        Args: {
+          p_channel_id: string
+        }
+        Returns: Json
+      }
+      channel_inventory_reconcile: {
+        Args: {
+          p_channel_id: string
+          p_items: Json
+          p_apply?: boolean
+        }
+        Returns: Json
+      }
+      channel_job_retry: {
+        Args: {
+          p_job_id: string
+        }
+        Returns: undefined
+      }
+      channel_sync_settings_save: {
+        Args: {
+          p_channel_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      channel_variant_link: {
+        Args: {
+          p_channel_id: string
+          p_external_variant_id: string
+          p_variant_id: string
+        }
+        Returns: undefined
       }
       classify_touch: {
         Args: {
@@ -6735,6 +7014,12 @@ export type Database = {
           p_event: Database["public"]["Enums"]["notification_event"]
         }
         Returns: string
+      }
+      order_channel_info: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
       }
       order_merge_info: {
         Args: {

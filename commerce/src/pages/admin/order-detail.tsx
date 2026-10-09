@@ -37,6 +37,7 @@ import {
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
+import { orderChannelInfo, retryChannelFulfillment } from '@/services/channels'
 import { listOrderMessages } from '@/services/sms'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
@@ -559,6 +560,7 @@ export default function OrderDetailPage() {
           </Card>
 
           <OrderSourceCard orderId={o.id} attribution={o.attribution} orderStatus={status} />
+          {o.sales_channel_id && <ChannelOrderCard orderId={o.id} />}
 
           <Can permission="fraud.view">
             <Card>
@@ -905,6 +907,86 @@ function MergeInfoCard({ orderId }: { orderId: string }) {
             </li>
           ))}
         </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+const FULFIL_TONE: Record<string, BadgeVariant> = {
+  FULFILLED: 'success', PENDING: 'secondary', PROCESSING: 'secondary', NEEDS_TRACKING: 'warning', FAILED: 'destructive', SKIPPED: 'outline',
+}
+const FULFIL_LABEL: Record<string, string> = {
+  PENDING: 'Waiting to send', PROCESSING: 'Sending', NEEDS_TRACKING: 'Needs tracking number', FULFILLED: 'Fulfilled on Shopify', FAILED: 'Failed', SKIPPED: 'Not sent',
+}
+const NOTIFY_LABEL: Record<string, string> = { REQUESTED: 'Shopify asked to e-mail the customer', NO_EMAIL: 'No customer e-mail on the order', DISABLED: 'Customer e-mails turned off' }
+
+/** Orders imported from Shopify: the Shopify order, its fulfilment and tracking as Shopify has them. */
+function ChannelOrderCard({ orderId }: { orderId: string }) {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const info = useQuery({ queryKey: ['order-channel-info', orderId], queryFn: () => orderChannelInfo(orderId), refetchInterval: (q) => (q.state.data?.job ? 10_000 : false) })
+  const retry = useMutation({
+    mutationFn: () => retryChannelFulfillment(orderId),
+    onSuccess: () => { toast.success('Sending to Shopify again'); qc.invalidateQueries({ queryKey: ['order-channel-info', orderId] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+  const c = info.data
+  if (!c) return null
+  const mine = c.fulfillments.find((f) => f.source === 'APP')
+  const others = c.fulfillments.filter((f) => f.source === 'SHOPIFY')
+  const adminUrl = c.channel.platform === 'SHOPIFY' ? `https://${c.channel.shop_domain}/admin/orders/${c.external_order_id.replace(/\D/g, '')}` : null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{c.channel.platform === 'SHOPIFY' ? 'Shopify' : c.channel.name}</CardTitle>
+        <CardAction>
+          {adminUrl && <a href={adminUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs underline">Order {c.external_order_number ?? c.external_order_id} <ExternalLink className="size-3" /></a>}
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {!mine && !others.length && (
+          <p className="text-muted-foreground">
+            {c.channel.fulfill_on_ship ? 'Fulfilled on Shopify automatically when this order is marked Shipped.' : 'Automatic fulfilment is turned off for this store.'}
+          </p>
+        )}
+        {mine && (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={FULFIL_TONE[mine.status] ?? 'outline'}>{FULFIL_LABEL[mine.status] ?? titleCase(mine.status)}</Badge>
+              {mine.shopify_status && <span className="text-xs text-muted-foreground">Shopify: {titleCase(mine.shopify_status.replace(/_/g, ' '))}</span>}
+            </div>
+            {mine.courier && <Row label="Courier" value={mine.courier} />}
+            {mine.tracking_number && (
+              <Row label="Tracking" value={mine.tracking_url
+                ? <a href={mine.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono underline">{mine.tracking_number} <ExternalLink className="size-3" /></a>
+                : <span className="font-mono">{mine.tracking_number}</span>} />
+            )}
+            {mine.fulfilled_at && <Row label="Fulfilled" value={formatDateTime(mine.fulfilled_at)} />}
+            {mine.notification_status && <Row label="Customer e-mail" value={<span title={mine.notification_note ?? undefined}>{NOTIFY_LABEL[mine.notification_status]}</span>} />}
+            {mine.last_error && mine.status !== 'FULFILLED' && <p className="rounded-md bg-muted/60 p-2 text-xs">{mine.last_error}</p>}
+            {c.job && c.job.status !== 'DONE' && (
+              <p className="text-xs text-muted-foreground">Attempt {c.job.attempts} · next try {formatDateTime(c.job.next_attempt_at)}</p>
+            )}
+            {can('orders.update') && ['FAILED', 'NEEDS_TRACKING', 'PENDING'].includes(mine.status) && (
+              <Button size="sm" variant="outline" onClick={() => retry.mutate()} disabled={retry.isPending}>
+                {retry.isPending ? <Spinner /> : <RefreshCw />} Send to Shopify now
+              </Button>
+            )}
+          </div>
+        )}
+        {others.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Fulfilled in Shopify directly</p>
+            {others.map((f) => (
+              <p key={f.id} className="text-xs">
+                {f.courier ?? 'Carrier not given'} · {f.tracking_url
+                  ? <a href={f.tracking_url} target="_blank" rel="noreferrer" className="font-mono underline">{f.tracking_number}</a>
+                  : <span className="font-mono">{f.tracking_number ?? 'no tracking'}</span>}
+                {f.fulfilled_at && <span className="text-muted-foreground"> · {formatDateTime(f.fulfilled_at)}</span>}
+              </p>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

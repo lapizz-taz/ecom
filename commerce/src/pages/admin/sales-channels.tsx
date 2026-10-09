@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, Copy, ExternalLink, Palette, Plug, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Check, Copy, ExternalLink, Palette, Plug, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -276,6 +276,7 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
             <Button size="sm" variant="outline" onClick={() => test.mutate()} disabled={busy}>{test.isPending ? <Spinner /> : <Stethoscope />} Test connection</Button>
             <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={busy || c.status === 'PENDING'}>{sync.isPending ? <Spinner /> : <RefreshCw />} Fetch last 7 days</Button>
             {hookFailed && <Button size="sm" onClick={() => hooks.mutate()} disabled={busy}>{hooks.isPending ? <Spinner /> : <Webhook />} Fix webhooks</Button>}
+            {c.platform === 'SHOPIFY' && c.status === 'CONNECTED' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/shopify-sync?channel=${c.id}`}><ArrowLeftRight /> Stock & fulfilment</Link></Button>}
             <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}><Unplug /> Disconnect</Button>
           </div>
         )}
