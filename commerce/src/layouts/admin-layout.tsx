@@ -266,7 +266,7 @@ export default function AdminLayout() {
             </DropdownMenu>
           </div>
         </header>
-        <main className="print-area mx-auto w-full max-w-[1400px] flex-1 p-3 sm:p-6">
+        <main className="print-area w-full min-w-0 flex-1 p-3 sm:px-5 sm:py-5">
           {allowed ? <Outlet /> : <PermissionDenied />}
         </main>
       </div>

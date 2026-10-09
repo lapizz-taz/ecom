@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlarmClock, Check, ChevronDown, Copy, Download, Filter, Layers, MessageCircle, PackageCheck, Phone, Plus, Printer, ShoppingBag, Truck, Wallet,
+  AlarmClock, Check, ChevronDown, Copy, Download, Filter, Layers, MessageCircle, PackageCheck, Phone, Plus, Printer, ShieldAlert, ShoppingBag, Truck, Wallet,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
@@ -250,6 +250,14 @@ export function OrdersPage({ view }: { view: View }) {
           <Money value={o.total_amount} className="font-medium" />
           {Number(o.cod_amount) > 0 && Number(o.cod_amount) !== Number(o.total_amount) && <p className="text-xs text-muted-foreground">COD <Money value={o.cod_amount} /></p>}
         </div>
+      ),
+    })
+    if (view === 'approved' && can('orders.override')) columns.push({
+      key: 'override', header: '', align: 'right',
+      cell: (o) => (
+        <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Super Edit — override status or courier details">
+          <Link to={`/admin/orders/super-edit?order=${o.id}`} onClick={(e) => e.stopPropagation()} aria-label={`Super Edit ${o.order_number}`}><ShieldAlert /></Link>
+        </Button>
       ),
     })
   }

@@ -2044,6 +2044,73 @@ export type Database = {
           },
         ]
       }
+      order_blocks: {
+        Row: {
+          id: string
+          kind: string
+          value: string
+          reason: string
+          expires_at: string | null
+          is_active: boolean
+          source_order_id: string | null
+          created_by: string | null
+          created_at: string
+          lifted_at: string | null
+          lifted_by: string | null
+          lift_reason: string | null
+        }
+        Insert: {
+          id?: string
+          kind: string
+          value: string
+          reason: string
+          expires_at?: string | null
+          is_active?: boolean
+          source_order_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          lifted_at?: string | null
+          lifted_by?: string | null
+          lift_reason?: string | null
+        }
+        Update: {
+          id?: string
+          kind?: string
+          value?: string
+          reason?: string
+          expires_at?: string | null
+          is_active?: boolean
+          source_order_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          lifted_at?: string | null
+          lifted_by?: string | null
+          lift_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_blocks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_blocks_lifted_by_fkey"
+            columns: ["lifted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_blocks_source_order_id_fkey"
+            columns: ["source_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           id: string
@@ -2471,6 +2538,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
         Insert: {
           id?: string
@@ -2545,6 +2616,10 @@ export type Database = {
           approved_by?: string | null
           partial_return_amount?: number
           lost_at?: string | null
+          assigned_to?: string | null
+          assigned_at?: string | null
+          client_ip?: string | null
+          user_agent?: string | null
         }
         Update: {
           id?: string
@@ -2619,8 +2694,19 @@ export type Database = {
           approved_by?: string | null
           partial_return_amount?: number
           lost_at?: string | null
+          assigned_to?: string | null
+          assigned_at?: string | null
+          client_ip?: string | null
+          user_agent?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_coupon_id_fkey"
             columns: ["coupon_id"]
@@ -4172,6 +4258,59 @@ export type Database = {
           created_at: string
         }
       }
+      admin_block_add: {
+        Args: {
+          p_kind: string
+          p_value: string
+          p_reason: string
+          p_expires_at?: string
+          p_order_id?: string
+        }
+        Returns: {
+          id: string
+          kind: string
+          value: string
+          reason: string
+          expires_at: string | null
+          is_active: boolean
+          source_order_id: string | null
+          created_by: string | null
+          created_at: string
+          lifted_at: string | null
+          lifted_by: string | null
+          lift_reason: string | null
+        }
+      }
+      admin_block_lift: {
+        Args: {
+          p_id: string
+          p_reason?: string
+        }
+        Returns: {
+          id: string
+          kind: string
+          value: string
+          reason: string
+          expires_at: string | null
+          is_active: boolean
+          source_order_id: string | null
+          created_by: string | null
+          created_at: string
+          lifted_at: string | null
+          lifted_by: string | null
+          lift_reason: string | null
+        }
+      }
+      admin_block_list: {
+        Args: {
+          p_status?: string
+          p_kind?: string
+          p_q?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
       admin_cod_receivable: {
         Args: {
           p_courier_id?: string
@@ -4291,6 +4430,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       admin_create_production_order: {
@@ -4396,6 +4539,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       admin_duplicate_order: {
@@ -4475,6 +4622,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       admin_fraud_queue: {
@@ -4606,6 +4757,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       admin_order_queue_counts: {
@@ -4614,6 +4769,22 @@ export type Database = {
       }
       admin_order_status_counts: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_override_history: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      admin_override_order: {
+        Args: {
+          p_order_id: string
+          p_changes: Json
+          p_reason: string
+          p_force?: boolean
+          p_notify?: boolean
+        }
         Returns: Json
       }
       admin_quote_order: {
@@ -4817,6 +4988,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       admin_set_order_source: {
@@ -5022,6 +5197,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       admin_update_setting: {
@@ -5117,6 +5296,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       apply_shipment_status: {
@@ -5193,11 +5376,39 @@ export type Database = {
           updated_at: string
         }
       }
+      assign_orders: {
+        Args: {
+          p_order_ids: string[]
+          p_agent: string
+        }
+        Returns: number
+      }
+      auto_pick_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      auto_pick_run: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      auto_pick_update: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
       bulk_transition_orders: {
         Args: {
           p_order_ids: string[]
           p_to: Database["public"]["Enums"]["order_status"]
           p_note?: string
+        }
+        Returns: Json
+      }
+      call_queue_next: {
+        Args: {
+          p_scope?: string
+          p_skip?: string[]
         }
         Returns: Json
       }
@@ -5378,6 +5589,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       get_my_access: {
@@ -5443,6 +5658,13 @@ export type Database = {
           p_confirmed_at: string
         }
         Returns: string
+      }
+      orders_dashboard: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
       }
       process_order_return: {
         Args: {
@@ -5523,6 +5745,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       production_action: {
@@ -5767,6 +5993,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       record_purchase_payment: {
@@ -6009,6 +6239,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       retry_courier_webhook: {
@@ -6326,6 +6560,10 @@ export type Database = {
           approved_by: string | null
           partial_return_amount: number
           lost_at: string | null
+          assigned_to: string | null
+          assigned_at: string | null
+          client_ip: string | null
+          user_agent: string | null
         }
       }
       update_my_profile: {

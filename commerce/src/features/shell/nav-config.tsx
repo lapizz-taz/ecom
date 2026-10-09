@@ -57,10 +57,9 @@ export const NAV: NavSection[] = [
         children: [
           { label: 'New Order', to: '/admin/orders/new', permission: 'orders.create' },
           { label: 'Web Order List', to: '/admin/orders/web' },
-          { label: 'Call-backs due', to: '/admin/orders/web?tab=FOLLOW_UP&due=1', badge: (c) => c.queue?.follow_up_due },
-          { label: 'Incomplete Orders', to: '/admin/orders/web?tab=incomplete', badge: (c) => c.queue?.incomplete },
-          { label: 'Customer Verification', to: '/admin/orders/fraud', permission: 'fraud.view', badge: (c) => c.status?.FRAUD_REVIEW },
-          { label: 'All Orders', to: '/admin/orders' },
+          { label: 'Auto Pick Orders', to: '/admin/orders/auto-pick' },
+          { label: 'Auto Call Center', to: '/admin/orders/call-center', badge: (c) => c.queue?.follow_up_due },
+          { label: 'Order Block List', to: '/admin/orders/block-list' },
         ],
       },
       {
@@ -68,13 +67,12 @@ export const NAV: NavSection[] = [
         badge: (c) => c.queue?.approved?.PENDING,
         children: [
           { label: 'Order List', to: '/admin/orders/approved' },
+          { label: 'Orders Dashboard', to: '/admin/orders/dashboard' },
           { label: 'Preorders', to: '/admin/orders/approved?tab=PRE_ORDER', badge: (c) => c.queue?.approved?.PRE_ORDER },
-          { label: 'Labels to Print', to: '/admin/orders/approved?print=1', permission: 'orders.fulfill' },
+          { label: 'Super Edit', to: '/admin/orders/super-edit', permission: 'orders.override' },
           { label: 'Scan To Update', to: '/admin/scan', permission: 'orders.fulfill' },
-          { label: 'Pending Returns', to: '/admin/orders/approved?tab=PENDING_RETURN', badge: (c) => c.queue?.approved?.PENDING_RETURN },
-          { label: 'Courier Management', to: '/admin/couriers', permission: 'couriers.view' },
           { label: 'Courier Invoice Upload', to: '/admin/couriers?tab=statements', permission: 'couriers.view' },
-          { label: 'Webhook Logs', to: '/admin/couriers?tab=webhooks', permission: 'couriers.view' },
+          { label: 'Courier Management', to: '/admin/couriers', permission: 'couriers.view' },
         ],
       },
       {
@@ -181,6 +179,20 @@ export const NAV: NavSection[] = [
       { label: 'Report Issue', action: 'report', icon: <MessageSquare /> },
     ],
   },
+]
+
+/**
+ * Pages kept out of the menu to keep it short, still found by menu search and
+ * the command palette (each also has a link on its parent page).
+ */
+export const MORE_PAGES: (NavChild & { parent: string })[] = [
+  { parent: 'Web Orders', label: 'Call-backs due', to: '/admin/orders/web?tab=FOLLOW_UP&due=1', permission: 'orders.view' },
+  { parent: 'Web Orders', label: 'Incomplete Orders', to: '/admin/orders/web?tab=incomplete', permission: 'orders.view' },
+  { parent: 'Web Orders', label: 'Customer Verification', to: '/admin/orders/fraud', permission: 'fraud.view' },
+  { parent: 'Web Orders', label: 'All Orders', to: '/admin/orders', permission: 'orders.view' },
+  { parent: 'Approved Orders', label: 'Labels to Print', to: '/admin/orders/approved?print=1', permission: 'orders.fulfill' },
+  { parent: 'Approved Orders', label: 'Pending Returns', to: '/admin/orders/approved?tab=PENDING_RETURN', permission: 'orders.view' },
+  { parent: 'Approved Orders', label: 'Webhook Logs', to: '/admin/couriers?tab=webhooks', permission: 'couriers.view' },
 ]
 
 /** Two-key shortcuts ("G" then a letter) shown in the help sheet. */

@@ -112,6 +112,15 @@ Deno.serve(
     if (body.action === 'place') {
       rateLimit(`place:${ip}`, 8)
       const input = parse(placeOrderSchema, body)
+      // Block list: phone and address are also checked by the database; the IP only here.
+      const blocked = await rpc<Record<string, unknown> | null>(admin, 'order_block_match', {
+        p_phone: input.customer.phone, p_ip: ip === 'unknown' ? null : ip, p_address: input.shipping.address,
+      })
+      if (blocked) {
+        const settings = await getSettings<{ messages?: { blocked?: string } }>(admin, 'fraud')
+        void logEvent({ level: 'INFO', category: 'FRAUD', source: 'checkout', message: `Blocked order attempt (${blocked.kind})`, context: { block_id: blocked.id } })
+        throw new HttpError(403, settings.messages?.blocked ?? 'We are unable to accept this order online. Please contact us to complete your purchase.', 'ORDER_BLOCKED')
+      }
       const user = await optionalUser(req)
       const preview = await rpc<Record<string, unknown>>(admin, 'storefront_quote', {
         p_items: input.items,
@@ -151,6 +160,8 @@ Deno.serve(
         },
         p_fraud_check_id: checkId,
       })
+      await rpc(admin, 'record_order_client', { p_order_id: order.id, p_ip: ip, p_user_agent: req.headers.get('user-agent') ?? null })
+        .catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not save the order IP', error }))
       // Where the sale came from (kept with the original order when merged).
       if (!order.merged) {
         await rpc(admin, 'record_order_attribution', { p_order_id: order.id, p_attribution: input.attribution ?? {} })

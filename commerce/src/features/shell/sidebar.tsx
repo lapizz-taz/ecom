@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/features/auth/auth-context'
 import { cn } from '@/lib/utils'
-import { linkMatches, NAV, type NavCounts, type NavItem } from './nav-config'
+import { linkMatches, MORE_PAGES, NAV, type NavCounts, type NavItem } from './nav-config'
 
 export type ShellAction = NonNullable<NavItem['action']>
 
@@ -19,6 +19,9 @@ function useCurrentLink(): string | null {
     const links = NAV.flatMap((s) => s.items.flatMap((i) => [i.to, ...(i.children ?? []).map((c) => c.to)])).filter((t): t is string => !!t)
     const exact = links.filter((to) => linkMatches(to, pathname, search)).sort((a, b) => b.length - a.length)[0]
     if (exact) return exact
+    // Pages left out of the menu light up the section they belong to.
+    const more = MORE_PAGES.filter((p) => linkMatches(p.to, pathname, search)).sort((a, b) => b.to.length - a.to.length)[0]
+    if (more) return NAV.flatMap((s) => s.items).find((i) => i.label === more.parent)?.to ?? null
     const parent = links
       .filter((to) => !to.includes('?') && to !== '/admin' && pathname.startsWith(`${to}/`))
       .sort((a, b) => b.length - a.length)[0]
@@ -62,7 +65,8 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
     ? sections.flatMap((s) => s.items.flatMap((item) => [
       ...(item.label.toLowerCase().includes(term) ? [{ label: item.label, to: item.to, action: item.action, parent: s.label }] : []),
       ...(item.children ?? []).filter((c) => c.label.toLowerCase().includes(term)).map((c) => ({ label: c.label, to: c.to, action: undefined, parent: item.label })),
-    ]))
+    ])).concat(MORE_PAGES.filter((p) => (!p.permission || can(p.permission)) && p.label.toLowerCase().includes(term))
+      .map((p) => ({ label: p.label, to: p.to, action: undefined, parent: p.parent })))
     : []
 
   const itemClass = (active: boolean) => cn(

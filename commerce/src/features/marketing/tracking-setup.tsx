@@ -29,7 +29,7 @@ export function TrackingSetup({ className }: { className?: string }) {
     setTimeout(() => setCopied(null), 1500)
   })
   return (
-    <Card className={cn('gap-3', className)}>
+    <Card className={cn('min-w-0 gap-3', className)}>
       <CardHeader>
         <CardTitle className="text-sm">Ad tracking setup</CardTitle>
         <CardDescription>
@@ -37,9 +37,9 @@ export function TrackingSetup({ className }: { className?: string }) {
           Facebook, Google, Direct or Unknown — never guessed as an ad.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3">
+      <CardContent className="grid min-w-0 grid-cols-1 gap-3">
         {TRACKING_TEMPLATES.map((t) => (
-          <div key={t.key} className="rounded-lg border p-3">
+          <div key={t.key} className="min-w-0 rounded-lg border p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium">{t.name}</p>
@@ -49,7 +49,7 @@ export function TrackingSetup({ className }: { className?: string }) {
                 {copied === t.key ? <Check /> : <Copy />} {copied === t.key ? 'Copied' : 'Copy'}
               </Button>
             </div>
-            <code className="block overflow-x-auto rounded-md bg-muted/60 px-2.5 py-2 font-mono text-[11px] leading-relaxed whitespace-nowrap text-muted-foreground">{t.value}</code>
+            <code className="block rounded-md bg-muted/60 px-2.5 py-2 font-mono text-[11px] leading-relaxed break-all text-muted-foreground select-all">{t.value}</code>
           </div>
         ))}
       </CardContent>

@@ -10,7 +10,7 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { COURIER_INVOICE_STATUS, ORDER_STATUS, SHIPMENT_STATUS } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { type GlobalSearchResult, globalSearch } from '@/services/search'
-import { NAV } from './nav-config'
+import { MORE_PAGES, NAV } from './nav-config'
 
 interface Row {
   key: string
@@ -82,6 +82,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       ...(item.children ?? []).filter((c) => (!item.permission || can(item.permission)) && (!c.permission || can(c.permission)))
         .map((c) => ({ label: c.label, to: c.to, parent: item.label })),
     ]))
+      .concat(MORE_PAGES.filter((p) => !p.permission || can(p.permission)).map((p) => ({ label: p.label, to: p.to, parent: p.parent })))
       .filter((p) => p.label.toLowerCase().includes(t))
       .slice(0, 5)
       .map((p) => ({ key: `nav${p.to}`, group: 'Pages', icon: <CornerDownLeft />, title: p.label, detail: p.parent, to: p.to }))
