@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { SuccessRateButton } from '@/features/orders/success-panel'
 import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
 import { EMPTY_FILTERS, type FilterValues, filtersFromValues, OrderFilterButton } from '@/features/orders/order-filter-panel'
 import { paidBadge } from '@/features/orders/order-source-card'
@@ -286,7 +287,7 @@ export function OrdersPage({ view }: { view: View }) {
   if (view === 'web') {
     columns.push(
       { key: 'items', header: 'Items', hideOnMobile: true, cell: (o) => <p className="line-clamp-2 max-w-44 text-xs" title={o.items_preview ?? ''}>{o.items_preview ?? `${o.item_count} item(s)`}</p> },
-      { key: 'history', header: 'Success Rate', cell: (o) => <SuccessRateCell h={o.courier_history} /> },
+      { key: 'history', header: 'Success Rate', cell: (o) => <SuccessRateCell h={o.courier_history} orderId={o.id} phone={o.customer_phone} /> },
       { key: 'source', header: 'Source', hideOnMobile: true, cell: (o) => <SourceCell a={o.attribution} /> },
       { key: 'tags', header: 'Tags', hideOnMobile: true, cell: tagCell },
       { key: 'call', header: 'Call', cell: (o) => <CallCell o={o} meta={statusMeta.get(o.review_status)} /> },
@@ -514,7 +515,7 @@ function rateTone(rate: number, tier: string | null | undefined) {
 }
 
 /** Delivery success as the checkout check saw it: a ring, the rate and the parcels behind it. */
-function SuccessRateCell({ h }: { h: OrderListItem['courier_history'] }) {
+function SuccessRateCell({ h, orderId, phone }: { h: OrderListItem['courier_history']; orderId: string; phone: string }) {
   const counted = h ? h.total ?? h.completed : 0
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
   if (!h || rate === null || (counted === 0 && !h.ranges?.length)) {
@@ -531,7 +532,7 @@ function SuccessRateCell({ h }: { h: OrderListItem['courier_history'] }) {
           strokeDasharray={`${(length * Math.min(Math.max(rate, 0), 100)) / 100} ${length}`} />
       </svg>
       <div className="text-xs leading-tight tabular-nums">
-        <p>Success: <span className={cn('font-medium', tone.text)}>{Math.round(rate)}%</span></p>
+        <p>Success: <SuccessRateButton orderId={orderId} phone={phone} rate={rate} className="font-medium" /></p>
         <p>Order: <span className={cn('font-medium', tone.text)}>{h.delivered}/{counted}</span>
 </p>
         {!!h.ranges?.length && <p className="text-muted-foreground" title="Couriers that report only a range, not exact parcels">{h.ranges.join(', ')}</p>}
@@ -788,11 +789,7 @@ function CustomerCell({ o }: { o: OrderListItem }) {
       </p>
       <p className="flex items-center gap-1.5">
         <span className="tabular-nums">{o.customer_phone}</span>
-        {tone && rate !== null && (
-          <span className={cn('font-semibold tabular-nums', tone.text)} title={`Delivery success ${Math.round(rate)}% · ${h!.delivered}/${h!.total ?? h!.completed} parcels`}>
-            {Math.round(rate)}%
-          </span>
-        )}
+        {tone && rate !== null && <SuccessRateButton orderId={o.id} phone={o.customer_phone} rate={rate} />}
         <a href={`tel:${o.customer_phone}`} className="text-sky-600 hover:opacity-80" aria-label={`Call ${o.customer_name}`}><Phone className="size-3.5" /></a>
         {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="text-emerald-600 hover:opacity-80" aria-label={`WhatsApp ${o.customer_name}`}><MessageCircle className="size-3.5" /></a>}
       </p>

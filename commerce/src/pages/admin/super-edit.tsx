@@ -15,14 +15,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, toNumber } from '@/lib/format'
 import { ORDER_STATUS, SHIPMENT_STATUS } from '@/lib/status'
 import { listCouriers } from '@/services/couriers'
-import { confirmPassword, type OverrideChanges, overrideHistory, overrideOrder } from '@/services/order-tools'
+import { type OverrideChanges, overrideHistory, overrideOrder } from '@/services/order-tools'
 import { getOrder } from '@/services/orders'
 import { globalSearch } from '@/services/search'
 import type { Enums } from '@/types/database'
@@ -33,8 +32,8 @@ type ShipmentStatus = Enums<'shipment_status'>
 /**
  * Super Edit — Order Override. Changes the status and courier details of an
  * order that the normal screens won't allow (a parcel marked returned by
- * mistake, a consignment booked by phone…). Owners and admins only, with a
- * reason, a password check and an audit entry for every change.
+ * mistake, a consignment booked by phone…). Owners and admins only; every
+ * change is kept in the audit log with who made it.
  */
 export default function SuperEditPage() {
   const { can } = useAuth()
@@ -50,7 +49,7 @@ export default function SuperEditPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Super Edit"
-        description="Order Override — change the status and courier details of an order when the normal workflow doesn't allow it. Every override needs a reason and your password, and is kept in the audit log." />
+        description="Order Override — change the status and courier details of an order when the normal workflow doesn't allow it. Every override is kept in the audit log." />
       {!can('orders.override') ? (
         <Card><CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground"><ShieldAlert className="size-5" /> Only owners and admins can override orders.</CardContent></Card>
       ) : (
@@ -91,7 +90,6 @@ export default function SuperEditPage() {
 }
 
 function OverrideForm({ orderId }: { orderId: string }) {
-  const { access } = useAuth()
   const queryClient = useQueryClient()
   const order = useQuery({ queryKey: ['order', orderId], queryFn: () => getOrder(orderId) })
   const couriers = useQuery({ queryKey: ['couriers', 'all'], queryFn: () => listCouriers(false) })
@@ -106,11 +104,9 @@ function OverrideForm({ orderId }: { orderId: string }) {
   const [cost, setCost] = useState('')
   const [cod, setCod] = useState('')
   const [returnCharge, setReturnCharge] = useState('')
-  const [reason, setReason] = useState('')
   const [force, setForce] = useState(false)
   const [notify, setNotify] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [password, setPassword] = useState('')
 
   useEffect(() => {
     setStatus('')
@@ -121,7 +117,7 @@ function OverrideForm({ orderId }: { orderId: string }) {
     setCost(shipment ? String(shipment.shipping_cost) : '')
     setCod(shipment ? String(shipment.cod_amount) : '')
     setReturnCharge(shipment ? String(shipment.return_charge) : '')
-    setReason(''); setForce(false); setNotify(false)
+    setForce(false); setNotify(false)
   }, [orderId, shipment])
 
   const changes: OverrideChanges = {}
@@ -140,13 +136,12 @@ function OverrideForm({ orderId }: { orderId: string }) {
   const run = useMutation({
     meta: { silent: true },
     mutationFn: async () => {
-      await confirmPassword(access!.email, password)
-      return overrideOrder(orderId, changes, reason.trim(), force, notify)
+      return overrideOrder(orderId, changes, '', force, notify)
     },
     onSuccess: (r) => {
       toast.success(r.mode === 'steps' ? `Done: ${r.path?.map((s) => ORDER_STATUS[s as OrderStatus]?.label ?? s).join(' → ')}`
         : r.mode === 'forced' ? 'Status set (forced). Stock and finance were not adjusted.' : 'Courier details saved')
-      setConfirmOpen(false); setPassword('')
+      setConfirmOpen(false)
       void queryClient.invalidateQueries({ queryKey: ['order', orderId] })
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
       void queryClient.invalidateQueries({ queryKey: ['override-history'] })
@@ -170,7 +165,7 @@ function OverrideForm({ orderId }: { orderId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (hasChanges && reason.trim().length >= 5) setConfirmOpen(true) }}>
+        <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (hasChanges) setConfirmOpen(true) }}>
           <Field label="Order status" htmlFor="se-status" hint="Allowed steps are walked one by one, so stock, finance and the courier record follow.">
             <Select value={status || o.status} onValueChange={(v) => setStatus(v as OrderStatus)}>
               <SelectTrigger id="se-status" className="w-full"><SelectValue /></SelectTrigger>
@@ -199,9 +194,6 @@ function OverrideForm({ orderId }: { orderId: string }) {
             <Field label="Return charge" htmlFor="se-ret"><Input id="se-ret" type="number" min={0} step="0.01" value={returnCharge} onChange={(e) => setReturnCharge(e.target.value)} /></Field>
           </fieldset>
 
-          <Field label="Reason" htmlFor="se-reason" required hint="Kept in the audit log with your name, e.g. “Pathao delivered on 3 Oct; app showed returned”.">
-            <Textarea id="se-reason" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
-          </Field>
           <label className="flex items-start gap-2 text-sm">
             <Checkbox checked={force} onCheckedChange={(v) => setForce(v === true)} className="mt-0.5" />
             <span>Force the status if there is no normal way to it<span className="block text-xs text-muted-foreground">Only the status changes — stock, finance and the courier record are not adjusted. Fix those separately.</span></span>
@@ -211,25 +203,21 @@ function OverrideForm({ orderId }: { orderId: string }) {
             <span>Send the customer the usual messages<span className="block text-xs text-muted-foreground">Off: corrections are silent.</span></span>
           </label>
           <div className="flex justify-end">
-            <Button type="submit" variant="destructive" disabled={!hasChanges || reason.trim().length < 5}><AlertTriangle /> Review override</Button>
+            <Button type="submit" variant="destructive" disabled={!hasChanges}><AlertTriangle /> Review override</Button>
           </div>
         </form>
       </CardContent>
 
-      <FormDialog open={confirmOpen} onOpenChange={(v) => { if (!v) { run.reset(); setPassword('') } setConfirmOpen(v) }} title={`Override ${o.order_number}?`} destructive
-        description="This bypasses the normal workflow. Check the changes, then confirm with your password."
-        submitLabel="Override order" onSubmit={() => run.mutate()} busy={run.isPending} disabled={password.length < 6}>
+      <FormDialog open={confirmOpen} onOpenChange={(v) => { if (!v) run.reset(); setConfirmOpen(v) }} title={`Override ${o.order_number}?`} destructive
+        description="This bypasses the normal workflow. Check the changes."
+        submitLabel="Override order" onSubmit={() => run.mutate()} busy={run.isPending}>
         <ul className="grid gap-1 rounded-lg bg-muted/50 p-3 text-sm">
           {changes.status && <li>Status: <b>{ORDER_STATUS[o.status].label}</b> → <b>{ORDER_STATUS[changes.status].label}</b>{force ? ' (force allowed)' : ''}</li>}
           {changes.shipment && Object.entries(changes.shipment).map(([k, v]) => (
             <li key={k}>{k.replace(/_/g, ' ')}: <b>{k === 'courier_id' ? couriers.data?.find((c) => c.id === v)?.name : String(v || '—')}</b></li>
           ))}
-          <li className="text-muted-foreground">Reason: {reason}</li>
           <li className="text-muted-foreground">{notify ? 'The customer gets the usual messages.' : 'No messages are sent to the customer.'}</li>
         </ul>
-        <Field label={`Password for ${access?.email}`} htmlFor="se-password" required>
-          <Input id="se-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </Field>
         {run.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{(run.error as Error).message.replace(/^[A-Z_]+: /, '')}</p>}
       </FormDialog>
     </Card>
@@ -261,7 +249,7 @@ function OverrideHistory() {
                           ? <>{ORDER_STATUS[before.status]?.label} → {ORDER_STATUS[after.status]?.label}</> : 'Courier details'}
                         {r.mode === 'forced' && <Badge variant="warning" className="ml-1">forced</Badge>}
                       </td>
-                      <td className="max-w-80 truncate text-xs text-muted-foreground" title={r.reason}>{r.reason}</td>
+                      <td className="max-w-80 truncate text-xs text-muted-foreground" title={r.reason ?? ''}>{r.reason ?? '—'}</td>
                     </tr>
                   )
                 })}

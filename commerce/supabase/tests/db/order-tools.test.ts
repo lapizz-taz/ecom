@@ -103,21 +103,21 @@ describe('super edit', () => {
         .toBe('Courier delivered, app missed it')
     }))
 
-  it('needs force when no normal route exists, a reason, a fresh sign-in and the permission', () =>
+  it('needs force when no normal route exists and the permission, but no reason or fresh sign-in', () =>
     inTx(async (db) => {
       const { o } = await order(db, '01799000002')
       await advanceOrder(db, o.id, ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'FAILED_DELIVERY', 'RETURNING', 'RETURNED'])
       const admin = await overrider(db)
       await asUser(db, admin)
       await expectError(db, `select public.admin_override_order($1, '{"status":"DELIVERED"}', 'Returned by mistake')`, [o.id], /no normal way/)
-      await expectError(db, `select public.admin_override_order($1, '{"status":"DELIVERED"}', 'x', true)`, [o.id], /why/)
-      const r = await value<{ mode: string }>(db, `select public.admin_override_order($1, '{"status":"DELIVERED"}', 'Returned by mistake', true)`, [o.id])
-      expect(r.mode).toBe('forced')
-
       await asSystem(db)
       await db.query(`update auth.users set last_sign_in_at = now() - interval '1 hour' where id = $1`, [admin])
       await asUser(db, admin)
-      await expectError(db, `select public.admin_override_order($1, '{"status":"RETURNED"}', 'Back again', true)`, [o.id], /password again/)
+      const r = await value<{ mode: string }>(db, `select public.admin_override_order($1, '{"status":"DELIVERED"}', '', true)`, [o.id])
+      expect(r.mode).toBe('forced')
+      await asSystem(db)
+      expect(await value(db, `select metadata ->> 'reason' from public.audit_logs where action = 'order.override' and entity_id = $1`, [o.id])).toBeNull()
+      expect(await value(db, `select actor_id = $2 from public.audit_logs where action = 'order.override' and entity_id = $1`, [o.id, admin])).toBe(true)
 
       const manager = await createStaff(db, 'ORDER_MANAGER')
       await asUser(db, manager)

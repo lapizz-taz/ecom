@@ -15,9 +15,9 @@ interface Row { id: string; status: RowStatus; tracking: string | null; message:
 
 const STATUS: Record<RowStatus, { label: string; className: string }> = {
   QUEUED: { label: 'Queued', className: 'bg-muted text-muted-foreground' },
-  UPLOADING: { label: 'Uploading', className: 'bg-violet-500/20 text-violet-600 dark:text-violet-300' },
-  SUCCESS: { label: 'Success', className: 'bg-emerald-500/15 text-emerald-600' },
-  FAILED: { label: 'Failed', className: 'bg-red-500/15 text-red-600' },
+  UPLOADING: { label: 'Uploading', className: 'animate-pulse bg-foreground/15 text-foreground' },
+  SUCCESS: { label: 'Success', className: 'bg-foreground text-background' },
+  FAILED: { label: 'Failed', className: 'bg-transparent text-foreground ring-1 ring-foreground/60 ring-inset' },
   SKIPPED: { label: 'Stopped', className: 'bg-muted text-muted-foreground' },
 }
 
@@ -124,7 +124,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
                 <DialogTitle className="text-base">{chosen?.name} upload progress</DialogTitle>
                 <DialogDescription className="sr-only">Live status of each parcel being booked</DialogDescription>
               </div>
-              <Badge className={cn('shrink-0', running ? 'bg-violet-500/20 text-violet-600 dark:text-violet-300' : failed ? 'bg-amber-500/15 text-amber-600' : 'bg-emerald-500/15 text-emerald-600')}>
+              <Badge className={cn('shrink-0', running ? 'bg-muted text-foreground' : failed ? 'bg-transparent text-foreground ring-1 ring-foreground/60 ring-inset' : 'bg-foreground text-background')}>
                 {running ? `Processing (${done}/${total})` : failed ? `Done · ${failed} failed` : 'All booked'}
               </Badge>
             </div>
@@ -133,7 +133,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm" aria-live="polite">
               <span className="font-medium tabular-nums">Progress: {done} / {total}</span>
-              <span className="tabular-nums"><span className="text-emerald-600">Success: {success}</span> <span className="ml-3 text-red-600">Failed: {failed}</span></span>
+              <span className="tabular-nums text-muted-foreground">Success <b className="text-foreground">{success}</b><span className="ml-4">Failed <b className="text-foreground">{failed}</b></span></span>
             </div>
 
             <div className="max-h-72 overflow-auto rounded-xl border">
@@ -150,7 +150,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
                   {rows.map((r) => {
                     const url = r.tracking ? trackingUrl(chosen, r.tracking) : null
                     return (
-                      <tr key={r.id} className={cn('border-b last:border-0 transition-colors', r.status === 'UPLOADING' && 'bg-violet-500/5')}>
+                      <tr key={r.id} className={cn('border-b last:border-0 transition-colors', r.status === 'UPLOADING' && 'bg-muted/60')}>
                         <td className="px-3 py-2 font-medium whitespace-nowrap">{names.current.get(r.id) ?? r.id.slice(0, 8)}</td>
                         <td className="px-3 py-2">
                           <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase', STATUS[r.status].className)}>
@@ -159,10 +159,10 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
                         </td>
                         <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
                           {r.tracking ? (url
-                            ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-600 hover:underline">{r.tracking}<ExternalLink className="size-3" /></a>
+                            ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-foreground underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground">{r.tracking}<ExternalLink className="size-3" /></a>
                             : r.tracking) : '—'}
                         </td>
-                        <td className={cn('px-3 py-2 text-xs', r.status === 'FAILED' ? 'text-red-600' : 'text-muted-foreground')}>{r.message}</td>
+                        <td className={cn('px-3 py-2 text-xs', r.status === 'FAILED' ? 'font-medium text-foreground' : 'text-muted-foreground')}>{r.message}</td>
                       </tr>
                     )
                   })}
@@ -185,28 +185,28 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   )
 }
 
-/** The road: one checkpoint per parcel (green booked, red failed); the van drives to the current progress. */
+/** The road: one checkpoint per parcel (filled booked, hollow failed); the van drives to the current progress. */
 function Road({ pct, running, rows }: { pct: number; running: boolean; rows: Row[] }) {
   return (
     <div className="relative h-16 select-none" aria-hidden>
       <div className="absolute inset-x-0 bottom-3 h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-foreground transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
       </div>
       <div className={cn('absolute inset-x-0 bottom-1 h-0.5 opacity-30', running && 'booking-road')} />
       {rows.length <= 40 && rows.map((r, i) => (
         <span key={r.id} title={r.status}
           className={cn('absolute bottom-2.5 size-2.5 -translate-x-1/2 rounded-[3px] border transition-colors',
-            r.status === 'SUCCESS' ? 'border-emerald-600 bg-emerald-500' : r.status === 'FAILED' ? 'border-red-600 bg-red-500'
-              : r.status === 'UPLOADING' ? 'animate-pulse border-violet-500 bg-violet-400' : 'border-amber-700/60 bg-amber-400/80')}
+            r.status === 'SUCCESS' ? 'border-foreground bg-foreground' : r.status === 'FAILED' ? 'rotate-45 border-2 border-foreground bg-background'
+              : r.status === 'UPLOADING' ? 'animate-pulse border-foreground bg-muted-foreground' : 'border-muted-foreground/50 bg-muted')}
           style={{ left: `${((i + 1) / rows.length) * 100}%` }} />
       ))}
       <div className="absolute bottom-4 transition-[left] duration-700 ease-out" style={{ left: `calc(${pct}% - ${pct * 0.56}px)` }}>
         <svg viewBox="0 0 72 44" className={cn('h-9 w-14 text-foreground', running && 'booking-van')}>
           <rect x="2" y="6" width="42" height="26" rx="3" className="fill-current" />
-          <rect x="8" y="12" width="10" height="9" rx="1.5" className="fill-amber-400" />
-          <rect x="21" y="12" width="10" height="9" rx="1.5" className="fill-amber-400" />
+          <rect x="8" y="12" width="10" height="9" rx="1.5" className="fill-background/80" />
+          <rect x="21" y="12" width="10" height="9" rx="1.5" className="fill-background/80" />
           <path d="M44 14h14l10 10v8H44z" className="fill-current" />
-          <path d="M48 17h9l6 6h-15z" className="fill-sky-300/80" />
+          <path d="M48 17h9l6 6h-15z" className="fill-background/70" />
           <circle cx="14" cy="34" r="6" className="fill-background stroke-current" strokeWidth="3" />
           <circle cx="56" cy="34" r="6" className="fill-background stroke-current" strokeWidth="3" />
         </svg>

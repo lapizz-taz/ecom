@@ -87,19 +87,13 @@ export async function overrideOrder(orderId: string, changes: OverrideChanges, r
 }
 
 export interface OverrideEntry {
-  id: string; created_at: string; order_id: string; order_number: string | null; reason: string; mode: string | null
+  id: string; created_at: string; order_id: string; order_number: string | null; reason: string | null; mode: string | null
   old_values: Record<string, unknown> | null; new_values: Record<string, unknown> | null; actor_name: string | null; actor_email: string | null
 }
 export async function overrideHistory() {
   const { data, error } = await supabase.rpc('admin_override_history', { p_limit: 30 })
   if (error) throw error
   return fromJson<OverrideEntry[]>(data)
-}
-
-/** Super Edit needs a password check from the last 10 minutes (checked again on the server). */
-export async function confirmPassword(email: string, password: string) {
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw new Error(error.message === 'Invalid login credentials' ? 'That password is not right' : error.message)
 }
 
 // --- Orders dashboard -------------------------------------------------------------------
