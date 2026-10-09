@@ -448,9 +448,8 @@ begin
         (select count(*) from public.orders o where o.assigned_to = p.id and o.confirmed_at is null and o.follow_up_at <= now()
            and o.status not in ('CANCELLED', 'REJECTED_FRAUD')) as callbacks_due
       from public.profiles p join public.roles r on r.id = p.role_id
-      where p.is_active and exists (select 1 from public.role_permissions rp join public.permissions pm on pm.id = rp.permission_id
-                                    where rp.role_id = p.role_id and pm.code in ('orders.update', 'orders.status'))
-         or r.code = 'OWNER') a), '[]'::jsonb));
+      where p.is_active and (r.code = 'OWNER' or exists (select 1 from public.role_permissions rp join public.permissions pm on pm.id = rp.permission_id
+                                    where rp.role_id = p.role_id and pm.code in ('orders.update', 'orders.status')))) a), '[]'::jsonb));
 end;
 $$;
 

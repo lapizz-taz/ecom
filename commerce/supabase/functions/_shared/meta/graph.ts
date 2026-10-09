@@ -132,6 +132,37 @@ export async function getAdAccount(graph: MetaGraph, accountId: string): Promise
   }
 }
 
+/** Meta's account_status codes, in words. */
+export const ACCOUNT_STATUS: Record<number, string> = {
+  1: 'Active', 2: 'Disabled', 3: 'Unsettled (unpaid balance)', 7: 'Pending risk review', 8: 'Pending settlement',
+  9: 'In grace period', 100: 'Pending closure', 101: 'Closed',
+}
+
+export interface TokenInfo {
+  valid: boolean
+  appId: string | null
+  expiresAt: string | null
+  scopes: string[]
+}
+
+/**
+ * Checks an access token with the app's own credentials (debug_token): is it
+ * valid, which app issued it, when it expires, what it may do. Meta only takes
+ * the token to inspect as a query parameter here; the call is server to server.
+ */
+export async function debugToken(token: string, appId: string, appSecret: string, opts: GraphOptions = {}): Promise<TokenInfo> {
+  const graph = new MetaGraph(`${appId}|${appSecret}`, { ...opts, appSecret: '' })
+  const r = await graph.get<{ data?: Record<string, unknown> }>('debug_token', { input_token: token })
+  const d = r.data ?? {}
+  const expires = Number(d.expires_at ?? 0)
+  return {
+    valid: d.is_valid === true,
+    appId: d.app_id != null ? String(d.app_id) : null,
+    expiresAt: expires > 0 ? new Date(expires * 1000).toISOString() : null,
+    scopes: Array.isArray(d.scopes) ? d.scopes.map(String) : [],
+  }
+}
+
 export interface PageInfo { id: string; name: string; instagram: { id: string; username: string | null } | null }
 
 /** Facebook Pages the token can see (and their Instagram accounts). Empty when the token lacks page access. */

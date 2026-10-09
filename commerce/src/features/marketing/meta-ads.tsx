@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, CircleCheck, ImageOff, Megaphone, PlugZap, RefreshCw, Unplug } from 'lucide-react'
+import { ChevronRight, CircleCheck, ImageOff, Megaphone, Pencil, PlugZap, Plus, RefreshCw, Unplug } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -14,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/features/auth/auth-context'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -21,200 +23,272 @@ import { rangeFor } from '@/lib/dates'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, timeAgo, toNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
-  connectMeta, disconnectMeta, type MetaAccountChoice, metaAccounts, type MetaPageChoice, metaPerformance, type MetaPerformanceRow,
-  metaSettings, syncMeta, updateMetaSettings,
+  disconnectMetaAccount, financeAccounts, type MetaAccountInput, type MetaAdAccount, metaAdAccounts, metaPerformance, type MetaPerformanceRow,
+  type MetaTestResult, saveMetaAccount, setMetaTax, syncMeta, testMetaAccount,
 } from '@/services/marketing'
 
 const SYNC_PROBLEM: Record<string, string> = {
-  TOKEN_INVALID: 'The access token stopped working (expired or revoked). Connect again with a new token.',
+  TOKEN_INVALID: 'The access token stopped working (expired or revoked). Edit the account and paste a new one.',
   RATE_LIMITED: 'Meta asked us to slow down. The next scheduled sync will try again.',
-  NO_ACCESS: 'The token can no longer read this ad account. Give it ads_read access again.',
+  NO_ACCESS: 'The token can no longer read this ad account. Give the system user ads_read access again.',
   FAILED: 'The last sync failed.',
 }
 
-/** Meta Ads: connection, exchange rate / VAT, and campaign → ad set → ad numbers next to the orders they brought. */
+/** Meta Ads: the connected ad accounts, and campaign → ad set → ad numbers next to the orders they brought. */
 export function MetaAds() {
   return (
     <div className="space-y-4">
-      <MetaConnection />
+      <MetaAccounts />
       <MetaPerformance />
     </div>
   )
 }
 
-function MetaConnection() {
+const statusDot = (a: MetaAdAccount) => !a.is_active || a.connection_status === 'DISCONNECTED' ? 'bg-zinc-400'
+  : a.connection_status === 'FAILED' || (a.last_sync_status && a.last_sync_status !== 'OK') ? 'bg-amber-500' : 'bg-emerald-500'
+
+/** Every Meta ad account: add, edit, sync, disconnect, plus VAT on ad spend. */
+export function MetaAccounts() {
   const { can } = useAuth()
   const manage = can('marketing.manage')
   const queryClient = useQueryClient()
-  const status = useQuery({ queryKey: ['meta', 'status'], queryFn: metaSettings })
-  const s = status.data
-  const [connectOpen, setConnectOpen] = useState(false)
-  const [confirmOff, setConfirmOff] = useState(false)
-  const [rate, setRate] = useState('')
+  const list = useQuery({ queryKey: ['meta', 'accounts'], queryFn: metaAdAccounts })
+  const [editing, setEditing] = useState<MetaAdAccount | 'new' | null>(null)
+  const [removing, setRemoving] = useState<MetaAdAccount | null>(null)
   const [tax, setTax] = useState('')
-  useEffect(() => {
-    if (s) { setRate(String(s.exchange_rate ?? 1)); setTax(String(s.tax_percent ?? 0)) }
-  }, [s])
+  useEffect(() => { if (list.data) setTax(String(list.data.tax_percent ?? 0)) }, [list.data])
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['meta'] })
     void queryClient.invalidateQueries({ queryKey: ['attribution'] })
     void queryClient.invalidateQueries({ queryKey: ['marketing'] })
+    void queryClient.invalidateQueries({ queryKey: ['finance'] })
   }
   const sync = useMutation({
     meta: { silent: true },
-    mutationFn: () => syncMeta(7),
-    onSuccess: (r) => { toast.success(`Synced ${formatNumber(r.insights ?? 0)} daily rows · ${formatMoney(r.cost ?? 0)}`); refresh() },
-    onError: () => refresh(),
+    mutationFn: (id?: string) => syncMeta(7, id),
+    onSuccess: (r) => {
+      const failed = r.accounts.filter((a) => !a.ok)
+      if (failed.length) toast.warning(`${failed.map((a) => a.name).join(', ')}: ${failed[0].error}`)
+      else toast.success(`Synced ${formatNumber(r.insights)} daily rows · ${formatMoney(r.cost)}`)
+      refresh()
+    },
+    onError: (e) => { toast.error((e as Error).message); refresh() },
   })
-  const saveRate = useMutation({
-    mutationFn: () => updateMetaSettings(Number(rate), Number(tax)),
-    onSuccess: () => { toast.success('Saved. Spend in reports and Finance was recalculated.'); refresh() },
-  })
-  const disconnect = useMutation({ mutationFn: disconnectMeta, onSuccess: () => { toast.success('Meta Ads disconnected'); refresh() } })
-  const rateValid = Number(rate) > 0 && Number(tax) >= 0 && Number(tax) <= 100
-  const rateChanged = s && (Number(rate) !== Number(s.exchange_rate) || Number(tax) !== Number(s.tax_percent))
+  const saveTax = useMutation({ mutationFn: () => setMetaTax(Number(tax)), onSuccess: () => { toast.success('Saved. Spend in reports and Finance was recalculated.'); refresh() } })
+  const disconnect = useMutation({ mutationFn: (id: string) => disconnectMetaAccount(id), onSuccess: () => { toast.success('Disconnected'); refresh() } })
+
+  const data = list.data
+  const accounts = data?.accounts ?? []
+  const taxValid = tax !== '' && Number(tax) >= 0 && Number(tax) <= 100
 
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
-        <CardTitle className="text-base">Meta Ads account</CardTitle>
+        <CardTitle className="text-base">Meta Ads accounts</CardTitle>
         <CardDescription>
-          Spend, impressions, clicks and conversions for every campaign, ad set and ad, synced every 3 hours. Spend is posted to Advertising
-          expenses in Finance. The access token stays on the server.
+          Spend, impressions, clicks and conversions for every campaign, ad set and ad, synced every 3 hours and posted to Advertising
+          expenses in Finance. Tokens and app secrets stay on the server.
         </CardDescription>
         {manage && (
           <CardAction className="flex gap-2">
-            {s?.connected && (
-              <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={sync.isPending}>
-                {sync.isPending ? <Spinner /> : <RefreshCw />} Sync now
+            {accounts.some((a) => a.is_active) && (
+              <Button size="sm" variant="outline" onClick={() => sync.mutate(undefined)} disabled={sync.isPending}>
+                {sync.isPending ? <Spinner /> : <RefreshCw />} Sync all
               </Button>
             )}
-            <Button size="sm" variant={s?.connected ? 'outline' : 'default'} onClick={() => setConnectOpen(true)}><PlugZap /> {s?.connected ? 'Change' : 'Connect'}</Button>
+            <Button size="sm" onClick={() => setEditing('new')}><Plus /> Add account</Button>
           </CardAction>
         )}
       </CardHeader>
-      <CardContent className="grid gap-4">
-        {status.isLoading ? <LoadingState /> : status.error ? (
-          <p className="text-sm text-red-700">{(status.error as Error).message}</p>
+      <CardContent className="grid gap-3">
+        {list.isLoading ? <LoadingState /> : list.error ? (
+          <p className="text-sm text-red-700">{(list.error as Error).message}</p>
+        ) : accounts.length === 0 ? (
+          <EmptyState icon={<Megaphone className="size-5" />} title="No Meta Ads account yet"
+            description="Add one to bring in spend, impressions, clicks and conversions. Orders are still attributed from tracking links without it."
+            action={manage ? <Button size="sm" onClick={() => setEditing('new')}><Plus /> Add Meta Ads account</Button> : undefined} />
         ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
-              <span className={cn('size-2.5 rounded-full', s?.connected ? (s.last_sync_status && s.last_sync_status !== 'OK' ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-zinc-400')} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">
-                  {s?.connected ? `${s.ad_account_name ?? s.ad_account_id} · ${s.account_currency ?? ''}` : 'Not connected'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {s?.connected ? (
-                    <>
-                      {s.ad_account_id}{s.page_name ? ` · Page ${s.page_name}` : ''}{s.instagram_username ? ` · Instagram @${s.instagram_username}` : ''}
-                      {s.hint ? ` · token ${s.hint}` : ''}
-                      <br />
-                      {s.last_sync_at ? <>Last sync {timeAgo(s.last_sync_at)} ({formatDateTime(s.last_sync_at)}) · {s.last_sync_since} → {s.last_sync_until}</> : 'Not synced yet'}
-                    </>
-                  ) : 'Connect to bring in spend, impressions, clicks and conversions. Orders are still attributed from tracking links without it.'}
-                </p>
-                {s?.connected && s.last_sync_status && s.last_sync_status !== 'OK' && (
-                  <p className="mt-1 text-xs text-amber-700">{SYNC_PROBLEM[s.last_sync_status] ?? SYNC_PROBLEM.FAILED}{s.last_sync_error ? ` ${s.last_sync_error}` : ''}</p>
+          <ul className="grid gap-2">
+            {accounts.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3">
+                <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', statusDot(a))} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    {a.name}
+                    {!a.is_active && <Badge variant="neutral">{a.connection_status === 'DISCONNECTED' ? 'disconnected' : 'paused'}</Badge>}
+                  </p>
+                  <p className="text-xs break-words text-muted-foreground">
+                    act_{a.ad_account_id}{a.meta_name && a.meta_name !== a.name ? ` · ${a.meta_name}` : ''}{a.currency ? ` · ${a.currency}` : ''}
+                    {' · '}1 USD = {formatNumber(a.usd_rate, 2)} {data?.store_currency}
+                    {a.token_hint ? ` · token ${a.token_hint}` : ''}{a.has_app_secret ? ' · signed' : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {a.payment_account_name ? <>Paid from <span className="text-foreground">{a.payment_account_name}</span>{a.payments_from ? ` since ${a.payments_from}` : ''}</> : 'Expense only — no payment account'}
+                    {' · '}Last 30 days <Money value={a.cost_30d} />
+                    {' · '}{a.last_sync_at ? <span title={formatDateTime(a.last_sync_at)}>synced {timeAgo(a.last_sync_at)}</span> : 'not synced yet'}
+                  </p>
+                  {a.is_active && a.connection_status === 'FAILED' && <p className="mt-1 text-xs text-amber-700">{a.connection_error ?? 'Connection failed.'}</p>}
+                  {a.is_active && a.last_sync_status && a.last_sync_status !== 'OK' && (
+                    <p className="mt-1 text-xs text-amber-700">{SYNC_PROBLEM[a.last_sync_status] ?? SYNC_PROBLEM.FAILED}{a.last_sync_error ? ` ${a.last_sync_error}` : ''}</p>
+                  )}
+                </div>
+                {manage && (
+                  <div className="flex shrink-0 gap-1">
+                    {a.is_active && (
+                      <Button size="sm" variant="ghost" onClick={() => sync.mutate(a.id)} disabled={sync.isPending} aria-label={`Sync ${a.name}`}><RefreshCw /></Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => setEditing(a)}><Pencil /> Edit</Button>
+                    {a.connection_status !== 'DISCONNECTED' && (
+                      <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setRemoving(a)} aria-label={`Disconnect ${a.name}`}><Unplug /></Button>
+                    )}
+                  </div>
                 )}
-                {sync.error && <p className="mt-1 text-xs text-red-700" role="alert">{(sync.error as Error).message}</p>}
-              </div>
-              {s?.connected && manage && (
-                <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setConfirmOff(true)}><Unplug /> Disconnect</Button>
-              )}
-            </div>
+              </li>
+            ))}
+          </ul>
+        )}
 
-            {s?.connected && (
-              <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); if (rateValid) saveRate.mutate() }}>
-                <Field label={`1 ${s.account_currency || 'unit'} in your currency`} htmlFor="meta-rate" hint="Meta bills in the ad account currency; spend is converted with this rate.">
-                  <Input id="meta-rate" type="number" step="0.0001" min="0.0001" value={rate} onChange={(e) => setRate(e.target.value)} disabled={!manage} />
-                </Field>
-                <Field label="VAT / tax on ad spend (%)" htmlFor="meta-tax" hint="Added on top of what Meta reports, e.g. 15 for VAT.">
-                  <Input id="meta-tax" type="number" step="0.01" min="0" max="100" value={tax} onChange={(e) => setTax(e.target.value)} disabled={!manage} />
-                </Field>
-                {manage && <Button type="submit" variant="outline" disabled={!rateValid || !rateChanged || saveRate.isPending}>{saveRate.isPending && <Spinner />} Save</Button>}
-              </form>
-            )}
-          </>
+        {accounts.length > 0 && (
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); if (taxValid) saveTax.mutate() }}>
+            <Field label="VAT / tax on ad spend (%)" htmlFor="meta-tax" hint="Added on top of what Meta reports for every account, e.g. 15 for VAT." className="w-64 max-w-full">
+              <Input id="meta-tax" type="number" step="0.01" min="0" max="100" value={tax} onChange={(e) => setTax(e.target.value)} disabled={!manage} />
+            </Field>
+            {manage && <Button type="submit" variant="outline" disabled={!taxValid || Number(tax) === Number(data?.tax_percent) || saveTax.isPending}>{saveTax.isPending && <Spinner />} Save</Button>}
+          </form>
         )}
       </CardContent>
-      <ConnectMetaDialog open={connectOpen} onOpenChange={setConnectOpen} onConnected={refresh} />
-      <ConfirmDialog open={confirmOff} onOpenChange={setConfirmOff} title="Disconnect Meta Ads?" destructive confirmLabel="Disconnect"
-        description="The access token is deleted from the server and syncing stops. Spend already synced stays in reports and Finance."
-        onConfirm={() => disconnect.mutateAsync()} />
+      {editing && <MetaAccountDialog account={editing === 'new' ? null : editing} storeCurrency={data?.store_currency ?? 'BDT'}
+        onClose={() => setEditing(null)} onSaved={refresh} />}
+      <ConfirmDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} title={`Disconnect ${removing?.name}?`} destructive confirmLabel="Disconnect"
+        description="Its access token and app secret are erased from the server and syncing stops. Spend already synced stays in reports, Finance and the payment account."
+        onConfirm={() => disconnect.mutateAsync(removing!.id).then(() => setRemoving(null))} />
     </Card>
   )
 }
 
-function ConnectMetaDialog({ open, onOpenChange, onConnected }: { open: boolean; onOpenChange: (o: boolean) => void; onConnected: () => void }) {
-  const [token, setToken] = useState('')
-  const [choices, setChoices] = useState<{ accounts: MetaAccountChoice[]; pages: MetaPageChoice[] } | null>(null)
-  const [account, setAccount] = useState('')
-  const [page, setPage] = useState('')
-  useEffect(() => {
-    if (!open) { setToken(''); setChoices(null); setAccount(''); setPage('') }
-  }, [open])
+type TestState = { kind: 'idle' } | { kind: 'ok'; result: MetaTestResult } | { kind: 'error'; message: string }
 
-  const find = useMutation({
-    meta: { silent: true },
-    mutationFn: () => metaAccounts(token.trim()),
-    onSuccess: (r) => { setChoices(r); setAccount(r.accounts[0]?.id ?? ''); setPage(r.pages[0]?.id ?? '') },
+/** "Add Meta Ads Account" / edit: credentials, rate, payment account, active, with a connection test. */
+function MetaAccountDialog({ account, storeCurrency, onClose, onSaved }: {
+  account: MetaAdAccount | null; storeCurrency: string; onClose: () => void; onSaved: () => void
+}) {
+  const editing = !!account
+  const payment = useQuery({ queryKey: ['finance', 'accounts'], queryFn: financeAccounts })
+  const [form, setForm] = useState<MetaAccountInput>({
+    id: account?.id, name: account?.name ?? '', appId: account?.app_id ?? '', appSecret: '', accessToken: '',
+    adAccountId: account?.ad_account_id ?? '', usdRate: account?.usd_rate ?? 110,
+    paymentAccountId: account?.payment_account_id ?? null, isActive: account?.is_active ?? true,
   })
-  const connect = useMutation({
+  const [test, setTest] = useState<TestState>({ kind: 'idle' })
+  const set = <K extends keyof MetaAccountInput>(k: K, v: MetaAccountInput[K]) => {
+    setForm((f) => ({ ...f, [k]: v }))
+    if (['appId', 'appSecret', 'accessToken', 'adAccountId'].includes(k)) setTest({ kind: 'idle' })
+  }
+
+  const tester = useMutation({
     meta: { silent: true },
-    mutationFn: () => {
-      const p = choices?.pages.find((x) => x.id === page)
-      return connectMeta({ accessToken: token.trim(), adAccountId: account, pageId: p?.id ?? null, instagramId: p?.instagram?.id ?? null })
-    },
+    mutationFn: () => testMetaAccount(form),
+    onSuccess: (r) => setTest({ kind: 'ok', result: r }),
+    onError: (e) => setTest({ kind: 'error', message: (e as Error).message }),
+  })
+  const save = useMutation({
+    meta: { silent: true },
+    mutationFn: () => saveMetaAccount(form),
     onSuccess: (r) => {
-      if (r.sync.ok) toast.success(`Connected ${r.account.name}. Synced the last 30 days (${formatMoney(r.sync.cost ?? 0)}).`)
-      else toast.warning(`Connected ${r.account.name}, but the first sync failed: ${r.sync.error}`)
-      onConnected()
-      onOpenChange(false)
+      if (r.sync && !r.sync.ok) toast.warning(`Saved ${r.account.name}, but the first sync failed: ${r.sync.error}`)
+      else if (r.sync) toast.success(`Added ${r.account.name}. Synced the last 30 days (${formatMoney(r.sync.cost ?? 0)}).`)
+      else toast.success(`Saved ${r.account.name}`)
+      onSaved()
+      onClose()
     },
   })
-  const step = choices ? 'choose' : 'token'
-  const error = (find.error ?? connect.error) as Error | null
+
+  const adIdValid = /^(act_)?[0-9]{3,32}$/.test(form.adAccountId.trim())
+  const canSubmit = form.name.trim().length >= 2 && adIdValid && form.usdRate > 0 && (editing || form.accessToken.trim().length >= 20)
+  const kept = (has: boolean) => (editing && has ? 'Saved — leave empty to keep it' : undefined)
+  const sameCurrency = account?.currency && account.currency.toUpperCase() === storeCurrency.toUpperCase()
 
   return (
-    <FormDialog open={open} onOpenChange={onOpenChange} title="Connect Meta Ads" wide
-      description={step === 'token'
-        ? 'Paste a long-lived access token (Business Settings → System users → Generate token) with ads_read, and pages_show_list for Page and Instagram details.'
-        : 'Choose the ad account to sync. The token is saved encrypted on the server and never shown again.'}
-      submitLabel={step === 'token' ? 'Find ad accounts' : 'Connect and sync 30 days'}
-      onSubmit={() => (step === 'token' ? find.mutate() : connect.mutate())}
-      busy={find.isPending || connect.isPending}
-      disabled={step === 'token' ? token.trim().length < 20 : !account}>
-      {step === 'token' ? (
-        <Field label="Access token" htmlFor="meta-token" required>
-          <Input id="meta-token" type="password" autoComplete="off" className="font-mono text-xs" value={token} onChange={(e) => setToken(e.target.value)} />
+    <FormDialog open onOpenChange={(o) => !o && onClose()} wide
+      title={editing ? `Edit ${account!.name}` : 'Add Meta Ads Account'}
+      description="From Meta Business Settings: the app's ID and secret (App settings → Basic), and a System User access token with ads_read."
+      submitLabel={editing ? 'Save' : 'Create'} onSubmit={() => save.mutate()} busy={save.isPending} disabled={!canSubmit}>
+      <Field label="Account Name" htmlFor="ma-name" required hint="A friendly name to identify this account">
+        <Input id="ma-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Isolation main" maxLength={80} />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="App ID" htmlFor="ma-app-id">
+          <Input id="ma-app-id" inputMode="numeric" className="font-mono" value={form.appId} onChange={(e) => set('appId', e.target.value.trim())} placeholder="1234567890" />
         </Field>
-      ) : (
-        <>
-          <Field label="Ad account" htmlFor="meta-account" required>
-            <Select value={account} onValueChange={setAccount}>
-              <SelectTrigger id="meta-account" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {choices!.accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name} · {a.currency} · {a.id}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Facebook Page" htmlFor="meta-page" hint={choices!.pages.length ? 'Its linked Instagram account is picked up too.' : 'This token cannot list Pages (needs pages_show_list). You can still connect.'}>
-            <Select value={page || 'none'} onValueChange={(v) => setPage(v === 'none' ? '' : v)} disabled={!choices!.pages.length}>
-              <SelectTrigger id="meta-page" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No Page</SelectItem>
-                {choices!.pages.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.instagram?.username ? ` · @${p.instagram.username}` : ''}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-          <button type="button" className="w-fit text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => { setChoices(null); find.reset() }}>Use a different token</button>
-        </>
+        <Field label="App Secret" htmlFor="ma-app-secret" hint={kept(!!account?.has_app_secret)}>
+          <Input id="ma-app-secret" type="password" autoComplete="off" className="font-mono" value={form.appSecret} onChange={(e) => set('appSecret', e.target.value)}
+            placeholder={editing && account?.has_app_secret ? '••••••••' : ''} />
+        </Field>
+      </div>
+      <Field label="Access Token" htmlFor="ma-token" required={!editing} hint={kept(!!account?.token_hint) ?? 'Long-lived System User Access Token'}>
+        <Input id="ma-token" type="password" autoComplete="off" className="font-mono text-xs" value={form.accessToken} onChange={(e) => set('accessToken', e.target.value)}
+          placeholder={editing && account?.token_hint ? account.token_hint : 'EAA…'} />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Ad Account ID" htmlFor="ma-act" required hint="ID without act_" error={form.adAccountId && !adIdValid ? 'Numbers only, e.g. 998877' : undefined}>
+          <Input id="ma-act" inputMode="numeric" className="font-mono" value={form.adAccountId} onChange={(e) => set('adAccountId', e.target.value.trim())} placeholder="998877665544" />
+        </Field>
+        <Field label={`USD to ${storeCurrency} Rate`} htmlFor="ma-rate" required
+          hint={sameCurrency ? `This ad account bills in ${storeCurrency}, so no conversion is applied.` : 'Spend in USD is converted with this rate.'}>
+          <Input id="ma-rate" type="number" min="0" step="any" value={form.usdRate} onChange={(e) => set('usdRate', Number(e.target.value))} />
+        </Field>
+      </div>
+      <Field label="Payment Account" htmlFor="ma-pay"
+        hint="This account's daily spend is withdrawn from here the day after, and kept in step if Meta later revises it. Leave empty to record the expense without moving any balance.">
+        <Select value={form.paymentAccountId ?? 'none'} onValueChange={(v) => set('paymentAccountId', v === 'none' ? null : v)}>
+          <SelectTrigger id="ma-pay" className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">None — expense only</SelectItem>
+            {(payment.data ?? []).filter((f) => f.is_active || f.id === form.paymentAccountId).map((f) => (
+              <SelectItem key={f.id} value={f.id}>{f.name}{f.balance != null ? ` · ${formatMoney(f.balance)}` : ''}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      {payment.data?.length === 0 && (
+        <p className="-mt-2 text-xs text-muted-foreground">No payment accounts yet. Add your card or bank under <Link to="/admin/finance/accounts" className="underline">Finance → Payment Accounts</Link>.</p>
       )}
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{error.message}</p>}
-      {connect.isPending && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Connecting and syncing the last 30 days…</p>}
-      {connect.isSuccess && <p className="flex items-center gap-2 text-sm text-emerald-700"><CircleCheck className="size-4" /> Connected</p>}
+      <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+        <span><span className="block text-sm font-medium">Active Status</span><span className="block text-xs text-muted-foreground">Inactive accounts are not synced.</span></span>
+        <Switch checked={form.isActive} onCheckedChange={(v) => set('isActive', v)} aria-label="Active" />
+      </label>
+
+      <div className="grid gap-2 rounded-lg border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium">Connection Status</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => tester.mutate()}
+            disabled={tester.isPending || !adIdValid || (!editing && form.accessToken.trim().length < 20)}>
+            {tester.isPending ? <Spinner /> : <PlugZap />} Test Connection
+          </Button>
+        </div>
+        {test.kind === 'idle' && (
+          <p className="text-xs text-muted-foreground">
+            {editing && account?.connection_status === 'OK' ? `Connected${account.tested_at ? ` · checked ${timeAgo(account.tested_at)}` : ''}.` : 'Not tested yet.'}
+            {' '}Saving an active account tests it too.
+          </p>
+        )}
+        {test.kind === 'ok' && (
+          <div className="grid gap-1 text-xs">
+            <p className="flex items-center gap-1.5 font-medium text-emerald-700"><CircleCheck className="size-4" /> Connected to {test.result.account.name} · {test.result.account.currency}</p>
+            {test.result.token && (
+              <p className="text-muted-foreground">
+                Token from app {test.result.token.appId} · {test.result.token.expiresAt ? `expires ${test.result.token.expiresAt.slice(0, 10)}` : 'never expires'}
+                {test.result.token.scopes.length ? ` · ${test.result.token.scopes.join(', ')}` : ''}
+              </p>
+            )}
+            {test.result.warnings.map((w) => <p key={w} className="text-amber-700">{w}</p>)}
+          </div>
+        )}
+        {test.kind === 'error' && <p className="text-xs text-red-700" role="alert">{test.message}</p>}
+      </div>
+      {save.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{(save.error as Error).message}</p>}
+      {save.isPending && !editing && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Connecting and syncing the last 30 days…</p>}
     </FormDialog>
   )
 }

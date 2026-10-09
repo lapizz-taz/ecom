@@ -80,6 +80,7 @@ export const router = createBrowserRouter([
       admin('finance', () => import('@/pages/admin/finance'), 'finance.view'),
       admin('finance/income', () => import('@/pages/admin/finance-transactions'), 'finance.view'),
       admin('finance/expenses', () => import('@/pages/admin/finance-transactions'), 'finance.view'),
+      admin('finance/accounts', () => import('@/pages/admin/finance-accounts'), 'finance.view'),
       admin('finance/refunds', () => import('@/pages/admin/finance-refunds'), 'finance.view'),
       admin('finance/profit-loss', () => import('@/pages/admin/finance-pnl'), 'finance.view'),
       admin('finance/cash-flow', () => import('@/pages/admin/finance-cash-flow'), 'finance.view'),

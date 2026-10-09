@@ -914,6 +914,114 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_account_movements: {
+        Row: {
+          id: string
+          account_id: string
+          amount: number
+          movement_date: string
+          description: string
+          source: string
+          source_key: string | null
+          meta_account_id: string | null
+          spend_date: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          account_id: string
+          amount: number
+          movement_date: string
+          description: string
+          source?: string
+          source_key?: string | null
+          meta_account_id?: string | null
+          spend_date?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          account_id?: string
+          amount?: number
+          movement_date?: string
+          description?: string
+          source?: string
+          source_key?: string | null
+          meta_account_id?: string | null
+          spend_date?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_account_movements_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "finance_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_account_movements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_account_movements_meta_fk"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_accounts: {
+        Row: {
+          id: string
+          name: string
+          kind: string
+          opening_balance: number
+          is_active: boolean
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          kind?: string
+          opening_balance?: number
+          is_active?: boolean
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          kind?: string
+          opening_balance?: number
+          is_active?: boolean
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       finance_categories: {
         Row: {
           id: string
@@ -1573,6 +1681,105 @@ export type Database = {
           },
         ]
       }
+      meta_ad_accounts: {
+        Row: {
+          id: string
+          name: string
+          app_id: string | null
+          ad_account_id: string
+          usd_rate: number
+          payment_account_id: string | null
+          payments_from: string | null
+          is_active: boolean
+          meta_name: string | null
+          currency: string | null
+          timezone: string | null
+          token_hint: string | null
+          has_app_secret: boolean
+          token_expires_at: string | null
+          connection_status: string
+          connection_error: string | null
+          tested_at: string | null
+          last_sync_at: string | null
+          last_sync_status: string | null
+          last_sync_error: string | null
+          last_sync_since: string | null
+          last_sync_until: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          app_id?: string | null
+          ad_account_id: string
+          usd_rate?: number
+          payment_account_id?: string | null
+          payments_from?: string | null
+          is_active?: boolean
+          meta_name?: string | null
+          currency?: string | null
+          timezone?: string | null
+          token_hint?: string | null
+          has_app_secret?: boolean
+          token_expires_at?: string | null
+          connection_status?: string
+          connection_error?: string | null
+          tested_at?: string | null
+          last_sync_at?: string | null
+          last_sync_status?: string | null
+          last_sync_error?: string | null
+          last_sync_since?: string | null
+          last_sync_until?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          app_id?: string | null
+          ad_account_id?: string
+          usd_rate?: number
+          payment_account_id?: string | null
+          payments_from?: string | null
+          is_active?: boolean
+          meta_name?: string | null
+          currency?: string | null
+          timezone?: string | null
+          token_hint?: string | null
+          has_app_secret?: boolean
+          token_expires_at?: string | null
+          connection_status?: string
+          connection_error?: string | null
+          tested_at?: string | null
+          last_sync_at?: string | null
+          last_sync_status?: string | null
+          last_sync_error?: string | null
+          last_sync_since?: string | null
+          last_sync_until?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ad_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_ad_accounts_payment_account_id_fkey"
+            columns: ["payment_account_id"]
+            isOneToOne: false
+            referencedRelation: "finance_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_ad_insights: {
         Row: {
           ad_id: string
@@ -1588,6 +1795,7 @@ export type Database = {
           purchases: number
           purchase_value: number
           synced_at: string
+          account_id: string | null
         }
         Insert: {
           ad_id: string
@@ -1603,6 +1811,7 @@ export type Database = {
           purchases?: number
           purchase_value?: number
           synced_at?: string
+          account_id?: string | null
         }
         Update: {
           ad_id?: string
@@ -1618,6 +1827,7 @@ export type Database = {
           purchases?: number
           purchase_value?: number
           synced_at?: string
+          account_id?: string | null
         }
         Relationships: []
       }
@@ -5494,6 +5704,55 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      finance_account_move: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_date: string
+          p_description: string
+        }
+        Returns: {
+          id: string
+          account_id: string
+          amount: number
+          movement_date: string
+          description: string
+          source: string
+          source_key: string | null
+          meta_account_id: string | null
+          spend_date: string | null
+          created_by: string | null
+          created_at: string
+        }
+      }
+      finance_account_movements_list: {
+        Args: {
+          p_account_id: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      finance_account_save: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          name: string
+          kind: string
+          opening_balance: number
+          is_active: boolean
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      finance_accounts_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       finance_overview: {
         Args: {
           p_from: string
@@ -5626,6 +5885,16 @@ export type Database = {
         Args: {
           p_order_ids: string[]
           p_format?: string
+        }
+        Returns: Json
+      }
+      meta_accounts_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      meta_ads_set_tax: {
+        Args: {
+          p_tax_percent: number
         }
         Returns: Json
       }

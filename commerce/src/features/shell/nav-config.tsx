@@ -135,6 +135,7 @@ export const NAV: NavSection[] = [
           { label: 'Overview', to: '/admin/finance' },
           { label: 'Income', to: '/admin/finance/income' },
           { label: 'Expenses', to: '/admin/finance/expenses' },
+          { label: 'Payment Accounts', to: '/admin/finance/accounts' },
           { label: 'Refunds', to: '/admin/finance/refunds' },
           { label: 'Courier Settlement', to: '/admin/couriers?tab=cod', permission: 'couriers.view' },
           { label: 'Profit & Loss', to: '/admin/finance/profit-loss' },

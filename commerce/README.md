@@ -180,9 +180,14 @@ Seeded logins (password `Password123!` for all):
    - SMS: connect the provider on the **SMS** page (Alpha SMS / sms.net.bd, BulkSMSBD, SSL Wireless, or any gateway with
      an HTTP send URL). The key is tested (balance check where the provider has one) and stored in Vault; nothing is
      configured as a function secret. SSL Wireless only accepts whitelisted server IPs.
-   - Meta Ads: **Ads → Meta Ads → Connect**. Paste a long-lived token (Business Settings → System users → Generate token)
-     with `ads_read` (and `pages_show_list` for the Page / Instagram names), pick the ad account; it is tested, stored in
-     Vault and the last 30 days are synced. Set the exchange rate (ad account currency → yours) and VAT % there.
+   - Meta Ads: **Ads → Tracking setup → Add account** (as many ad accounts as you run). Enter a name, the App ID and
+     App Secret (App settings → Basic), a long-lived System User token with `ads_read`, the ad account ID without
+     `act_`, the USD → BDT rate and, optionally, the payment account the spend is paid from. **Test Connection** opens the
+     ad account and checks the token against the app (validity, expiry, permissions); the token and secret are stored
+     in Vault per account, and a new account syncs its last 30 days. VAT % on ad spend is set once for all accounts.
+   - Payment accounts: **Finance → Payment Accounts** (cash, bank, bKash, card) with an opening balance and manual
+     money in / out. A Meta account linked to one has each finished day's spend withdrawn the day after; if Meta later
+     revises a day, the difference is posted as a correction. Movements are permanent.
      Paste the URL parameters from **Ads → Tracking setup** into every ad so orders carry the campaign, ad set and ad.
    - Pathao and Steadfast status webhooks: **Couriers → Connections → Webhook** shows the callback URL
      (`…/functions/v1/courier-webhook?courier=<id>&provider=pathao|steadfast`) and a secret to paste into the courier's
@@ -311,7 +316,7 @@ queueing a message is written to the System log and never stops the order change
 **Ads & attribution.** Every order keeps where it came from (first and last touch: UTM tags, fbclid / gclid / ttclid,
 referrer, landing page). An order belongs to a Meta campaign, ad set or ad only when its link carried that id; orders without
 tracking data stay *Unknown* and never get ad spend. Meta spend is synced per ad, day and placement (Facebook, Instagram,
-Messenger…) and converted with the rate and VAT set on the Meta Ads tab; it posts to *Advertising* in Finance. The
+Messenger…) per ad account and converted with that account's rate plus the VAT %; it posts to *Advertising* in Finance. The
 *Attribution & profit* report groups orders by source, medium, campaign, ad set, ad, day or product and shows orders,
 approved, shipped, delivered, cancelled and returned counts, delivered revenue, ad spend, courier delivery / COD / return
 charges, the cost of the goods kept, net profit, cost per (delivered) order and ROAS — all from real orders and deliveries.

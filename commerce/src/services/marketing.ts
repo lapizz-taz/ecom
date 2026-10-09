@@ -76,29 +76,88 @@ export interface MetaSettings {
   connected_at: string | null; last_sync_at: string | null; last_sync_status: string | null; last_sync_error: string | null
   last_sync_since: string | null; last_sync_until: string | null
 }
-export interface MetaAccountChoice { id: string; name: string; currency: string; timezone: string | null; status: number | null }
-export interface MetaPageChoice { id: string; name: string; instagram: { id: string; username: string | null } | null }
-export interface MetaSyncResult { ok: boolean; since: string; until: string; campaigns?: number; ads?: number; insights?: number; cost?: number; status?: string; error?: string }
+export interface MetaSyncResult { ok: boolean; since: string; until: string; campaigns?: number; ads?: number; insights?: number; cost?: number; payments?: number; status?: string; error?: string }
 
-export async function metaSettings() {
-  const { data, error } = await supabase.rpc('meta_ads_status')
+export interface MetaAdAccount {
+  id: string; name: string; app_id: string | null; ad_account_id: string; usd_rate: number
+  payment_account_id: string | null; payment_account_name: string | null; payments_from: string | null; is_active: boolean
+  meta_name: string | null; currency: string | null; timezone: string | null; token_hint: string | null; has_app_secret: boolean
+  token_expires_at: string | null; connection_status: 'UNTESTED' | 'OK' | 'FAILED' | 'DISCONNECTED'; connection_error: string | null
+  tested_at: string | null; last_sync_at: string | null; last_sync_status: string | null; last_sync_error: string | null
+  last_sync_since: string | null; last_sync_until: string | null; created_at: string
+  cost_30d: number; spend_30d: number; paid_total: number
+}
+export interface MetaAccountsOverview { tax_percent: number; store_currency: string; accounts: MetaAdAccount[] }
+
+export async function metaAdAccounts() {
+  const { data, error } = await supabase.rpc('meta_accounts_list')
   if (error) throw error
-  return fromJson<MetaSettings>(data)
+  return fromJson<MetaAccountsOverview>(data)
 }
 
-export const metaAccounts = (accessToken?: string) =>
-  invokeFunction<{ accounts: MetaAccountChoice[]; pages: MetaPageChoice[] }>('meta-ads', { action: 'accounts', access_token: accessToken || undefined })
-export const connectMeta = (input: { accessToken?: string; adAccountId: string; pageId?: string | null; instagramId?: string | null }) =>
-  invokeFunction<{ ok: boolean; account: MetaAccountChoice; sync: MetaSyncResult }>('meta-ads', {
-    action: 'connect', access_token: input.accessToken || undefined, ad_account_id: input.adAccountId,
-    page_id: input.pageId || undefined, instagram_id: input.instagramId || undefined,
-  })
-export const disconnectMeta = () => invokeFunction<{ ok: boolean }>('meta-ads', { action: 'disconnect' })
-export const syncMeta = (days: number) => invokeFunction<MetaSyncResult>('meta-ads', { action: 'sync', days })
+/** What the form sends. Secrets left empty when editing keep the saved ones. */
+export interface MetaAccountInput {
+  id?: string; name: string; appId: string; appSecret: string; accessToken: string; adAccountId: string
+  usdRate: number; paymentAccountId: string | null; isActive: boolean
+}
+export interface MetaTestResult {
+  ok: boolean
+  account: { id: string; name: string; currency: string; timezone: string | null; status: number | null }
+  token: { valid: boolean; appId: string | null; expiresAt: string | null; scopes: string[] } | null
+  warnings: string[]
+}
 
-export async function updateMetaSettings(exchangeRate: number, taxPercent: number) {
-  const { error } = await supabase.rpc('meta_ads_update_settings', { p_exchange_rate: exchangeRate, p_tax_percent: taxPercent })
+const credentialsBody = (i: MetaAccountInput) => ({
+  id: i.id, app_id: i.appId.trim() || undefined, app_secret: i.appSecret.trim() || undefined,
+  access_token: i.accessToken.trim() || undefined, ad_account_id: i.adAccountId.trim().replace(/^act_/, ''),
+})
+export const testMetaAccount = (input: MetaAccountInput) =>
+  invokeFunction<MetaTestResult>('meta-ads', { action: 'test', ...credentialsBody(input) })
+export const saveMetaAccount = (input: MetaAccountInput) =>
+  invokeFunction<{ ok: boolean; account: MetaAdAccount; warnings: string[]; sync: MetaSyncResult | null }>('meta-ads', {
+    action: 'save', ...credentialsBody(input), name: input.name.trim(), usd_rate: input.usdRate,
+    payment_account_id: input.paymentAccountId, is_active: input.isActive,
+  })
+export const disconnectMetaAccount = (id: string) => invokeFunction<{ ok: boolean }>('meta-ads', { action: 'disconnect', id })
+export const syncMeta = (days: number, id?: string) =>
+  invokeFunction<{ ok: boolean; accounts: (MetaSyncResult & { id: string; name: string })[]; insights: number; cost: number }>('meta-ads', { action: 'sync', days, id })
+
+export async function setMetaTax(taxPercent: number) {
+  const { error } = await supabase.rpc('meta_ads_set_tax', { p_tax_percent: taxPercent })
   if (error) throw error
+}
+
+// --- Payment accounts (Finance) -----------------------------------------------
+export type FinanceAccountKind = 'CASH' | 'BANK' | 'MOBILE_WALLET' | 'CARD' | 'OTHER'
+export interface FinanceAccount {
+  id: string; name: string; kind: FinanceAccountKind; is_active: boolean; notes: string | null
+  /** Only for staff who can see Finance. */
+  opening_balance?: number | null; balance?: number | null; movements?: number | null; last_movement_at?: string | null
+  meta_accounts: { id: string; name: string }[]
+}
+export interface FinanceMovement {
+  id: string; amount: number; movement_date: string; description: string; source: 'MANUAL' | 'META_ADS'
+  spend_date: string | null; created_at: string; created_by_name: string | null; meta_account_name: string | null
+}
+
+export async function financeAccounts() {
+  const { data, error } = await supabase.rpc('finance_accounts_list')
+  if (error) throw error
+  return fromJson<FinanceAccount[]>(data)
+}
+export async function saveFinanceAccount(input: { id?: string; name: string; kind: FinanceAccountKind; opening_balance: number; is_active: boolean; notes?: string }) {
+  const { data, error } = await supabase.rpc('finance_account_save', { p: input as never })
+  if (error) throw error
+  return data
+}
+export async function moveFinanceAccount(accountId: string, amount: number, date: string, description: string) {
+  const { error } = await supabase.rpc('finance_account_move', { p_account_id: accountId, p_amount: amount, p_date: date, p_description: description })
+  if (error) throw error
+}
+export async function financeMovements(accountId: string, page: number, pageSize: number) {
+  const { data, error } = await supabase.rpc('finance_account_movements_list', { p_account_id: accountId, p_limit: pageSize, p_offset: (page - 1) * pageSize })
+  if (error) throw error
+  return fromJson<{ total: number; items: FinanceMovement[] }>(data)
 }
 
 export interface MetaPerformanceRow {

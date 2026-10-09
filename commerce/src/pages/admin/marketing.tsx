@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { AttributionReport } from '@/features/marketing/attribution-report'
-import { MetaAds } from '@/features/marketing/meta-ads'
+import { MetaAccounts, MetaAds } from '@/features/marketing/meta-ads'
 import { TrackingSetup } from '@/features/marketing/tracking-setup'
 import { BarsChart } from '@/features/reports/charts'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -106,7 +106,7 @@ export default function MarketingPage() {
         </div>
         <TabsContent value="overview" className="pt-2"><AttributionReport /></TabsContent>
         <TabsContent value="meta" className="pt-2"><MetaAds /></TabsContent>
-        <TabsContent value="tracking" className="pt-2"><TrackingSetup /></TabsContent>
+        <TabsContent value="tracking" className="space-y-4 pt-2"><MetaAccounts /><TrackingSetup /></TabsContent>
         <TabsContent value="campaigns" className="space-y-4 pt-2">
           <p className="text-sm text-muted-foreground">
             Campaigns from other platforms (Google, TikTok…) and spend you enter by hand. Meta campaigns appear here by themselves once Meta Ads

@@ -1,44 +1,128 @@
-// Meta Ads connection and sync (staff with marketing.manage, or pg_cron):
-//   accounts    list the ad accounts and pages a token can see (nothing saved)
-//   connect     test the token on the chosen ad account, keep it in Vault, first sync
-//   disconnect  erase the token (synced numbers stay)
-//   sync        campaigns, ad sets, ads and daily spend per ad and placement
-// The token never comes back to a browser; only a masked hint is stored.
+// Meta Ads accounts and sync (staff with marketing.manage, or pg_cron):
+//   test        check credentials against Meta without saving anything
+//   save        add or edit an ad account; the access token and app secret go
+//               to Vault (one entry per account), the rest to meta_ad_accounts;
+//               a new active account gets a first sync of 30 days
+//   disconnect  erase the account's secrets and stop syncing (numbers stay)
+//   sync        campaigns, ad sets, ads and daily spend per ad and placement,
+//               for one account or every active one
+// Secrets never come back to a browser; only a masked hint is stored.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import {
-  dateWindows, fetchInsights, fetchStructure, getAdAccount, listAdAccounts, listPages, MetaApiError, MetaGraph,
+  ACCOUNT_STATUS, type AdAccount, dateWindows, debugToken, fetchInsights, fetchStructure, getAdAccount, MetaApiError, MetaGraph,
+  type TokenInfo,
 } from '../_shared/meta/graph.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
 
-const SECRET_KEY = 'meta.ads'
 const token = z.string().trim().min(20).max(1000).regex(/^[A-Za-z0-9_|.-]+$/, 'That does not look like a Meta access token')
+const appSecret = z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The App Secret is a 32-character code from App settings → Basic')
+const appId = z.string().trim().regex(/^[0-9]{5,32}$/, 'The App ID is a number from App settings → Basic')
+const adAccount = z.string().trim().regex(/^(act_)?[0-9]{3,32}$/, 'Enter the ad account ID (the number, without act_)')
+const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v)
+
+const credentials = {
+  id: z.string().uuid().optional(),
+  app_id: z.preprocess(blankToUndefined, appId.optional()),
+  app_secret: z.preprocess(blankToUndefined, appSecret.optional()),
+  access_token: z.preprocess(blankToUndefined, token.optional()),
+  ad_account_id: adAccount,
+}
 
 const schema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('accounts'), access_token: token.optional() }),
+  z.object({ action: z.literal('test'), ...credentials }),
   z.object({
-    action: z.literal('connect'),
-    access_token: token.optional(),
-    ad_account_id: z.string().trim().regex(/^(act_)?[0-9]{3,32}$/, 'Choose an ad account'),
-    page_id: z.string().regex(/^[0-9]{1,32}$/).optional().nullable(),
-    instagram_id: z.string().regex(/^[0-9]{1,32}$/).optional().nullable(),
+    action: z.literal('save'),
+    ...credentials,
+    name: z.string().trim().min(2, 'Give the account a name').max(80),
+    usd_rate: z.number().positive('The rate must be more than 0').max(100000),
+    payment_account_id: z.string().uuid().nullable().optional(),
+    is_active: z.boolean().default(true),
   }),
-  z.object({ action: z.literal('disconnect') }),
-  z.object({ action: z.literal('sync'), days: z.number().int().min(1).max(90).default(3) }),
+  z.object({ action: z.literal('disconnect'), id: z.string().uuid() }),
+  z.object({ action: z.literal('sync'), id: z.string().uuid().optional(), days: z.number().int().min(1).max(90).default(3) }),
 ])
 
-interface MetaConfig { connected?: boolean; ad_account_id?: string | null; account_timezone?: string | null }
+interface Secrets { access_token?: string; app_secret?: string }
+interface AccountRow {
+  id: string
+  name: string
+  app_id: string | null
+  ad_account_id: string
+  is_active: boolean
+  timezone: string | null
+  connection_status: string
+}
 
+// Vault keys allow [a-z0-9_.] only.
+const secretKey = (id: string) => `meta.ads.${id.replace(/-/g, '')}`
 const hintFor = (t: string) => `••••${t.slice(-4)}`
 
-async function storedToken(admin: SupabaseClient): Promise<string | null> {
-  const { data, error } = await admin.rpc('integration_secret_get', { p_key: SECRET_KEY })
-  if (error) throw new Error(`Could not read the Meta token: ${error.message}`)
-  return (data as { access_token?: string } | null)?.access_token ?? null
+async function storedSecrets(admin: SupabaseClient, id: string): Promise<Secrets> {
+  const { data, error } = await admin.rpc('integration_secret_get', { p_key: secretKey(id) })
+  if (error) throw new Error(`Could not read the Meta credentials: ${error.message}`)
+  return (data as Secrets | null) ?? {}
+}
+
+async function accountRow(admin: SupabaseClient, id: string): Promise<AccountRow> {
+  const rows = await rpc<AccountRow[]>(admin, 'meta_accounts_for_sync', { p_id: id })
+  if (!rows?.length) throw new HttpError(404, 'Meta account not found', 'NOT_FOUND')
+  return rows[0]
+}
+
+/** Plain-language reason Meta refused, for the person filling in the form. */
+function explain(error: unknown, adAccountId: string): string {
+  if (error instanceof MetaApiError) {
+    if (/appsecret_proof/i.test(error.message)) return 'The App Secret does not belong to the app that issued this token.'
+    if (error.tokenInvalid) return 'The access token is not valid or has expired. Generate a new System User token.'
+    if (error.noAccess) return `This token cannot read ad account ${adAccountId}. In Business Settings, give the system user access to it with ads_read.`
+    if (error.rateLimited) return 'Meta asked us to slow down. Try again in a few minutes.'
+  }
+  return (error as Error).message
+}
+
+interface CheckResult {
+  account: AdAccount
+  token: TokenInfo | null
+  warnings: string[]
+}
+
+/** Opens the ad account with the token (and app secret proof), then checks the token against the app. */
+async function check(creds: Secrets, appIdValue: string | undefined, adAccountId: string): Promise<CheckResult> {
+  if (!creds.access_token) throw new HttpError(422, 'Paste the access token', 'VALIDATION')
+  const warnings: string[] = []
+  let account: AdAccount
+  let tokenInfo: TokenInfo | null = null
+  try {
+    account = await getAdAccount(new MetaGraph(creds.access_token, { appSecret: creds.app_secret ?? '' }), adAccountId)
+    if (appIdValue && creds.app_secret) {
+      tokenInfo = await debugToken(creds.access_token, appIdValue, creds.app_secret)
+    }
+  } catch (error) {
+    throw new HttpError(422, explain(error, adAccountId), 'META_REJECTED')
+  }
+  if (tokenInfo) {
+    if (!tokenInfo.valid) throw new HttpError(422, 'Meta says this access token is not valid.', 'META_REJECTED')
+    if (tokenInfo.appId && appIdValue && tokenInfo.appId !== appIdValue) {
+      throw new HttpError(422, `This token was issued by app ${tokenInfo.appId}, not ${appIdValue}. Check the App ID.`, 'META_REJECTED')
+    }
+    if (tokenInfo.scopes.length && !tokenInfo.scopes.includes('ads_read') && !tokenInfo.scopes.includes('ads_management')) {
+      warnings.push('The token has no ads_read permission; spend may not sync.')
+    }
+    if (tokenInfo.expiresAt && new Date(tokenInfo.expiresAt).getTime() - Date.now() < 14 * 86_400_000) {
+      warnings.push(`The token expires on ${tokenInfo.expiresAt.slice(0, 10)}. A System User token that never expires is better.`)
+    }
+  } else if (!creds.app_secret) {
+    warnings.push('Without the App Secret, calls are not signed with appsecret_proof.')
+  }
+  if (account.status != null && account.status !== 1) {
+    warnings.push(`Meta shows this ad account as ${ACCOUNT_STATUS[account.status] ?? `status ${account.status}`}.`)
+  }
+  return { account, token: tokenInfo, warnings }
 }
 
 /** Store date (Asia/Dhaka by default) for "today" and n-1 days before. */
@@ -49,41 +133,39 @@ function syncWindow(days: number, timeZone = 'Asia/Dhaka') {
   return { since, until }
 }
 
-async function runSync(admin: SupabaseClient, config: MetaConfig, accessToken: string, days: number) {
-  const graph = new MetaGraph(accessToken)
-  const { since, until } = syncWindow(days, config.account_timezone ?? 'Asia/Dhaka')
-  const totals = { campaigns: 0, adsets: 0, ads: 0, insights: 0, cost: 0 }
+async function runSync(admin: SupabaseClient, account: AccountRow, creds: Secrets, days: number) {
+  const { since, until } = syncWindow(days, account.timezone ?? 'Asia/Dhaka')
+  const totals = { campaigns: 0, adsets: 0, ads: 0, insights: 0, cost: 0, payments: 0 }
   try {
-    const structure = await fetchStructure(graph, config.ad_account_id!)
-    const windows = dateWindows(since, until, 7)
-    for (const [i, w] of windows.entries()) {
-      const insights = await fetchInsights(graph, config.ad_account_id!, w.since, w.until)
+    if (!creds.access_token) throw new MetaApiError('The access token is missing. Edit the account and paste it again.', 190)
+    const graph = new MetaGraph(creds.access_token, { appSecret: creds.app_secret ?? '' })
+    const structure = await fetchStructure(graph, account.ad_account_id)
+    for (const [i, w] of dateWindows(since, until, 7).entries()) {
+      const insights = await fetchInsights(graph, account.ad_account_id, w.since, w.until)
       const result = await rpc<Record<string, number>>(admin, 'meta_ads_apply_sync', {
-        p: {
-          account_id: config.ad_account_id, since: w.since, until: w.until, complete: true, insights,
-          ...(i === 0 ? structure : {}),
-        },
+        p: { account_id: account.ad_account_id, since: w.since, until: w.until, complete: true, insights, ...(i === 0 ? structure : {}) },
       })
       totals.campaigns += result.campaigns ?? 0
       totals.adsets += result.adsets ?? 0
       totals.ads += result.ads ?? 0
       totals.insights += result.insights ?? 0
       totals.cost += Number(result.cost ?? 0)
+      totals.payments += result.payments ?? 0
     }
-    await rpc(admin, 'meta_ads_record_sync', { p_status: 'OK', p_error: null, p_since: since, p_until: until })
-    return { ok: true, since, until, ...totals }
+    await rpc(admin, 'meta_account_record_sync', { p_id: account.id, p_status: 'OK', p_error: null, p_since: since, p_until: until })
+    return { id: account.id, name: account.name, ok: true, since, until, ...totals }
   } catch (error) {
     const status = error instanceof MetaApiError
       ? error.tokenInvalid ? 'TOKEN_INVALID' : error.rateLimited ? 'RATE_LIMITED' : error.noAccess ? 'NO_ACCESS' : 'FAILED'
       : 'FAILED'
     const message = (error as Error).message
-    await rpc(admin, 'meta_ads_record_sync', { p_status: status, p_error: message, p_since: since, p_until: until })
+    await rpc(admin, 'meta_account_record_sync', { p_id: account.id, p_status: status, p_error: message, p_since: since, p_until: until })
     void logEvent({
       level: status === 'RATE_LIMITED' ? 'WARN' : 'ERROR', category: 'META', source: 'meta-ads',
-      message: status === 'TOKEN_INVALID' ? `Meta token no longer works; reconnect Meta Ads: ${message}` : `Meta Ads sync failed: ${message}`,
-      context: { status, since, until, code: error instanceof MetaApiError ? error.code : null },
+      message: status === 'TOKEN_INVALID' ? `Meta token for ${account.name} no longer works: ${message}` : `Meta Ads sync failed for ${account.name}: ${message}`,
+      context: { account: account.ad_account_id, status, since, until, code: error instanceof MetaApiError ? error.code : null },
     })
-    return { ok: false, status, error: message, since, until }
+    return { id: account.id, name: account.name, ok: false, status, error: message, since, until }
   }
 }
 
@@ -96,64 +178,77 @@ Deno.serve(
     const staff = cron ? null : await requireStaff(req, 'marketing.manage')
 
     switch (input.action) {
-      case 'accounts': {
-        const accessToken = input.access_token ?? await storedToken(admin)
-        if (!accessToken) throw new HttpError(422, 'Paste an access token', 'VALIDATION')
-        const graph = new MetaGraph(accessToken)
-        try {
-          const [accounts, pages] = [await listAdAccounts(graph), await listPages(graph)]
-          if (!accounts.length) throw new HttpError(422, 'This token cannot see any ad account. Give it ads_read access to your ad account.', 'NO_ACCOUNTS')
-          return json(req, { accounts, pages })
-        } catch (error) {
-          if (error instanceof HttpError) throw error
-          throw new HttpError(422, (error as Error).message, 'META_REJECTED')
-        }
+      case 'test': {
+        // Fields left empty when editing fall back to what is saved.
+        const saved = input.id ? await storedSecrets(admin, input.id) : {}
+        const result = await check({ access_token: input.access_token ?? saved.access_token, app_secret: input.app_secret ?? saved.app_secret },
+          input.app_id, input.ad_account_id)
+        return json(req, { ok: true, account: result.account, token: result.token, warnings: result.warnings })
       }
-      case 'connect': {
-        const accessToken = input.access_token ?? await storedToken(admin)
-        if (!accessToken) throw new HttpError(422, 'Paste an access token', 'VALIDATION')
-        const graph = new MetaGraph(accessToken)
-        let account
-        let pages
-        try {
-          account = await getAdAccount(graph, input.ad_account_id)
-          pages = input.page_id || input.instagram_id ? await listPages(graph) : []
-        } catch (error) {
-          throw new HttpError(422, `Could not open this ad account: ${(error as Error).message}`, 'META_REJECTED')
+      case 'save': {
+        const saved = input.id ? await storedSecrets(admin, input.id) : {}
+        const creds: Secrets = { access_token: input.access_token ?? saved.access_token, app_secret: input.app_secret ?? saved.app_secret }
+        if (!input.id && !creds.access_token) throw new HttpError(422, 'Paste the access token', 'VALIDATION')
+        // Active accounts must connect; a paused one can be saved as it is.
+        let result: CheckResult | null = null
+        let failure: string | null = null
+        if (input.is_active) {
+          result = await check(creds, input.app_id, input.ad_account_id)
+        } else if (creds.access_token) {
+          result = await check(creds, input.app_id, input.ad_account_id).catch((e) => { failure = (e as Error).message; return null })
         }
-        const page = pages.find((p) => p.id === input.page_id) ?? null
-        const ig = pages.find((p) => p.instagram?.id === input.instagram_id)?.instagram ?? null
-        await rpc(admin, 'integration_secret_store', {
-          p_key: SECRET_KEY, p_value: { access_token: accessToken }, p_hint: hintFor(accessToken), p_actor: staff!.user.id,
-        })
-        const settings = await rpc<MetaConfig>(admin, 'meta_ads_set_connection', {
+        const row = await rpc<AccountRow>(admin, 'meta_account_save', {
           p: {
-            ad_account_id: account.id, ad_account_name: account.name, account_currency: account.currency,
-            account_timezone: account.timezone, page_id: page?.id ?? null, page_name: page?.name ?? null,
-            instagram_id: ig?.id ?? null, instagram_username: ig?.username ?? null, hint: hintFor(accessToken),
+            id: input.id ?? null, name: input.name, app_id: input.app_id ?? null, ad_account_id: input.ad_account_id,
+            usd_rate: input.usd_rate, payment_account_id: input.payment_account_id ?? null, is_active: input.is_active,
+            meta: result
+              ? {
+                name: result.account.name, currency: result.account.currency, timezone: result.account.timezone,
+                token_hint: creds.access_token ? hintFor(creds.access_token) : null, has_app_secret: !!creds.app_secret,
+                token_expires_at: result.token?.expiresAt ?? null, status: 'OK', error: null,
+              }
+              : failure ? { status: 'FAILED', error: failure, has_app_secret: !!creds.app_secret } : undefined,
           },
           p_actor: staff!.user.id,
         })
-        // First sync: the last 30 days.
-        const sync = await runSync(admin, settings, accessToken, 30)
-        return json(req, { ok: true, account, sync })
+        if (input.access_token || input.app_secret) {
+          try {
+            await rpc(admin, 'integration_secret_store', {
+              p_key: secretKey(row.id), p_value: creds, p_hint: creds.access_token ? hintFor(creds.access_token) : null, p_actor: staff!.user.id,
+            })
+          } catch (error) {
+            // Never leave an account active without its credentials.
+            if (!input.id) await rpc(admin, 'meta_account_disconnect', { p_id: row.id, p_actor: staff!.user.id })
+            throw error
+          }
+        }
+        // First sync for a new account: the last 30 days.
+        const sync = !input.id && row.is_active ? await runSync(admin, row, creds, 30) : null
+        return json(req, { ok: true, account: row, warnings: result?.warnings ?? [], sync })
       }
       case 'disconnect': {
-        await rpc(admin, 'integration_secret_clear', { p_key: SECRET_KEY, p_actor: staff!.user.id })
-        await rpc(admin, 'meta_ads_set_connection', { p: null, p_actor: staff!.user.id })
+        await accountRow(admin, input.id)
+        await rpc(admin, 'integration_secret_clear', { p_key: secretKey(input.id), p_actor: staff!.user.id })
+        await rpc(admin, 'meta_account_disconnect', { p_id: input.id, p_actor: staff!.user.id })
         return json(req, { ok: true })
       }
       case 'sync': {
-        const config = await rpc<MetaConfig>(admin, 'meta_ads_config')
-        if (!config.connected || !config.ad_account_id) {
-          if (cron) return json(req, { ok: true, skipped: 'not connected' })
-          throw new HttpError(422, 'Connect Meta Ads first', 'NOT_CONNECTED')
+        const accounts = await rpc<AccountRow[]>(admin, 'meta_accounts_for_sync', { p_id: input.id ?? null })
+        if (!accounts.length) {
+          if (cron) return json(req, { ok: true, skipped: 'no active Meta accounts' })
+          throw new HttpError(422, 'Add a Meta Ads account first', 'NOT_CONNECTED')
         }
-        const accessToken = await storedToken(admin)
-        if (!accessToken) throw new HttpError(422, 'The Meta token is missing. Connect Meta Ads again.', 'NOT_CONNECTED')
-        const result = await runSync(admin, config, accessToken, input.days)
-        if (!result.ok && !cron) throw new HttpError(502, result.error ?? 'Meta Ads sync failed', result.status ?? 'FAILED')
-        return json(req, result)
+        const results = []
+        for (const account of accounts) {
+          results.push(await runSync(admin, account, await storedSecrets(admin, account.id), input.days))
+        }
+        const failed = results.filter((r) => !r.ok)
+        if (!cron && input.id && failed.length) throw new HttpError(502, failed[0].error ?? 'Meta Ads sync failed', failed[0].status ?? 'FAILED')
+        return json(req, {
+          ok: failed.length === 0, accounts: results,
+          insights: results.reduce((s, r) => s + ('insights' in r ? r.insights : 0), 0),
+          cost: results.reduce((s, r) => s + ('cost' in r ? r.cost : 0), 0),
+        })
       }
     }
   }),
