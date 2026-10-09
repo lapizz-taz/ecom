@@ -17,7 +17,7 @@ export const PAYSTATION_URL = 'https://api.paystation.com.bd'
 export interface PaystationConfig {
   merchantId: string
   password: string
-  /** Token for the transaction-status API, when PayStation issued one separately from the password. */
+  /** Extra token header some older PayStation accounts were issued; the status API needs only the merchant ID. */
   token?: string
   baseUrl?: string
   /** 1 = the customer pays the gateway charge on top; 0 = the store absorbs it. */
@@ -88,9 +88,15 @@ export class PaystationProvider implements PaymentProvider {
     return { type: 'redirect', redirectUrl: url, session: payment.reference }
   }
 
-  /** The transaction as PayStation's server sees it. */
+  /**
+   * The transaction as PayStation's server sees it: POST /transaction-status
+   * with the merchant ID in a `merchantId` header and invoice_number in the
+   * body (PayStation answers "Invalid Merchant ID" without that header).
+   */
   async status(invoice: string): Promise<Body> {
-    return this.post('/transaction-status', { invoice_number: invoice }, { token: this.config.token || this.config.password })
+    const headers: Record<string, string> = { merchantId: this.config.merchantId }
+    if (this.config.token) headers.token = this.config.token
+    return this.post('/transaction-status', { invoice_number: invoice }, headers)
   }
 
   private result(invoice: string, body: Body, source: string): VerifiedPayment | null {
@@ -155,13 +161,28 @@ export class PaystationProvider implements PaymentProvider {
     }
   }
 
-  /** Checks the credentials against the status API with an invoice that cannot exist. */
-  async test(): Promise<string> {
-    const body = await this.status(`TEST-${crypto.randomUUID().slice(0, 8)}`)
-    const msg = text(body.message) ?? ''
-    if (['401', '403'].includes(String(body.status_code)) || /unauthori[sz]ed|invalid (token|merchant|credential)|token mismatch/i.test(msg)) {
-      throw new Error(`PayStation refused the credentials: ${msg || `status ${text(body.status_code)}`}`)
+  /**
+   * Checks both credentials: the merchant ID against the status API (with an
+   * invoice that cannot exist), then the password by opening a ৳10 test
+   * checkout link that nobody pays — nothing is charged.
+   */
+  async test(callbackUrl = 'https://example.com/paystation-test'): Promise<string> {
+    const refused = (body: Body) => {
+      const msg = text(body.message) ?? ''
+      return ['401', '403'].includes(String(body.status_code)) || /unauthori[sz]ed|invalid (token|merchant|credential|password)|token mismatch|wrong password/i.test(msg)
     }
-    return 'Connected to PayStation'
+    const invoice = `TEST${Date.now()}`
+    const status = await this.status(invoice)
+    if (refused(status)) throw new Error(`PayStation refused the merchant ID: ${text(status.message) ?? `status ${text(status.status_code)}`}`)
+    const start = await this.post('/initiate-payment', {
+      merchantId: this.config.merchantId, password: this.config.password, invoice_number: invoice, currency: 'BDT',
+      payment_amount: '10', pay_with_charge: '0', reference: 'Connection test', cust_name: 'Connection test',
+      cust_phone: '01700000000', cust_email: 'no-reply@example.com', cust_address: 'Connection test',
+      callback_url: callbackUrl, checkout_items: 'Connection test (not charged)',
+    })
+    if (String(start.status_code) !== '200' || !text(start.payment_url)) {
+      throw new Error(`PayStation refused the credentials: ${text(start.message) ?? `status ${text(start.status_code) ?? 'unknown'}`}`)
+    }
+    return 'Connected to PayStation (merchant ID and password accepted)'
   }
 }

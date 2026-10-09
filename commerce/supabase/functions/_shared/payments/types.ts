@@ -48,5 +48,6 @@ export interface PaymentProvider {
   /** Re-checks an attempt whose customer never returned. null = still waiting. */
   reconcile?(session: string, reference: string, ageMinutes: number): Promise<VerifiedPayment | null>
   /** Proves saved credentials work; returns a short confirmation. */
-  test?(): Promise<string>
+  /** Checks the credentials; callbackUrl is this store's return address (some gateways check it). */
+  test?(callbackUrl?: string): Promise<string>
 }

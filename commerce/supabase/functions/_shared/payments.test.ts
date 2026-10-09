@@ -169,7 +169,9 @@ describe('PayStation', () => {
       success: true, providerTransactionId: 'PS77', amount: 55, reference: 'PAY-ABC123',
     })
     expect(fetchFn.mock.calls[0][0]).toBe('https://ps.test/transaction-status')
-    expect(fetchFn.mock.calls[0][1].headers).toMatchObject({ token: 'pw' })
+    // PayStation's status API takes the merchant ID as a header; the password never goes there.
+    expect(fetchFn.mock.calls[0][1].headers).toMatchObject({ merchantId: 'M-104' })
+    expect(fetchFn.mock.calls[0][1].headers.token).toBeUndefined()
   })
 
   it('never takes the callback\'s word for success', async () => {
@@ -182,7 +184,14 @@ describe('PayStation', () => {
   })
 
   it('tells bad credentials apart from an unknown invoice', async () => {
-    await expect(ps(vi.fn().mockResolvedValue(jsonResponse({ status_code: '401', message: 'Unauthorized' }))).test()).rejects.toThrow(/refused/)
-    expect(await ps(vi.fn().mockResolvedValue(jsonResponse({ status_code: '404', message: 'Transaction not found' }))).test()).toMatch(/Connected/)
+    const answers = (status: unknown, start: unknown) => vi.fn(async (url: string) => jsonResponse(String(url).endsWith('/transaction-status') ? status : start))
+    const notFound = { status_code: '404', status: 'failed', message: 'Transaction not found' }
+    const linkOk = { status_code: '200', status: 'success', payment_url: 'https://ps.test/checkout/t' }
+    await expect(ps(answers({ status_code: '400', message: 'Invalid Merchant ID' }, linkOk)).test()).rejects.toThrow(/refused the merchant ID: Invalid Merchant ID/)
+    await expect(ps(answers(notFound, { status_code: '400', status: 'failed', message: 'Invalid Password' })).test()).rejects.toThrow(/refused the credentials: Invalid Password/)
+    const ok = answers(notFound, linkOk)
+    expect(await ps(ok).test()).toMatch(/Connected/)
+    const form = Object.fromEntries((ok.mock.calls[1][1] as RequestInit & { body: FormData }).body.entries())
+    expect(form).toMatchObject({ merchantId: 'M-104', password: 'pw', payment_amount: '10' })
   })
 })

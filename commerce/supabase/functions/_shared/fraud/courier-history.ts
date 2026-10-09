@@ -180,7 +180,7 @@ export function summarizeBdCourier(body: unknown): CourierHistorySummary | null 
   // courier counts; use it as is (it is what their app shows).
   const providerRatio = data.summary ? ratio(summary.success_ratio) : null
   const hasHistory = total > 0 || couriers.some((c) => c.rate_only && c.success_ratio !== null)
-  const verdictRaw = (data.risk_verdict ?? root.risk_verdict) as Record<string, unknown> | undefined
+  const verdictRaw = (data.risk_verdict ?? (root as Record<string, unknown>).risk_verdict) as Record<string, unknown> | undefined
   const verdict = verdictRaw && typeof verdictRaw === 'object'
     ? {
       label: text(verdictRaw.label, 40), level: text(verdictRaw.level, 20), action: text(verdictRaw.action, 200),

@@ -218,7 +218,7 @@ Deno.serve(
       const provider = gatewayFromCredentials(code, { ...settings.providers?.[code], sandbox: input.sandbox }, creds, admin)
       let message: string
       try {
-        message = await provider.test!()
+        message = await provider.test!(`${requireEnv('SUPABASE_URL')}/functions/v1/payments?callback=cancelled&provider=${code}`)
       } catch (error) {
         throw new HttpError(422, (error as Error).message, 'GATEWAY_REJECTED')
       }
@@ -231,7 +231,7 @@ Deno.serve(
     if (input.action === 'test_gateway') {
       const provider = await loadPaymentProvider(admin, code, settings, { allowDisabled: true })
       try {
-        return json(req, { ok: true, message: await provider.test!() })
+        return json(req, { ok: true, message: await provider.test!(`${requireEnv('SUPABASE_URL')}/functions/v1/payments?callback=cancelled&provider=${code}`) })
       } catch (error) {
         throw new HttpError(422, (error as Error).message, 'GATEWAY_REJECTED')
       }
