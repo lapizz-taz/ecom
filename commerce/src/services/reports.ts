@@ -1,11 +1,40 @@
 import { asJson, fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
+import type { Enums } from '@/types/database'
 import type { DashboardOverview, TimeseriesPoint } from '@/types/domain'
 
 export async function dashboardOverview(from: string, to: string): Promise<DashboardOverview> {
   const { data, error } = await supabase.rpc('dashboard_overview', { p_from: from, p_to: to })
   if (error) throw error
   return fromJson<DashboardOverview>(data)
+}
+
+export interface CommandCenter {
+  from: string
+  to: string
+  today: { orders: number; sales: number; approved: number; delivered: number }
+  period: {
+    orders: number; sales: number; average_order_value: number; cod_orders_value: number; returning_orders: number
+    sessions: number; conversion_rate: number | null
+  }
+  cod_in_transit: number
+  couriers: Array<{
+    id: string; name: string; provider: string; total: number; booked: number; in_transit: number; delivered: number
+    returned: number; failed: number; stale: number; success_rate: number | null
+  }>
+  unshipped_approved: number
+  recent_orders: Array<{ id: string; order_number: string; customer_name: string; customer_phone: string; total_amount: number; status: Enums<'order_status'>; source: string; created_at: string; approved: boolean }>
+  recent_customers: Array<{ id: string; full_name: string; phone: string; district: string | null; total_orders: number; total_spent: number; created_at: string; risk_level: Enums<'risk_level'> | null }> | null
+  sources: Array<{ source: string; orders: number; delivered: number; revenue: number }> | null
+  ad_spend: number | null
+  finance?: { net_profit: number; gross_profit: number; courier_fees: number; marketing_costs: number; cod_collected: number; cod_receivable: number; today_profit: number }
+}
+
+/** Courier and business overview, recent activity and top sources for the dashboard. */
+export async function commandCenter(from: string, to: string): Promise<CommandCenter> {
+  const { data, error } = await supabase.rpc('dashboard_command_center', { p_from: from, p_to: to })
+  if (error) throw error
+  return fromJson<CommandCenter>(data)
 }
 
 export async function timeseries(from: string, to: string, granularity: string, filters: Record<string, string> = {}): Promise<TimeseriesPoint[]> {

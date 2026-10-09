@@ -72,3 +72,28 @@ describe('report issue', () => {
     })
   })
 })
+
+describe('dashboard command centre', () => {
+  it('counts conversion from sessions that bought, never above 100%, and hides money from roles without finance', async () => {
+    await inTx(async (db) => {
+      await asSystem(db)
+      // Two sessions, one bought; plus an order that never went through the store.
+      await db.query(`insert into public.storefront_events(session_id, event_type) values
+        ('sess-aaaaaaaa', 'PAGE_VIEW'), ('sess-aaaaaaaa', 'PURCHASE'), ('sess-bbbbbbbb', 'PAGE_VIEW')`)
+      const p = await createProduct(db, { price: 800, stock: 5 })
+      await createOrder(db, { phone: '01755000111', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      const range = [new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)]
+      const all = await value<Record<string, any>>(db, `select public.dashboard_command_center($1::date, $2::date)`, range)
+      expect(all.period.sessions).toBeGreaterThanOrEqual(2)
+      expect(Number(all.period.conversion_rate)).toBeLessThanOrEqual(100)
+      expect(all.recent_orders.length).toBeGreaterThan(0)
+
+      const viewer = await createStaff(db, 'VIEWER')
+      await asUser(db, viewer)
+      const v = await value<Record<string, any>>(db, `select public.dashboard_command_center($1::date, $2::date)`, range)
+      expect(v.finance).toBeUndefined()
+      await asAnon(db)
+      await expectError(db, `select public.dashboard_command_center(current_date, current_date)`, [], /dashboard\.view|permission denied|PERMISSION/i)
+    })
+  })
+})

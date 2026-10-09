@@ -5265,6 +5265,13 @@ export type Database = {
         }
         Returns: Json
       }
+      dashboard_command_center: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
       dashboard_overview: {
         Args: {
           p_from: string
