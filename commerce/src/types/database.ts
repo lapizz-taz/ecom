@@ -1573,6 +1573,197 @@ export type Database = {
           },
         ]
       }
+      meta_ad_insights: {
+        Row: {
+          ad_id: string
+          date: string
+          platform: string
+          campaign_id: string | null
+          adset_id: string | null
+          spend: number
+          cost: number
+          impressions: number
+          clicks: number
+          link_clicks: number
+          purchases: number
+          purchase_value: number
+          synced_at: string
+        }
+        Insert: {
+          ad_id: string
+          date: string
+          platform: string
+          campaign_id?: string | null
+          adset_id?: string | null
+          spend?: number
+          cost?: number
+          impressions?: number
+          clicks?: number
+          link_clicks?: number
+          purchases?: number
+          purchase_value?: number
+          synced_at?: string
+        }
+        Update: {
+          ad_id?: string
+          date?: string
+          platform?: string
+          campaign_id?: string | null
+          adset_id?: string | null
+          spend?: number
+          cost?: number
+          impressions?: number
+          clicks?: number
+          link_clicks?: number
+          purchases?: number
+          purchase_value?: number
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      meta_ads: {
+        Row: {
+          id: string
+          adset_id: string | null
+          campaign_id: string | null
+          name: string
+          status: string | null
+          effective_status: string | null
+          creative_id: string | null
+          creative_name: string | null
+          thumbnail_url: string | null
+          title: string | null
+          body: string | null
+          synced_at: string
+        }
+        Insert: {
+          id: string
+          adset_id?: string | null
+          campaign_id?: string | null
+          name: string
+          status?: string | null
+          effective_status?: string | null
+          creative_id?: string | null
+          creative_name?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          body?: string | null
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          adset_id?: string | null
+          campaign_id?: string | null
+          name?: string
+          status?: string | null
+          effective_status?: string | null
+          creative_id?: string | null
+          creative_name?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          body?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      meta_adsets: {
+        Row: {
+          id: string
+          campaign_id: string | null
+          name: string
+          status: string | null
+          effective_status: string | null
+          daily_budget: number | null
+          lifetime_budget: number | null
+          start_time: string | null
+          end_time: string | null
+          synced_at: string
+        }
+        Insert: {
+          id: string
+          campaign_id?: string | null
+          name: string
+          status?: string | null
+          effective_status?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          end_time?: string | null
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string | null
+          name?: string
+          status?: string | null
+          effective_status?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          end_time?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      meta_campaigns: {
+        Row: {
+          id: string
+          account_id: string | null
+          name: string
+          status: string | null
+          effective_status: string | null
+          objective: string | null
+          daily_budget: number | null
+          lifetime_budget: number | null
+          start_time: string | null
+          stop_time: string | null
+          created_time: string | null
+          updated_time: string | null
+          marketing_campaign_id: string | null
+          synced_at: string
+        }
+        Insert: {
+          id: string
+          account_id?: string | null
+          name: string
+          status?: string | null
+          effective_status?: string | null
+          objective?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          stop_time?: string | null
+          created_time?: string | null
+          updated_time?: string | null
+          marketing_campaign_id?: string | null
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          account_id?: string | null
+          name?: string
+          status?: string | null
+          effective_status?: string | null
+          objective?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          stop_time?: string | null
+          created_time?: string | null
+          updated_time?: string | null
+          marketing_campaign_id?: string | null
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaigns_marketing_campaign_id_fkey"
+            columns: ["marketing_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_logs: {
         Row: {
           id: string
@@ -3754,6 +3945,23 @@ export type Database = {
       }
     }
     Views: {
+      ad_spend_facts: {
+        Row: {
+          date: string | null
+          source: string | null
+          campaign_key: string | null
+          campaign_name: string | null
+          adset_key: string | null
+          adset_name: string | null
+          ad_key: string | null
+          ad_name: string | null
+          cost: number | null
+          impressions: number | null
+          clicks: number | null
+          purchases: number | null
+        }
+        Relationships: []
+      }
       inventory_overview: {
         Row: {
           variant_id: string | null
@@ -3799,6 +4007,28 @@ export type Database = {
           cost_per_order: number | null
           attributed_roas: number | null
           profit_after_ad_spend: number | null
+        }
+        Relationships: []
+      }
+      order_attribution_facts: {
+        Row: {
+          order_id: string | null
+          status: Database["public"]["Enums"]["order_status"] | null
+          created_at: string | null
+          total_amount: number | null
+          confirmed_at: string | null
+          shipped_at: string | null
+          delivered_at: string | null
+          source: string | null
+          medium: string | null
+          channel: string | null
+          is_paid: boolean | null
+          campaign_key: string | null
+          campaign_name: string | null
+          adset_key: string | null
+          adset_name: string | null
+          ad_key: string | null
+          ad_name: string | null
         }
         Relationships: []
       }
@@ -5170,6 +5400,17 @@ export type Database = {
         }
         Returns: Json
       }
+      meta_ads_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      meta_ads_update_settings: {
+        Args: {
+          p_exchange_rate?: number
+          p_tax_percent?: number
+        }
+        Returns: Json
+      }
       notification_conditions_error: {
         Args: {
           p_conditions: Json
@@ -5571,6 +5812,15 @@ export type Database = {
         }
         Returns: Json
       }
+      report_attribution: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_group?: string
+          p_filters?: Json
+        }
+        Returns: Json
+      }
       report_cancellations_returns: {
         Args: {
           p_from: string
@@ -5617,6 +5867,15 @@ export type Database = {
       }
       report_inventory_valuation: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      report_meta_ads: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_level?: string
+          p_parent?: string
+        }
         Returns: Json
       }
       report_product_performance: {
