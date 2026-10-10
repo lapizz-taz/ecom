@@ -25,8 +25,8 @@ import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { searchVariants } from '@/services/catalog'
 import {
-  adoptStoreProducts, type AdoptPlan, firstSync, type FirstSyncPlan, importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs,
-  saveSyncSettings, type SyncItem, type SyncOverview, syncOverview, storeProducts,
+  adoptStoreProducts, type AdoptPlan, catalogSummary, firstSync, type FirstSyncPlan, importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs,
+  type CatalogSummary, saveSyncSettings, type SyncItem, type SyncOverview, syncOverview, storeProducts,
 } from '@/services/channels'
 import { formatMoney } from '@/lib/format'
 
@@ -659,7 +659,8 @@ function ProductsTab({ o, channelId, onDone, store }: { o: SyncOverview; channel
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [withStock, setWithStock] = useState(true)
   const [plan, setPlan] = useState<AdoptPlan | null>(null)
-  const products = useQuery({ queryKey: ['store-products', channelId, q], queryFn: () => storeProducts(channelId, q), enabled: !!o.channel.catalog_imported_at })
+  const products = useQuery({ queryKey: ['store-products', channelId, q, o.channel.first_sync_at, o.channel.catalog_imported_at], queryFn: () => storeProducts(channelId, q), enabled: !!o.channel.catalog_imported_at })
+  const summary = useQuery({ queryKey: ['store-catalog-summary', channelId, o.channel.first_sync_at, o.channel.catalog_imported_at], queryFn: () => catalogSummary(channelId), enabled: !!o.channel.catalog_imported_at })
   const rows = (products.data ?? []).filter((p) => !onlyNew || p.linked < p.variants)
   const preview = useMutation({
     mutationFn: () => adoptStoreProducts(channelId, [...sel], withStock && can('inventory.adjust'), false),
@@ -670,7 +671,7 @@ function ProductsTab({ o, channelId, onDone, store }: { o: SyncOverview; channel
     mutationFn: () => adoptStoreProducts(channelId, [...sel], withStock && can('inventory.adjust'), true),
     onSuccess: (r) => {
       toast.success(`${r.created} variant${r.created === 1 ? '' : 's'} created${r.linked ? `, ${r.linked} linked to existing SKUs` : ''}`)
-      setPlan(null); setSel(new Set()); void products.refetch(); onDone()
+      setPlan(null); setSel(new Set()); void products.refetch(); void summary.refetch(); onDone()
     },
     onError: (e) => toast.error(toUserMessage(e)),
   })
@@ -679,6 +680,8 @@ function ProductsTab({ o, channelId, onDone, store }: { o: SyncOverview; channel
   const allOn = rows.length > 0 && rows.every((r) => sel.has(r.product_id))
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   return (
+    <div className="space-y-3">
+    {summary.data && <CatalogCounts s={summary.data} store={store} />}
     <Card className="gap-0 py-0">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <div className="relative w-full sm:w-64">
@@ -749,6 +752,51 @@ function ProductsTab({ o, channelId, onDone, store }: { o: SyncOverview; channel
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </Card>
+    </div>
+  )
+}
+
+const MISSING_REASON: Record<string, string> = {
+  FIRST_SYNC: 'run the first sync to import it',
+  TRASH: 'in the trash in the store',
+  AUTO_IMPORT_OFF: 'automatic import is off: select it below and click Import',
+  NEXT_REFRESH: 'imported on the next refresh',
+}
+
+/** The store's own totals next to what is here, so a difference is never a mystery. */
+function CatalogCounts({ s, store }: { s: CatalogSummary; store: string }) {
+  const statuses = Object.entries(s.by_status).sort(([a], [b]) => a.localeCompare(b))
+  const all = s.imported_products === s.store_products
+  return (
+    <Card className="gap-0 py-0">
+      <div className="grid gap-px overflow-hidden rounded-xl bg-border sm:grid-cols-3">
+        <div className="bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">In {store}</p>
+          <p className="text-xl font-semibold tabular-nums">{formatNumber(s.store_products)} <span className="text-sm font-normal text-muted-foreground">products</span></p>
+          <p className="text-xs text-muted-foreground">{formatNumber(s.store_variants)} variants (sizes, colours){statuses.length ? ` · ${statuses.map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')}` : ''}</p>
+        </div>
+        <div className="bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">Imported here</p>
+          <p className="text-xl font-semibold tabular-nums">{formatNumber(s.imported_products)} <span className="text-sm font-normal text-muted-foreground">products</span></p>
+          <p className="text-xs text-muted-foreground">{formatNumber(s.imported_variants)} variants · archived ones are under Inactive in Products</p>
+        </div>
+        <div className="bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">Not imported</p>
+          <p className={cn('text-xl font-semibold tabular-nums', !all && 'text-amber-600 dark:text-amber-400')}>{formatNumber(s.store_products - s.imported_products)}</p>
+          <p className="text-xs text-muted-foreground">{all ? `Everything in ${store} is here` : 'Listed below with the reason'}</p>
+        </div>
+      </div>
+      {s.missing.length > 0 && (
+        <ul className="max-h-48 divide-y overflow-y-auto border-t text-sm">
+          {s.missing.map((m) => (
+            <li key={m.product_id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-4 py-2">
+              <span className="min-w-0 truncate">{m.title}{m.status !== 'ACTIVE' ? <span className="text-muted-foreground"> · {m.status.toLowerCase()}</span> : null}</span>
+              <span className="text-xs text-muted-foreground">{m.imported ? `${m.imported}/${m.variants} variants · ` : ''}{MISSING_REASON[m.reason] ?? m.reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   )
 }

@@ -189,6 +189,18 @@ export async function storeProducts(channelId: string, search?: string): Promise
   if (error) throw error
   return fromJson(data)
 }
+export interface CatalogSummary {
+  read_at: string | null
+  store_products: number; store_variants: number; by_status: Record<string, number>
+  imported_products: number; imported_variants: number; products_here: number
+  missing: Array<{ product_id: string; title: string; status: string; variants: number; imported: number; reason: 'FIRST_SYNC' | 'TRASH' | 'AUTO_IMPORT_OFF' | 'NEXT_REFRESH' }>
+}
+/** The store's product and variant totals next to what is imported here, with the reason for anything missing. */
+export async function catalogSummary(channelId: string): Promise<CatalogSummary> {
+  const { data, error } = await supabase.rpc('channel_catalog_summary', { p_channel_id: channelId })
+  if (error) throw error
+  return fromJson(data)
+}
 export interface AdoptPlan {
   applied: boolean; created: number; linked: number
   plan: Array<{ product_id: string; external_variant_id: string; action: 'CREATE' | 'LINK' | 'ALREADY_LINKED'; title: string; sku: string | null; price?: number | null; stock?: number | null }>

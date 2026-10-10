@@ -178,7 +178,7 @@ Every status change here is sent to the Shopify order. You never click a sync bu
 
 **Stock is never restored twice.** When stock sync is on, the cancel asks Shopify *not* to restock. Our own cancel puts the stock back here once, and the stock sync sets Shopify to that number. When stock sync is off, Shopify restocks itself. A cancel that came *from* Shopify is never sent back.
 
-**Merged orders.** Two orders from the same customer (same phone and district, within 72 hours, before packing) merge into one, including Shopify orders and orders already approved. Each Shopify order in the group stays linked: shipping, delivery and cancelling the group update every one of them, and each is tagged `Merged: <order>`.
+**Merged orders.** Two orders from the same customer (same phone and district, within 72 hours) merge into one while both are still in Web Orders, Shopify orders included. An order that is already approved is never merged into (it may be packed or with the courier); the new order is flagged "Already approved #…" instead. Each Shopify order in the group stays linked: shipping, delivery and cancelling the group update every one of them, and each is tagged `Merged: <order>`.
 
 **Two-way stock.** After the first sync, a change made by hand in Shopify is applied here as the difference (recorded in the stock history). A change made here at the same moment is kept too, and nothing loops.
 
@@ -201,3 +201,8 @@ WooCommerce connects under **Store → Sales Channels → WooCommerce**, either 
 - [ ] Protected customer data requested (name, e-mail, phone, address)
 - [ ] App installed on the store (App keys) and connected under Store → Sales Channels; all checks green
 - [ ] First sync previewed and started under Store → Store Sync
+
+**Order numbers.** An order imported from Shopify or WooCommerce keeps the store's number: Shopify #10768 is order 10768 here, so the two lists match. If that number is already used here (for example two stores both have #1001), the order gets its own number and a note says why. Orders placed on your own site keep the usual numbering (prefix-number).
+
+**All products.** Every store product is imported, including archived ones (they appear as Archived under Inactive in Products, not for sale). The Store sync Products tab shows the store's own totals (products, variants and how many are active, draft or archived) next to what is imported here, and the reason for anything not imported yet.
+

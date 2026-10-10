@@ -67,7 +67,7 @@ describe('Merging Shopify orders (root cause: store imports skipped the merge ch
       expect(await value<number>(db, `select count(*)::int from public.order_merges where order_id = $1 and source_order_id = $2`, [a.order_id, b.order_id])).toBe(1)
     }))
 
-  it('merges into an approved order before packing; never into cancelled or shipped ones; a discounted new order is not merged', () =>
+  it('never merges into an approved, cancelled or shipped order; a discounted new order is not merged', () =>
     inTx(async (db) => {
       const sku = `MG2-${Math.floor(Math.random() * 1e6)}`
       await createProduct(db, { price: 500, stock: 50, variants: [{ sku, title: 'Default', stock: 50 }] })
@@ -76,7 +76,10 @@ describe('Merging Shopify orders (root cause: store imports skipped the merge ch
       const a = await imported(db, c, { sku, phone: ph })
       await advanceOrder(db, a.order_id, ['CONFIRMED'])
       const b = await imported(db, c, { sku, phone: ph })
-      expect(b.merged_into).not.toBeNull()
+      // Approved orders may already be packed or with the courier: flagged as a duplicate, never merged.
+      expect(b.merged_into).toBeNull()
+      await asSystem(db)
+      expect(await order(db, b.order_id)).toMatchObject({ merged_into: null, duplicate_status: 'SUSPECTED', duplicate_of: a.order_id })
 
       const ph2 = phone()
       const x = await imported(db, c, { sku, phone: ph2 })

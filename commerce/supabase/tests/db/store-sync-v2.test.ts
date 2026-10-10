@@ -59,9 +59,10 @@ describe('First sync with a store', () => {
       await asUser(db, owner)
       const before = await value<number>(db, `select count(*)::int from public.products`)
       const plan = await value<Record<string, any>>(db, `select public.channel_first_sync($1, $2, true, false)`, [c, LOC])
-      expect(plan).toMatchObject({ applied: false, store: 'Shopify', products: 2, create: 3, untracked: 1, already_linked: 1 })
+      // Archived store products are imported too (as Archived), so the counts match the store.
+      expect(plan).toMatchObject({ applied: false, store: 'Shopify', products: 3, create: 4, untracked: 1, already_linked: 1 })
       expect(plan.stock_changes).toEqual([expect.objectContaining({ sku: `MINE-${sfx}`, ours: 4, store: 9, change: 5 })])
-      expect(plan.items.map((x: any) => x.sku).sort()).toEqual([`SH-${sfx}-L`, `SH-${sfx}-M`, `SHOP-41${sfx}`].sort())
+      expect(plan.items.map((x: any) => x.sku).sort()).toEqual([`SH-${sfx}-L`, `SH-${sfx}-M`, `OLD-${sfx}`, `SHOP-41${sfx}`].sort())
       // Preview: nothing changed at all.
       await asSystem(db)
       expect(await value<number>(db, `select count(*)::int from public.products`)).toBe(before)
@@ -70,7 +71,7 @@ describe('First sync with a store', () => {
 
       await asUser(db, owner)
       const done = await value<Record<string, any>>(db, `select public.channel_first_sync($1, $2, true, true)`, [c, LOC])
-      expect(done).toMatchObject({ applied: true, products: 2, create: 3 })
+      expect(done).toMatchObject({ applied: true, products: 3, create: 4 })
       expect(done.stock_changes).toEqual(plan.stock_changes)
 
       await asSystem(db)
@@ -96,8 +97,8 @@ describe('First sync with a store', () => {
       expect(linked.barcode).toBe(`BC-MINE-${sfx}`)
       // Product details follow Shopify after the first sync ("Update products from Shopify").
       expect(Number(linked.price)).toBe(990)
-      // Archived product not imported.
-      expect(await value<number>(db, `select count(*)::int from public.product_variants where sku = $1`, [`OLD-${sfx}`])).toBe(0)
+      // Archived in the store → imported as Archived here (not for sale), with its stock.
+      expect(await value<string>(db, `select p.status from public.products p join public.product_variants v on v.product_id = p.id where v.sku = $1`, [`OLD-${sfx}`])).toBe('ARCHIVED')
       // Sync is on; everything in step except the one the store had negative.
       const ch = await value<Record<string, any>>(db, `select to_jsonb(c) from public.sales_channels c where id = $1`, [c])
       expect(ch.first_sync_at).not.toBeNull()

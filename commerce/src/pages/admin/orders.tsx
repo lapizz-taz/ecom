@@ -266,7 +266,7 @@ export function OrdersPage({ view }: { view: View }) {
           <span className={cn('font-medium', view === 'web' && 'w-full')}>{o.order_number}</span>
           {view === 'web' && <span className="text-xs font-normal text-muted-foreground" title={formatDateTime(o.created_at)}>{timeAgo(o.created_at)}</span>}
           {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
-      {o.sales_channel && <Badge variant="outline" className="text-[10px]" title={o.sales_channel.name}>{o.sales_channel.platform === 'SHOPIFY' ? 'Shopify' : 'Woo'} {o.sales_channel.number}</Badge>}
+      <StoreBadge o={o} />
           {view !== 'web' && o.label_printed_at && (
             <Badge variant="success" className="gap-0.5 text-[10px]" title={`Label printed ${formatDateTime(o.label_printed_at)}`}><Check className="size-3" /> Printed</Badge>
           )}
@@ -775,12 +775,24 @@ function DuplicateBadge({ o }: { o: OrderListItem }) {
   )
 }
 
+/** Where a store order came from; its store number only when it differs from ours (Shopify #10768 = order 10768). */
+function StoreBadge({ o }: { o: OrderListItem }) {
+  if (!o.sales_channel) return null
+  const n = o.sales_channel.number
+  const same = !n || n.replace(/^#+\s*/, '').toUpperCase() === o.order_number
+  return (
+    <Badge variant="outline" className="text-[10px]" title={o.sales_channel.name}>
+      {o.sales_channel.platform === 'SHOPIFY' ? 'Shopify' : 'Woo'}{same ? '' : ` ${n}`}
+    </Badge>
+  )
+}
+
 function InvoiceCell({ o }: { o: OrderListItem }) {
   return (
     <div className="flex max-w-40 flex-wrap items-center gap-1">
       <span className="w-full font-medium">{o.order_number}</span>
       {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
-      {o.sales_channel && <Badge variant="outline" className="text-[10px]" title={o.sales_channel.name}>{o.sales_channel.platform === 'SHOPIFY' ? 'Shopify' : 'Woo'} {o.sales_channel.number}</Badge>}
+      <StoreBadge o={o} />
       <DuplicateBadge o={o} />
       {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]" title={`${o.merged_count} order(s) merged into this one`}><Layers className="size-3" /> Merged +{o.merged_count}</Badge>}
     </div>

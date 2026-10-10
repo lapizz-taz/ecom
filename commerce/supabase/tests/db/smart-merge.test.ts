@@ -126,11 +126,13 @@ describe('smart automatic merging', () => {
       const flagged = await row(db, d2.id)
       expect(flagged).toMatchObject({ duplicate_status: 'SUSPECTED', duplicate_of: d.id, duplicate_reason: 'APPROVED' })
       expect((await row(db, d.id)).merged_count).toBe(0) // the packed order is untouched
-      // Approved but not packed yet (Confirmed / Processing): merged into it.
+      // Approved but not packed yet (Confirmed): still never merged into — only flagged.
       const ap = await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })
       await advanceOrder(db, ap.id, ['CONFIRMED'])
-      expect((await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })).merged).toBe(true)
-      expect((await row(db, ap.id)).merged_count).toBe(1)
+      const ap2 = await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })
+      expect(ap2.merged).toBe(false)
+      expect(await row(db, ap2.id)).toMatchObject({ duplicate_status: 'SUSPECTED', duplicate_of: ap.id })
+      expect((await row(db, ap.id)).merged_count).toBe(0)
 
       // Switched off: nothing merges.
       await setSetting(db, 'orders', { auto_merge_web_enabled: false })

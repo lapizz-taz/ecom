@@ -6907,6 +6907,12 @@ export type Database = {
         }
         Returns: Json
       }
+      channel_catalog_summary: {
+        Args: {
+          p_channel_id: string
+        }
+        Returns: Json
+      }
       channel_first_sync: {
         Args: {
           p_channel_id: string
