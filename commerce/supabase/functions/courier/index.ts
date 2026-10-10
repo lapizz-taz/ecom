@@ -11,7 +11,7 @@ import {
   COURIER_OPTIONAL_FIELDS, type CourierOptions, courierOptions, credentialHint, invalidCredentialFields, itemDescription,
   missingCredentialFields,
 } from '../_shared/courier/registry.ts'
-import { PathaoProvider, type PathaoStore } from '../_shared/courier/providers.ts'
+import { PathaoProvider, type PathaoStore, RedxProvider } from '../_shared/courier/providers.ts'
 import { CourierNotSupportedError } from '../_shared/courier/types.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
@@ -39,9 +39,9 @@ const schema = z.discriminatedUnion('action', [
     is_active: z.boolean().optional(),
   }),
   z.object({ action: z.literal('save_options'), courier_id: z.uuid(), options, is_active: z.boolean().optional() }),
-  // Pathao pickup stores, from the saved login (courier_id) or from keys being entered.
+  // Pathao / RedX pickup stores, from the saved login (courier_id) or from keys being entered.
   z.object({
-    action: z.literal('courier_stores'), courier_id: z.uuid().optional(),
+    action: z.literal('courier_stores'), courier_id: z.uuid().optional(), provider: z.enum(['pathao', 'redx']).default('pathao'),
     credentials: z.record(z.string().regex(/^[a-z_]+$/), credential).optional(),
   }),
   z.object({ action: z.literal('disconnect'), courier_id: z.uuid() }),
@@ -91,8 +91,8 @@ async function saveOptions(client: SupabaseClient, courierId: string, patch: Cou
   return config
 }
 
-function pathaoFrom(provider: unknown): PathaoProvider {
-  if (!(provider instanceof PathaoProvider)) throw new HttpError(422, 'Pickup stores are a Pathao feature', 'NOT_SUPPORTED')
+function storesFrom(provider: unknown): PathaoProvider | RedxProvider {
+  if (!(provider instanceof PathaoProvider) && !(provider instanceof RedxProvider)) throw new HttpError(422, 'Pickup stores are a Pathao and RedX feature', 'NOT_SUPPORTED')
   return provider
 }
 
@@ -218,7 +218,7 @@ Deno.serve(
           const built = buildCourierProvider(input.provider, creds, null, opts)
           const test = await built.testConnection()
           if (!test.ok) throw new HttpError(422, `Could not connect: ${test.message}`, 'CONNECTION_FAILED')
-          const stores = built instanceof PathaoProvider ? await built.listStores() : undefined
+          const stores = built instanceof PathaoProvider || built instanceof RedxProvider ? await built.listStores().catch(() => undefined) : undefined
 
           let courierId = input.courier_id
           if (!courierId) {
@@ -246,8 +246,8 @@ Deno.serve(
           const courier = await loadCourier(client, input.courier_id)
           const opts = input.options as CourierOptions
           const known = (courier.config?.stores as PathaoStore[] | undefined) ?? []
-          if (courier.provider === 'pathao' && opts.store_id && known.length && !known.some((s) => s.id === opts.store_id)) {
-            throw new HttpError(422, `Store ${opts.store_id} is not on this Pathao account — sync the stores first`, 'VALIDATION')
+          if (['pathao', 'redx'].includes(courier.provider) && opts.store_id && known.length && !known.some((s) => s.id === opts.store_id)) {
+            throw new HttpError(422, `Store ${opts.store_id} is not on this ${courier.provider === 'redx' ? 'RedX' : 'Pathao'} account — sync the stores first`, 'VALIDATION')
           }
           const config = await saveOptions(client, input.courier_id, opts, input.is_active)
           return json(req, { ok: true, options: courierOptions(config) })
@@ -255,18 +255,18 @@ Deno.serve(
         case 'courier_stores': {
           let provider
           if (input.credentials && Object.keys(input.credentials).length) {
-            const missing = missingCredentialFields('pathao', input.credentials as CourierCredentials)
+            const missing = missingCredentialFields(input.provider, input.credentials as CourierCredentials)
             if (missing.length) throw new HttpError(422, `Fill in: ${missing.join(', ').replace(/_/g, ' ')}`, 'VALIDATION')
-            provider = buildCourierProvider('pathao', input.credentials as CourierCredentials)
+            provider = buildCourierProvider(input.provider, input.credentials as CourierCredentials)
           } else if (input.courier_id) {
             const courier = await loadCourier(client, input.courier_id)
             provider = await courierProviderFor(adminClient(), { ...courier, api_enabled: true })
           } else {
-            throw new HttpError(422, 'Enter the Pathao keys first', 'VALIDATION')
+            throw new HttpError(422, input.provider === 'redx' ? 'Enter the RedX access token first' : 'Enter the Pathao keys first', 'VALIDATION')
           }
           let stores: PathaoStore[]
           try {
-            stores = await pathaoFrom(provider).listStores()
+            stores = await storesFrom(provider).listStores()
           } catch (e) {
             if (e instanceof HttpError) throw e
             throw new HttpError(422, (e as Error).message, 'CONNECTION_FAILED')

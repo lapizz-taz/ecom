@@ -160,6 +160,24 @@ describe('RedX courier provider', () => {
     const [, init] = fetchFn.mock.calls[1]
     expect(init.headers['API-ACCESS-TOKEN']).toBe('Bearer abc')
     expect(JSON.parse(init.body)).toMatchObject({ delivery_area_id: 2, merchant_invoice_id: 'ISO-2001', cash_collection_amount: '1250' })
+    expect(JSON.parse(init.body).pickup_store_id).toBeUndefined()
+  })
+
+  it('sends the pickup store and product names; stops when no area matches unless allowed', async () => {
+    const areas = () => jsonResponse({ areas: [{ id: 1, name: 'Dhanmondi' }, { id: 5, name: 'Gulshan 1' }] })
+    const strict = new RedxProvider({ accessToken: 'abc' }, vi.fn().mockResolvedValueOnce(areas()))
+    await expect(strict.createShipment({ ...request, area: 'Uttara' })).rejects.toThrow(/Allow parcel creation without area/)
+
+    const fetchFn = vi.fn().mockResolvedValueOnce(areas()).mockResolvedValueOnce(jsonResponse({ tracking_id: 'T1' }))
+    const loose = new RedxProvider({ accessToken: 'abc', storeId: '504839', allowWithoutArea: true }, fetchFn)
+    await loose.createShipment({ ...request, area: 'Uttara', note: 'Call first', itemDescription: '2× Tote' })
+    expect(JSON.parse(fetchFn.mock.calls[1][1].body)).toMatchObject({ delivery_area_id: 1, pickup_store_id: 504839, instruction: 'Call first · 2× Tote' })
+  })
+
+  it('lists pickup stores', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse({ pickup_stores: [{ id: 7, name: 'Mirpur hub', address: 'Road 2', area_name: 'Mirpur 10' }] }))
+    expect(await new RedxProvider({ accessToken: 'abc' }, fetchFn).listStores()).toEqual([{ id: '7', name: 'Mirpur hub', address: 'Road 2, Mirpur 10', active: true }])
+    expect(fetchFn.mock.calls[0][0]).toBe('https://openapi.redx.com.bd/v1.0.0-beta/pickup/stores')
   })
 })
 

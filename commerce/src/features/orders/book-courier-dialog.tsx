@@ -47,7 +47,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   const chosen = connected.find((c) => c.id === courierId) ?? connected[0]
   // Pathao: pick the pickup store for this batch (the default store unless changed).
   const cfg = courierConfig(chosen)
-  const stores = chosen?.provider === 'pathao' ? (cfg.stores ?? []).filter((s) => s.active || s.id === cfg.store_id) : []
+  const stores = (chosen?.provider === 'pathao' || chosen?.provider === 'redx') ? (cfg.stores ?? []).filter((s) => s.active || s.id === cfg.store_id) : []
   const [storeId, setStoreId] = useState('')
   const store = stores.find((s) => s.id === storeId)?.id ?? cfg.store_id ?? ''
   const [rows, setRows] = useState<Row[] | null>(null)

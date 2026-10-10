@@ -110,7 +110,10 @@ export function buildCourierProvider(provider: string, creds: CourierCredentials
         itemType: options.item_type === 1 ? 1 : 2, allowWithoutZone: options.allow_without_zone === true, sendWeight: options.send_weight !== false,
       })
     case 'redx':
-      return new RedxProvider({ accessToken: text(creds.access_token), sandbox, trackingTemplate })
+      return new RedxProvider({
+        accessToken: text(creds.access_token), sandbox, trackingTemplate, storeId: text(options.store_id) || null,
+        allowWithoutArea: options.allow_without_zone === true,
+      })
     default:
       return new ManualCourierProvider(trackingTemplate ?? null)
   }

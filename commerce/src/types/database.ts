@@ -3631,6 +3631,51 @@ export type Database = {
           },
         ]
       }
+      parcel_calls: {
+        Row: {
+          id: string
+          order_id: string
+          party: string
+          outcome: string
+          note: string | null
+          called_by: string | null
+          called_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          party: string
+          outcome: string
+          note?: string | null
+          called_by?: string | null
+          called_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          party?: string
+          outcome?: string
+          note?: string | null
+          called_by?: string | null
+          called_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parcel_calls_called_by_fkey"
+            columns: ["called_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parcel_calls_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parcel_scans: {
         Row: {
           id: string
@@ -7080,6 +7125,21 @@ export type Database = {
         }
         Returns: Json
       }
+      parcel_call_log: {
+        Args: {
+          p_order_id: string
+          p_party: string
+          p_outcome: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      parcel_history: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
+      }
       process_order_return: {
         Args: {
           p_order_id: string
@@ -7693,6 +7753,13 @@ export type Database = {
           p_id: string
         }
         Returns: undefined
+      }
+      return_analysis: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
       }
       reverse_finance_transaction: {
         Args: {

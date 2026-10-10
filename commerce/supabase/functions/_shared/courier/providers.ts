@@ -371,6 +371,10 @@ export interface RedxConfig {
   accessToken: string
   sandbox?: boolean
   trackingTemplate?: string | null
+  /** Default pickup store (from GET /pickup/stores); RedX uses the account's default when empty. */
+  storeId?: string | null
+  /** When no RedX area matches the address, book with the district's first area instead of stopping. */
+  allowWithoutArea?: boolean
 }
 
 export class RedxProvider implements CourierProvider {
@@ -397,9 +401,22 @@ export class RedxProvider implements CourierProvider {
 
   async resolveArea(district: string, area?: string | null): Promise<{ id: number; name: string }> {
     const body = await this.call<{ areas: Array<{ id: number; name: string }> }>(`/areas?district_name=${encodeURIComponent(district)}`)
-    const found = matchByName(body.areas, (a) => a.name, area) ?? matchByName(body.areas, (a) => a.name, district) ?? body.areas[0]
-    if (!found) throw new Error(`RedX: no delivery area found for "${district}"`)
+    const found = matchByName(body.areas, (a) => a.name, area) ?? matchByName(body.areas, (a) => a.name, district)
+      ?? (this.config.allowWithoutArea ? body.areas[0] : undefined)
+    if (!found) {
+      throw new Error(body.areas.length
+        ? `RedX: no delivery area matches "${area ?? district}". Fix the area on the order, or turn on "Allow parcel creation without area".`
+        : `RedX: no delivery area found for "${district}"`)
+    }
     return found
+  }
+
+  /** The pickup stores on this RedX account. */
+  async listStores(): Promise<PathaoStore[]> {
+    const body = await this.call<{ pickup_stores?: Array<{ id: number | string; name: string; address?: string | null; area_name?: string | null }> }>('/pickup/stores')
+    return (body.pickup_stores ?? []).map((s) => ({
+      id: String(s.id), name: s.name, address: [s.address, s.area_name].filter(Boolean).join(', ') || null, active: true,
+    }))
   }
 
   async createShipment(request: ShipmentRequest): Promise<ShipmentCreated> {
@@ -416,7 +433,8 @@ export class RedxProvider implements CourierProvider {
         cash_collection_amount: String(Math.max(0, Math.round(request.codAmount))),
         parcel_weight: Math.max(request.weightGrams ?? 500, 100),
         value: Math.max(0, Math.round(request.codAmount)),
-        instruction: request.note ?? undefined,
+        instruction: [request.note, request.itemDescription].filter(Boolean).join(' · ').slice(0, 300) || undefined,
+        ...((request.storeId ?? this.config.storeId) ? { pickup_store_id: Number(request.storeId ?? this.config.storeId) } : {}),
       }),
     })
     return { consignmentId: body.tracking_id, trackingNumber: body.tracking_id, status: 'BOOKED', raw: body }

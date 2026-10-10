@@ -357,7 +357,9 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
   const [active, setActive] = useState(true)
   const [stores, setStores] = useState<PathaoStore[]>([])
   const [checked, setChecked] = useState<{ ok: boolean; message: string } | null>(null)
+  const [manualStore, setManualStore] = useState(false)
   const code = integration?.code
+  const hasStores = code === 'pathao' || code === 'redx'
   const connected = !!existing?.api_enabled && existing.api_status !== 'NOT_CONFIGURED'
 
   useEffect(() => {
@@ -369,7 +371,7 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
       allow_without_zone: cfg.allow_without_zone ?? false, send_weight: cfg.send_weight ?? true,
       default_note: cfg.default_note ?? '', send_product_names: cfg.send_product_names ?? false,
     })
-    setStores(cfg.stores ?? [])
+    setStores(cfg.stores ?? []); setManualStore(false)
     setActive(existing?.is_active ?? true)
   }, [integration]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -388,6 +390,7 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
       account_phone: opts.account_phone?.trim() ?? '', store_id: opts.store_id ?? '', item_type: opts.item_type ?? 2,
       allow_without_zone: !!opts.allow_without_zone, send_weight: opts.send_weight !== false,
     })
+    if (code === 'redx') Object.assign(o, { store_id: opts.store_id ?? '', allow_without_zone: !!opts.allow_without_zone })
     return o
   }
 
@@ -408,9 +411,11 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
   const test = useMutation({
     meta: { silent: true },
     mutationFn: async (): Promise<{ ok: boolean; message: string; stores?: PathaoStore[] }> => {
-      if (code === 'pathao' && (keysEntered || existing)) {
-        const r = await courierStores(keysEntered ? { credentials: { ...trimmed(), ...(sandbox ? { sandbox: 'true' } : {}) } } : { courier_id: existing!.id })
-        return { ok: true, message: `Signed in to Pathao · ${r.stores.length} pickup store${r.stores.length === 1 ? '' : 's'} found`, stores: r.stores }
+      if (hasStores && (keysEntered || existing)) {
+        const r = await courierStores(keysEntered
+          ? { provider: code, credentials: { ...trimmed(), ...(sandbox ? { sandbox: 'true' } : {}) } }
+          : { provider: code, courier_id: existing!.id })
+        return { ok: true, message: `${code === 'redx' ? 'RedX token works' : 'Signed in to Pathao'} · ${r.stores.length} pickup store${r.stores.length === 1 ? '' : 's'} found`, stores: r.stores }
       }
       if (existing && !keysEntered) return testCourierConnection(existing.id)
       return { ok: true, message: 'The keys are tested with the courier when you save.' }
@@ -485,20 +490,21 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
           )}
           <div className="flex flex-wrap items-center gap-3">
             {integration?.sandbox && <label className="flex items-center gap-2 text-sm"><Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox / test account</label>}
-            {(code === 'pathao' ? (keysEntered && !keysIncomplete) || connected : connected && !keysEntered) && (
+            {(hasStores ? (keysEntered && !keysIncomplete) || connected : connected && !keysEntered) && (
               <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => test.mutate()} disabled={test.isPending}>
-                {test.isPending ? <Spinner /> : <Plug />} Test connection
+                {test.isPending ? <Spinner /> : <Plug />} {code === 'redx' ? 'Test token' : 'Test connection'}
               </Button>
             )}
           </div>
           {checked && <p className={`rounded-lg p-2.5 text-sm ${checked.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`} role="status">{checked.message}</p>}
 
-          {code === 'pathao' && (
+          {hasStores && (
             <>
               {section('Pickup store')}
               <div className="flex flex-wrap items-end gap-2">
-                <Field label="Default store" className="min-w-56 flex-1" hint={stores.length > 1 ? 'You can pick another store when uploading parcels.' : undefined}>
-                  {stores.length ? (
+                <Field label={code === 'redx' ? 'Pickup store (optional)' : 'Default store'} className="min-w-56 flex-1"
+                  hint={code === 'redx' && !opts.store_id ? 'Empty: RedX uses your account’s default pickup store.' : stores.length > 1 ? 'You can pick another store when uploading parcels.' : undefined}>
+                  {stores.length && !manualStore ? (
                     <Select value={opts.store_id || undefined} onValueChange={(v) => { if (v) set('store_id', v) }}>
                       <SelectTrigger className="w-full"><SelectValue placeholder="Choose a store" /></SelectTrigger>
                       <SelectContent>{stores.map((st) => <SelectItem key={st.id} value={st.id}>{st.name} · {st.id}{st.active ? '' : ' (inactive)'}</SelectItem>)}</SelectContent>
@@ -507,10 +513,23 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
                     <Input value={opts.store_id ?? ''} inputMode="numeric" placeholder="Sync stores, or type the store ID" onChange={(e) => set('store_id', e.target.value.replace(/\D/g, ''))} />
                   )}
                 </Field>
-                <Button type="button" variant="outline" onClick={() => test.mutate()} disabled={test.isPending || (!connected && (!keysEntered || !!keysIncomplete))}>
-                  {test.isPending ? <Spinner /> : <RefreshCw />} Sync stores
+                <Button type="button" variant="outline" onClick={() => { setManualStore(false); test.mutate() }} disabled={test.isPending || (!connected && (!keysEntered || !!keysIncomplete))}>
+                  {test.isPending ? <Spinner /> : <RefreshCw />} Fetch stores
                 </Button>
+                {stores.length > 0 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setManualStore((m) => !m)}>{manualStore ? 'Pick from list' : 'Enter manually'}</Button>
+                )}
               </div>
+            </>
+          )}
+          {code === 'redx' && (
+            <>
+              {section('Parcels')}
+              {toggle('Allow parcel creation without area', 'If the address can’t be matched to a RedX delivery area, book it with the district’s first area instead of stopping', !!opts.allow_without_zone, (v) => set('allow_without_zone', v))}
+            </>
+          )}
+          {code === 'pathao' && (
+            <>
               {section('Parcels')}
               <div className="grid gap-2 sm:grid-cols-2">
                 <Field label="Item type">
@@ -532,7 +551,7 @@ function ConnectCourierDialog({ integration, existing, onClose, onConnected, onW
               <Textarea id="cc-note" rows={2} maxLength={200} value={opts.default_note ?? ''} placeholder="e.g. Call before delivery. Handle with care."
                 onChange={(e) => set('default_note', e.target.value)} />
             </Field>
-            {(code === 'pathao' || code === 'steadfast') && toggle('Send product names', 'Adds “2× Canvas Tote, 1× Cap” as the item description', !!opts.send_product_names, (v) => set('send_product_names', v))}
+            {(code === 'pathao' || code === 'steadfast' || code === 'redx') && toggle('Send product names', code === 'redx' ? 'Adds “2× Canvas Tote, 1× Cap” to the parcel instruction the rider sees' : 'Adds “2× Canvas Tote, 1× Cap” as the item description', !!opts.send_product_names, (v) => set('send_product_names', v))}
           </div>
 
           {webhookUrl && existing && (

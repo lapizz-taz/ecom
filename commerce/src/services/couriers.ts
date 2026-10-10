@@ -88,7 +88,7 @@ export function saveCourierOptions(courierId: string, options: CourierOptions, i
 }
 
 /** Pathao pickup stores — from keys being entered, or from the saved connection (which also refreshes the saved list). */
-export function courierStores(input: { courier_id?: string; credentials?: Record<string, string> }) {
+export function courierStores(input: { courier_id?: string; provider?: 'pathao' | 'redx'; credentials?: Record<string, string> }) {
   return invokeFunction<{ stores: PathaoStore[] }>('courier', { action: 'courier_stores', ...input })
 }
 
@@ -259,7 +259,9 @@ export async function setCourierInvoiceStatus(id: string, status: CourierInvoice
 }
 
 // Courier Management --------------------------------------------------------------
-export type ParcelTab = 'all' | 'pending_entry' | 'assigned' | 'cancelled' | 'return_pending' | 'returned' | 'damage_lost' | 'delivered'
+export type ParcelTab = 'all' | 'in_transit' | 'pending_entry' | 'assigned' | 'cancelled' | 'return_pending' | 'returned' | 'damage_lost' | 'delivered'
+export type CallOutcome = 'ANSWERED' | 'NO_ANSWER' | 'BUSY' | 'SWITCHED_OFF' | 'WRONG_NUMBER'
+export interface CallCounts { am: number; pm: number; total: number; last_outcome: CallOutcome | null; last_at: string | null }
 export interface Parcel {
   id: string; order_number: string; created_at: string; status: string; tab: ParcelTab
   customer: { name: string; phone: string; address: string; area: string | null; district: string | null }
@@ -268,15 +270,51 @@ export interface Parcel {
   item_count: number
   courier: { id: string; name: string; provider: string | null; tracking_url_template: string | null } | null
   shipment: { id: string; status: string; consignment_id: string | null; tracking_number: string | null; booked_at: string; shipping_cost: number | null; cod_collected: number | null; delivered_at: string | null } | null
-  attempts: number; rider: { name?: string; phone?: string } | null; rider_note: string | null; last_update_at: string | null
+  attempts: number; age_days: number | null; rider: { name?: string; phone?: string } | null; rider_note: string | null; last_update_at: string | null
+  customer_calls: CallCounts; rider_calls: CallCounts
   tags: string[]; in_charge: { id: string; name: string } | null
 }
 export interface ParcelPage { counts: Record<ParcelTab, number>; total: number; items: Parcel[] }
+export interface ParcelFilters {
+  tab: ParcelTab; q?: string; courierId?: string; inCharge?: string
+  ageFrom?: string; ageTo?: string; attemptFrom?: string; attemptTo?: string; page: number; pageSize: number
+}
 
-export async function courierParcels(f: { tab: ParcelTab; q?: string; courierId?: string; page: number; pageSize: number }): Promise<ParcelPage> {
+const intOrNull = (v?: string) => (v && /^\d+$/.test(v) ? Number(v) : null)
+
+export async function courierParcels(f: ParcelFilters): Promise<ParcelPage> {
   const { data, error } = await supabase.rpc('courier_parcels', {
-    p: { tab: f.tab, q: f.q || null, courier_id: f.courierId || null, limit: f.pageSize, offset: (f.page - 1) * f.pageSize },
+    p: {
+      tab: f.tab, q: f.q || null, courier_id: f.courierId || null, in_charge: f.inCharge || null,
+      age_from: intOrNull(f.ageFrom), age_to: intOrNull(f.ageTo), attempt_from: intOrNull(f.attemptFrom), attempt_to: intOrNull(f.attemptTo),
+      limit: f.pageSize, offset: (f.page - 1) * f.pageSize,
+    },
   })
   if (error) throw error
   return data as unknown as ParcelPage
+}
+
+export async function logParcelCall(orderId: string, party: 'CUSTOMER' | 'RIDER', outcome: CallOutcome, note?: string) {
+  const { error } = await supabase.rpc('parcel_call_log', { p_order_id: orderId, p_party: party, p_outcome: outcome, p_note: (note || null) as unknown as string })
+  if (error) throw error
+}
+
+export interface ParcelHistoryItem { kind: 'COURIER' | 'CALL' | 'ORDER'; at: string; status: string | null; text: string | null; party?: string; by?: string | null; source?: string }
+export async function parcelHistory(orderId: string): Promise<ParcelHistoryItem[]> {
+  const { data, error } = await supabase.rpc('parcel_history', { p_order_id: orderId })
+  if (error) throw error
+  return data as unknown as ParcelHistoryItem[]
+}
+
+export interface ReturnAnalysis {
+  summary: { parcels: number; delivered: number; returned: number; open: number; return_value: number; return_charges: number }
+  by_courier: Array<{ courier: string; closed: number; returned: number; rate: number | null }>
+  by_district: Array<{ district: string; closed: number; returned: number; rate: number | null }>
+  by_product: Array<{ product: string; sold: number; returned: number; rate: number | null }>
+  reasons: Array<{ reason: string; count: number }>
+}
+export async function returnAnalysis(from: string, to: string): Promise<ReturnAnalysis> {
+  const { data, error } = await supabase.rpc('return_analysis', { p_from: from, p_to: to })
+  if (error) throw error
+  return data as unknown as ReturnAnalysis
 }
