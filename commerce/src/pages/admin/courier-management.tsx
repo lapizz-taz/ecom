@@ -232,7 +232,7 @@ function ParcelsView({ state, update, returnsOnly }: {
 }
 
 function Calls({ c }: { c: CallCounts }) {
-  if (!c.total) return <span className="text-xs text-muted-foreground">No calls</span>
+  if (!c.total) return <span className="text-xs whitespace-nowrap text-muted-foreground">No calls</span>
   return (
     <span className="block text-xs">
       <span className="flex gap-1.5 tabular-nums">
@@ -245,10 +245,12 @@ function Calls({ c }: { c: CallCounts }) {
 }
 
 function Counts({ p }: { p: Parcel }) {
+  if (!p.shipment) return <span className="text-xs text-muted-foreground">—</span>
+  const moving = p.tab === 'in_transit' || p.tab === 'assigned'
   return (
-    <span className="flex flex-col items-start gap-1 text-[11px] tabular-nums">
-      <span className={cn('rounded-full px-2 py-0.5', p.attempts >= 3 ? 'bg-red-600 text-white' : 'bg-muted')}>Attempt {p.attempts}</span>
-      {p.age_days !== null && <span className={cn('rounded-full px-2 py-0.5', (p.age_days ?? 0) >= 7 && !p.shipment?.delivered_at ? 'bg-red-600 text-white' : 'border')}>Courier age {p.age_days}d</span>}
+    <span className="flex flex-col items-start gap-1 text-[11px] whitespace-nowrap tabular-nums">
+      <span className={cn('rounded-full px-2 py-0.5', moving && p.attempts >= 3 ? 'bg-red-600 text-white' : 'bg-muted')}>Attempt {p.attempts}</span>
+      {p.age_days !== null && <span className={cn('rounded-full px-2 py-0.5', moving && (p.age_days ?? 0) >= 7 ? 'bg-red-600 text-white' : 'border')}>Courier age {p.age_days}d</span>}
     </span>
   )
 }
@@ -311,7 +313,7 @@ function TagList({ p }: { p: Parcel }) {
 
 function ParcelRow({ p, selected, onToggle, actions }: { p: Parcel; selected: boolean; onToggle: () => void; actions: ReactNode }) {
   return (
-    <tr className={cn('border-b align-top transition-colors last:border-0 hover:bg-muted/30', isLate(p) && 'bg-red-50 hover:bg-red-100/70 dark:bg-red-950/30 dark:hover:bg-red-950/50', selected && 'bg-muted/40')}>
+    <tr className={cn('border-b align-top transition-colors last:border-0 hover:bg-muted/30', isLate(p) && 'bg-red-500/10 hover:bg-red-500/15', selected && 'bg-muted/40')}>
       <td className="px-3 py-3"><Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select ${p.order_number}`} /></td>
       <td className="px-3 py-3">
         <Link to={`/admin/orders/${p.id}`} className="font-medium whitespace-nowrap hover:underline">{p.order_number}</Link>
@@ -338,7 +340,7 @@ function ParcelRow({ p, selected, onToggle, actions }: { p: Parcel; selected: bo
 
 function ParcelCard({ p, selected, onToggle, actions }: { p: Parcel; selected: boolean; onToggle: () => void; actions: ReactNode }) {
   return (
-    <li className={cn('space-y-3 p-3', isLate(p) && 'bg-red-50 dark:bg-red-950/30', selected && 'bg-muted/40')}>
+    <li className={cn('space-y-3 p-3', isLate(p) && 'bg-red-500/10', selected && 'bg-muted/40')}>
       <div className="flex items-start gap-3">
         <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select ${p.order_number}`} className="mt-0.5" />
         <div className="min-w-0 flex-1">
