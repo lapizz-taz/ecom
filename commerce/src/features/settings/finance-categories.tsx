@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
 import { LoadingState } from '@/components/common/states'

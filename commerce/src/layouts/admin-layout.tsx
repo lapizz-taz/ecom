@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import {

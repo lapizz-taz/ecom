@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'

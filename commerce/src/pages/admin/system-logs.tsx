@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCheck, ChevronDown, ChevronRight } from 'lucide-react'
 import { Fragment, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { PageHeader } from '@/components/common/page-header'
 import { Pagination } from '@/components/common/pagination'
 import { EmptyState, ErrorState, Spinner, TableSkeleton } from '@/components/common/states'

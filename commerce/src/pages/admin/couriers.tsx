@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { CircleCheck, Copy, KeyRound, Pencil, Plug, PlugZap, Plus, RefreshCw, Settings2, Unplug, Wallet, Webhook } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'

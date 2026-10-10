@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Layers } from 'lucide-react'
 import { Link } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { toUserMessage } from '@/lib/errors'

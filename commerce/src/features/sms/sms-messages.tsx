@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { MessageSquare, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Money } from '@/components/common/money'
 import { Pagination } from '@/components/common/pagination'

@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { Check, History, MoreHorizontal, Phone, User, Wallet, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Money } from '@/components/common/money'
 import { PageHeader } from '@/components/common/page-header'

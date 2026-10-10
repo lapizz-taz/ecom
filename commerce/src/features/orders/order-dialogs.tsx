@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { ChannelSelect, FormDialog } from '@/components/common/form-dialog'
 import { Money } from '@/components/common/money'

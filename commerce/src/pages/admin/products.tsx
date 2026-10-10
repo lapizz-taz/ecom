@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ArrowDownUp, Columns3, ExternalLink, Filter, Minus, Package, Pencil, Plus, Trash2, Wallet, Boxes, Coins } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { PageHeader } from '@/components/common/page-header'
 import { Pagination } from '@/components/common/pagination'

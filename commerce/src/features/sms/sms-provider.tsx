@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
 import { Input } from '@/components/ui/input'

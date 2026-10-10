@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { RotateCcw, Save } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'

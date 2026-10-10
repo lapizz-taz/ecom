@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Banknote, ChevronDown, Info, Lock, PhoneCall, ShieldAlert, ShieldCheck, Smartphone, Truck } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { Link, Navigate, useNavigate } from 'react-router'

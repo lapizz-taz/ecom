@@ -3,7 +3,7 @@ import {
   BarChart3, Megaphone, Pencil, Plus, Receipt, Search, Settings2, Trash2, TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { DateRangeFilter } from '@/components/common/date-range-filter'

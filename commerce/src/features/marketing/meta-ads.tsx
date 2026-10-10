@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ChevronRight, CircleCheck, ImageOff, Megaphone, Pencil, PlugZap, Plus, RefreshCw, Unplug } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { DateRangeFilter } from '@/components/common/date-range-filter'

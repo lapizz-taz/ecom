@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Can } from '@/components/common/permission-gate'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Money } from '@/components/common/money'

@@ -1,5 +1,5 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { toUserMessage } from '@/lib/errors'
 import { reportError } from '@/lib/monitoring'
 

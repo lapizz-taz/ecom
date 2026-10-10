@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Download, Mail, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'

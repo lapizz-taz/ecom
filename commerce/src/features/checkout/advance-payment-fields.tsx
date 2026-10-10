@@ -1,6 +1,6 @@
 import { Check, Copy } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
 import { Button } from '@/components/ui/button'

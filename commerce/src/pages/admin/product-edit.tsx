@@ -6,7 +6,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { z } from 'zod'
 import { Field } from '@/components/common/field'
 import { ErrorState, LoadingState, Spinner } from '@/components/common/states'

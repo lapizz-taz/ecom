@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, ExternalLink, KeyRound, Lightbulb, Link2, PlugZap, RefreshCw, ShieldCheck, Unplug } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { DateRangeFilter } from '@/components/common/date-range-filter'

@@ -1,15 +1,22 @@
-import { Toaster as Sonner, type ToasterProps } from 'sonner'
+import { GooeyToaster } from 'goey-toast'
+import 'goey-toast/styles.css'
+import { useEffect, useState } from 'react'
 
-function Toaster(props: ToasterProps) {
-  return (
-    <Sonner
-      className="toaster group"
-      richColors
-      closeButton
-      style={{ '--normal-bg': 'var(--popover)', '--normal-text': 'var(--popover-foreground)', '--normal-border': 'var(--border)' } as React.CSSProperties}
-      {...props}
-    />
-  )
+/** Follows the dark class the admin puts on <html> (the storefront stays light). */
+function useHtmlDark() {
+  const [dark, setDark] = useState(() => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const root = document.documentElement
+    const observer = new MutationObserver(() => setDark(root.classList.contains('dark')))
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+  return dark
+}
+
+function Toaster({ position = 'top-right' }: { position?: 'top-right' | 'top-center' | 'bottom-right' | 'bottom-center' }) {
+  const dark = useHtmlDark()
+  return <GooeyToaster position={position} theme={dark ? 'dark' : 'light'} closeButton preset="smooth" visibleToasts={4} offset="4.25rem" closeOnEscape swipeToDismiss />
 }
 
 export { Toaster }
