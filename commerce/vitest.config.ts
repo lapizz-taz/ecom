@@ -16,7 +16,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['src/**/*.test.ts', 'supabase/functions/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'supabase/functions/**/*.test.ts', 'pbx-gateway/controller/src/**/*.test.ts'],
         },
       },
       ...(withDb

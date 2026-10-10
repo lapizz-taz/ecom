@@ -107,6 +107,7 @@ export const router = createBrowserRouter([
       admin('settings/devices', () => import('@/pages/admin/device-approvals'), 'devices.manage'),
       admin('settings/apps', () => import('@/pages/admin/app-integrations'), 'settings.view'),
       admin('settings/pbx', () => import('@/pages/admin/pbx'), 'orders.view'),
+      admin('settings/voicedrive-pbx', () => import('@/pages/admin/voicedrive-pbx'), 'pbx.call'),
       admin('help', () => import('@/pages/admin/help-center')),
       admin('updates', () => import('@/pages/admin/updates')),
       admin('support/bugs', () => import('@/pages/admin/support-tickets')),

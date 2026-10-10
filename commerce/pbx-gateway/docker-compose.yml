@@ -1,0 +1,42 @@
+# VoiceDrive PBX gateway: Asterisk (SIP/WebRTC), the controller, and coturn.
+# Run on a Linux VPS with a public IP (Dhaka or Singapore). See README.md.
+services:
+  asterisk:
+    build: ./asterisk
+    restart: unless-stopped
+    network_mode: host            # SIP and RTP need the host's ports and real IP
+    env_file: .env
+    volumes:
+      - vd-trunks:/etc/asterisk/vd
+      - asterisk-data:/var/lib/asterisk
+      - ${TLS_DIR:-./certs}:/certs:ro
+    environment:
+      TLS_CERT: /certs/fullchain.pem
+      TLS_KEY: /certs/privkey.pem
+
+  controller:
+    build: ./controller
+    restart: unless-stopped
+    network_mode: host            # talks to ARI on 127.0.0.1:8088
+    env_file: .env
+    user: "1000:999"              # same uid as Asterisk, so it can write the trunks file Asterisk reads
+    volumes:
+      - vd-trunks:/vd
+    environment:
+      ARI_URL: http://127.0.0.1:8088/ari
+      TRUNKS_FILE: /vd/trunks.conf
+    depends_on: [asterisk]
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./coturn/turnserver.conf.template:/etc/turnserver.conf.template:ro
+      - ${TLS_DIR:-./certs}:/certs:ro
+    entrypoint: ["/bin/sh", "-c", "sed -e \"s|\\$${EXTERNAL_IP}|$$EXTERNAL_IP|g; s|\\$${TURN_REALM}|$$TURN_REALM|g; s|\\$${TURN_SECRET}|$$TURN_SECRET|g\" /etc/turnserver.conf.template > /tmp/turnserver.conf && exec turnserver -c /tmp/turnserver.conf"]
+
+volumes:
+  vd-trunks:
+  asterisk-data:

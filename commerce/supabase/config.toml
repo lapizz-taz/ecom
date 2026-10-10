@@ -109,3 +109,11 @@ import_map = "./functions/import_map.json"
 [functions.domains]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+
+[functions.pbx]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.voicedrive]
+verify_jwt = false
+import_map = "./functions/import_map.json"

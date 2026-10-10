@@ -32,6 +32,7 @@ import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
 import { EMPTY_FILTERS, type FilterValues, filtersFromValues, OrderFilterButton } from '@/features/orders/order-filter-panel'
 import { paidBadge } from '@/features/orders/order-source-card'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
+import { OrderCallBadge, OrderCallLink, OrderCallStatesProvider } from '@/features/voicedrive/order-call'
 import { useUrlState } from '@/hooks/use-url-state'
 import { downloadCsv } from '@/lib/csv'
 import { formatDateTime, timeAgo, titleCase } from '@/lib/format'
@@ -496,6 +497,7 @@ export function OrdersPage({ view }: { view: View }) {
       )}
 
       {showLeads ? <IncompleteCheckouts q={state.q} /> : (
+        <OrderCallStatesProvider orderIds={(orders.data?.items ?? []).map((o) => o.id)}>
         <DataTable
           columns={columns}
           rows={orders.data?.items}
@@ -509,6 +511,7 @@ export function OrdersPage({ view }: { view: View }) {
           empty={<EmptyState title={state.q ? 'No orders match' : 'Nothing here'} description={state.q ? 'Try a different search.' : emptyHint(view, state.tab)} />}
           footer={<Pagination page={page} pageSize={PAGE_SIZE} total={orders.data?.total ?? 0} onPage={(p) => update({ page: String(p) }, { resetPage: false })} />}
         />
+        </OrderCallStatesProvider>
       )}
 
       <ConfirmDialog
@@ -625,6 +628,7 @@ function CallCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefine
         </p>
       )}
       {o.review_note && <p className="truncate text-xs text-muted-foreground" title={o.review_note}>{o.review_note}</p>}
+      <OrderCallBadge orderId={o.id} />
     </div>
   )
 }
@@ -660,7 +664,7 @@ function WebRowActions({ o, statuses, canSet, canApprove, busy, onStatus, onAppr
   const wa = waNumber(o.customer_phone)
   return (
     <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-      <Button size="icon-sm" variant="ghost" asChild><a href={`tel:${o.customer_phone}`} aria-label={`Call ${o.customer_name}`}><Phone /></a></Button>
+      <Button size="icon-sm" variant="ghost" asChild><OrderCallLink orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind="WEB_ORDER"><Phone /></OrderCallLink></Button>
       {wa && <Button size="icon-sm" variant="ghost" asChild><a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${o.customer_name}`}><MessageCircle /></a></Button>}
       {canSet && (
         <DropdownMenu>
@@ -874,9 +878,10 @@ function CustomerCell({ o }: { o: OrderListItem }) {
       <p className="flex items-center gap-1.5">
         <span className="tabular-nums">{o.customer_phone}</span>
         {tone && rate !== null && <SuccessRateButton orderId={o.id} phone={o.customer_phone} rate={rate} />}
-        <a href={`tel:${o.customer_phone}`} className="text-sky-600 hover:opacity-80" aria-label={`Call ${o.customer_name}`}><Phone className="size-3.5" /></a>
+        <OrderCallLink orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind="APPROVED_ORDER" className="text-sky-600 hover:opacity-80" />
         {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="text-emerald-600 hover:opacity-80" aria-label={`WhatsApp ${o.customer_name}`}><MessageCircle className="size-3.5" /></a>}
       </p>
+      <OrderCallBadge orderId={o.id} />
       <p className="line-clamp-2 text-muted-foreground" title={o.shipping_address}>{o.shipping_address ?? o.shipping_district}{o.shipping_address && !o.shipping_address.includes(o.shipping_district) ? `, ${o.shipping_district}` : ''}</p>
     </div>
   )

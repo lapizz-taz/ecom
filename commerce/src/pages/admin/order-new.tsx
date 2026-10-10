@@ -83,6 +83,12 @@ export default function NewOrderPage() {
     }).catch(() => toast.warning('Could not load the cart from the checkout — add the products by hand'))
   }, [lead.data])
 
+  // Or from a phone call (VoiceDrive → new caller): just the number.
+  const callerPhone = params.get('phone')
+  useEffect(() => {
+    if (callerPhone && !leadId && !cartId) setCustomer((v) => (v.phone ? v : { ...v, phone: callerPhone }))
+  }, [callerPhone, leadId, cartId])
+
   const cartFilled = useRef(false)
   useEffect(() => {
     const c = cart.data

@@ -1,0 +1,11 @@
+{
+  "name": "voicedrive-controller",
+  "private": true,
+  "version": "1.0.0",
+  "description": "VoiceDrive PBX gateway controller: Asterisk ARI call control, trunk sync and gateway-side call timing",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/main.ts"
+  }
+}

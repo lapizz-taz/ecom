@@ -12,6 +12,8 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { PhoneProvider } from '@/features/voicedrive/phone-context'
+import { PhoneWidget } from '@/features/voicedrive/phone-widget'
 import { useAuth } from '@/features/auth/auth-context'
 import { CommandPalette } from '@/features/shell/command-palette'
 import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
@@ -254,6 +256,7 @@ export default function AdminLayout() {
   )
 
   return (
+    <PhoneProvider>
     <div className="flex min-h-dvh bg-background">
       <aside className={cn('no-print sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out lg:flex',
         collapsed ? 'w-16' : 'w-64')}>
@@ -338,6 +341,8 @@ export default function AdminLayout() {
       <HelpDialog open={dialog === 'help'} onOpenChange={(o) => setDialog(o ? 'help' : null)} />
       <ContactDialog open={dialog === 'contact'} onOpenChange={(o) => setDialog(o ? 'contact' : null)} />
       <ReportIssueDialog open={dialog === 'report'} onOpenChange={(o) => setDialog(o ? 'report' : null)} />
+      {can('pbx.call') && <PhoneWidget />}
     </div>
+    </PhoneProvider>
   )
 }
