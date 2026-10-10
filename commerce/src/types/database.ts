@@ -5429,6 +5429,101 @@ export type Database = {
           },
         ]
       }
+      shopify_abandoned_checkouts: {
+        Row: {
+          id: string
+          channel_id: string
+          external_id: string
+          legacy_id: string | null
+          name: string | null
+          recovery_url: string | null
+          customer_name: string | null
+          email: string | null
+          phone: string | null
+          address: string | null
+          city: string | null
+          items: Json
+          item_count: number
+          subtotal: number | null
+          total: number
+          currency: string | null
+          shop_created_at: string | null
+          shop_updated_at: string | null
+          completed_at: string | null
+          status: string
+          follow_up: string
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          synced_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          external_id: string
+          legacy_id?: string | null
+          name?: string | null
+          recovery_url?: string | null
+          customer_name?: string | null
+          email?: string | null
+          phone?: string | null
+          address?: string | null
+          city?: string | null
+          items?: Json
+          item_count?: number
+          subtotal?: number | null
+          total?: number
+          currency?: string | null
+          shop_created_at?: string | null
+          shop_updated_at?: string | null
+          completed_at?: string | null
+          status?: string
+          follow_up?: string
+          contact_count?: number
+          last_contacted_at?: string | null
+          notes?: string | null
+          synced_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          external_id?: string
+          legacy_id?: string | null
+          name?: string | null
+          recovery_url?: string | null
+          customer_name?: string | null
+          email?: string | null
+          phone?: string | null
+          address?: string | null
+          city?: string | null
+          items?: Json
+          item_count?: number
+          subtotal?: number | null
+          total?: number
+          currency?: string | null
+          shop_created_at?: string | null
+          shop_updated_at?: string | null
+          completed_at?: string | null
+          status?: string
+          follow_up?: string
+          contact_count?: number
+          last_contacted_at?: string | null
+          notes?: string | null
+          synced_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopify_abandoned_checkouts_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_api_keys: {
         Row: {
           id: string
@@ -5629,6 +5724,112 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_carts: {
+        Row: {
+          id: string
+          visitor_id: string
+          session_id: string | null
+          status: string
+          reached_checkout: boolean
+          recovered: boolean
+          items: Json
+          item_count: number
+          subtotal: number
+          customer_user_id: string | null
+          customer_id: string | null
+          phone: string | null
+          customer_name: string | null
+          lead_id: string | null
+          order_id: string | null
+          source: string | null
+          attribution: Json | null
+          contacted: boolean
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+          last_activity_at: string
+          converted_at: string | null
+        }
+        Insert: {
+          id?: string
+          visitor_id: string
+          session_id?: string | null
+          status?: string
+          reached_checkout?: boolean
+          recovered?: boolean
+          items?: Json
+          item_count?: number
+          subtotal?: number
+          customer_user_id?: string | null
+          customer_id?: string | null
+          phone?: string | null
+          customer_name?: string | null
+          lead_id?: string | null
+          order_id?: string | null
+          source?: string | null
+          attribution?: Json | null
+          contacted?: boolean
+          contact_count?: number
+          last_contacted_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          last_activity_at?: string
+          converted_at?: string | null
+        }
+        Update: {
+          id?: string
+          visitor_id?: string
+          session_id?: string | null
+          status?: string
+          reached_checkout?: boolean
+          recovered?: boolean
+          items?: Json
+          item_count?: number
+          subtotal?: number
+          customer_user_id?: string | null
+          customer_id?: string | null
+          phone?: string | null
+          customer_name?: string | null
+          lead_id?: string | null
+          order_id?: string | null
+          source?: string | null
+          attribution?: Json | null
+          contacted?: boolean
+          contact_count?: number
+          last_contacted_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          last_activity_at?: string
+          converted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_carts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_carts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "checkout_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_carts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
@@ -6125,6 +6326,10 @@ export type Database = {
           p_tracking: string
         }
         Returns: string
+      }
+      abandoned_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       ad_account_update: {
         Args: {
@@ -6624,6 +6829,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      admin_get_store_cart: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
       admin_global_search: {
         Args: {
           p_q: string
@@ -6660,6 +6871,39 @@ export type Database = {
           notes: string | null
           created_at: string
           updated_at: string
+        }
+      }
+      admin_link_store_cart: {
+        Args: {
+          p_cart_id: string
+          p_order_id: string
+        }
+        Returns: {
+          id: string
+          visitor_id: string
+          session_id: string | null
+          status: string
+          reached_checkout: boolean
+          recovered: boolean
+          items: Json
+          item_count: number
+          subtotal: number
+          customer_user_id: string | null
+          customer_id: string | null
+          phone: string | null
+          customer_name: string | null
+          lead_id: string | null
+          order_id: string | null
+          source: string | null
+          attribution: Json | null
+          contacted: boolean
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+          last_activity_at: string
+          converted_at: string | null
         }
       }
       admin_merge_orders: {
@@ -7134,6 +7378,15 @@ export type Database = {
           updated_at: string
         }
       }
+      admin_shopify_abandoned: {
+        Args: {
+          p_view?: string
+          p_search?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
       admin_site_key_create: {
         Args: {
           p_name: string
@@ -7150,6 +7403,15 @@ export type Database = {
       }
       admin_site_keys: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_store_carts: {
+        Args: {
+          p_view?: string
+          p_search?: string
+          p_limit?: number
+          p_offset?: number
+        }
         Returns: Json
       }
       admin_update_checkout_lead: {
@@ -7318,6 +7580,75 @@ export type Database = {
           updated_by: string | null
           created_at: string
           updated_at: string
+        }
+      }
+      admin_update_shopify_abandoned: {
+        Args: {
+          p_id: string
+          p_status: string
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          channel_id: string
+          external_id: string
+          legacy_id: string | null
+          name: string | null
+          recovery_url: string | null
+          customer_name: string | null
+          email: string | null
+          phone: string | null
+          address: string | null
+          city: string | null
+          items: Json
+          item_count: number
+          subtotal: number | null
+          total: number
+          currency: string | null
+          shop_created_at: string | null
+          shop_updated_at: string | null
+          completed_at: string | null
+          status: string
+          follow_up: string
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          synced_at: string
+          created_at: string
+        }
+      }
+      admin_update_store_cart: {
+        Args: {
+          p_id: string
+          p_status: string
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          visitor_id: string
+          session_id: string | null
+          status: string
+          reached_checkout: boolean
+          recovered: boolean
+          items: Json
+          item_count: number
+          subtotal: number
+          customer_user_id: string | null
+          customer_id: string | null
+          phone: string | null
+          customer_name: string | null
+          lead_id: string | null
+          order_id: string | null
+          source: string | null
+          attribution: Json | null
+          contacted: boolean
+          contact_count: number
+          last_contacted_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+          last_activity_at: string
+          converted_at: string | null
         }
       }
       apply_fraud_decision: {
@@ -9091,6 +9422,21 @@ export type Database = {
       store_domains_list: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      storefront_cart_restore: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
+      storefront_cart_sync: {
+        Args: {
+          p_visitor_id: string
+          p_session_id: string
+          p_items: Json
+          p_attribution?: Json
+        }
+        Returns: string
       }
       storefront_categories: {
         Args: Record<PropertyKey, never>

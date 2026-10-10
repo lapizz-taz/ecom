@@ -67,6 +67,7 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('disconnect'), channel_id: channelId }),
   z.object({ action: z.literal('sync'), channel_id: channelId.optional(), days: z.number().int().min(1).max(60).default(3) }),
   z.object({ action: z.literal('process_jobs'), limit: z.number().int().min(1).max(50).default(20) }),
+  z.object({ action: z.literal('abandoned_sync'), channel_id: channelId.optional(), days: z.number().int().min(1).max(60).nullable().default(30), cursor: z.string().max(500).nullable().optional() }),
   z.object({ action: z.literal('import_catalog'), channel_id: channelId }),
   z.object({ action: z.literal('order_action'), order_id: z.string().uuid(), op: z.enum(['mark_paid', 'cancel']), note: z.string().trim().max(255).optional() }),
   z.object({ action: z.literal('reconnect'), channel_id: channelId }),
@@ -214,6 +215,31 @@ async function ingest(admin: SupabaseClient, c: Channel, order: NormalizedOrder,
 }
 
 /** Pull recent orders (also catches anything a webhook missed). */
+/**
+ * Shopify abandoned checkouts into our table: the last `days` days, or the
+ * whole history (days null) in batches — `cursor` continues the previous
+ * batch. A failure is stored on the channel (shown on the Abandoned Carts
+ * page) and never stops the order sync.
+ */
+async function syncAbandoned(admin: SupabaseClient, c: Channel, days: number | null, cursor: string | null = null):
+  Promise<{ id: string; name: string; ok: boolean; fetched: number; cursor: string | null; error?: string }> {
+  try {
+    const { rows, cursor: next } = await shopifyClient(c, await credsOf(admin, c)).abandonedCheckouts({
+      since: days ? new Date(Date.now() - days * 86_400_000).toISOString() : null,
+      after: cursor, max: days ? 500 : 600, deadline: Date.now() + 90_000,
+    })
+    const stored = rows.length ? await rpc<number>(admin, 'channel_abandoned_upsert', { p_channel_id: c.id, p_rows: rows }) : 0
+    if (!rows.length) await rpc(admin, 'channel_abandoned_upsert', { p_channel_id: c.id, p_rows: [] })
+    return { id: c.id, name: c.name, ok: true, fetched: stored, cursor: next }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await rpc(admin, 'channel_abandoned_upsert', { p_channel_id: c.id, p_rows: [], p_error: message })
+      .catch((e) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'channels', message: 'Could not record the abandoned-checkout error', error: e }))
+    void logEvent({ level: 'WARN', category: 'FUNCTION', source: 'channels', message: `${c.name}: abandoned checkouts — ${message}`, context: { channel_id: c.id } })
+    return { id: c.id, name: c.name, ok: false, fetched: 0, cursor: null, error: message }
+  }
+}
+
 async function syncChannel(admin: SupabaseClient, c: Channel, days: number): Promise<{ id: string; name: string; ok: boolean; error?: string; found: number; imported: number; duplicate: number; failed: number; skipped: number }> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const counts = { found: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 }
@@ -512,7 +538,7 @@ Deno.serve(
     const admin = adminClient()
     const cron = ((input.action === 'sync' && !input.channel_id) || input.action === 'process_jobs') && await isCronRequest(req, admin)
     const staff = cron ? null : await requireStaff(req,
-      input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' || input.action === 'order_action' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : 'settings.manage')
+      input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' || input.action === 'order_action' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : input.action === 'abandoned_sync' ? 'orders.view' : 'settings.manage')
     const actor = staff?.user.id ?? null
 
     try {
@@ -598,11 +624,23 @@ Deno.serve(
             : (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED')
           const results = []
           for (const c of list) results.push(await syncChannel(admin, c, cron ? 2 : input.days))
+          // The hourly run also refreshes Shopify's abandoned checkouts (last 7 days).
+          if (cron) for (const c of list.filter((x) => x.platform === 'SHOPIFY')) await syncAbandoned(admin, c, 7)
           if (input.channel_id && !results[0].ok) throw new HttpError(502, results[0].error ?? 'Sync failed', 'SYNC_FAILED')
           return json(req, { ok: results.every((r) => r.ok), channels: results })
         }
         case 'process_jobs':
           return json(req, await processJobs(admin, input.limit))
+        case 'abandoned_sync': {
+          const list = (input.channel_id ? [await channelOf(admin, input.channel_id)] : await rpc<Channel[]>(admin, 'sales_channels_list'))
+            .filter((c) => c.platform === 'SHOPIFY' && c.status !== 'DISCONNECTED')
+          if (!list.length) throw new HttpError(422, 'No Shopify store is connected', 'NOT_CONNECTED')
+          // Continuing a history import: one store per call, with its cursor.
+          if (input.cursor && list.length > 1) throw new HttpError(422, 'Choose the store to continue', 'VALIDATION')
+          const results = []
+          for (const c of list) results.push(await syncAbandoned(admin, c, input.days, input.cursor ?? null))
+          return json(req, { ok: results.every((r) => r.ok), channels: results })
+        }
         case 'import_catalog':
           return json(req, await importCatalog(admin, await channelOf(admin, input.channel_id)))
         case 'order_action': {

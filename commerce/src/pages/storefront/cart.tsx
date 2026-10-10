@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { QuantityStepper } from '@/features/cart/cart-drawer'
 import { useCart } from '@/features/cart/cart-store'
 import { useCartQuote } from '@/features/cart/use-cart-quote'
+import { useCartRestore } from '@/features/cart/use-cart-sync'
 import { imageUrl } from '@/services/catalog'
 
 export default function CartPage() {
@@ -17,7 +18,9 @@ export default function CartPage() {
   const problems = new Map((quote.data?.stock_errors ?? []).map((e) => [e.variant_id, e.message]))
   const lines = new Map((quote.data?.lines ?? []).map((l) => [l.variant_id, l]))
   const couponState = quote.data?.coupon
+  const restoring = useCartRestore()
 
+  if (restoring) return <div className="px-4 py-24 text-center text-sm text-muted-foreground">Bringing back your cart…</div>
   if (!items.length) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center gap-3 px-4 py-24 text-center">

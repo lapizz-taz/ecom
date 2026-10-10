@@ -92,6 +92,20 @@ export function timeAgo(value: string | Date | null | undefined): string {
   return formatDate(value)
 }
 
+/** Like Shopify: "Today at 9:05 pm", "Yesterday at 11:25 pm", "Friday at 10:54 pm", "3 Oct at 2:10 pm". */
+export function calendarTime(value: string | Date | null | undefined, now = new Date()): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diff = Math.round((day(now) - day(d)) / 86_400_000)
+  if (diff === 0) return `Today at ${time}`
+  if (diff === 1) return `Yesterday at ${time}`
+  if (diff > 1 && diff < 7) return `${d.toLocaleDateString('en-US', { weekday: 'long' })} at ${time}`
+  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
+  return `${date} at ${time}`
+}
+
 export function titleCase(value: string | null | undefined): string {
   if (!value) return ''
   return value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())

@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase'
 import { PAYMENT_METHOD } from '@/lib/status'
 import { variantsByIds } from '@/services/catalog'
 import { useOrderSources } from '@/hooks/use-order-sources'
+import { getStoreCart, linkStoreCart } from '@/services/abandoned'
 import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, setOrderSource } from '@/services/orders'
 import type { Enums } from '@/types/database'
 
@@ -59,6 +60,9 @@ export default function NewOrderPage() {
   const [params] = useSearchParams()
   const leadId = params.get('lead')
   const lead = useQuery({ queryKey: ['checkout-lead', leadId], enabled: !!leadId, queryFn: () => getCheckoutLead(leadId!) })
+  // Or from an abandoned cart (Web Orders → Abandoned Carts).
+  const cartId = params.get('cart')
+  const cart = useQuery({ queryKey: ['store-cart', cartId], enabled: !!cartId && !leadId, queryFn: () => getStoreCart(cartId!) })
   const prefilled = useRef(false)
   useEffect(() => {
     const l = lead.data
@@ -78,6 +82,24 @@ export default function NewOrderPage() {
       })))
     }).catch(() => toast.warning('Could not load the cart from the checkout — add the products by hand'))
   }, [lead.data])
+
+  const cartFilled = useRef(false)
+  useEffect(() => {
+    const c = cart.data
+    if (!c || cartFilled.current) return
+    cartFilled.current = true
+    setCustomer((v) => ({ ...v, full_name: c.customer_name ?? '', phone: c.phone ?? '' }))
+    void variantsByIds(c.items.map((i) => i.variant_id)).then((variants) => {
+      setLines(variants.map((v) => ({
+        variant_id: v.variant_id!,
+        label: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`,
+        sku: v.sku ?? '',
+        quantity: Math.max(1, c.items.find((i) => i.variant_id === v.variant_id)?.quantity ?? 1),
+        unit_price: toNumber(v.unit_price),
+        available: v.track_inventory ? v.available : null,
+      })))
+    }).catch(() => toast.warning('Could not load the cart — add the products by hand'))
+  }, [cart.data])
 
   // Pre-fill from an existing customer when the phone matches.
   const phone = useDebounce(normalizePhone(customer.phone), 400)
@@ -115,6 +137,8 @@ export default function NewOrderPage() {
       }, afterCreate === 'confirm')
       if (order?.id && leadId) {
         await linkCheckoutLead(leadId, order.id).catch(() => toast.warning('Order created, but it could not be linked to the checkout'))
+      } else if (order?.id && cartId && cart.data) {
+        await linkStoreCart(cartId, order.id).catch(() => toast.warning('Order created, but it could not be linked to the cart'))
       } else if (order?.id && orderSource) {
         await setOrderSource(order.id, orderSource).catch(() => toast.warning('Order created, but its source could not be saved'))
       }
@@ -148,6 +172,12 @@ export default function NewOrderPage() {
         <div className="rounded-lg border bg-card p-3 text-sm">
           From an incomplete checkout · {lead.data.phone}{lead.data.source ? <> · came from <span className="font-medium">{lead.data.source}</span></> : ''}.
           {' '}<span className="text-muted-foreground">The order keeps the visitor's ad source.</span>
+        </div>
+      )}
+      {cart.data && (
+        <div className="rounded-lg border bg-card p-3 text-sm">
+          From an abandoned cart{cart.data.phone ? ` · ${cart.data.phone}` : ''}{cart.data.source ? <> · came from <span className="font-medium">{cart.data.source}</span></> : ''}.
+          {' '}<span className="text-muted-foreground">Add the address; the order keeps the visitor's ad source.</span>
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
@@ -247,7 +277,7 @@ export default function NewOrderPage() {
               </dl>
               {(q?.stock_errors ?? []).map((e) => <p key={e.variant_id} className="text-xs text-destructive">{e.message}</p>)}
               {quote.error && <p className="text-xs text-destructive">{(quote.error as Error).message.replace(/^[A-Z_]+: /, '')}</p>}
-              {!leadId && (
+              {!leadId && !cartId && (
                 <Field label="Where did this order come from?" htmlFor="n-source" hint="Shown in reports next to website orders.">
                   <Select value={orderSource} onValueChange={setOrderSourceChoice}>
                     <SelectTrigger id="n-source"><SelectValue placeholder="Choose…" /></SelectTrigger>

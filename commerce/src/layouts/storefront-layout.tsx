@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { captureNavigation } from '@/lib/attribution'
 import { getCategories, trackEvent } from '@/services/storefront'
+import { useCartSync } from '@/features/cart/use-cart-sync'
 
 function useCategories() {
   return useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
@@ -34,6 +35,8 @@ export default function StorefrontLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [q, setQ] = useState('')
+
+  useCartSync()
 
   useEffect(() => {
     captureNavigation(location)

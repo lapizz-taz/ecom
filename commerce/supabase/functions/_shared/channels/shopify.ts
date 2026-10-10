@@ -513,6 +513,40 @@ export class ShopifyClient {
     return res.webhookSubscription.id
   }
 
+  /**
+   * Abandoned checkouts, newest first. `since` limits to a date (null = the
+   * whole history); `after` continues where an earlier call stopped. Stops at
+   * `max` rows or the deadline and returns the cursor to continue from (null
+   * when everything was read). Needs read_orders. Customer contact fields
+   * moved in newer API versions, so the query falls back to older names, then
+   * to the basics, when Shopify says a field doesn't exist.
+   */
+  async abandonedCheckouts(opts: { since?: string | null; after?: string | null; max?: number; deadline?: number } = {}): Promise<{ rows: AbandonedRow[]; cursor: string | null }> {
+    const max = opts.max ?? 250
+    const rows: AbandonedRow[] = []
+    let after: string | null = opts.after ?? null
+    let tier = 0
+    while (rows.length < max) {
+      type R = { abandonedCheckouts: { nodes: AbandonedNode[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } }
+      const { data, errors }: { data: R | null; errors: GqlError[] } = await this.raw<R>(`query($first: Int!, $after: String, $q: String) {
+        abandonedCheckouts(first: $first, after: $after, query: $q, reverse: true) { nodes { ${ABANDONED_FIELDS[tier]} } pageInfo { hasNextPage endCursor } } }`,
+      { first: Math.min(20, max - rows.length), after, q: opts.since ? `created_at:>=${opts.since.slice(0, 10)}` : null })
+      if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) {
+        throw new ChannelError('Shopify refused abandoned checkouts: the app needs read_orders, and the store must allow the app to read checkouts.', 403, 'ACCESS_DENIED')
+      }
+      if (!data?.abandonedCheckouts) {
+        if (errors.some((e) => /doesn't exist|undefinedField|not exist/i.test(e.message)) && tier < ABANDONED_FIELDS.length - 1) { tier++; continue }
+        throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+      }
+      rows.push(...data.abandonedCheckouts.nodes.map(abandonedRow))
+      const page = data.abandonedCheckouts.pageInfo
+      if (!page.hasNextPage || !page.endCursor) return { rows, cursor: null }
+      after = page.endCursor
+      if (opts.deadline && Date.now() > opts.deadline) break
+    }
+    return { rows, cursor: after }
+  }
+
   async removeWebhooks(ids: string[]): Promise<void> {
     for (const id of ids) {
       await this.raw('mutation($id: ID!) { webhookSubscriptionDelete(id: $id) { deletedWebhookSubscriptionId userErrors { message } } }', { id })
@@ -813,5 +847,78 @@ export function normalizeShopifyOrder(o: ShopifyOrder): NormalizedOrder {
     note: clean(o.note),
     attribution: first || last ? { first_touch: first ?? last, last_touch: last ?? first } : null,
     fulfillments: (o.fulfillments ?? []).map((f) => seenFulfillment(f, o.displayFulfillmentStatus === 'FULFILLED')),
+  }
+}
+
+// --- abandoned checkouts -------------------------------------------------------------------
+
+// 20 checkouts × 8 lines keeps each query well under Shopify's 1,000-point limit.
+const ABANDONED_LINES = `lineItems(first: 8) { nodes { title variantTitle quantity sku variant { legacyResourceId } originalUnitPriceSet { shopMoney { amount } } image { url } } }`
+const ABANDONED_BASE = `id name abandonedCheckoutUrl createdAt updatedAt completedAt
+  totalPriceSet { shopMoney { amount currencyCode } } subtotalPriceSet { shopMoney { amount } }
+  shippingAddress { name phone address1 address2 city province country }
+  billingAddress { name phone country }`
+/** Most complete first; each next one drops fields an older / newer API version doesn't have. */
+const ABANDONED_FIELDS = [
+  `${ABANDONED_BASE} customer { firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } } ${ABANDONED_LINES}`,
+  `${ABANDONED_BASE} customer { firstName lastName email phone } ${ABANDONED_LINES}`,
+  `id abandonedCheckoutUrl createdAt updatedAt completedAt totalPriceSet { shopMoney { amount currencyCode } } lineItems(first: 8) { nodes { title quantity } }`,
+]
+
+interface MoneyNode { shopMoney: { amount: string; currencyCode?: string } }
+interface AddressNode { name?: string | null; phone?: string | null; address1?: string | null; address2?: string | null; city?: string | null; province?: string | null; country?: string | null }
+export interface AbandonedNode {
+  id: string
+  name?: string | null
+  abandonedCheckoutUrl?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  completedAt?: string | null
+  totalPriceSet?: MoneyNode | null
+  subtotalPriceSet?: MoneyNode | null
+  shippingAddress?: AddressNode | null
+  billingAddress?: AddressNode | null
+  customer?: {
+    firstName?: string | null; lastName?: string | null; email?: string | null; phone?: string | null
+    defaultEmailAddress?: { emailAddress?: string | null } | null; defaultPhoneNumber?: { phoneNumber?: string | null } | null
+  } | null
+  lineItems?: { nodes: Array<{ title?: string | null; variantTitle?: string | null; quantity?: number | null; sku?: string | null
+    variant?: { legacyResourceId?: string | null } | null; originalUnitPriceSet?: MoneyNode | null; image?: { url?: string | null } | null }> } | null
+}
+export interface AbandonedRow {
+  id: string; legacy_id: string | null; name: string | null; recovery_url: string | null; customer_name: string | null; email: string | null; phone: string | null
+  address: string | null; city: string | null; province: string | null; country: string | null; items: Array<{ title: string; variant: string | null; sku: string | null; quantity: number; price: number | null; image: string | null; external_variant_id: string | null }>
+  item_count: number; subtotal: number | null; total: number; currency: string | null; created_at: string | null; updated_at: string | null; completed_at: string | null
+}
+
+export function abandonedRow(n: AbandonedNode): AbandonedRow {
+  const c = n.customer ?? null
+  const ship = n.shippingAddress ?? null
+  const name = [c?.firstName, c?.lastName].filter(Boolean).join(' ').trim() || ship?.name || n.billingAddress?.name || null
+  const items = (n.lineItems?.nodes ?? []).map((l) => ({
+    title: l.title ?? 'Item', variant: l.variantTitle && l.variantTitle !== 'Default Title' ? l.variantTitle : null, sku: l.sku ?? null,
+    quantity: Math.max(1, Number(l.quantity ?? 1)), price: l.originalUnitPriceSet ? money(l.originalUnitPriceSet.shopMoney.amount) : null,
+    image: l.image?.url ?? null, external_variant_id: l.variant?.legacyResourceId ?? null,
+  }))
+  return {
+    id: n.id,
+    legacy_id: /\/(\d+)(\?|$)/.exec(n.id)?.[1] ?? null,
+    name: n.name ?? null,
+    recovery_url: n.abandonedCheckoutUrl ?? null,
+    customer_name: name,
+    email: c?.defaultEmailAddress?.emailAddress ?? c?.email ?? null,
+    phone: c?.defaultPhoneNumber?.phoneNumber ?? c?.phone ?? ship?.phone ?? n.billingAddress?.phone ?? null,
+    address: [ship?.address1, ship?.address2].filter(Boolean).join(', ') || null,
+    city: ship?.city ?? null,
+    province: ship?.province ?? null,
+    country: ship?.country ?? n.billingAddress?.country ?? null,
+    items,
+    item_count: items.reduce((a, i) => a + i.quantity, 0),
+    subtotal: n.subtotalPriceSet ? money(n.subtotalPriceSet.shopMoney.amount) : null,
+    total: n.totalPriceSet ? money(n.totalPriceSet.shopMoney.amount) : 0,
+    currency: n.totalPriceSet?.shopMoney.currencyCode ?? null,
+    created_at: n.createdAt ?? null,
+    updated_at: n.updatedAt ?? null,
+    completed_at: n.completedAt ?? null,
   }
 }

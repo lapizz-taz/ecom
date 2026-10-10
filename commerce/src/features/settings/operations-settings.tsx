@@ -23,9 +23,12 @@ export function OperationsSettings() {
         <SwitchSetting s={orders} path={['require_confirmation']} label="Approve web orders by hand" hint="On: orders that pass the risk check wait in Web Orders until someone calls and approves them. Off: they are approved automatically." />
         <SwitchSetting s={orders} path={['require_confirmation_after_advance']} label="Still call after an advance is paid" />
         <SwitchSetting s={orders} path={['require_courier_before_ship']} label="Require a courier before marking shipped" />
+        <SwitchSetting s={orders} path={['track_carts']} label="Track carts on the store (abandoned carts)"
+          hint="The store keeps a copy of each visitor's cart so carts left behind show in Web Orders → Abandoned Carts" />
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberSetting s={orders} path={['advance_payment_timeout_hours']} label="Advance payment window (hours)" min={1} hint="Unpaid advance orders are cancelled after this" />
           <NumberSetting s={orders} path={['max_quantity_per_item']} label="Max quantity per item" min={1} />
+          <NumberSetting s={orders} path={['abandoned_cart_minutes']} label="Cart counts as abandoned after (minutes)" min={5} max={10080} hint="No activity for this long" />
         </div>
       </SettingCard>
 

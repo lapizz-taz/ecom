@@ -57,6 +57,7 @@ export const NAV: NavSection[] = [
         children: [
           { label: 'New Order', to: '/admin/orders/new', permission: 'orders.create' },
           { label: 'Web Order List', to: '/admin/orders/web' },
+          { label: 'Abandoned Carts', to: '/admin/orders/abandoned' },
           { label: 'Auto Pick Orders', to: '/admin/orders/auto-pick' },
           { label: 'Auto Call Center', to: '/admin/orders/call-center', badge: (c) => c.queue?.follow_up_due },
           { label: 'Order Block List', to: '/admin/orders/block-list' },
