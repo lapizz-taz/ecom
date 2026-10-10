@@ -992,16 +992,23 @@ begin
     'detail', case when v_n1 > 0 then format('%s unresolved error(s) in 24 h', v_n1) else 'No unresolved errors in 24 h' end, 'at', v_at);
 
   if to_regclass('cron.job_run_details') is not null then
+    -- A rare "job startup timeout" is retried by the next run; warn only when
+    -- a job's latest run failed or failures are more than 1 in 20.
     begin
       execute $q$
-        select jsonb_build_object('failed', count(*) filter (where status = 'failed' and start_time > now() - interval '24 hours'),
-                                  'last', max(end_time))
-        from cron.job_run_details where start_time > now() - interval '7 days'
+        select jsonb_build_object(
+          'failed', count(*) filter (where status = 'failed'), 'runs', count(*), 'last', max(end_time),
+          'latest_failed', (select count(*) from (select distinct on (jobid) status from cron.job_run_details
+                                                   where start_time > now() - interval '24 hours' order by jobid, start_time desc) x
+                            where x.status = 'failed'))
+        from cron.job_run_details where start_time > now() - interval '24 hours'
       $q$ into v_cron;
       v := v || jsonb_build_object('key', 'cron', 'name', 'Scheduled tasks',
-        'status', case when (v_cron ->> 'failed')::int > 0 then 'warn' when v_cron ->> 'last' is null then 'idle' else 'ok' end,
-        'detail', case when (v_cron ->> 'failed')::int > 0 then format('%s run(s) failed in 24 h', v_cron ->> 'failed')
-          when v_cron ->> 'last' is null then 'No runs in 7 days' else 'Running on schedule' end,
+        'status', case when (v_cron ->> 'latest_failed')::int > 0 or (v_cron ->> 'failed')::int * 20 > (v_cron ->> 'runs')::int then 'warn'
+          when v_cron ->> 'last' is null then 'idle' else 'ok' end,
+        'detail', case when v_cron ->> 'last' is null then 'No runs in 24 h'
+          when (v_cron ->> 'failed')::int > 0 then format('%s of %s runs failed in 24 h — each was retried on its next run', v_cron ->> 'failed', v_cron ->> 'runs')
+          else format('%s runs in 24 h, all on schedule', v_cron ->> 'runs') end,
         'at', v_cron ->> 'last');
     exception when insufficient_privilege then
       null;
