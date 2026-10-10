@@ -325,6 +325,7 @@ export type Database = {
           tags: string[]
           weight_grams: number | null
           removed_at: string | null
+          collections: string[]
         }
         Insert: {
           channel_id: string
@@ -351,6 +352,7 @@ export type Database = {
           tags?: string[]
           weight_grams?: number | null
           removed_at?: string | null
+          collections?: string[]
         }
         Update: {
           channel_id?: string
@@ -377,6 +379,7 @@ export type Database = {
           tags?: string[]
           weight_grams?: number | null
           removed_at?: string | null
+          collections?: string[]
         }
         Relationships: [
           {
@@ -589,6 +592,78 @@ export type Database = {
             foreignKeyName: "channel_order_imports_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_order_sync: {
+        Row: {
+          order_id: string
+          channel_id: string
+          external_order_id: string
+          cancel_status: string | null
+          cancel_error: string | null
+          cancel_requested_at: string | null
+          cancel_confirmed_at: string | null
+          restocked_in_store: boolean | null
+          paid_status: string | null
+          paid_error: string | null
+          paid_at: string | null
+          status_tag: string | null
+          tag_error: string | null
+          events: Json
+          event_error: string | null
+          updated_at: string
+        }
+        Insert: {
+          order_id: string
+          channel_id: string
+          external_order_id: string
+          cancel_status?: string | null
+          cancel_error?: string | null
+          cancel_requested_at?: string | null
+          cancel_confirmed_at?: string | null
+          restocked_in_store?: boolean | null
+          paid_status?: string | null
+          paid_error?: string | null
+          paid_at?: string | null
+          status_tag?: string | null
+          tag_error?: string | null
+          events?: Json
+          event_error?: string | null
+          updated_at?: string
+        }
+        Update: {
+          order_id?: string
+          channel_id?: string
+          external_order_id?: string
+          cancel_status?: string | null
+          cancel_error?: string | null
+          cancel_requested_at?: string | null
+          cancel_confirmed_at?: string | null
+          restocked_in_store?: boolean | null
+          paid_status?: string | null
+          paid_error?: string | null
+          paid_at?: string | null
+          status_tag?: string | null
+          tag_error?: string | null
+          events?: Json
+          event_error?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_order_sync_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_order_sync_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -6870,6 +6945,12 @@ export type Database = {
       channel_job_retry: {
         Args: {
           p_job_id: string
+        }
+        Returns: undefined
+      }
+      channel_order_sync_retry: {
+        Args: {
+          p_order_id: string
         }
         Returns: undefined
       }

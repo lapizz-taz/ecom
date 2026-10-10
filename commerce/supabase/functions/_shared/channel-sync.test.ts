@@ -292,3 +292,125 @@ describe('Delivered on Shopify', () => {
     expect(markDelivered).toHaveBeenCalledWith('gid://shopify/Fulfillment/555', '2026-10-10T08:00:00Z')
   })
 })
+
+describe('Order status → Shopify (one job, each step once)', () => {
+  const base = (over: Record<string, unknown> = {}) => fulfilCtx({
+    sync: { cancel_status: null, paid_status: null, status_tag: null, events: {} },
+    settings: { inventory_sync: true, mark_paid_on_delivery: true, status_tags: true, courier_events: true },
+    status_tag: 'Status: Confirmed', merged_tag: null, delivered_target: null,
+    fulfillment: null,
+    ...over,
+  })
+  const harness2 = (ctx: unknown, port: Partial<ShopifyPort>) => {
+    const syncSaves: Array<Record<string, unknown>> = []
+    const h = harness(ctx, port)
+    const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'channel_order_sync_update') { syncSaves.push(args.p as Record<string, unknown>); return null }
+      return (h.rpc as unknown as (f: string, a: Record<string, unknown>) => Promise<unknown>)(fn, args)
+    }) as never
+    return { ...h, rpc, syncSaves }
+  }
+  const st = (over = {}) => ({ cancelled: false, financialStatus: 'PENDING', tags: ['vip', 'Status: New'], fulfilled: false, ...over })
+
+  it('cancelled here: cancels on Shopify without restocking there when this app sets Shopify stock (no double restock)', async () => {
+    const cancelOrder = vi.fn(async () => 'gid://shopify/Job/1')
+    const updateTags = vi.fn(async () => undefined)
+    const h = harness2(base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null }, status_tag: 'Status: Cancelled',
+      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: null, events: {} } }), { orderState: async () => st(), cancelOrder, updateTags })
+    expect(await fulfillJob(job('FULFILL'), h.rpc, h.shopify, opts)).toMatchObject({ outcome: 'DONE' })
+    expect(cancelOrder).toHaveBeenCalledExactlyOnceWith('5001', expect.stringContaining('ISO-1'), false)
+    expect(h.syncSaves[0]).toMatchObject({ cancel_status: 'REQUESTED', restocked_in_store: false })
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], ['Status: New'])
+  })
+
+  it('stock not synced: Shopify restocks itself; already cancelled on Shopify: nothing sent; fulfilled on Shopify: refused with a clear reason', async () => {
+    const cancelOrder = vi.fn(async () => 'j')
+    const ctx = (over = {}) => base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null },
+      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: 'x', events: {} }, settings: { inventory_sync: false, mark_paid_on_delivery: true, status_tags: false, courier_events: true }, ...over })
+    const a = harness2(ctx(), { orderState: async () => st(), cancelOrder })
+    await fulfillJob(job('FULFILL'), a.rpc, a.shopify, opts)
+    expect(cancelOrder).toHaveBeenLastCalledWith('5001', expect.any(String), true)
+    const b = harness2(ctx(), { orderState: async () => st({ cancelled: true }), cancelOrder })
+    await fulfillJob(job('FULFILL'), b.rpc, b.shopify, opts)
+    expect(b.syncSaves[0]).toMatchObject({ cancel_status: 'CONFIRMED' })
+    const c = harness2(ctx(), { orderState: async () => st({ fulfilled: true }), cancelOrder })
+    await fulfillJob(job('FULFILL'), c.rpc, c.shopify, opts)
+    expect(c.syncSaves[0]).toMatchObject({ cancel_status: 'FAILED', cancel_error: expect.stringMatching(/fulfilled on Shopify/) })
+    expect(cancelOrder).toHaveBeenCalledTimes(1)
+  })
+
+  it('delivered (cash on delivery): Delivered event, marked paid once, tag updated; a second run sends nothing', async () => {
+    const markDelivered = vi.fn(async () => ({ id: 'ev1', existing: false }))
+    const markPaid = vi.fn(async () => 'PAID')
+    const updateTags = vi.fn(async () => undefined)
+    const delivered = (sync: Record<string, unknown>, fulfillment: Record<string, unknown>) => base({
+      order: { id: 'o1', order_number: 'ISO-1', status: 'DELIVERED', external_order_id: '5001', customer_email: null, payment_method: 'COD', delivered_at: '2026-10-10T08:00:00Z', was_delivered: true },
+      fulfillment, delivered_target: 'gid://shopify/Fulfillment/9', status_tag: 'Status: Delivered', sync })
+    const port = { orderState: async () => st({ tags: ['Status: Shipped'] }), markDelivered, markPaid, updateTags }
+    const first = harness2(delivered({ cancel_status: null, paid_status: null, status_tag: 'Status: Shipped', events: {} },
+      { status: 'FULFILLED', tracking_number: 'DL1', fulfillment_id: 'gid://shopify/Fulfillment/9', delivered_status: 'PENDING' }), port)
+    expect(await fulfillJob(job('FULFILL'), first.rpc, first.shopify, opts)).toMatchObject({ outcome: 'DONE' })
+    expect(markDelivered).toHaveBeenCalledTimes(1)
+    expect(markPaid).toHaveBeenCalledExactlyOnceWith('5001')
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Delivered'], ['Status: Shipped'])
+    const again = harness2(delivered({ cancel_status: null, paid_status: 'MARKED', status_tag: 'Status: Delivered', events: {} },
+      { status: 'FULFILLED', tracking_number: 'DL1', fulfillment_id: 'gid://shopify/Fulfillment/9', delivered_status: 'MARKED' }), port)
+    await fulfillJob(job('FULFILL'), again.rpc, again.shopify, opts)
+    expect(markDelivered).toHaveBeenCalledTimes(1)
+    expect(markPaid).toHaveBeenCalledTimes(1)
+    expect(updateTags).toHaveBeenCalledTimes(1)
+  })
+
+  it('courier updates: failed delivery → Attempted delivery; returned without delivery → Failure; each once', async () => {
+    const markEvent = vi.fn(async (_f: string, s: string) => ({ id: `ev-${s}`, existing: false }))
+    const ctx = (status: string, events = {}) => base({ order: { id: 'o1', order_number: 'ISO-1', status, external_order_id: '5001', customer_email: null, was_delivered: false },
+      fulfillment: { status: 'FULFILLED', tracking_number: 'DL1', fulfillment_id: 'F9', delivered_status: null }, delivered_target: 'F9',
+      sync: { cancel_status: null, paid_status: null, status_tag: 'x', events }, settings: { inventory_sync: true, mark_paid_on_delivery: true, status_tags: false, courier_events: true } })
+    const a = harness2(ctx('FAILED_DELIVERY'), { markEvent })
+    await fulfillJob(job('FULFILL'), a.rpc, a.shopify, opts)
+    expect(markEvent).toHaveBeenLastCalledWith('F9', 'ATTEMPTED_DELIVERY', null)
+    expect(a.syncSaves[0]).toMatchObject({ events: { ATTEMPTED_DELIVERY: 'ev-ATTEMPTED_DELIVERY' } })
+    const b = harness2(ctx('RETURNED', { ATTEMPTED_DELIVERY: 'x' }), { markEvent })
+    await fulfillJob(job('FULFILL'), b.rpc, b.shopify, opts)
+    expect(markEvent).toHaveBeenLastCalledWith('F9', 'FAILURE', null)
+    const c = harness2(ctx('RETURNED', { FAILURE: 'ev' }), { markEvent })
+    await fulfillJob(job('FULFILL'), c.rpc, c.shopify, opts)
+    expect(markEvent).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('Two-way stock', () => {
+  it('a change made in Shopify (after the grace period) is applied here instead of being overwritten', async () => {
+    const saves: Array<Record<string, unknown>> = []
+    const calls: string[] = []
+    const ctx = { variant_id: 'v1', inventory_item_id: 'i1', location_id: 'L1', policy: 'TWO_WAY', sync_on: true, desired: 9, track_inventory: true,
+      last_pushed_qty: 10, shopify_available: 13, mismatch_since: new Date(Date.now() - (GRACE_SECONDS + 5) * 1000).toISOString(), sku: 'X' }
+    const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
+      calls.push(fn)
+      if (fn === 'channel_inventory_context') return ctx
+      if (fn === 'channel_inventory_update') saves.push(args.p as Record<string, unknown>)
+      if (fn === 'channel_inventory_adopt_change') return { status: 'ADOPTED', change: 3 }
+      return null
+    }) as never
+    const setAvailable = vi.fn()
+    const out = await inventoryJob(job('INVENTORY'), rpc, () => ({ available: async () => 13, setAvailable }))
+    expect(out).toMatchObject({ outcome: 'DONE', result: { taken_from_store: 13, change: 3 } })
+    expect(calls).toContain('channel_inventory_adopt_change')
+    expect(setAvailable).not.toHaveBeenCalled()
+  })
+})
+
+describe('Order without a fulfilment', () => {
+  it('a cancelled order that was never shipped: no fulfilment is touched, the tag still goes out', async () => {
+    const updateTags = vi.fn(async () => undefined)
+    const saves: string[] = []
+    const ctx = fulfilCtx({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null },
+      fulfillment: null, sync: { cancel_status: 'CONFIRMED', paid_status: null, status_tag: null, events: {} },
+      settings: { inventory_sync: true, mark_paid_on_delivery: true, status_tags: true, courier_events: true }, status_tag: 'Status: Cancelled' })
+    const rpc = vi.fn(async (fn: string) => { saves.push(fn); return fn === 'channel_fulfillment_context' ? ctx : null }) as never
+    const out = await fulfillJob(job('FULFILL'), rpc, () => ({ orderState: async () => ({ cancelled: true, financialStatus: 'PENDING', tags: [], fulfilled: false }), updateTags }) as never, opts)
+    expect(out.outcome).toBe('DONE')
+    expect(saves).not.toContain('channel_fulfillment_update')
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], [])
+  })
+})

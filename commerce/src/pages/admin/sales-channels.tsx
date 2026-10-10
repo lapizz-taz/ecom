@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import type { StoreMode } from '@/types/domain'
 import {
   type ChannelCheck, type ChannelImport, type ChannelPlatform, disconnectChannel, fixWebhooks, listChannelImports, listChannels,
-  reconnectChannel, retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, SHOPIFY_APP_SCOPES, syncChannel,
+  reconnectChannel, retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, saveSyncSettings, syncChannel,
   testChannel, wooConnect, wooKeys,
 } from '@/services/channels'
 
@@ -353,17 +353,24 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<'client' | 'oauth' | 'token'>('client')
   const [f, setF] = useState({ shop: '', client_id: '', client_secret: '', access_token: '', api_secret: '' })
+  const [features, setFeatures] = useState<string[]>(ALL_FEATURES)
   const [result, setResult] = useState<SetupResult | null>(null)
   const run = useMutation({
     meta: { silent: true },
     mutationFn: async () => {
-      if (mode === 'client') return shopifyClientConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined })
+      const done = async (r: SetupResult) => {
+        // Features not chosen are switched off right away.
+        const off = settingsFor(features)
+        if (r.channel?.id && Object.keys(off).length) await saveSyncSettings(r.channel.id, off).catch(() => undefined)
+        return r
+      }
+      if (mode === 'client') return done(await shopifyClientConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined }))
       if (mode === 'oauth') {
-        const r = await shopifyConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined, return_to: returnTo() })
+        const r = await shopifyConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined, return_to: returnTo(), scopes: scopesFor(features) })
         window.location.href = r.url
         return null
       }
-      return shopifyToken({ shop: f.shop, access_token: f.access_token, api_secret: f.api_secret })
+      return done(await shopifyToken({ shop: f.shop, access_token: f.access_token, api_secret: f.api_secret }))
     },
     onSuccess: (r) => { if (r) { setResult(r); void queryClient.invalidateQueries({ queryKey: ['sales-channels'] }) } },
   })
@@ -375,7 +382,7 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
       submitLabel={mode === 'oauth' ? 'Continue to Shopify' : 'Connect and test'} onSubmit={() => run.mutate()}
       disabled={!f.shop || (app ? !f.client_id || !f.client_secret : !f.access_token || !f.api_secret)}>
       <Tabs value={mode} onChange={setMode} options={[['client', 'App keys (easiest)'], ['oauth', 'Approve on Shopify'], ['token', 'Admin API token']]} />
-      {app && <ShopifySteps mode={mode} />}
+      {app && <ShopifySteps mode={mode} features={features} onFeatures={setFeatures} />}
       <Field label="Store address" htmlFor="sh-shop" hint="Your myshopify.com address, e.g. mystore.myshopify.com">
         <Input id="sh-shop" value={f.shop} onChange={set('shop')} placeholder="mystore.myshopify.com" autoComplete="off" />
       </Field>
@@ -394,40 +401,50 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-/** What each permission is used for, so nothing is granted blindly. */
-const SHOPIFY_ACCESS: Array<{ area: string; scopes: string[]; use: string; soon?: boolean }> = [
-  { area: 'Orders', scopes: ['read_orders', 'write_orders'], use: 'Import new orders and cancellations. Changes an order in Shopify (mark paid, cancel) only when you click it.' },
-  { area: 'Fulfilment', scopes: ['read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders'], use: 'When an order is Shipped here: fulfil it on Shopify with the courier, tracking number and tracking link.' },
-  { area: 'Delivered', scopes: ['read_fulfillments', 'write_fulfillments'], use: 'When the courier delivers it here: mark the Shopify fulfilment Delivered.' },
-  { area: 'Stock', scopes: ['read_inventory', 'write_inventory'], use: 'Keep Shopify’s available quantity equal to yours after every sale, cancel, return or purchase.' },
-  { area: 'Locations', scopes: ['read_locations', 'write_locations'], use: 'Choose which Shopify location is kept in step.' },
-  { area: 'Products', scopes: ['read_products', 'write_products'], use: 'Bring Shopify products here with SKU, prices, cost, images and stock (first sync), and new ones as they are added.' },
-  { area: 'Draft orders', scopes: ['read_draft_orders', 'write_draft_orders'], use: 'Send orders taken here (phone, Messenger) to Shopify.', soon: true },
-  { area: 'Returns', scopes: ['read_returns', 'write_returns'], use: 'See returns made in Shopify and record yours there.', soon: true },
+/** Features to choose when connecting; each asks only for the Shopify permissions it needs. */
+const SHOPIFY_FEATURES: Array<{ id: string; label: string; scopes: string[]; why: string; required?: boolean; off?: Record<string, boolean> }> = [
+  { id: 'orders', label: 'Import and manage orders', scopes: ['read_orders'], why: 'Read new orders, cancellations and where each order came from (ad, post, Google …).', required: true },
+  { id: 'products', label: 'Import products and variants', scopes: ['read_products'], why: 'Bring products here with SKU, prices, images and options, and new ones as they are added.', off: { auto_import_products: false, update_products: false } },
+  { id: 'stock', label: 'Sync stock both ways', scopes: ['read_inventory', 'write_inventory', 'read_locations'], why: 'Read and set the available quantity at your Shopify location.' },
+  { id: 'cost', label: 'Import cost prices', scopes: ['read_inventory'], why: "Read each item's cost, so profit is right." },
+  { id: 'tracking', label: 'Fulfil with tracking when shipped', scopes: ['read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders'], why: 'Mark the order fulfilled on Shopify with the courier and tracking link.', off: { fulfill_on_ship: false } },
+  { id: 'delivered', label: 'Mark delivered and courier updates', scopes: ['read_fulfillments', 'write_fulfillments'], why: 'Show Delivered, failed delivery and returned on the Shopify order.', off: { mark_delivered: false, courier_events: false } },
+  { id: 'status', label: 'Update order status on Shopify', scopes: ['write_orders'], why: 'Add a "Status: …" tag and mark cash-on-delivery orders paid when delivered.', off: { status_tags: false, mark_paid_on_delivery: false } },
+  { id: 'cancel', label: 'Cancel Shopify orders from here', scopes: ['write_orders'], why: 'Cancelling in Web Orders or Approved Orders cancels it on Shopify (stock never added twice).', off: { cancel_on_shopify: false } },
 ]
+const ALL_FEATURES = SHOPIFY_FEATURES.map((x) => x.id)
+const scopesFor = (features: string[]) => [...new Set(SHOPIFY_FEATURES.filter((x) => x.required || features.includes(x.id)).flatMap((x) => x.scopes))]
+/** Settings to switch off for features that were not chosen. */
+const settingsFor = (features: string[]) => Object.assign({}, ...SHOPIFY_FEATURES.filter((x) => !x.required && !features.includes(x.id)).map((x) => x.off ?? {}))
 
-function ShopifyAccessList() {
+function FeaturePicker({ features, onChange }: { features: string[]; onChange: (f: string[]) => void }) {
+  const scopes = scopesFor(features)
   return (
-    <div className="overflow-hidden rounded-lg border text-foreground">
-      {SHOPIFY_ACCESS.map((a) => (
-        <div key={a.area} className="grid gap-1 border-b px-3 py-2 last:border-0 sm:grid-cols-[7rem_minmax(0,1fr)]">
-          <p className="text-xs font-semibold">{a.area}{a.soon && <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] font-normal text-muted-foreground">next update</span>}</p>
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap gap-1">{a.scopes.map((x) => <code key={x} className="rounded bg-muted px-1.5 py-0.5 text-[11px] break-all">{x}</code>)}</div>
-            <p className="text-xs text-muted-foreground">{a.use}</p>
-          </div>
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-lg border text-foreground">
+        {SHOPIFY_FEATURES.map((x) => (
+          <label key={x.id} className={cn('flex gap-3 border-b px-3 py-2 last:border-0', x.required ? 'opacity-80' : 'cursor-pointer hover:bg-muted/30')}>
+            <input type="checkbox" className="mt-0.5 size-4 accent-current" checked={x.required || features.includes(x.id)} disabled={x.required}
+              onChange={(e) => onChange(e.target.checked ? [...features, x.id] : features.filter((y) => y !== x.id))} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{x.label}{x.required && <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">always</span>}</span>
+              <span className="block text-xs text-muted-foreground">{x.why}</span>
+              <span className="mt-1 flex flex-wrap gap-1">{x.scopes.map((sc) => <code key={sc} className="rounded bg-muted px-1.5 py-0.5 text-[11px] break-all">{sc}</code>)}</span>
+            </span>
+          </label>
+        ))}
+        <div className="bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <b className="text-foreground">Customer details</b> are not a permission: request <b className="text-foreground">Name, Email, Phone, Address</b> under Protected customer data (step 3), or orders arrive without the customer.
         </div>
-      ))}
-      <div className="grid gap-1 bg-muted/40 px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
-        <p className="text-xs font-semibold">Customer data</p>
-        <p className="text-xs text-muted-foreground">Not a scope: request <b className="text-foreground">Name, Email, Phone, Address</b> under Protected customer data (step 3), or orders arrive without the customer.</p>
       </div>
+      <p className="text-xs">Permissions to add in Shopify ({scopes.length}) — copy all of them into the app version:</p>
+      <CopyLine value={scopes.join(',')} />
     </div>
   )
 }
 
 /** The Dev Dashboard steps, with the exact values to copy. */
-function ShopifySteps({ mode }: { mode: 'client' | 'oauth' }) {
+function ShopifySteps({ mode, features, onFeatures }: { mode: 'client' | 'oauth'; features: string[]; onFeatures: (f: string[]) => void }) {
   const step = (n: number, title: string, body: ReactNode) => (
     <li className="flex gap-3">
       <span className="grid size-6 shrink-0 place-items-center rounded-full bg-foreground text-xs font-semibold text-background">{n}</span>
@@ -444,8 +461,8 @@ function ShopifySteps({ mode }: { mode: 'client' | 'oauth' }) {
         {step(2, 'Create a version with these settings', <>
           <p>App URL</p><CopyLine value={shopifyAppUrl()} />
           {mode === 'oauth' && <><p>Redirect URL (same domain as the App URL)</p><CopyLine value={shopifyRedirectUri()} /></>}
-          <p>Scopes — copy all of them into the version</p><CopyLine value={SHOPIFY_APP_SCOPES} />
-          <ShopifyAccessList />
+          <p>Choose what you want to use — the permissions update below</p>
+          <FeaturePicker features={features} onChange={onFeatures} />
           <p>Embed app in Shopify admin: <b className="text-foreground">off</b> · Webhooks API version: <b className="text-foreground">2026-07</b> · then <b className="text-foreground">Release</b>.</p>
         </>)}
         {step(3, 'Allow customer details', <p>API access → Protected customer data → request <b className="text-foreground">Name, Email, Phone, Address</b> (reason: order fulfilment).</p>)}

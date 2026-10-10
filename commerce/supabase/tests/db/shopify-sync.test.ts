@@ -49,7 +49,7 @@ describe('Shopify fulfilment queue', () => {
       const o = await imported(db, c, 'TOTE-SY1')
       await advanceOrder(db, o, ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'])
       await asSystem(db)
-      expect(await jobs(db, 'FULFILL', o)).toEqual([])
+      // Status updates (tag) are queued, but nothing is fulfilled before Shipped.
       expect(await fulfilment(db, o)).toBeNull()
 
       const courier = await value<string>(db, `insert into public.couriers(name, provider, api_enabled, tracking_url_template)
@@ -114,7 +114,8 @@ describe('Shopify fulfilment queue', () => {
       const o = await imported(db, c, 'TOTE-SY3')
       await ship(db, o, 'DL9')
       await asSystem(db)
-      expect(await jobs(db, 'FULFILL', o)).toEqual([])
+      // Fulfilment switched off: no fulfilment is created (only the status tag goes out).
+      expect(await fulfilment(db, o)).toBeNull()
     }))
 })
 

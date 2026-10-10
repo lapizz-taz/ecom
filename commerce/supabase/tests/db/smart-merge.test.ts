@@ -118,14 +118,19 @@ describe('smart automatic merging', () => {
       expect(c2.id).not.toBe(c.id)
       expect(c2.merged).toBe(false)
 
-      // Already approved: the new web order is flagged "already in Approved Orders".
+      // Approved and already packed / ready to ship: protected — the new web order is only flagged.
       const d = await checkout(db, { phone: '01712345606', items: [{ variantId: v.cap, quantity: 1 }] })
-      await advanceOrder(db, d.id, ['CONFIRMED', 'PROCESSING'])
+      await advanceOrder(db, d.id, ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'])
       const d2 = await checkout(db, { phone: '01712345606', items: [{ variantId: v.cap, quantity: 1 }] })
       expect(d2.merged).toBe(false)
       const flagged = await row(db, d2.id)
       expect(flagged).toMatchObject({ duplicate_status: 'SUSPECTED', duplicate_of: d.id, duplicate_reason: 'APPROVED' })
-      expect((await row(db, d.id)).merged_count).toBe(0) // the approved order is untouched
+      expect((await row(db, d.id)).merged_count).toBe(0) // the packed order is untouched
+      // Approved but not packed yet (Confirmed / Processing): merged into it.
+      const ap = await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })
+      await advanceOrder(db, ap.id, ['CONFIRMED'])
+      expect((await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })).merged).toBe(true)
+      expect((await row(db, ap.id)).merged_count).toBe(1)
 
       // Switched off: nothing merges.
       await setSetting(db, 'orders', { auto_merge_web_enabled: false })

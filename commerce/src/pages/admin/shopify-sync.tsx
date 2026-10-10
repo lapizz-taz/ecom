@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, CircleCheck, DownloadCloud, ExternalLink, ImageOff, Link2, PackagePlus, Play, RefreshCw, RotateCw, Search, Unlink } from 'lucide-react'
+import {
+  AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, CircleCheck, Clock, DownloadCloud, ExternalLink, HelpCircle, ImageOff, Link2, ListChecks, PackagePlus, Play,
+  RefreshCw, RotateCw, Search, Settings2, Unlink,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { PageHeader } from '@/components/common/page-header'
-import { StatCard } from '@/components/common/stat-card'
 import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,7 +52,7 @@ function Pill({ tone, children }: { tone: 'ok' | 'warn' | 'muted'; children: Rea
 export default function StoreSyncPage() {
   const channels = useQuery({ queryKey: ['sales-channels'], queryFn: listChannels })
   const shops = (channels.data ?? []).filter((c) => c.status !== 'DISCONNECTED')
-  const [state, update] = useUrlState({ channel: '', tab: 'stock' })
+  const [state, update] = useUrlState({ channel: '', tab: 'activity' })
   const channelId = state.channel || shops[0]?.id || ''
 
   if (channels.isLoading) return <LoadingState />
@@ -90,12 +92,13 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
   const o = overview.data!
   const diffs = o.items.filter((i) => i.difference !== null && i.difference !== 0 && i.status !== 'UNTRACKED')
   const missingScopes = o.channel.platform !== 'SHOPIFY' ? []
-    : ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders', 'read_products', 'write_fulfillments'].filter((s) => !o.channel.scopes.includes(s))
+    : ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders', 'read_products', 'write_fulfillments', 'write_orders'].filter((s) => !o.channel.scopes.includes(s))
   const firstDone = !!o.channel.first_sync_at
+  const health = connectionHealth(o, missingScopes)
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Store sync" description={`Your stock is the source of truth for ${store}'s. Shipped orders can be marked shipped on ${store} with the courier's tracking link.`}
+      <PageHeader title={`${store} sync`} description={`Orders, stock and products kept in step with ${store} automatically.`}
         actions={<>
           {shops.length > 1 && (
             <Select value={channelId} onValueChange={onChannel}>
@@ -103,44 +106,113 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
               <SelectContent>{shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} · {storeName(s.platform)}</SelectItem>)}</SelectContent>
             </Select>
           )}
-          {can('inventory.view') && <Button size="sm" variant="outline" onClick={() => catalog.mutate()} disabled={catalog.isPending}>{catalog.isPending ? <Spinner /> : <DownloadCloud />} Read {store} catalog</Button>}
-          {can('orders.update') && <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? <Spinner /> : <Play />} Run sync now</Button>}
+          <Button size="sm" variant="outline" asChild><Link to="/admin/channels"><HelpCircle /> Guide</Link></Button>
+          <Button size="sm" variant="outline" onClick={() => onTab('settings')}><Settings2 /> Settings</Button>
         </>} />
 
       {missingScopes.length > 0 && (
-        <p className="flex items-start gap-2 rounded-lg border border-foreground/40 p-3 text-sm"><AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          The app is missing {missingScopes.join(', ')}. Add them to the Shopify app's access scopes, release a new version, then click Connect again on Sales channels.</p>
+        <p className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"><AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>Shopify has not given this app: {missingScopes.join(', ')}. Add them to the app in Shopify's Dev Dashboard, release the version, then connect again on Sales channels.</span></p>
       )}
 
       {!firstDone && o.channel.status === 'CONNECTED' && <FirstSyncCard o={o} channelId={channelId} store={store} onDone={refresh} />}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Linked variants" value={formatNumber(o.items.length)} hint={firstDone ? `First sync ${timeAgo(o.channel.first_sync_at!)}` : o.channel.catalog_imported_at ? `Catalog read ${timeAgo(o.channel.catalog_imported_at)}` : 'Read the catalog first'} />
-        <StatCard label="In step" value={formatNumber(o.items.filter((i) => i.status === 'OK').length)} />
-        <StatCard label="Differences" value={formatNumber(diffs.length)} hint="Review under Stock" />
-        <StatCard label="Not linked" value={formatNumber(o.unmapped.length)} />
-        <StatCard label="Sync jobs" value={`${o.jobs.pending} waiting`} hint={o.jobs.failed ? `${o.jobs.failed} failed` : 'None failed'} />
-      </div>
+      <StatusCard o={o} store={store} health={health} />
+      <QueueCard o={o} onView={() => onTab('activity')} onRun={() => run.mutate()} running={run.isPending} canRun={can('orders.update')} />
 
-      <SettingsCard o={o} channelId={channelId} onSaved={refresh} store={store} />
-
-      <Tabs value={tab} onValueChange={onTab}>
+      <Tabs value={tab === 'stock' && !firstDone ? 'stock' : tab} onValueChange={onTab}>
         <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
           <TabsList>
+            <TabsTrigger value="activity">Recent activity</TabsTrigger>
             <TabsTrigger value="stock">Stock{diffs.length ? ` · ${diffs.length}` : ''}</TabsTrigger>
+            <TabsTrigger value="fulfilments">Orders</TabsTrigger>
+            <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="unmapped">Not linked{o.unmapped.length ? ` · ${o.unmapped.length}` : ''}</TabsTrigger>
-            <TabsTrigger value="products">Import products</TabsTrigger>
-            <TabsTrigger value="fulfilments">Fulfilments</TabsTrigger>
-            <TabsTrigger value="jobs">Jobs{o.jobs.failed ? ` · ${o.jobs.failed} failed` : ''}</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
         </div>
+        <TabsContent value="activity" className="animate-in fade-in-0"><JobsTab o={o} onDone={refresh} /></TabsContent>
         <TabsContent value="stock" className="animate-in fade-in-0"><StockTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
-        <TabsContent value="unmapped" className="animate-in fade-in-0"><UnmappedTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
-        <TabsContent value="products" className="animate-in fade-in-0"><ProductsTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
         <TabsContent value="fulfilments" className="animate-in fade-in-0"><FulfilmentsTab o={o} store={store} /></TabsContent>
-        <TabsContent value="jobs" className="animate-in fade-in-0"><JobsTab o={o} onDone={refresh} /></TabsContent>
+        <TabsContent value="products" className="animate-in fade-in-0"><ProductsTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
+        <TabsContent value="unmapped" className="animate-in fade-in-0"><UnmappedTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
+        <TabsContent value="settings" className="animate-in fade-in-0 space-y-3">
+          <SettingsCard o={o} channelId={channelId} onSaved={refresh} store={store} />
+          {can('inventory.view') && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              Products and stock are read from {store} by themselves (right after connecting and every hour).
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => catalog.mutate()} disabled={catalog.isPending}>{catalog.isPending ? <Spinner /> : <DownloadCloud />} Read {store} now</Button>
+            </p>
+          )}
+        </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+type Health = { tone: 'ok' | 'busy' | 'action' | 'failed'; title: string; detail: string }
+/** Connected / Syncing / Action required / Sync failed, in plain words. */
+function connectionHealth(o: SyncOverview, missing: string[]): Health {
+  const store = storeName(o.channel.platform)
+  if (o.channel.status !== 'CONNECTED') {
+    return { tone: 'failed', title: 'Not connected', detail: o.channel.last_error ? `${o.channel.last_error}. Connect the store again on Sales channels.` : 'Connect the store again on Sales channels.' }
+  }
+  if (o.jobs.failed > 0) return { tone: 'failed', title: 'Sync failed', detail: `${o.jobs.failed} update${o.jobs.failed === 1 ? '' : 's'} could not be sent to ${store}. See Recent activity — they can be retried.` }
+  if (!o.channel.first_sync_at) return { tone: 'action', title: 'Action required', detail: 'Run the first sync above to bring your products and stock in.' }
+  if (missing.length) return { tone: 'action', title: 'Action required', detail: `Give the app the missing permissions (${missing.join(', ')}).` }
+  if (o.jobs.pending + o.jobs.processing > 0) return { tone: 'busy', title: 'Syncing', detail: `${o.jobs.pending + o.jobs.processing} update${o.jobs.pending + o.jobs.processing === 1 ? '' : 's'} being sent to ${store}.` }
+  return { tone: 'ok', title: 'Stock sync active', detail: `Your ${store} store is connected and everything is in step.` }
+}
+
+function StatusCard({ o, store, health }: { o: SyncOverview; store: string; health: Health }) {
+  const loc = o.channel.locations.find((l) => l.id === o.channel.settings.location_id)
+  const s = o.channel.settings
+  const Icon = health.tone === 'ok' ? CircleCheck : health.tone === 'busy' ? RefreshCw : AlertTriangle
+  const tile = (label: string, value: string) => (
+    <div className="rounded-lg bg-muted/50 px-3 py-2.5"><p className="text-xs text-muted-foreground">{label}</p><p className="truncate font-semibold">{value}</p></div>
+  )
+  return (
+    <Card className="gap-3">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className={cn('size-4', health.tone === 'ok' ? 'text-emerald-500' : health.tone === 'busy' ? 'animate-spin text-sky-500' : health.tone === 'action' ? 'text-amber-500' : 'text-red-500')} />
+          {health.title}
+        </CardTitle>
+        <CardDescription>{health.detail}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {tile('Real-time sync', s.inventory_sync ? 'Enabled' : 'Off')}
+        {tile('Order stock', 'Reserved when ordered')}
+        {tile('Location', loc?.name ?? 'Not chosen')}
+        {tile(`Changes made in ${store}`, s.external_changes === 'TWO_WAY' ? 'Two-way (applied here)' : s.external_changes === 'SAAS_WINS' ? 'This app wins' : 'Flagged for review')}
+      </CardContent>
+    </Card>
+  )
+}
+
+function QueueCard({ o, onView, onRun, running, canRun }: { o: SyncOverview; onView: () => void; onRun: () => void; running: boolean; canRun: boolean }) {
+  const box = (label: string, value: number, tone: string, icon: React.ReactNode) => (
+    <div className={cn('rounded-lg border px-3 py-2.5', tone)}>
+      <p className="flex items-center gap-1.5 text-xs">{icon}{label}</p>
+      <p className="text-2xl font-semibold tabular-nums">{formatNumber(value)}</p>
+    </div>
+  )
+  return (
+    <Card className="gap-3">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+        <div><CardTitle className="text-base">Sync queue</CardTitle><CardDescription>Updates go out by themselves within about a minute.</CardDescription></div>
+        <div className="flex gap-2">
+          {canRun && <Button size="sm" variant="ghost" onClick={onRun} disabled={running}>{running ? <Spinner /> : <Play />} Send now</Button>}
+          <Button size="sm" variant="outline" onClick={onView}><ListChecks /> View activity</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {box('Pending', o.jobs.pending, 'border-amber-500/40 bg-amber-500/10', <Clock className="size-3.5" />)}
+        {box('Processing', o.jobs.processing, 'border-sky-500/40 bg-sky-500/10', <RefreshCw className="size-3.5" />)}
+        {box('Failed', o.jobs.failed, 'border-red-500/40 bg-red-500/10', <AlertTriangle className="size-3.5" />)}
+        {box('Completed', o.jobs.completed, 'border-emerald-500/40 bg-emerald-500/10', <CircleCheck className="size-3.5" />)}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -283,7 +355,9 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
     onError: (e) => toast.error(toUserMessage(e)),
   })
   const edit = can('settings.manage')
-  const row = (label: string, hint: string, key: 'fulfill_on_ship' | 'notify_customer' | 'fulfill_without_tracking' | 'inventory_sync' | 'auto_import_products' | 'mark_delivered') => (
+  type Key = 'fulfill_on_ship' | 'notify_customer' | 'fulfill_without_tracking' | 'inventory_sync' | 'auto_import_products' | 'mark_delivered'
+    | 'cancel_on_shopify' | 'mark_paid_on_delivery' | 'status_tags' | 'courier_events' | 'update_products'
+  const row = (label: string, hint: string, key: Key) => (
     <label className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
       <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{hint}</span></span>
       <Switch checked={s[key]} disabled={!edit} onCheckedChange={(v) => setS((x) => ({ ...x, [key]: v }))} />
@@ -306,11 +380,19 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
             : row('E-mail the tracking note to the customer', 'Added as a customer note, which WooCommerce e-mails', 'notify_customer')}
           {row('Allow fulfilment without tracking', 'Off: an order without a tracking number waits until one is added', 'fulfill_without_tracking')}
           {o.channel.platform === 'SHOPIFY' && row('Mark delivered on Shopify', 'When the courier delivers it here, the order shows Delivered on Shopify too', 'mark_delivered')}
+          {o.channel.platform === 'SHOPIFY' && <>
+            <p className="pt-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Order status on Shopify</p>
+            {row('Cancel on Shopify when cancelled here', 'From Web Orders or Approved Orders. Stock is never put back twice.', 'cancel_on_shopify')}
+            {row('Mark paid when delivered', 'Cash-on-delivery orders show Paid on Shopify once the courier delivers', 'mark_paid_on_delivery')}
+            {row('Show our status as a tag', 'Adds "Status: Confirmed / Shipped / Delivered / Returned …" to the Shopify order', 'status_tags')}
+            {row('Send courier updates', 'Failed delivery and returned parcels show on the Shopify fulfilment', 'courier_events')}
+          </>}
         </div>
         <div className="grid content-start gap-2">
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Stock</p>
           {row(`Keep ${store} stock in step`, `Your available stock (on hand − reserved) is set on ${store} after every change`, 'inventory_sync')}
           {row(`Import new ${store} products automatically`, `A product added in ${store} comes here with its SKU, prices, cost, images and stock (after the first sync)`, 'auto_import_products')}
+          {row(`Update products from ${store}`, `Price, cost, name, description, barcode, weight and images follow ${store}`, 'update_products')}
           <Field label={`${store} location`}>
             <Select value={s.location_id ?? ''} onValueChange={(v) => { if (v) setS((x) => ({ ...x, location_id: v })) }} disabled={!edit || !o.channel.locations.length}>
               <SelectTrigger className="w-full"><SelectValue placeholder={o.channel.locations.length ? 'Choose a location' : 'Read the catalog to load locations'} /></SelectTrigger>
@@ -318,10 +400,11 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
             </Select>
           </Field>
           <Field label={`When stock is changed by hand in ${store}`}>
-            <Select value={s.external_changes} onValueChange={(v) => setS((x) => ({ ...x, external_changes: v as 'FLAG' | 'SAAS_WINS' }))} disabled={!edit}>
+            <Select value={s.external_changes} onValueChange={(v) => setS((x) => ({ ...x, external_changes: v as 'FLAG' | 'SAAS_WINS' | 'TWO_WAY' }))} disabled={!edit}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="FLAG">Flag it for me to review (recommended)</SelectItem>
+                <SelectItem value="TWO_WAY">Two-way — apply it to my stock here too (recommended)</SelectItem>
+                <SelectItem value="FLAG">Flag it for me to review</SelectItem>
                 <SelectItem value="SAAS_WINS">This app wins — set {store} back to my stock</SelectItem>
               </SelectContent>
             </Select>
@@ -510,26 +593,56 @@ function FulfilmentsTab({ o, store }: { o: SyncOverview; store: string }) {
   )
 }
 
+/** What was sent, in plain words: one line per order or product. */
+function activityText(j: SyncOverview['recent_jobs'][number]): string {
+  const r = (j.result ?? {}) as Record<string, unknown>
+  if (j.kind === 'INVENTORY') {
+    if (r.set !== undefined) return `Stock set to ${r.set}${r.from !== undefined && r.from !== null ? ` (was ${r.from})` : ''}`
+    if (r.taken_from_store !== undefined) return `Changed in the store → ${r.taken_from_store} (applied here)`
+    if (r.in_step !== undefined) return `Already in step (${r.in_step})`
+    if (r.flagged !== undefined) return 'Changed in the store — flagged for review'
+    return j.status === 'DONE' ? 'Checked' : 'Stock update'
+  }
+  const parts: string[] = []
+  if (r.cancel_job || r.cancel === 'already cancelled') parts.push('cancelled')
+  if (r.fulfillment_id || r.adopted) parts.push('fulfilled')
+  if (r.delivered_event) parts.push('delivered')
+  if (r.event) parts.push(String(r.event).toLowerCase().replace(/_/g, ' '))
+  if (r.paid) parts.push('marked paid')
+  if (r.tag) parts.push(String(r.tag))
+  if (r.waiting) parts.push('waiting for a tracking number')
+  return parts.length ? parts.join(' · ') : j.status === 'DONE' ? 'Up to date' : 'Order update'
+}
+
 function JobsTab({ o, onDone }: { o: SyncOverview; onDone: () => void }) {
   const { can } = useAuth()
   const retry = useMutation({
     mutationFn: async (id: string) => { await retrySyncJob(id); await runSyncJobs() },
-    onSuccess: () => { toast.success('Retried'); onDone() },
+    onSuccess: () => { toast.success('Sent again'); onDone() },
     onError: (e) => toast.error(toUserMessage(e)),
   })
-  if (!o.recent_jobs.length) return <EmptyState title="No sync jobs yet" />
+  if (!o.recent_jobs.length) return <EmptyState title="Nothing sent yet" description="Order and stock updates appear here as they go out." />
   return (
     <Card className="gap-0 py-0">
       <ul className="divide-y text-sm">
         {o.recent_jobs.map((j) => (
-          <li key={j.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
-            <span className="w-20 text-xs text-muted-foreground">{j.kind === 'FULFILL' ? 'Fulfilment' : 'Stock'}</span>
-            <span className="min-w-0 flex-1 truncate">
-              {j.kind === 'FULFILL' ? <Link to={`/admin/orders/${j.ref_id}`} className="font-medium hover:underline">{j.label}</Link> : <span className="font-mono text-xs">{j.label}</span>}
-              {j.last_error && <span className="block truncate text-xs text-muted-foreground" title={j.last_error}>{j.last_error}</span>}
+          <li key={j.id} className="flex items-center gap-3 px-3 py-2.5">
+            {j.status === 'DONE' ? <CircleCheck className="size-4 shrink-0 text-emerald-500" />
+              : j.status === 'FAILED' ? <AlertTriangle className="size-4 shrink-0 text-red-500" />
+                : <RefreshCw className={cn('size-4 shrink-0 text-sky-500', j.status === 'RUNNING' && 'animate-spin')} />}
+            <span className="min-w-0 flex-1">
+              {j.kind === 'FULFILL'
+                ? <Link to={`/admin/orders/${j.ref_id}`} className="font-medium hover:underline">{j.label ?? 'Order'}</Link>
+                : <span className="font-medium">{j.label ?? 'Product'}</span>}
+              <span className="block truncate text-xs text-muted-foreground" title={j.last_error ?? undefined}>
+                {j.sku && <span className="font-mono">{j.sku} · </span>}{j.status === 'FAILED' || (j.last_error && j.status !== 'DONE') ? j.last_error : activityText(j)}
+              </span>
             </span>
-            <Pill tone={j.status === 'DONE' ? 'ok' : j.status === 'FAILED' ? 'warn' : 'muted'}>{j.status.toLowerCase()}{j.attempts > 1 ? ` · ${j.attempts} tries` : ''}</Pill>
-            <span className="w-24 text-right text-xs text-muted-foreground">{timeAgo(j.updated_at)}</span>
+            <span className="hidden gap-1 sm:flex">
+              <Pill tone={j.status === 'DONE' ? 'ok' : j.status === 'FAILED' ? 'warn' : 'muted'}>{j.status === 'DONE' ? 'success' : j.status === 'FAILED' ? 'failed' : j.status.toLowerCase()}</Pill>
+              <Pill tone="muted">{j.kind === 'FULFILL' ? 'order' : 'stock'}</Pill>
+            </span>
+            <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">{timeAgo(j.updated_at)}</span>
             {j.status === 'FAILED' && can('settings.manage') && <Button size="sm" variant="outline" onClick={() => retry.mutate(j.id)} disabled={retry.isPending}><RotateCw /> Retry</Button>}
           </li>
         ))}

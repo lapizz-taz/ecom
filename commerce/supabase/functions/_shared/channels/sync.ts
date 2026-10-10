@@ -17,6 +17,11 @@ export interface ShopifyPort extends StockPort {
   fulfillmentState(orderId: string): Promise<FulfillmentState>
   createFulfillment(input: { groups: FulfillmentGroup[]; notifyCustomer: boolean; tracking: { company: string | null; number: string | null; url: string | null } | null }): Promise<SeenFulfillment>
   markDelivered(fulfillmentId: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }>
+  markEvent(fulfillmentId: string, status: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }>
+  orderState(orderId: string): Promise<{ cancelled: boolean; financialStatus: string | null; tags: string[]; fulfilled: boolean }>
+  cancelOrder(orderId: string, staffNote: string | null, restock?: boolean): Promise<string>
+  markPaid(orderId: string): Promise<string>
+  updateTags(orderId: string, add: string[], remove: string[]): Promise<void>
 }
 /** What the worker needs from WooCommerce (WooClient implements it). */
 export interface WooPort {
@@ -26,8 +31,16 @@ export interface WooPort {
 }
 export type Rpc = <T>(fn: string, args: Record<string, unknown>) => Promise<T>
 
+interface SyncState {
+  cancel_status: string | null; paid_status: string | null; status_tag: string | null; events: Record<string, string>
+}
 interface FulfillContext {
-  order: { id: string; order_number: string; status: string; external_order_id: string; customer_email: string | null; delivered_at?: string | null }
+  order: { id: string; order_number: string; status: string; external_order_id: string; customer_email: string | null; delivered_at?: string | null
+    own_status?: string; merged_into?: string | null; payment_method?: string | null; was_delivered?: boolean }
+  sync?: SyncState | null
+  settings?: { inventory_sync: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean }
+  status_tag?: string | null
+  merged_tag?: string | null
   fulfillment: { status: string; tracking_number: string | null; fulfillment_id?: string | null; delivered_status?: string | null } | null
   /** The Shopify fulfilment to mark Delivered: ours, or one made in Shopify. */
   delivered_target?: string | null
@@ -47,13 +60,118 @@ export function retryable(error: unknown): boolean {
   return true
 }
 
+const worst = (outs: Outcome[]): Outcome => {
+  const retry = outs.find((o) => o.outcome === 'RETRY')
+  const failed = outs.find((o) => o.outcome === 'FAILED')
+  const result = Object.assign({}, ...outs.map((o) => o.result ?? {}))
+  if (retry) return { outcome: 'RETRY', error: retry.error, delay: retry.delay, result }
+  if (failed) return { outcome: 'FAILED', error: failed.error, result }
+  return { outcome: 'DONE', result }
+}
+/** Delivery updates Shopify shows on the fulfilment, by our order status. */
+const EVENT_FOR: Record<string, string> = { FAILED_DELIVERY: 'ATTEMPTED_DELIVERY', RETURNING: 'FAILURE', RETURNED: 'FAILURE', RETURN_REQUESTED: 'FAILURE' }
+const isTag = (t: string) => t.startsWith('Status: ') || t.startsWith('Merged: ')
+
 /**
- * Fulfils a shipped Shopify order (once), and when the order is delivered here
- * also marks that fulfilment Delivered on Shopify (once). Both steps look at
- * Shopify first, so a retry never creates a second fulfilment or event.
+ * Keeps one Shopify order in step with ours, step by step: cancel (when it was
+ * cancelled here), fulfil when shipped, Delivered when delivered, courier
+ * updates (attempted / returned), mark paid when a cash-on-delivery order is
+ * delivered, and the "Status: …" tag. Every step looks at Shopify first and is
+ * recorded, so a retry never does anything twice.
  */
 export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort, opts: ChannelOpts): Promise<Outcome> {
   const ctx = await rpc<FulfillContext>('channel_fulfillment_context', { p_order_id: job.ref_id })
+  const sync = ctx.sync ?? null
+  const set = ctx.settings
+  const ext = ctx.order.external_order_id
+  const saveSync = (p: Record<string, unknown>) => rpc('channel_order_sync_update', { p_order_id: job.ref_id, p })
+  let state: Awaited<ReturnType<ShopifyPort['orderState']>> | null = null
+  const shopState = async () => (state ??= await shopify().orderState(ext))
+  const outs: Outcome[] = []
+  const step = async (name: string, errorKey: string, run: () => Promise<Outcome>) => {
+    try {
+      outs.push(await run())
+    } catch (error) {
+      const message = (error as Error).message
+      if (retryable(error)) {
+        await saveSync({ [errorKey]: `${message} — will try again` }).catch(() => undefined)
+        outs.push({ outcome: 'RETRY', error: `${name}: ${message}` })
+      } else {
+        outs.push({ outcome: 'FAILED', error: `${name}: ${message}` })
+        await saveSync({ ...(errorKey === 'cancel_error' ? { cancel_status: 'FAILED' } : errorKey === 'paid_error' ? { paid_status: 'FAILED' } : {}), [errorKey]: message })
+          .catch(() => undefined)
+      }
+    }
+  }
+
+  // 1. Cancelled here → cancel on Shopify. Restock there only when this app does
+  //    not set Shopify's stock (otherwise our own stock push puts it back: once).
+  if (sync?.cancel_status === 'PENDING') {
+    await step('Cancel', 'cancel_error', async () => {
+      const st = await shopState()
+      if (st.cancelled) {
+        await saveSync({ cancel_status: 'CONFIRMED', cancel_error: '' })
+        return { outcome: 'DONE', result: { cancel: 'already cancelled' } }
+      }
+      if (st.fulfilled) {
+        await saveSync({ cancel_status: 'FAILED', cancel_error: 'Already fulfilled on Shopify, so Shopify will not cancel it. Cancel it in Shopify or start a return there.' })
+        return { outcome: 'DONE', result: { cancel: 'fulfilled' } }
+      }
+      const restock = !set?.inventory_sync
+      const jobId = await shopify().cancelOrder(ext, `Cancelled in the order system (${ctx.order.order_number})`, restock)
+      await saveSync({ cancel_status: 'REQUESTED', restocked_in_store: restock, cancel_error: '' })
+      return { outcome: 'DONE', result: { cancel_job: jobId } }
+    })
+  }
+
+  // 2. Fulfil when shipped; Delivered when delivered.
+  //    (A waiting fulfilment of a cancelled order is recorded as skipped, never sent.)
+  outs.push(await fulfilStep(job, ctx, rpc, shopify, opts))
+
+  // 3. Courier updates on the fulfilment (attempted delivery, returned).
+  const event = EVENT_FOR[ctx.order.status]
+  const target = ctx.delivered_target
+  if (sync && set?.courier_events && event && target && !(event === 'FAILURE' && ctx.order.was_delivered) && !sync.events?.[event]) {
+    await step('Delivery update', 'event_error', async () => {
+      const ev = await shopify().markEvent(target, event, null)
+      await saveSync({ events: { [event]: ev.id }, event_error: '' })
+      return { outcome: 'DONE', result: { event, event_id: ev.id } }
+    })
+  }
+
+  // 4. Cash collected on delivery → paid on Shopify.
+  if (sync && set?.mark_paid_on_delivery && ctx.order.status === 'DELIVERED' && ['COD', 'ADVANCE'].includes(ctx.order.payment_method ?? 'COD')
+      && sync.paid_status !== 'MARKED' && sync.paid_status !== 'FAILED') {
+    await step('Mark paid', 'paid_error', async () => {
+      const st = await shopState()
+      if (st.financialStatus === 'PAID') {
+        await saveSync({ paid_status: 'MARKED', paid_error: '' })
+        return { outcome: 'DONE', result: { paid: 'already' } }
+      }
+      const fin = await shopify().markPaid(ext)
+      await saveSync({ paid_status: 'MARKED', paid_error: '' })
+      return { outcome: 'DONE', result: { paid: fin } }
+    })
+  }
+
+  // 5. Our status as a tag on the Shopify order.
+  const wanted = [ctx.status_tag, ctx.merged_tag].filter((t): t is string => !!t)
+  const key = wanted.join(' | ')
+  if (sync && set?.status_tags && wanted.length && sync.status_tag !== key) {
+    await step('Status tag', 'tag_error', async () => {
+      const st = await shopState()
+      const remove = st.tags.filter((t) => isTag(t) && !wanted.includes(t))
+      const add = wanted.filter((t) => !st.tags.includes(t))
+      if (add.length || remove.length) await shopify().updateTags(ext, add, remove)
+      await saveSync({ status_tag: key, tag_error: '' })
+      return { outcome: 'DONE', result: { tag: key } }
+    })
+  }
+  return worst(outs)
+}
+
+/** Fulfils a shipped Shopify order (once), then marks it Delivered when delivered (once). */
+async function fulfilStep(job: Job, ctx: FulfillContext, rpc: Rpc, shopify: () => ShopifyPort, opts: ChannelOpts): Promise<Outcome> {
   const f = ctx.fulfillment
   const save = (p: Record<string, unknown>) => rpc('channel_fulfillment_update', { p_order_id: job.ref_id, p })
   const wantDelivered = f?.delivered_status === 'PENDING' && ctx.order.status === 'DELIVERED'
@@ -78,7 +196,7 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
     }
   }
 
-  if (!f) return { outcome: 'DONE', result: { skipped: 'none' } }
+  if (!f || !f.status) return { outcome: 'DONE', result: { skipped: 'none' } }
   if (f.status === 'FULFILLED' || f.status === 'SKIPPED') {
     if (wantDelivered) return deliver(ctx.delivered_target)
     return { outcome: 'DONE', result: { skipped: f.status } }
@@ -149,12 +267,12 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
 }
 
 interface InventoryContext {
-  variant_id: string; inventory_item_id: string | null; location_id: string | null; policy: 'FLAG' | 'SAAS_WINS'; sync_on: boolean
+  variant_id: string; inventory_item_id: string | null; location_id: string | null; policy: 'FLAG' | 'SAAS_WINS' | 'TWO_WAY'; sync_on: boolean
   desired: number; track_inventory: boolean; last_pushed_qty: number | null; shopify_available: number | null; mismatch_since: string | null; sku: string | null
 }
 
 /** Seconds to wait for a Shopify order to arrive before calling a difference "made in Shopify". */
-export const GRACE_SECONDS = 120
+export const GRACE_SECONDS = 60
 
 /**
  * WooCommerce has no fulfilments: the order is marked Completed and the courier,
@@ -238,6 +356,12 @@ export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => StockPort,
       if (since === null || now - since < GRACE_SECONDS * 1000) {
         await save({ shopify_available: current, sync_status: 'MISMATCH', error: `Changed in ${store} (${ctx.last_pushed_qty} → ${current}); checking again shortly` })
         return { outcome: 'RETRY', error: 'waiting for orders to arrive', delay: GRACE_SECONDS }
+      }
+      // Two-way: the store's change is applied here (as the difference), then
+      // the result is sent back only if it differs (no loop).
+      if (ctx.policy === 'TWO_WAY') {
+        const r = await rpc<{ status: string; change?: number }>('channel_inventory_adopt_change', { p_channel_id: job.channel_id, p_variant_id: job.ref_id, p_store_qty: current })
+        return { outcome: 'DONE', result: { taken_from_store: current, change: r?.change ?? 0 } }
       }
       if (ctx.policy !== 'SAAS_WINS') {
         await save({ shopify_available: current, sync_status: 'MISMATCH',

@@ -49,7 +49,7 @@ const call = <T>(body: Record<string, unknown>) => invokeFunction<T>('channels',
 /** Dev Dashboard app installed on the store: client credentials, no redirect. */
 export const shopifyClientConnect = (input: { shop: string; client_id: string; client_secret?: string }) =>
   call<SetupResult>({ action: 'shopify_client', ...input })
-export const shopifyConnect = (input: { shop: string; client_id: string; client_secret?: string; return_to: string }) =>
+export const shopifyConnect = (input: { shop: string; client_id: string; client_secret?: string; return_to: string; scopes?: string[] }) =>
   call<{ url: string; redirect_uri: string; channel_id: string }>({ action: 'shopify_connect', ...input })
 export const shopifyToken = (input: { shop: string; access_token: string; api_secret: string }) =>
   call<SetupResult>({ action: 'shopify_token', ...input })
@@ -91,17 +91,20 @@ export interface SyncItem {
 }
 export interface SyncOverview {
   channel: { id: string; name: string; status: string; platform: ChannelPlatform; locations: Array<{ id: string; name: string; active: boolean }>; catalog_imported_at: string | null
-    first_sync_at: string | null; catalog_items: number
-    scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS'; fulfill_on_ship: boolean; notify_customer: boolean
-      fulfill_without_tracking: boolean; auto_import_products: boolean; mark_delivered: boolean } }
+    first_sync_at: string | null; catalog_items: number; shop_domain?: string; last_error?: string | null
+    scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS' | 'TWO_WAY'; fulfill_on_ship: boolean; notify_customer: boolean
+      fulfill_without_tracking: boolean; auto_import_products: boolean; mark_delivered: boolean
+      cancel_on_shopify: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; update_products: boolean } }
   items: SyncItem[]
   unmapped: Array<{ external_variant_id: string; sku: string | null; title: string; status: string | null; available: number | null
     reason: 'NO_SKU' | 'DUPLICATE_SKU_SHOPIFY' | 'DUPLICATE_SKU_HERE' | 'NO_MATCH' }>
-  jobs: { pending: number; failed: number }
-  recent_jobs: Array<{ id: string; kind: 'FULFILL' | 'INVENTORY'; status: string; attempts: number; last_error: string | null; updated_at: string; ref_id: string; label: string | null }>
+  jobs: { pending: number; processing: number; failed: number; completed: number; completed_today: number }
+  recent_jobs: Array<{ id: string; kind: 'FULFILL' | 'INVENTORY'; status: string; attempts: number; last_error: string | null; updated_at: string; ref_id: string; label: string | null
+    sku?: string | null; result?: Record<string, unknown> | null; payload?: Record<string, unknown> | null }>
   fulfillments: Array<{ order_id: string; order_number: string; status: string; source: string; courier: string | null; tracking_number: string | null
     tracking_url: string | null; notification_status: string | null; last_error: string | null; created_at: string; fulfilled_at: string | null
-    delivered_status: DeliveredStatus | null; delivered_at: string | null; delivered_error: string | null }>
+    delivered_status: DeliveredStatus | null; delivered_at: string | null; delivered_error: string | null
+    cancel_status?: string | null; paid_status?: string | null; status_tag?: string | null }>
 }
 export type DeliveredStatus = 'PENDING' | 'MARKED' | 'FAILED' | 'SKIPPED'
 
@@ -153,7 +156,16 @@ export interface OrderChannelInfo {
     tracking_url: string | null; shopify_status: string | null; notification_status: 'REQUESTED' | 'NO_EMAIL' | 'DISABLED' | null; notification_note: string | null
     attempts: number; last_error: string | null; fulfilled_at: string | null; synced_at: string | null; created_at: string
     delivered_status?: DeliveredStatus | null; delivered_at?: string | null; delivered_error?: string | null }>
+  merged_into?: string | null
+  sync?: { cancel_status: string | null; cancel_error: string | null; cancel_requested_at: string | null; cancel_confirmed_at: string | null; restocked_in_store: boolean | null
+    paid_status: string | null; paid_error: string | null; paid_at: string | null; status_tag: string | null; tag_error: string | null
+    events: Record<string, string>; event_error: string | null; updated_at: string } | null
   job: { status: string; attempts: number; next_attempt_at: string; last_error: string | null } | null
+}
+export async function retryOrderSync(orderId: string) {
+  const { error } = await supabase.rpc('channel_order_sync_retry', { p_order_id: orderId })
+  if (error) throw error
+  await runSyncJobs().catch(() => undefined)
 }
 export async function orderChannelInfo(orderId: string): Promise<OrderChannelInfo | null> {
   const { data, error } = await supabase.rpc('order_channel_info', { p_order_id: orderId })

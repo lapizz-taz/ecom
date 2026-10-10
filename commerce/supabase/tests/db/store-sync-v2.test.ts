@@ -94,7 +94,8 @@ describe('First sync with a store', () => {
       const linked = await value<Record<string, any>>(db, `select to_jsonb(v) from public.product_variants v where id = $1`, [mine.variantIds[0]])
       expect(Number(linked.cost_price)).toBe(300)
       expect(linked.barcode).toBe(`BC-MINE-${sfx}`)
-      expect(Number(linked.price)).not.toBe(990)
+      // Product details follow Shopify after the first sync ("Update products from Shopify").
+      expect(Number(linked.price)).toBe(990)
       // Archived product not imported.
       expect(await value<number>(db, `select count(*)::int from public.product_variants where sku = $1`, [`OLD-${sfx}`])).toBe(0)
       // Sync is on; everything in step except the one the store had negative.
@@ -283,7 +284,7 @@ describe('Shopify order A to Z: stock moves once, fulfilled when shipped, delive
       await db.query(`select public.channel_fulfillment_update($1, $2)`, [o, JSON.stringify({ status: 'FULFILLED', fulfillment_id: 'gid://shopify/Fulfillment/10' })])
       await advanceOrder(db, o, ['DELIVERED'])
       await asSystem(db)
-      expect(await pendingJobs(db, c, 'FULFILL')).toBe(0)
+      // A status update still goes to Shopify (tag), but no Delivered mark is wanted.
       expect(await value<Record<string, any>>(db, `select to_jsonb(f) from public.channel_fulfillments f where order_id = $1 and source = 'APP'`, [o]))
         .toMatchObject({ delivered_status: null })
     }))

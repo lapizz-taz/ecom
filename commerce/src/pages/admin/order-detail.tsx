@@ -37,7 +37,7 @@ import {
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
-import { orderChannelInfo, retryChannelFulfillment, shopifyOrderAction } from '@/services/channels'
+import { orderChannelInfo, type OrderChannelInfo, retryChannelFulfillment, retryOrderSync, shopifyOrderAction } from '@/services/channels'
 import { listOrderMessages } from '@/services/sms'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
@@ -921,6 +921,26 @@ const FULFIL_LABEL: Record<string, string> = {
 const DELIVERED_LABEL: Record<string, string> = { PENDING: 'Sending…', MARKED: 'Delivered', FAILED: 'Failed', SKIPPED: 'Not sent' }
 const NOTIFY_LABEL: Record<string, string> = { REQUESTED: 'Shopify asked to e-mail the customer', NO_EMAIL: 'No customer e-mail on the order', DISABLED: 'Customer e-mails turned off' }
 
+const CANCEL_LABEL: Record<string, string> = { PENDING: 'Sending…', REQUESTED: 'Sent — waiting for Shopify', CONFIRMED: 'Cancelled on Shopify', FAILED: 'Failed', SKIPPED: 'Not sent' }
+const SHOPIFY_EVENT_LABEL: Record<string, string> = { ATTEMPTED_DELIVERY: 'Delivery attempted', FAILURE: 'Returned / failed', DELIVERED: 'Delivered' }
+
+/** What this app has told Shopify about the order (besides the fulfilment). */
+function ShopifySyncRows({ s, canRetry, onRetry, busy }: { s: NonNullable<OrderChannelInfo['sync']>; canRetry: boolean; onRetry: () => void; busy: boolean }) {
+  const failed = s.cancel_status === 'FAILED' || s.paid_status === 'FAILED' || !!s.tag_error || !!s.event_error
+  const errors = [s.cancel_status === 'FAILED' && s.cancel_error, s.paid_status === 'FAILED' && s.paid_error, s.tag_error, s.event_error].filter(Boolean) as string[]
+  if (!s.cancel_status && !s.paid_status && !s.status_tag && !Object.keys(s.events ?? {}).length) return null
+  return (
+    <div className="space-y-1.5 border-t pt-2">
+      {s.status_tag && <Row label="Shopify tag" value={<span className="text-xs">{s.status_tag}</span>} />}
+      {s.cancel_status && <Row label="Cancel" value={<span title={s.cancel_error ?? undefined}>{CANCEL_LABEL[s.cancel_status] ?? s.cancel_status}{s.cancel_status !== 'FAILED' && s.restocked_in_store === false ? ' · stock handled here' : ''}</span>} />}
+      {s.paid_status && <Row label="Paid on Shopify" value={s.paid_status === 'MARKED' ? <span className="inline-flex items-center gap-1"><Check className="size-3.5" /> {s.paid_at ? formatDateTime(s.paid_at) : 'Yes'}</span> : DELIVERED_LABEL[s.paid_status] ?? s.paid_status} />}
+      {Object.keys(s.events ?? {}).length > 0 && <Row label="Courier updates" value={Object.keys(s.events).map((k) => SHOPIFY_EVENT_LABEL[k] ?? k).join(', ')} />}
+      {errors.map((e) => <p key={e} className="rounded-md bg-muted/60 p-2 text-xs">{e}</p>)}
+      {failed && canRetry && <Button size="sm" variant="outline" onClick={onRetry} disabled={busy}>{busy ? <Spinner /> : <RefreshCw />} Send to Shopify again</Button>}
+    </div>
+  )
+}
+
 /** Orders imported from Shopify: the Shopify order, its fulfilment and tracking as Shopify has them. */
 function ChannelOrderCard({ orderId, status }: { orderId: string; status?: string }) {
   const qc = useQueryClient()
@@ -938,6 +958,11 @@ function ChannelOrderCard({ orderId, status }: { orderId: string; status?: strin
   const info = useQuery({ queryKey: ['order-channel-info', orderId], queryFn: () => orderChannelInfo(orderId), refetchInterval: (q) => (q.state.data?.job ? 10_000 : false) })
   const retry = useMutation({
     mutationFn: () => retryChannelFulfillment(orderId),
+    onSuccess: () => { toast.success('Sending to Shopify again'); qc.invalidateQueries({ queryKey: ['order-channel-info', orderId] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+  const syncRetry = useMutation({
+    mutationFn: () => retryOrderSync(orderId),
     onSuccess: () => { toast.success('Sending to Shopify again'); qc.invalidateQueries({ queryKey: ['order-channel-info', orderId] }) },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -991,6 +1016,8 @@ function ChannelOrderCard({ orderId, status }: { orderId: string; status?: strin
             )}
           </div>
         )}
+        {c.merged_into && <p className="text-xs text-muted-foreground">Merged into {c.merged_into}: this Shopify order is updated together with it (shipped, delivered, cancelled).</p>}
+        {c.sync && <ShopifySyncRows s={c.sync} canRetry={can('orders.update')} onRetry={() => syncRetry.mutate()} busy={syncRetry.isPending} />}
         {others.length > 0 && (
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Fulfilled in Shopify directly</p>

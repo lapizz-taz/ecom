@@ -29,7 +29,9 @@ describe('source classification', () => {
     inTx(async (db) => {
       expect(await classify(db, touch({ srsltid: 'AfmB' }, 'https://www.google.com/'))).toMatchObject({ channel: 'organic_search', source: 'Google', is_paid: false })
       expect(await classify(db, touch({}, 'https://www.google.com.bd/'))).toMatchObject({ channel: 'organic_search', source: 'Google' })
-      expect(await classify(db, touch({}, 'https://m.facebook.com/'))).toMatchObject({ channel: 'organic_social', source: 'Facebook' })
+      // A Facebook link without ad tags: we know the site, not whether it was an ad.
+      expect(await classify(db, touch({}, 'https://m.facebook.com/'))).toMatchObject({ channel: 'social', source: 'Facebook', is_paid: null })
+      expect(await classify(db, touch({ utm_source: 'facebook', utm_medium: 'social' }))).toMatchObject({ channel: 'organic_social', source: 'Facebook', is_paid: false })
       expect(await classify(db, touch({}, 'https://l.instagram.com/'))).toMatchObject({ source: 'Instagram' })
       expect(await classify(db, touch({}, 'https://web.whatsapp.com/'))).toMatchObject({ channel: 'messaging', source: 'WhatsApp' })
       expect(await classify(db, touch({ utm_source: 'whatsapp' }))).toMatchObject({ channel: 'messaging', source: 'WhatsApp' })

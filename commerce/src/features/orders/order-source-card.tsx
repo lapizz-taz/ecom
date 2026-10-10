@@ -13,12 +13,18 @@ import { MANUAL_SOURCES, type OrderDetail, setOrderSource } from '@/services/ord
 
 type Attribution = NonNullable<OrderDetail['attribution']>
 
+/** Paid / Organic / Direct / Referral / Unknown — only what the data shows, never a guess. */
 export function paidBadge(a: { is_paid: boolean | null; channel: string }) {
-  if (a.channel === 'unknown') return <Badge variant="neutral">No tracking data</Badge>
+  if (a.channel === 'unknown') return <Badge variant="neutral" title="The store did not pass on where this visit came from">Unknown</Badge>
   if (a.channel === 'direct') return <Badge variant="neutral">Direct</Badge>
   if (a.is_paid === true) return <Badge variant="violet">Paid</Badge>
-  if (a.is_paid === null) return <Badge variant="warning" title="Facebook adds fbclid to ads and posts alike. Add UTM tags to your ads to tell them apart.">Paid or organic?</Badge>
-  return <Badge variant="success">{a.channel.startsWith('organic') ? 'Organic' : 'Unpaid'}</Badge>
+  if (a.is_paid === null) {
+    return <Badge variant="warning" title="The visit came from this site, but without ad tags (UTM). Add UTM tags to your ads to tell ads from posts.">Paid or organic?</Badge>
+  }
+  if (a.channel === 'referral') return <Badge variant="neutral">Referral</Badge>
+  if (a.channel.startsWith('organic')) return <Badge variant="success">Organic</Badge>
+  const label: Record<string, string> = { email: 'Email', sms: 'SMS', messaging: 'Messaging' }
+  return <Badge variant="neutral">{label[a.channel] ?? 'Unpaid'}</Badge>
 }
 
 function Row({ label, value, id }: { label: string; value: string | null | undefined; id?: string | null }) {

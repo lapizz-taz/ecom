@@ -35,7 +35,7 @@ export const SHOPIFY_SCOPES = [
 export const SHOPIFY_TOPICS = ['ORDERS_CREATE', 'ORDERS_CANCELLED', 'ORDERS_UPDATED', 'APP_UNINSTALLED'] as const
 /** Nice to have (faster fulfilment / stock / product news); a store that refuses them still works through orders/updated and the hourly check. */
 export const SHOPIFY_OPTIONAL_TOPICS = [
-  'FULFILLMENTS_CREATE', 'FULFILLMENTS_UPDATE', 'INVENTORY_LEVELS_UPDATE', 'PRODUCTS_CREATE', 'PRODUCTS_UPDATE', 'PRODUCTS_DELETE',
+  'FULFILLMENTS_CREATE', 'FULFILLMENTS_UPDATE', 'INVENTORY_LEVELS_UPDATE', 'INVENTORY_ITEMS_UPDATE', 'PRODUCTS_CREATE', 'PRODUCTS_UPDATE', 'PRODUCTS_DELETE',
 ] as const
 
 /** "mystore", "mystore.myshopify.com" or the admin URL → "mystore.myshopify.com" (or null if it isn't one). */
@@ -47,8 +47,8 @@ export function shopDomain(input: string): string | null {
   return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(v) ? v : null
 }
 
-export function shopifyAuthUrl(shop: string, clientId: string, state: string, redirectUri: string): string {
-  const q = new URLSearchParams({ client_id: clientId, scope: SHOPIFY_SCOPES.join(','), redirect_uri: redirectUri, state })
+export function shopifyAuthUrl(shop: string, clientId: string, state: string, redirectUri: string, scopes: string[] = SHOPIFY_SCOPES): string {
+  const q = new URLSearchParams({ client_id: clientId, scope: scopes.join(','), redirect_uri: redirectUri, state })
   return `https://${shop}/admin/oauth/authorize?${q.toString()}`
 }
 
@@ -298,27 +298,76 @@ export class ShopifyClient {
   }
 
   /**
-   * Adds a "Delivered" event to a fulfilment (the order then shows Delivered in
-   * Shopify). A Delivered event that is already there is returned instead of
-   * adding a second one.
+   * Adds a delivery event to a fulfilment (DELIVERED, ATTEMPTED_DELIVERY,
+   * FAILURE …). An event with that status that is already there is returned
+   * instead of adding a second one.
    */
-  async markDelivered(fulfillmentId: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }> {
+  async markEvent(fulfillmentId: string, status: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }> {
     type Q = { fulfillment: { id: string; displayStatus: string | null; events: { nodes: Array<{ id: string; status: string }> } } | null }
     const seen = await this.raw<Q>(`query($id: ID!) { fulfillment(id: $id) { id displayStatus events(first: 50) { nodes { id status } } } }`, { id: fulfillmentId })
     if (seen.data && !seen.data.fulfillment && !seen.errors.length) throw new ChannelError('This fulfilment no longer exists in Shopify', 404, 'NOT_FOUND')
-    const done = seen.data?.fulfillment?.events.nodes.find((e) => e.status === 'DELIVERED')
+    const done = seen.data?.fulfillment?.events.nodes.find((e) => e.status === status)
     if (done) return { id: done.id, existing: true }
     type R = { fulfillmentEventCreate: { fulfillmentEvent: { id: string; status: string } | null; userErrors: Array<{ field: string[] | null; message: string }> } | null }
     const { data, errors } = await this.raw<R>(`mutation($e: FulfillmentEventInput!) { fulfillmentEventCreate(fulfillmentEvent: $e) {
       fulfillmentEvent { id status } userErrors { field message } } }`,
-    { e: { fulfillmentId, status: 'DELIVERED', ...(happenedAt ? { happenedAt } : {}) } })
+    { e: { fulfillmentId, status, ...(happenedAt ? { happenedAt } : {}) } })
     if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) {
-      throw new ChannelError('Shopify refused: the app needs the write_fulfillments permission to mark orders delivered. Add it to the app scopes and connect again.', 403, 'ACCESS_DENIED')
+      throw new ChannelError('Shopify refused: the app needs the write_fulfillments permission to send delivery updates. Add it to the app scopes and connect again.', 403, 'ACCESS_DENIED')
     }
     const res = data?.fulfillmentEventCreate
     if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
-    if (!res.fulfillmentEvent) throw new ChannelError(`Shopify would not mark it delivered: ${res.userErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
+    if (!res.fulfillmentEvent) throw new ChannelError(`Shopify would not add the ${status.toLowerCase().replace(/_/g, ' ')} update: ${res.userErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
     return { id: res.fulfillmentEvent.id, existing: false }
+  }
+
+  /** "Delivered" on a fulfilment (the order then shows Delivered in Shopify). */
+  markDelivered(fulfillmentId: string, happenedAt: string | null) {
+    return this.markEvent(fulfillmentId, 'DELIVERED', happenedAt)
+  }
+
+  /** What Shopify has for an order now: cancelled, paid, tags, fulfilled. */
+  async orderState(orderId: string): Promise<{ cancelled: boolean; financialStatus: string | null; tags: string[]; fulfilled: boolean }> {
+    const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    const d = await this.gql<{ order: { cancelledAt: string | null; displayFinancialStatus: string | null; tags: string[]; fulfillments: Array<{ status: string | null }> } | null }>(
+      `query($id: ID!) { order(id: $id) { cancelledAt displayFinancialStatus tags fulfillments(first: 10) { status } } }`, { id })
+    if (!d.order) throw new ChannelError('This order no longer exists in Shopify', 404, 'NOT_FOUND')
+    return {
+      cancelled: !!d.order.cancelledAt, financialStatus: d.order.displayFinancialStatus, tags: d.order.tags ?? [],
+      fulfilled: d.order.fulfillments.some((f) => f.status !== 'CANCELLED' && f.status !== 'ERROR' && f.status !== 'FAILURE'),
+    }
+  }
+
+  /** Adds / removes order tags (used for the "Status: …" tag). */
+  async updateTags(orderId: string, add: string[], remove: string[]): Promise<void> {
+    const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    for (const [op, tags] of [['tagsRemove', remove], ['tagsAdd', add]] as const) {
+      if (!tags.length) continue
+      type R = Record<string, { userErrors: Array<{ message: string }> } | null>
+      const { data, errors } = await this.raw<R>(`mutation($id: ID!, $tags: [String!]!) { ${op}(id: $id, tags: $tags) { userErrors { message } } }`, { id, tags })
+      if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) throw new ChannelError('Shopify refused: the app needs write_orders to tag orders.', 403, 'ACCESS_DENIED')
+      const res = data?.[op]
+      if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+      if (res.userErrors.length) throw new ChannelError(`Shopify would not update the tags: ${res.userErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
+    }
+  }
+
+  /**
+   * The customer journey with Shopify's own UTM fields and marketing event.
+   * Asked separately so a problem here never stops an order from importing.
+   */
+  async orderJourney(orderId: string): Promise<{ ready: boolean; first: Visit | null; last: Visit | null } | null> {
+    const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    const visit = 'landingPage referrerUrl occurredAt source sourceType utmParameters { source medium campaign content term } marketingEvent { type }'
+    type R = { order: { customerJourneySummary: { ready: boolean; firstVisit: Visit | null; lastVisit: Visit | null } | null } | null }
+    try {
+      const { data, errors } = await this.raw<R>(`query($id: ID!) { order(id: $id) { customerJourneySummary { ready firstVisit { ${visit} } lastVisit { ${visit} } } } }`, { id })
+      if (errors.length || !data?.order) return null
+      const j = data.order.customerJourneySummary
+      return j ? { ready: j.ready, first: j.firstVisit, last: j.lastVisit } : { ready: false, first: null, last: null }
+    } catch {
+      return null
+    }
   }
 
   // --- order actions (only ever on a staff click) ----------------------------------------
@@ -341,12 +390,12 @@ export class ShopifyClient {
    * comes back through this app's own cancel and the stock sync, so it is
    * never counted twice. Shopify finishes the cancel in the background.
    */
-  async cancelOrder(orderId: string, staffNote: string | null): Promise<string> {
+  async cancelOrder(orderId: string, staffNote: string | null, restock = false): Promise<string> {
     const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
     type R = { orderCancel: { job: { id: string } | null; orderCancelUserErrors: Array<{ message: string; code: string | null }> } | null }
-    const { data, errors } = await this.raw<R>(`mutation($id: ID!, $note: String) { orderCancel(orderId: $id, reason: OTHER, restock: false,
+    const { data, errors } = await this.raw<R>(`mutation($id: ID!, $note: String, $restock: Boolean!) { orderCancel(orderId: $id, reason: OTHER, restock: $restock,
       refundMethod: { originalPaymentMethodsRefund: false }, notifyCustomer: false, staffNote: $note) {
-      job { id } orderCancelUserErrors { message code } } }`, { id, note: staffNote?.slice(0, 255) ?? null })
+      job { id } orderCancelUserErrors { message code } } }`, { id, note: staffNote?.slice(0, 255) ?? null, restock })
     if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) throw new ChannelError('Shopify refused: the app needs write_orders.', 403, 'ACCESS_DENIED')
     const res = data?.orderCancel
     if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
@@ -567,13 +616,17 @@ export interface CatalogItem {
   /** For importing the product here. */
   price?: string | null; compare_at_price?: string | null; image_url?: string | null; options?: Record<string, string>; product_description?: string | null
   unit_cost?: string | null; images?: string[]; vendor?: string | null; product_type?: string | null; tags?: string[]; weight_grams?: number | null
+  collections?: string[]
 }
 
 const VARIANT_FIELDS = `legacyResourceId sku barcode title price compareAtPrice selectedOptions { name value }
   inventoryItem { id tracked unitCost { amount } measurement { weight { unit value } }
     inventoryLevels(first: 5) { nodes { location { id name } quantities(names: ["available", "on_hand"]) { name quantity } } } }`
-const PRODUCT_FIELDS = 'legacyResourceId title status vendor productType tags description(truncateAt: 2000)'
-interface ShopifyProductNode { legacyResourceId: string; title: string; status: string; vendor: string | null; productType: string | null; tags: string[]; description: string | null }
+const PRODUCT_FIELDS = 'legacyResourceId title status vendor productType tags description(truncateAt: 2000) collections(first: 3) { nodes { title } }'
+interface ShopifyProductNode {
+  legacyResourceId: string; title: string; status: string; vendor: string | null; productType: string | null; tags: string[]; description: string | null
+  collections?: { nodes: Array<{ title: string }> } | null
+}
 interface ShopifyVariantNode {
   legacyResourceId: string; sku: string | null; barcode: string | null; title: string; price: string | null; compareAtPrice: string | null
   selectedOptions: Array<{ name: string; value: string }>
@@ -608,6 +661,7 @@ export function catalogItem(v: Omit<ShopifyVariantNode, 'product'>, p: ShopifyPr
     product_description: clean(p.description),
     unit_cost: v.inventoryItem?.unitCost?.amount ?? null, images: [], vendor: clean(p.vendor), product_type: clean(p.productType),
     tags: p.tags ?? [], weight_grams: grams(v.inventoryItem?.measurement?.weight),
+    collections: (p.collections?.nodes ?? []).map((c) => c.title).filter(Boolean),
   }
 }
 
@@ -670,14 +724,41 @@ export function planFulfillment(
   return { groups, unmatched }
 }
 interface Address { name?: string | null; firstName?: string | null; lastName?: string | null; phone: string | null; address1: string | null; address2: string | null; city: string | null; province: string | null; zip: string | null }
-interface Visit { landingPage: string | null; referrerUrl: string | null; occurredAt: string | null }
+export interface Visit {
+  landingPage: string | null; referrerUrl: string | null; occurredAt: string | null
+  /** Only in the detailed journey query (orderJourney). */
+  source?: string | null; sourceType?: string | null
+  utmParameters?: { source: string | null; medium: string | null; campaign: string | null; content: string | null; term: string | null } | null
+  marketingEvent?: { type: string | null } | null
+}
+
+/** Shopify's own UTM fields and marketing event, as touch parameters (never invented). */
+export function visitExtras(v: Visit): Record<string, string> {
+  const out: Record<string, string> = {}
+  const u = v.utmParameters
+  if (u?.source) out.utm_source = u.source
+  if (u?.medium) out.utm_medium = u.medium
+  if (u?.campaign) out.utm_campaign = u.campaign
+  if (u?.content) out.utm_content = u.content
+  if (u?.term) out.utm_term = u.term
+  if (v.marketingEvent?.type) out.shopify_marketing_type = v.marketingEvent.type.toLowerCase()
+  if (v.source) out.shopify_source = v.source
+  if (v.sourceType) out.shopify_source_type = v.sourceType.toLowerCase()
+  return out
+}
+
+/** A REST order (webhook body): landing_site / referring_site, for when the journey is not ready yet. */
+export function restTouch(body: { landing_site?: string | null; referring_site?: string | null; created_at?: string | null }) {
+  const t = touchFrom(body.landing_site ?? null, body.referring_site ?? null, body.created_at ?? null)
+  return t ? { first_touch: t, last_touch: t } : null
+}
 
 export function normalizeShopifyOrder(o: ShopifyOrder): NormalizedOrder {
   const a = o.shippingAddress ?? o.billingAddress
   const customerName = [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ')
   const total = money(o.currentTotalPriceSet?.shopMoney.amount)
   const outstanding = money(o.totalOutstandingSet?.shopMoney.amount ?? total)
-  const visit = (v: Visit | null | undefined) => v ? touchFrom(v.landingPage, v.referrerUrl, v.occurredAt) : null
+  const visit = (v: Visit | null | undefined) => v ? touchFrom(v.landingPage, v.referrerUrl, v.occurredAt, visitExtras(v)) : null
   const first = visit(o.customerJourneySummary?.firstVisit)
   const last = visit(o.customerJourneySummary?.lastVisit)
   return {

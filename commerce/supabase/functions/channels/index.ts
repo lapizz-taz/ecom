@@ -20,8 +20,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { type Check, ChannelError, type NormalizedOrder } from '../_shared/channels/common.ts'
 import {
-  exchangeShopifyCode, seenFromWebhook, ShopifyClient, shopifyClientToken, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook,
+  exchangeShopifyCode, restTouch, seenFromWebhook, ShopifyClient, SHOPIFY_SCOPES, shopifyClientToken, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook,
+  visitExtras,
 } from '../_shared/channels/shopify.ts'
+import { touchFrom } from '../_shared/channels/common.ts'
 import { fulfillJob, inventoryJob, type Job, type Outcome, wooFulfillJob } from '../_shared/channels/sync.ts'
 import {
   normalizeWooOrder, siteUrl, verifyWooWebhook, WOO_CANCEL_STATUSES, WOO_IMPORT_STATUSES, WOO_LOCATION, WooClient, wooAuthUrl, type WooOrder, wooStockFromWebhook,
@@ -55,7 +57,8 @@ const returnTo = z.string().url().max(500)
 const channelId = z.string().uuid()
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('shopify_client'), shop: z.string().trim().min(3).max(200), client_id: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The Client ID is a 32-character code from the app\'s settings'), client_secret: z.string().trim().max(200).optional() }),
-  z.object({ action: z.literal('shopify_connect'), shop: z.string().trim().min(3).max(200), client_id: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The Client ID is a 32-character code from the app\'s settings'), client_secret: z.string().trim().max(200).optional(), return_to: returnTo }),
+  z.object({ action: z.literal('shopify_connect'), shop: z.string().trim().min(3).max(200), client_id: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The Client ID is a 32-character code from the app\'s settings'), client_secret: z.string().trim().max(200).optional(), return_to: returnTo,
+    scopes: z.array(z.enum(SHOPIFY_SCOPES as [string, ...string[]])).max(30).optional() }),
   z.object({ action: z.literal('shopify_token'), shop: z.string().trim().min(3).max(200), access_token: z.string().trim().regex(/^shp[a-z]{2}_[A-Za-z0-9]{20,64}$/, 'The Admin API access token starts with shpat_'), api_secret: z.string().trim().min(16, 'Enter the app\'s API secret key').max(200) }),
   z.object({ action: z.literal('woo_connect'), url: z.string().trim().min(4).max(300), return_to: returnTo }),
   z.object({ action: z.literal('woo_keys'), url: z.string().trim().min(4).max(300), consumer_key: z.string().trim().regex(/^ck_[a-f0-9]{40}$/, 'The consumer key starts with ck_'), consumer_secret: z.string().trim().regex(/^cs_[a-f0-9]{40}$/, 'The consumer secret starts with cs_') }),
@@ -270,6 +273,19 @@ async function refreshCatalog(admin: SupabaseClient, c: Channel) {
   })
 }
 
+/**
+ * Where the order came from: Shopify's journey with its own UTM fields and
+ * marketing event when ready; else the landing / referring site of the order.
+ */
+async function journeyOf(client: ShopifyClient, orderId: string, current: NormalizedOrder['attribution'], rest: Record<string, unknown>) {
+  const j = await client.orderJourney(orderId)
+  const touch = (v: Parameters<typeof visitExtras>[0] | null) => v ? touchFrom(v.landingPage, v.referrerUrl, v.occurredAt, visitExtras(v)) : null
+  const first = touch(j?.first ?? null)
+  const last = touch(j?.last ?? null)
+  if (first || last) return { first_touch: first ?? last, last_touch: last ?? first }
+  return current ?? restTouch(rest as { landing_site?: string; referring_site?: string; created_at?: string })
+}
+
 /** One product changed in the store (webhook): refresh it, import it if new (after the first sync). */
 async function productChanged(admin: SupabaseClient, c: Channel, s: Secret, productId: string, deleted: boolean) {
   const items = deleted ? [] : c.platform === 'SHOPIFY' ? await shopifyClient(c, s).product(productId) : await wooClient(c, s).product(productId)
@@ -409,14 +425,24 @@ async function webhook(req: Request, id: string): Promise<Response> {
       result = await productChanged(admin, c, s, String(body.id), topic === 'products/delete')
     } else if (topic === 'orders/create' && body.id) {
       s = await credsOf(admin, c)
-      const order = await shopifyClient(c, s).order(body.admin_graphql_api_id ?? String(body.id))
+      const client = shopifyClient(c, s)
+      const order = await client.order(body.admin_graphql_api_id ?? String(body.id))
+      if (order) order.attribution = await journeyOf(client, String(body.id), order.attribution, body as Record<string, unknown>)
       result = order ? await ingest(admin, c, order, 'WEBHOOK') : { status: 'NOT_FOUND' }
+    } else if (topic === 'inventory_items/update') {
+      const item = body as { id?: number; cost?: string | number | null }
+      result = item.id && item.cost !== null && item.cost !== undefined && item.cost !== ''
+        ? await rpc(admin, 'channel_cost_seen', { p_channel_id: c.id, p_inventory_item_id: `gid://shopify/InventoryItem/${item.id}`, p_cost: Number(item.cost) })
+        : { status: 'NO_COST' }
     } else if (topic === 'orders/cancelled' && body.id) {
       result = await rpc(admin, 'channel_order_cancelled', { p_channel_id: c.id, p_external_id: String(body.id), p_reason: body.cancel_reason ?? null })
     } else if (topic === 'orders/updated' && body.id) {
       // Only fulfilments are taken from updates: the rest of our order is ours to manage.
       const seen = seenFromWebhook(body as Record<string, unknown>)
       result = seen.length ? await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: String(body.id), p_fulfillments: seen }) : { status: 'NO_FULFILMENTS' }
+      // The customer journey is often ready only after the order was created.
+      const rest = restTouch(body as Record<string, string>)
+      if (rest) await rpc(admin, 'channel_order_attribution_fill', { p_channel_id: c.id, p_external_id: String(body.id), p_attribution: rest }).catch(() => undefined)
     } else if ((topic === 'fulfillments/create' || topic === 'fulfillments/update') && (body as { order_id?: number }).order_id) {
       result = await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: String((body as { order_id: number }).order_id),
         p_fulfillments: seenFromWebhook(body as Record<string, unknown>) })
@@ -494,7 +520,9 @@ Deno.serve(
           const state = randomHex()
           await rpc(admin, 'channel_oauth_state_create', { p_channel_id: c.id, p_state: state, p_actor: actor, p_return_to: input.return_to })
           const redirectUri = shopifyRedirectUri(input.return_to)
-          return json(req, { url: shopifyAuthUrl(shop, input.client_id, state, redirectUri), redirect_uri: redirectUri, channel_id: c.id })
+          // Only the permissions for the chosen features (orders are always needed).
+          const scopes = input.scopes?.length ? [...new Set(['read_orders', ...input.scopes])] : undefined
+          return json(req, { url: shopifyAuthUrl(shop, input.client_id, state, redirectUri, scopes), redirect_uri: redirectUri, channel_id: c.id })
         }
         case 'shopify_client': {
           const shop = shopDomain(input.shop)

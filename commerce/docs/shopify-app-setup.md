@@ -103,7 +103,7 @@ Without this step, imported orders arrive with empty customer fields.
 
 ## 5. Connect in the admin
 
-Go to **Store → Sales Channels → Shopify → Connect**.
+Go to **Store → Sales Channels → Shopify → Connect**. Tick the features you want; the dialog shows exactly the permissions they need (with a copy button) and switches the others off.
 
 ### 5A. App keys (recommended, no redirect)
 
@@ -162,6 +162,27 @@ Click **Start first sync**. Stock sync then turns on, and from that moment **you
 - If someone changes stock by hand in Shopify, it's flagged for you under **Stock** (or set back to yours if you choose *This app wins*).
 
 Failed updates retry automatically with back-off; you can see them under **Jobs**.
+
+### Order status on Shopify (automatic)
+
+Every status change here is sent to the Shopify order. You never click a sync button.
+
+| Here | On Shopify |
+|---|---|
+| Any status | Tag `Status: Confirmed / Shipped / Delivered / Returned / Cancelled …` (old status tags removed) |
+| Shipped | Fulfilled with courier, tracking number and tracking link |
+| Delivered (e.g. Steadfast's *delivered* webhook) | *Delivered* event; cash-on-delivery orders marked **Paid** |
+| Delivery failed | *Attempted delivery* event |
+| Returned (never delivered) | *Failure* event |
+| Cancelled in Web Orders or Approved Orders | Order cancelled on Shopify (refused if Shopify already fulfilled it; the reason is shown on the order) |
+
+**Stock is never restored twice.** When stock sync is on, the cancel asks Shopify *not* to restock. Our own cancel puts the stock back here once, and the stock sync sets Shopify to that number. When stock sync is off, Shopify restocks itself. A cancel that came *from* Shopify is never sent back.
+
+**Merged orders.** Two orders from the same customer (same phone and district, within 72 hours, before packing) merge into one, including Shopify orders and orders already approved. Each Shopify order in the group stays linked: shipping, delivery and cancelling the group update every one of them, and each is tagged `Merged: <order>`.
+
+**Two-way stock.** After the first sync, a change made by hand in Shopify is applied here as the difference (recorded in the stock history). A change made here at the same moment is kept too, and nothing loops.
+
+**Where orders came from.** Shopify's own UTM fields and marketing events are imported. A visit from facebook.com or instagram.com *without* ad tags shows **Paid or organic?**, never guessed as organic. Add UTM tags to your ads to tell them apart.
 
 ## 7. WooCommerce
 
