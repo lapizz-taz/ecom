@@ -152,7 +152,18 @@ export const NAV: NavSection[] = [
   {
     label: 'Business Control',
     items: [
-      { label: 'HRM', to: '/admin/users', icon: <UserCog />, permission: 'users.manage', children: [{ label: 'Users & Roles', to: '/admin/users' }] },
+      {
+        label: 'HRM', to: '/admin/hr', icon: <UserCog />,
+        children: [
+          { label: 'HR Dashboard', to: '/admin/hr', permission: 'hr.view' },
+          { label: 'Attendance', to: '/admin/hr/attendance' },
+          { label: 'Attendance Report', to: '/admin/hr/report', permission: 'hr.view' },
+          { label: 'Shift Management', to: '/admin/hr/shifts', permission: 'hr.view' },
+          { label: 'Departments & SOP', to: '/admin/hr/departments', permission: 'hr.view' },
+          { label: 'User & Role', to: '/admin/users', permission: 'users.manage' },
+          { label: 'Settings', to: '/admin/hr/settings', permission: 'hr.view' },
+        ],
+      },
       {
         label: 'Finance', to: '/admin/finance', icon: <Wallet />, permission: 'finance.view',
         children: [

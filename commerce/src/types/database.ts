@@ -2126,6 +2126,276 @@ export type Database = {
         }
         Relationships: []
       }
+      hr_attendance: {
+        Row: {
+          id: string
+          profile_id: string
+          work_date: string
+          check_in_at: string | null
+          check_out_at: string | null
+          status: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes: number
+          worked_minutes: number | null
+          note: string | null
+          source: string
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          work_date: string
+          check_in_at?: string | null
+          check_out_at?: string | null
+          status: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes?: number
+          worked_minutes?: number | null
+          note?: string | null
+          source?: string
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          work_date?: string
+          check_in_at?: string | null
+          check_out_at?: string | null
+          status?: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes?: number
+          worked_minutes?: number | null
+          note?: string | null
+          source?: string
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_attendance_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_attendance_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hr_departments: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          color: string
+          head_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          color?: string
+          head_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          color?: string
+          head_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_departments_head_id_fkey"
+            columns: ["head_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hr_employees: {
+        Row: {
+          profile_id: string
+          department_id: string | null
+          shift_id: string | null
+          designation: string | null
+          employee_code: string | null
+          joined_on: string | null
+          emergency_contact: string | null
+          updated_at: string
+        }
+        Insert: {
+          profile_id: string
+          department_id?: string | null
+          shift_id?: string | null
+          designation?: string | null
+          employee_code?: string | null
+          joined_on?: string | null
+          emergency_contact?: string | null
+          updated_at?: string
+        }
+        Update: {
+          profile_id?: string
+          department_id?: string | null
+          shift_id?: string | null
+          designation?: string | null
+          employee_code?: string | null
+          joined_on?: string | null
+          emergency_contact?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_employees_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "hr_departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_employees_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_employees_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "hr_shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hr_holidays: {
+        Row: {
+          holiday_date: string
+          name: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          holiday_date: string
+          name: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          holiday_date?: string
+          name?: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      hr_shifts: {
+        Row: {
+          id: string
+          name: string
+          start_time: string
+          end_time: string
+          grace_minutes: number
+          work_days: number[]
+          color: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          start_time: string
+          end_time: string
+          grace_minutes?: number
+          work_days?: number[]
+          color?: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          start_time?: string
+          end_time?: string
+          grace_minutes?: number
+          work_days?: number[]
+          color?: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hr_sops: {
+        Row: {
+          id: string
+          department_id: string | null
+          title: string
+          body: string
+          version: number
+          is_active: boolean
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          department_id?: string | null
+          title: string
+          body?: string
+          version?: number
+          is_active?: boolean
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          department_id?: string | null
+          title?: string
+          body?: string
+          version?: number
+          is_active?: boolean
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_sops_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "hr_departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_sops_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_credentials: {
         Row: {
           key: string
@@ -5503,6 +5773,10 @@ export type Database = {
         }
         Returns: string
       }
+      _hr_today: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       _local_date: {
         Args: {
           p_ts: string
@@ -7330,6 +7604,175 @@ export type Database = {
         }
         Returns: boolean
       }
+      hr_attendance_board: {
+        Args: {
+          p_date?: string
+        }
+        Returns: Json
+      }
+      hr_attendance_report: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      hr_attendance_set: {
+        Args: {
+          p_profile: string
+          p_date: string
+          p_status: Database["public"]["Enums"]["hr_attendance_status"]
+          p_check_in?: string
+          p_check_out?: string
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          profile_id: string
+          work_date: string
+          check_in_at: string | null
+          check_out_at: string | null
+          status: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes: number
+          worked_minutes: number | null
+          note: string | null
+          source: string
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_check_in: {
+        Args: {
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          profile_id: string
+          work_date: string
+          check_in_at: string | null
+          check_out_at: string | null
+          status: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes: number
+          worked_minutes: number | null
+          note: string | null
+          source: string
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_check_out: {
+        Args: {
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          profile_id: string
+          work_date: string
+          check_in_at: string | null
+          check_out_at: string | null
+          status: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes: number
+          worked_minutes: number | null
+          note: string | null
+          source: string
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_dashboard: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      hr_department_save: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          name: string
+          description: string | null
+          color: string
+          head_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_employee_save: {
+        Args: {
+          p_profile: string
+          p: Json
+        }
+        Returns: {
+          profile_id: string
+          department_id: string | null
+          shift_id: string | null
+          designation: string | null
+          employee_code: string | null
+          joined_on: string | null
+          emergency_contact: string | null
+          updated_at: string
+        }
+      }
+      hr_holiday_save: {
+        Args: {
+          p_date: string
+          p_name: string
+          p_active?: boolean
+        }
+        Returns: {
+          holiday_date: string
+          name: string
+          is_active: boolean
+          created_at: string
+        }
+      }
+      hr_my_day: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      hr_settings_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      hr_shift_save: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          name: string
+          start_time: string
+          end_time: string
+          grace_minutes: number
+          work_days: number[]
+          color: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_sop_save: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          department_id: string | null
+          title: string
+          body: string
+          version: number
+          is_active: boolean
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
       import_courier_invoice: {
         Args: {
           p: Json
@@ -8497,6 +8940,7 @@ export type Database = {
       finance_type: "INCOME" | "EXPENSE"
       fraud_decision: "ALLOW" | "REVIEW" | "ADVANCE_REQUIRED" | "BLOCK"
       fraud_status: "NOT_CHECKED" | "PASSED" | "REVIEW" | "ADVANCE_REQUIRED" | "APPROVED" | "REJECTED" | "ERROR"
+      hr_attendance_status: "PRESENT" | "LATE" | "HALF_DAY" | "ABSENT" | "LEAVE" | "HOLIDAY"
       inventory_movement_type: "PURCHASE" | "SALE" | "RETURN" | "ADJUSTMENT" | "DAMAGE" | "LOSS" | "TRANSFER" | "RESERVATION" | "RELEASE"
       marketing_platform: "META" | "GOOGLE" | "TIKTOK" | "OTHER"
       note_kind: "NOTE" | "CONTACT" | "SYSTEM"
@@ -8555,6 +8999,7 @@ export const Constants = {
       finance_type: ["INCOME", "EXPENSE"],
       fraud_decision: ["ALLOW", "REVIEW", "ADVANCE_REQUIRED", "BLOCK"],
       fraud_status: ["NOT_CHECKED", "PASSED", "REVIEW", "ADVANCE_REQUIRED", "APPROVED", "REJECTED", "ERROR"],
+      hr_attendance_status: ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "LEAVE", "HOLIDAY"],
       inventory_movement_type: ["PURCHASE", "SALE", "RETURN", "ADJUSTMENT", "DAMAGE", "LOSS", "TRANSFER", "RESERVATION", "RELEASE"],
       marketing_platform: ["META", "GOOGLE", "TIKTOK", "OTHER"],
       note_kind: ["NOTE", "CONTACT", "SYSTEM"],
