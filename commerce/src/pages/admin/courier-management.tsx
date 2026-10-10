@@ -69,7 +69,7 @@ export default function CourierManagementPage() {
     <div className="space-y-4">
       <PageHeader title="Courier management" description="Every parcel by where it is — from courier entry to the customer's door, or back to you."
         actions={can('couriers.view') && <Button size="sm" variant="outline" asChild><Link to="/admin/courier-invoices">Courier invoices</Link></Button>} />
-      <nav className="-mx-4 flex gap-1 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0" aria-label="Courier management">
+      <nav className="-mx-3 flex gap-1 overflow-x-auto border-b px-3 sm:mx-0 sm:px-0" aria-label="Courier management">
         {NAV.map((n) => (
           <button key={n.key} type="button" onClick={n.go}
             className={cn('shrink-0 border-b-2 px-3 py-2 text-sm transition-colors', n.active ? 'border-foreground font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -128,7 +128,7 @@ function ParcelsView({ state, update, returnsOnly }: {
 
   return (
     <>
-      <div className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+      <div className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
         {tabs.map((t) => (
           <button key={t.value} type="button" onClick={() => { setSelected(new Set()); update({ tab: t.value }) }}
             className={cn('flex shrink-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-all duration-200',

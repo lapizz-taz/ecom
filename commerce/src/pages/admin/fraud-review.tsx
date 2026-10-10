@@ -91,7 +91,7 @@ export default function FraudReviewPage() {
     <div className="space-y-4">
       <PageHeader title="Fraud review" description="Risky orders held for a decision. Every decision is recorded with who made it and why." />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
+        <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })} className="max-w-full min-w-0 overflow-x-auto">
           <TabsList>{Object.entries(TABS).map(([k, t]) => <TabsTrigger key={k} value={k}>{t.label}</TabsTrigger>)}</TabsList>
         </Tabs>
         <Select value={state.risk || 'all'} onValueChange={(v) => update({ risk: v === 'all' ? '' : v })}>

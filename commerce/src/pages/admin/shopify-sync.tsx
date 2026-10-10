@@ -121,7 +121,7 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
       <SettingsCard o={o} channelId={channelId} onSaved={refresh} store={store} />
 
       <Tabs value={tab} onValueChange={onTab}>
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
           <TabsList>
             <TabsTrigger value="stock">Stock{diffs.length ? ` · ${diffs.length}` : ''}</TabsTrigger>
             <TabsTrigger value="unmapped">Not linked{o.unmapped.length ? ` · ${o.unmapped.length}` : ''}</TabsTrigger>
