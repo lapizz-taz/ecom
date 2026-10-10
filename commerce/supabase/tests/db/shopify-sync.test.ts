@@ -147,6 +147,33 @@ describe('sync job queue', () => {
     }))
 })
 
+describe('a change during a running job', () => {
+  it('is not lost: the job runs again with fresh data once the current run ends', () =>
+    inTx(async (db) => {
+      const c = await shopify(db)
+      await asService(db)
+      const ref = '00000000-0000-0000-0000-0000000000a2'
+      const id = await value<string>(db, `select public.channel_job_enqueue($1, 'INVENTORY', $2)`, [c, ref])
+      expect((await db.query(`select id from public.channel_jobs_claim(10) where id = $1`, [id])).rows).toHaveLength(1)
+      // Shopify reports a new count while the job is running.
+      expect(await value<string>(db, `select public.channel_job_enqueue($1, 'INVENTORY', $2, '{"reason":"store_changed"}', 60)`, [c, ref])).toBe(id)
+      const again = await value<Record<string, any>>(db, `select to_jsonb(public.channel_job_finish($1, 'DONE', null, '{"set":90}'))`, [id])
+      expect(again).toMatchObject({ status: 'PENDING', attempts: 0 })
+      expect(again.payload).toEqual({ reason: 'store_changed' })
+      // The follow-up run finishes normally.
+      await db.query(`update public.channel_sync_jobs set next_attempt_at = now() where id = $1`, [id])
+      expect((await db.query(`select id from public.channel_jobs_claim(10) where id = $1`, [id])).rows).toHaveLength(1)
+      expect((await value<Record<string, any>>(db, `select to_jsonb(public.channel_job_finish($1, 'DONE'))`, [id])).status).toBe('DONE')
+
+      // A change while the job is only waiting just joins it (no extra run).
+      const ref2 = '00000000-0000-0000-0000-0000000000a3'
+      const id2 = await value<string>(db, `select public.channel_job_enqueue($1, 'INVENTORY', $2)`, [c, ref2])
+      await db.query(`select public.channel_job_enqueue($1, 'INVENTORY', $2, '{"reason":"store_changed"}')`, [c, ref2])
+      expect((await db.query(`select id from public.channel_jobs_claim(10) where id = $1`, [id2])).rows).toHaveLength(1)
+      expect((await value<Record<string, any>>(db, `select to_jsonb(public.channel_job_finish($1, 'DONE'))`, [id2])).status).toBe('DONE')
+    }))
+})
+
 describe('Shopify stock sync', () => {
   it('links by SKU, flags duplicates, pushes our stock changes, and does not double count a Shopify order', () =>
     inTx(async (db) => {
