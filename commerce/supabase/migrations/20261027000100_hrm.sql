@@ -656,6 +656,7 @@ begin
 end;
 $$;
 
+revoke all on function public._hr_today() from public, anon;
 grant execute on function public._hr_today() to authenticated;
 revoke all on function public._hr_is_work_day(public.hr_shifts, date), public._hr_shift_bounds(public.hr_shifts, date),
   public._hr_score(public.hr_shifts, date, timestamptz, timestamptz), public._hr_shift_of(uuid) from public, anon, authenticated;
