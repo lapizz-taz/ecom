@@ -50,7 +50,7 @@ const CLOSED: OrderStatus[] = ['CANCELLED', 'REJECTED_FRAUD']
 const ALL_MOVES: Array<{ to: OrderStatus; label: string }> = [
   { to: 'READY_TO_SHIP', label: 'RTS' }, { to: 'SHIPPED', label: 'Shipped' }, { to: 'DELIVERED', label: 'Delivered' },
   { to: 'RETURNING', label: 'Return pending' }, { to: 'RETURNED', label: 'Returned' }, { to: 'LOST', label: 'Lost' },
-  { to: 'PENDING_CANCEL', label: 'Pending cancel' }, { to: 'CANCELLED', label: 'Cancelled' },
+  { to: 'PENDING_CANCEL', label: 'Cancel (ask courier)' }, { to: 'CANCELLED', label: 'Cancelled' },
 ]
 
 const VIEW_META: Record<View, { title: string; description: string }> = {
@@ -101,8 +101,9 @@ export function OrdersPage({ view }: { view: View }) {
     if (view === 'approved') {
       const approved = counts.data?.approved ?? {}
       return [
-        ...ORDER_STAGES.map((s) => ({ key: s.key, label: s.label, count: approved[s.key] ?? 0, hint: s.hint })),
+        ...ORDER_STAGES.filter((s) => s.key !== 'PRE_ORDER').map((s) => ({ key: s.key, label: s.label, count: approved[s.key] ?? 0, hint: s.hint })),
         { key: 'all', label: 'All', count: Object.values(approved).reduce((a, b) => a + (b ?? 0), 0), hint: null },
+        ...ORDER_STAGES.filter((s) => s.key === 'PRE_ORDER').map((s) => ({ key: s.key, label: s.label, count: approved[s.key] ?? 0, hint: s.hint })),
       ]
     }
     return []
@@ -794,6 +795,7 @@ function InvoiceCell({ o }: { o: OrderListItem }) {
       {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
       <StoreBadge o={o} />
       <DuplicateBadge o={o} />
+      {o.status === 'PENDING_CANCEL' && <Badge variant="warning" className="text-[10px]" title="Cancel asked for, waiting on the courier to confirm">Cancelling</Badge>}
       {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]" title={`${o.merged_count} order(s) merged into this one`}><Layers className="size-3" /> Merged +{o.merged_count}</Badge>}
     </div>
   )

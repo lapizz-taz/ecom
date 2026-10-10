@@ -270,7 +270,6 @@ function StatusTiles() {
     { label: 'Returned', n: a.RETURNED, to: '/admin/orders/approved?tab=RETURNED' },
     { label: 'Partial', n: a.PARTIAL, to: '/admin/orders/approved?tab=PARTIAL' },
     { label: 'Cancelled', n: a.CANCELLED, to: '/admin/orders/approved?tab=CANCELLED' },
-    { label: 'Pending cancel', n: a.PENDING_CANCEL, to: '/admin/orders/approved?tab=PENDING_CANCEL' },
     { label: 'Preorder', n: a.PRE_ORDER, to: '/admin/orders/approved?tab=PRE_ORDER' },
     { label: 'Lost', n: a.LOST, to: '/admin/orders/approved?tab=LOST', tone: 'text-red-600' },
   ]

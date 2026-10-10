@@ -68,7 +68,7 @@ export default function OrdersDashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="text-xs text-muted-foreground">
                     <tr className="border-b"><th className="py-1.5 text-left font-medium">Courier</th><th className="px-2 text-right font-medium">Pending</th><th className="px-2 text-right font-medium">RTS</th>
-                      <th className="px-2 text-right font-medium">Shipped</th><th className="px-2 text-right font-medium">Pending return</th><th className="px-2 text-right font-medium">Pending cancel</th>
+                      <th className="px-2 text-right font-medium">Shipped</th><th className="px-2 text-right font-medium">Return pending</th><th className="px-2 text-right font-medium">Cancelling</th>
                       <th className="px-2 text-right font-medium">Total</th><th className="pl-2 text-right font-medium">Still to collect</th></tr>
                   </thead>
                   <tbody className="divide-y tabular-nums">

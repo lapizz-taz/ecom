@@ -27,7 +27,7 @@ export const ORDER_STATUS: Record<OrderStatus, Meta & { customer: string }> = {
   PACKING: { label: 'Packing', variant: 'violet', customer: 'Packing' },
   READY_TO_SHIP: { label: 'Ready to ship', variant: 'info', customer: 'Ready to ship' },
   SHIPPED: { label: 'Shipped', variant: 'info', customer: 'On the way' },
-  PENDING_CANCEL: { label: 'Pending cancel', variant: 'warning', customer: 'Being cancelled' },
+  PENDING_CANCEL: { label: 'Cancelling', variant: 'warning', customer: 'Being cancelled' },
   DELIVERED: { label: 'Delivered', variant: 'success', customer: 'Delivered' },
   PARTIALLY_DELIVERED: { label: 'Partly delivered', variant: 'success', customer: 'Partly delivered' },
   CANCELLED: { label: 'Cancelled', variant: 'neutral', customer: 'Cancelled' },
@@ -184,29 +184,27 @@ export const RECEIVABLE: OrderStatus[] = ['FAILED_DELIVERY', 'RETURN_REQUESTED',
 export const LOSABLE: OrderStatus[] = ['SHIPPED', 'FAILED_DELIVERY', 'RETURN_REQUESTED', 'RETURNING', 'PENDING_CANCEL']
 
 /** Approved Orders stages (derived from the order status on the server). */
-export type OrderStage = 'PENDING' | 'PRE_ORDER' | 'RTS' | 'SHIPPED' | 'PENDING_CANCEL' | 'DELIVERED' | 'PARTIAL'
-  | 'RETURN_PENDING' | 'RETURNED' | 'CANCELLED' | 'LOST'
+export type OrderStage = 'PENDING' | 'RTS' | 'SHIPPED' | 'DELIVERED' | 'PARTIAL'
+  | 'RETURN_PENDING' | 'RETURNED' | 'CANCELLED' | 'LOST' | 'PRE_ORDER'
 
 export const ORDER_STAGES: Array<{ key: OrderStage; label: string; variant: BadgeVariant; hint: string; moves: Array<{ to: OrderStatus; label: string }> }> = [
   { key: 'PENDING', label: 'Pending', variant: 'info', hint: 'Approved and being prepared',
     moves: [{ to: 'READY_TO_SHIP', label: 'RTS' }, { to: 'PRE_ORDER', label: 'Pre-order' }, { to: 'CANCELLED', label: 'Cancelled' }] },
-  { key: 'PRE_ORDER', label: 'Pre-order', variant: 'violet', hint: 'Waiting for stock to arrive',
-    moves: [{ to: 'PROCESSING', label: 'Pending' }, { to: 'READY_TO_SHIP', label: 'RTS' }, { to: 'CANCELLED', label: 'Cancelled' }] },
   { key: 'RTS', label: 'RTS', variant: 'info', hint: 'Packed and ready for the courier',
-    moves: [{ to: 'SHIPPED', label: 'Shipped' }, { to: 'PENDING_CANCEL', label: 'Pending cancel' }] },
+    moves: [{ to: 'SHIPPED', label: 'Shipped' }, { to: 'PENDING_CANCEL', label: 'Cancel (ask courier)' }] },
   { key: 'SHIPPED', label: 'Shipped', variant: 'info', hint: 'With the courier',
     moves: [{ to: 'DELIVERED', label: 'Delivered' }, { to: 'RETURNING', label: 'Return pending' },
-      { to: 'PENDING_CANCEL', label: 'Pending cancel' }, { to: 'LOST', label: 'Lost' }] },
-  { key: 'PENDING_CANCEL', label: 'Pending cancel', variant: 'warning', hint: 'Cancel asked for — waiting on the courier',
-    moves: [{ to: 'CANCELLED', label: 'Cancelled' }, { to: 'RETURNING', label: 'Return pending' }] },
+      { to: 'PENDING_CANCEL', label: 'Cancel (ask courier)' }, { to: 'LOST', label: 'Lost' }] },
   { key: 'DELIVERED', label: 'Delivered', variant: 'success', hint: 'The customer received it — final, it cannot become a return', moves: [] },
   { key: 'PARTIAL', label: 'Partial', variant: 'success', hint: 'The customer kept part of the order', moves: [] },
   { key: 'RETURN_PENDING', label: 'Return pending', variant: 'warning', hint: 'Refused or not delivered (the courier sends it here) and on its way back to you',
     moves: [{ to: 'RETURNED', label: 'Returned' }, { to: 'LOST', label: 'Lost' }] },
   { key: 'RETURNED', label: 'Returned', variant: 'neutral', hint: 'Received back', moves: [] },
-  { key: 'CANCELLED', label: 'Cancelled', variant: 'neutral', hint: 'Cancelled after approval', moves: [] },
+  { key: 'CANCELLED', label: 'Cancelled', variant: 'neutral', hint: 'Cancelled after approval. Rows marked "Cancelling" are still waiting on the courier to confirm', moves: [] },
   { key: 'LOST', label: 'Lost', variant: 'danger', hint: 'Lost by the courier',
     moves: [{ to: 'DELIVERED', label: 'Delivered' }, { to: 'RETURNED', label: 'Returned' }] },
+  { key: 'PRE_ORDER', label: 'Pre-order', variant: 'violet', hint: 'Waiting for stock to arrive',
+    moves: [{ to: 'PROCESSING', label: 'Pending' }, { to: 'READY_TO_SHIP', label: 'RTS' }, { to: 'CANCELLED', label: 'Cancelled' }] },
 ]
 
 export const STAGE: Record<OrderStage | 'WEB', Meta> = {
@@ -223,7 +221,6 @@ export function stageOf(status: OrderStatus, confirmedAt: string | null | undefi
     case 'PRE_ORDER': return 'PRE_ORDER'
     case 'READY_TO_SHIP': return 'RTS'
     case 'SHIPPED': return 'SHIPPED'
-    case 'PENDING_CANCEL': return 'PENDING_CANCEL'
     case 'DELIVERED': return 'DELIVERED'
     case 'PARTIALLY_DELIVERED': return 'PARTIAL'
     case 'FAILED_DELIVERY': case 'RETURN_REQUESTED': case 'RETURNING': return 'RETURN_PENDING'

@@ -134,7 +134,8 @@ describe('approved order stages', () => {
       await asUser(db, staff)
       await expectError(db, `select public.transition_order_status($1, 'PENDING_CANCEL', '')`, [pre.id], /cancellation reason/)
       await db.query(`select public.transition_order_status($1, 'PENDING_CANCEL', 'Customer changed their mind')`, [pre.id])
-      expect((await row(db, pre.id)).stage).toBe('PENDING_CANCEL')
+      // Waiting on the courier: listed under Cancelled (no separate tab), status still PENDING_CANCEL.
+      expect(await row(db, pre.id)).toMatchObject({ status: 'PENDING_CANCEL', stage: 'CANCELLED' })
       await asUser(db, staff)
       await db.query(`select public.transition_order_status($1, 'CANCELLED', 'Courier confirmed the cancel')`, [pre.id])
       expect(await row(db, pre.id)).toMatchObject({ status: 'CANCELLED', stage: 'CANCELLED', cancel_reason: 'Customer changed their mind' })
