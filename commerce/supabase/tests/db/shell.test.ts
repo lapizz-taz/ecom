@@ -56,16 +56,19 @@ describe('quick search (Ctrl+K)', () => {
 })
 
 describe('report issue', () => {
-  it('lands in the System log with who reported it and the page', async () => {
+  it('opens a bug ticket the reporter can follow and lands in the System log with who reported it and the page', async () => {
     await inTx(async (db) => {
       const staff = await createStaff(db, 'VIEWER')
       await asUser(db, staff)
       await expectError(db, `select public.report_issue('hi')`, [], /Describe the problem/)
-      const id = await value<number>(db, `select public.report_issue($1, $2)`, ['Label preview is cut off', JSON.stringify({ page: '/admin/labels', browser: 'Chrome' })])
+      const num = await value<number>(db, `select public.report_issue($1, $2)`, ['Label preview is cut off', JSON.stringify({ page: '/admin/labels', browser: 'Chrome' })])
+      const ticket = await value<Record<string, any>>(db, `select to_jsonb(t) from public.support_tickets t where number = $1`, [num])
+      expect(ticket).toMatchObject({ kind: 'BUG', status: 'OPEN', subject: 'Label preview is cut off', created_by: staff })
+      expect(ticket.context).toMatchObject({ page: '/admin/labels', browser: 'Chrome' })
       await asSystem(db)
-      const row = await value<Record<string, unknown>>(db, `select to_jsonb(l) from public.system_logs l where id = $1`, [id])
+      const row = await value<Record<string, unknown>>(db, `select to_jsonb(l) from public.system_logs l where context ->> 'ticket_id' = $1`, [ticket.id])
       expect(row).toMatchObject({ level: 'WARN', category: 'OTHER', source: 'staff-report' })
-      expect(row.message).toMatch(/^Reported by Test VIEWER: Label preview is cut off/)
+      expect(row.message).toMatch(new RegExp(`^Bug #${num} by Test VIEWER: Label preview is cut off`))
       expect(row.context).toMatchObject({ page: '/admin/labels', user_id: staff })
       await asAnon(db)
       await expectError(db, `select public.report_issue('Something broke')`, [], /permission denied|PERMISSION_DENIED/i)

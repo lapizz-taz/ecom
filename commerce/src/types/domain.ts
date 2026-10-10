@@ -465,6 +465,13 @@ export interface MyAccess {
   role: string
   role_name: string
   permissions: string[]
+  /** True when device approval is on and this browser isn't approved yet: no permissions until an admin approves it. */
+  device_blocked?: boolean
+  device?: { required: boolean; id: string | null; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED' | null }
+  /** Sign out after this many idle minutes (0 = never). Settings → Advanced. */
+  idle_logout_minutes?: number
+  /** The PBX rings this staff member's extension when they press Call. */
+  pbx_click_to_call?: boolean
 }
 
 export interface CodReceivableItem {

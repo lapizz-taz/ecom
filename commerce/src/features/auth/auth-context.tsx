@@ -1,6 +1,7 @@
 import type { Session, User } from '@supabase/supabase-js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
+import { registerDevice } from '@/lib/device'
 import { setMonitoringUser } from '@/lib/monitoring'
 import { supabase } from '@/lib/supabase'
 import type { MyAccess } from '@/types/domain'
@@ -42,6 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     enabled: Boolean(userId),
     staleTime: 5 * 60_000,
     queryFn: async () => {
+      // Link this sign-in to this browser first, so device approval (when on) can recognise it.
+      await registerDevice()
       const { data, error } = await supabase.rpc('get_my_access')
       if (error) throw error
       return (data as unknown as MyAccess | null) ?? null
@@ -62,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       accessLoading: Boolean(userId) && accessQuery.isLoading,
       isStaff: Boolean(access),
-      can: (permission) => Boolean(access && (access.role === 'OWNER' || access.permissions.includes(permission))),
+      can: (permission) => Boolean(access && !access.device_blocked && (access.role === 'OWNER' || access.permissions.includes(permission))),
       signOut: async () => {
         await supabase.auth.signOut()
       },

@@ -7,7 +7,7 @@ export function StoreSettings() {
 
   return (
     <div className="grid gap-4">
-      <SettingCard setting={store} title="Store information" description="Shown on the storefront, invoices and customer messages."
+      <SettingCard setting={store} title="Business profile" description="Shown on the storefront, invoices and customer messages."
         validate={() => (/^[A-Z0-9]{1,8}$/.test(String(store.get(['order_prefix']) ?? '')) ? null : 'Order prefix must be 1–8 uppercase letters or digits')}>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextSetting s={store} path={['name']} label="Store name" />
@@ -21,15 +21,19 @@ export function StoreSettings() {
           <TextSetting s={store} path={['social', 'facebook']} label="Facebook page" placeholder="https://facebook.com/…" />
           <TextSetting s={store} path={['social', 'instagram']} label="Instagram" placeholder="https://instagram.com/…" />
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <TextSetting s={store} path={['currency']} label="Currency code" mono />
-          <TextSetting s={store} path={['currency_symbol']} label="Currency symbol" />
-          <TextSetting s={store} path={['locale']} label="Number format (locale)" mono hint="e.g. en-BD" />
-          <TextSetting s={store} path={['timezone']} label="Time zone" mono hint="Reports and day boundaries use this" />
-          <TextSetting s={store} path={['order_prefix']} label="Order number prefix" mono hint="ISO → ISO-10001" />
-          <TextSetting s={store} path={['phone_country_code']} label="Phone country code" mono />
+        <p className="text-xs text-muted-foreground">Currency, time zone, order numbers and phone rules are in <a className="underline" href="/admin/settings?tab=advanced">Advanced settings</a>.</p>
+      </SettingCard>
+
+      <SettingCard setting={store} title="Legal & invoice details" description="Printed on invoices when filled in. Public: anyone can see what you enter here.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextSetting s={store} path={['legal', 'business_name']} label="Registered business name" placeholder="Same as store name if empty" />
+          <TextSetting s={store} path={['legal', 'business_type']} label="Business type" placeholder="Proprietorship, partnership, limited company…" />
+          <TextSetting s={store} path={['legal', 'trade_license']} label="Trade licence no." mono />
+          <TextSetting s={store} path={['legal', 'bin']} label="BIN / VAT registration" mono />
+          <TextSetting s={store} path={['legal', 'dbid']} label="DBID (e-commerce ID)" mono />
+          <TextSetting s={store} path={['legal', 'support_hours']} label="Support hours" placeholder="Sat–Thu, 10 am – 8 pm" />
         </div>
-        <TextSetting s={store} path={['phone_pattern']} label="Local phone pattern" mono hint="Regular expression for valid local numbers; checkout rejects anything else" />
+        <TextareaSetting s={store} path={['legal', 'invoice_footer']} label="Invoice footer note" rows={2} hint="e.g. exchange policy or thank-you line" />
       </SettingCard>
 
       <SettingCard setting={storefront} title="Storefront home page">

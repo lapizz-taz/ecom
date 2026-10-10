@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { CallButton } from '@/features/pbx/call-button'
 import { CourierHistoryTable, courierHistoryOf } from '@/features/fraud/courier-history'
 import {
   AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, PartialDeliveryDialog, RecordPaymentDialog, RefundDialog,
@@ -718,7 +719,7 @@ function CallOutcomeCard({ order, onChanged, onApprove, approving }: { order: Or
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" asChild><a href={`tel:${order.customer_phone}`}><Phone /> Call</a></Button>
+            <CallButton size="sm" variant="outline" phone={order.customer_phone} orderId={order.id}><Phone /> Call</CallButton>
             {wa && <Button size="sm" variant="outline" asChild><a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>}
             {can('orders.status') && (
               <Button size="sm" onClick={onApprove} disabled={approving || blocked} title={blocked ? 'Needs a fraud reviewer' : undefined}>
@@ -766,7 +767,7 @@ function NotesCard({ orderId, notes, onAdded, canAdd, phone }: {
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Notes</CardTitle>
-        <CardAction><Button size="sm" variant="ghost" asChild><a href={`tel:${phone}`}><Phone /> Call customer</a></Button></CardAction>
+        <CardAction><CallButton size="sm" variant="ghost" phone={phone}><Phone /> Call customer</CallButton></CardAction>
       </CardHeader>
       <CardContent className="space-y-3">
         {canAdd && (

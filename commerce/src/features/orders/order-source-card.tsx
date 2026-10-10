@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/features/auth/auth-context'
 import { formatDateTime } from '@/lib/format'
-import { MANUAL_SOURCES, type OrderDetail, setOrderSource } from '@/services/orders'
+import { useOrderSources } from '@/hooks/use-order-sources'
+import { type OrderDetail, setOrderSource } from '@/services/orders'
 
 type Attribution = NonNullable<OrderDetail['attribution']>
 
@@ -41,6 +42,7 @@ function Row({ label, value, id }: { label: string; value: string | null | undef
 export function OrderSourceCard({ orderId, attribution, orderStatus }: { orderId: string; attribution: Attribution | null; orderStatus: string }) {
   const { can } = useAuth()
   const queryClient = useQueryClient()
+  const sources = useOrderSources()
   const [choice, setChoice] = useState('')
   const a = attribution
   const save = useMutation({
@@ -106,7 +108,7 @@ export function OrderSourceCard({ orderId, attribution, orderStatus }: { orderId
           <div className="flex gap-2 pt-1">
             <Select value={choice} onValueChange={setChoice}>
               <SelectTrigger className="h-8 flex-1" aria-label="Order source"><SelectValue placeholder={a && a.channel !== 'unknown' ? 'Change source…' : 'Set source…'} /></SelectTrigger>
-              <SelectContent>{MANUAL_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{sources.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
             </Select>
             <Button size="sm" variant="outline" disabled={!choice || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Spinner /> : 'Save'}</Button>
           </div>

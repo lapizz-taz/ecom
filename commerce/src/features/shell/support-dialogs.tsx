@@ -69,7 +69,7 @@ export function ContactDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Contact Support</DialogTitle>
-          <DialogDescription>Owners and admins can change roles, settings and integrations. For a problem with the system itself, use Report Issue — it goes to the System log they review.</DialogDescription>
+          <DialogDescription>Owners and admins can change roles, settings and integrations. For a problem with the system itself, use Support → My Bug Reports — you can follow the fix there.</DialogDescription>
         </DialogHeader>
         <ul className="grid gap-2">
           {admins.length === 0 && <li className="text-sm text-muted-foreground">No active owner or admin found.</li>}
@@ -98,8 +98,8 @@ export function ReportIssueDialog({ open, onOpenChange }: { open: boolean; onOpe
       browser: navigator.userAgent,
       screen: `${window.innerWidth}×${window.innerHeight}`,
     }),
-    onSuccess: () => {
-      toast.success('Reported. Owners and admins see it in the System log.')
+    onSuccess: (num) => {
+      toast.success(`Bug #${num} reported`, { description: 'Follow it and see replies in Support → My Bug Reports.' })
       setText('')
       onOpenChange(false)
     },

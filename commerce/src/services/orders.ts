@@ -1,7 +1,7 @@
 import { invokeFunction } from '@/lib/functions'
 import { asJson, fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
-import type { Enums } from '@/types/database'
+import type { Enums, Tables } from '@/types/database'
 import type {
   CheckoutLead, FraudQueueItem, FulfillmentSummary, OrderListItem, OrderStatus, Paged, QueueCounts, Quote, ReviewStatus, ScanAction, ScanResult,
 } from '@/types/domain'
@@ -353,17 +353,36 @@ export async function recentScans(limit = 50) {
 }
 export type ScanLogRow = Awaited<ReturnType<typeof recentScans>>[number]
 
-export const MANUAL_SOURCES = [
-  { value: 'MESSENGER', label: 'Messenger' },
-  { value: 'WHATSAPP', label: 'WhatsApp' },
-  { value: 'PHONE', label: 'Phone call' },
-  { value: 'FACEBOOK_COMMENT', label: 'Facebook comment' },
-  { value: 'INSTAGRAM_DM', label: 'Instagram DM' },
-  { value: 'WALK_IN', label: 'Walk-in' },
-  { value: 'REFERRAL', label: 'Referral' },
-  { value: 'REPEAT_CUSTOMER', label: 'Repeat customer' },
-  { value: 'OTHER', label: 'Other' },
+export type OrderSource = Tables<'order_sources'>
+export const SOURCE_CHANNELS = [
+  { value: 'messaging', label: 'Messaging' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'organic_social', label: 'Social (organic)' },
+  { value: 'offline', label: 'Offline / shop' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'direct', label: 'Direct / repeat' },
+  { value: 'other', label: 'Other' },
 ] as const
+
+/** Sources staff can pick for a manual order (Settings → Order Sources). */
+export async function listOrderSources(includeInactive = false): Promise<OrderSource[]> {
+  let q = supabase.from('order_sources').select('*').order('sort_order').order('label')
+  if (!includeInactive) q = q.eq('is_active', true)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+export async function saveOrderSource(p: Partial<OrderSource>) {
+  const { data, error } = await supabase.rpc('order_source_save', { p: p as never })
+  if (error) throw error
+  return data as unknown as OrderSource
+}
+export interface SourceStat { kind: 'manual' | 'tracked' | 'none'; label: string; channel: string; orders: number; delivered: number; returned: number; cancelled: number; delivered_value: number }
+export async function orderSourceStats(days: number): Promise<SourceStat[]> {
+  const { data, error } = await supabase.rpc('order_source_stats', { p_days: days })
+  if (error) throw error
+  return (data ?? []) as unknown as SourceStat[]
+}
 
 export async function setOrderSource(orderId: string, source: string, note?: string) {
   const { data, error } = await supabase.rpc('admin_set_order_source', { p_order_id: orderId, p_source: source, p_note: note || undefined })

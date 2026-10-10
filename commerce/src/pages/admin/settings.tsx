@@ -2,24 +2,30 @@ import { Navigate } from 'react-router'
 import { PageHeader } from '@/components/common/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/features/auth/auth-context'
+import { AdvancedSettings } from '@/features/settings/advanced-settings'
 import { DeliverySettings } from '@/features/settings/delivery-settings'
 import { FinanceCategories } from '@/features/settings/finance-categories'
 import { FraudSettings } from '@/features/settings/fraud-settings'
+import { MerchantProfile } from '@/features/settings/merchant-profile'
 import { NotificationSettings } from '@/features/settings/notification-settings'
 import { OperationsSettings } from '@/features/settings/operations-settings'
+import { OrderSourcesSettings } from '@/features/settings/order-sources'
 import { PaymentSettings } from '@/features/settings/payment-settings'
 import { StoreSettings } from '@/features/settings/store-settings'
 import { useUrlState } from '@/hooks/use-url-state'
 
 const TABS = [
-  { key: 'store', label: 'Store', render: () => <StoreSettings /> },
+  { key: 'store', label: 'Business profile', render: () => <StoreSettings /> },
+  { key: 'merchant', label: 'Merchant profile', render: () => <MerchantProfile /> },
   { key: 'delivery', label: 'Delivery', render: () => <DeliverySettings /> },
   { key: 'payments', label: 'Payments', render: () => <PaymentSettings /> },
   { key: 'fraud', label: 'Fraud & advance', render: () => <FraudSettings /> },
   { key: 'operations', label: 'Orders & operations', render: () => <OperationsSettings /> },
   { key: 'labels', label: 'Label builder', render: () => <Navigate to="/admin/label-builder" replace /> },
-  { key: 'notifications', label: 'Notifications', render: () => <NotificationSettings /> },
+  { key: 'notifications', label: 'Templates', render: () => <NotificationSettings /> },
+  { key: 'sources', label: 'Order sources', render: () => <OrderSourcesSettings /> },
   { key: 'finance', label: 'Finance categories', permission: 'finance.view', render: () => <FinanceCategories /> },
+  { key: 'advanced', label: 'Advanced', render: () => <AdvancedSettings /> },
 ]
 
 export default function SettingsPage() {

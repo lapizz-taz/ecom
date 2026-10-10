@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, Moon, Plus, ScanBarcode, Search, ShieldAlert, Sun, UserCog,
+  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, Sun, UserCog,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
@@ -20,6 +20,7 @@ import { ContactDialog, HelpDialog, ReportIssueDialog } from '@/features/shell/s
 import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
+import { deviceLabel } from '@/lib/device'
 import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -109,6 +110,60 @@ function useNewOrderAlerts(enabled: boolean) {
   return { unseen, reset: () => setUnseen(0) }
 }
 
+/** Signs staff out after the inactivity time set in Settings → Advanced (0 = never). */
+function useIdleSignOut(minutes: number, signOut: () => Promise<void>) {
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (!minutes || minutes <= 0) return
+    const KEY = 'admin-last-activity'
+    const mark = () => { try { localStorage.setItem(KEY, String(Date.now())) } catch { /* private mode */ } }
+    const last = () => { try { return Number(localStorage.getItem(KEY)) || Date.now() } catch { return Date.now() } }
+    mark()
+    let lastMark = Date.now()
+    // Activity in any tab counts; marks are throttled to once every 15 s.
+    const onActivity = () => { if (Date.now() - lastMark > 15_000) { lastMark = Date.now(); mark() } }
+    const events = ['pointerdown', 'keydown', 'scroll', 'visibilitychange'] as const
+    for (const e of events) window.addEventListener(e, onActivity, { passive: true })
+    const timer = window.setInterval(() => {
+      if (Date.now() - last() > minutes * 60_000) {
+        void signOut().then(() => {
+          toast.info('Signed out after inactivity', { description: 'Sign in again to continue.' })
+          navigate('/admin/login')
+        })
+      }
+    }, 30_000)
+    return () => { for (const e of events) window.removeEventListener(e, onActivity); window.clearInterval(timer) }
+  }, [minutes, signOut, navigate])
+}
+
+/** Shown instead of the admin while this browser waits for an admin to approve it. */
+function DeviceGate({ status, email, onSignOut }: { status: string | null | undefined; email: string; onSignOut: () => void }) {
+  const queryClient = useQueryClient()
+  const [checking, setChecking] = useState(false)
+  useEffect(() => {
+    const t = window.setInterval(() => void queryClient.invalidateQueries({ queryKey: ['my-access'] }), 20_000)
+    return () => window.clearInterval(t)
+  }, [queryClient])
+  const blocked = status === 'REJECTED' || status === 'REVOKED'
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+      <span className="flex size-14 items-center justify-center rounded-full bg-muted"><MonitorSmartphone className="size-7 text-muted-foreground" /></span>
+      <h1 className="text-lg font-semibold">{blocked ? 'This device is blocked' : 'Waiting for approval'}</h1>
+      <p className="text-sm text-muted-foreground">
+        {blocked
+          ? 'An admin blocked this device for your account. Ask them to approve it again, or sign in from your approved device.'
+          : <>You signed in as {email} on a new device (<span className="font-medium text-foreground">{deviceLabel()}</span>). An owner or admin needs to approve it in Settings → Device Approvals. This page opens by itself once approved.</>}
+      </p>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={onSignOut}><LogOut /> Sign out</Button>
+        <Button disabled={checking} onClick={() => { setChecking(true); void queryClient.invalidateQueries({ queryKey: ['my-access'] }).finally(() => setChecking(false)) }}>
+          <RefreshCw className={cn(checking && 'animate-spin')} /> Check again
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function PermissionDenied() {
   return (
     <div className="mx-auto max-w-md py-20 text-center">
@@ -132,6 +187,7 @@ export default function AdminLayout() {
   const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')))
   const theme = useAdminThemePreference()
   useAdminTheme()
+  useIdleSignOut(access?.idle_logout_minutes ?? 0, signOut)
 
   const toggleCollapsed = useCallback(() => setCollapsed((c) => {
     try { localStorage.setItem(COLLAPSED_KEY, c ? '0' : '1') } catch { /* private mode */ }
@@ -157,6 +213,10 @@ export default function AdminLayout() {
         </div>
       </div>
     )
+  }
+
+  if (access.device_blocked) {
+    return <DeviceGate status={access.device?.status} email={access.email} onSignOut={() => void signOut().then(() => navigate('/admin/login'))} />
   }
 
   const required = [...matches].reverse().map((m) => (m.handle as { permission?: string } | undefined)?.permission).find(Boolean)

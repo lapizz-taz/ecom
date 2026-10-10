@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, Check, ExternalLink, MessageCircle, Phone, PhoneCall, PhoneOff, SkipForward, X } from 'lucide-react'
+import { CalendarClock, Check, ExternalLink, MessageCircle, PhoneCall, PhoneOff, SkipForward, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { CallButton } from '@/features/pbx/call-button'
 import { CourierHistoryTable, courierHistoryOf } from '@/features/fraud/courier-history'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
@@ -114,7 +115,7 @@ export default function CallCenterPage() {
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="flex flex-wrap gap-2">
-                <Button size="lg" asChild><a href={`tel:${o.customer_phone}`}><Phone /> Call {o.customer_phone}</a></Button>
+                <CallButton size="lg" phone={o.customer_phone} orderId={o.id} />
                 <Button size="lg" variant="outline" asChild><a href={`https://wa.me/${intl(o.customer_phone)}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>
                 <Button size="lg" variant="ghost" asChild><Link to={`/admin/orders/${o.id}`}><ExternalLink /> Open order</Link></Button>
               </div>

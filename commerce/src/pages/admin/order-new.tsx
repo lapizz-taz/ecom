@@ -23,7 +23,8 @@ import { normalizePhone } from '@/lib/phone'
 import { supabase } from '@/lib/supabase'
 import { PAYMENT_METHOD } from '@/lib/status'
 import { variantsByIds } from '@/services/catalog'
-import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, MANUAL_SOURCES, setOrderSource } from '@/services/orders'
+import { useOrderSources } from '@/hooks/use-order-sources'
+import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, setOrderSource } from '@/services/orders'
 import type { Enums } from '@/types/database'
 
 interface Line {
@@ -38,6 +39,7 @@ interface Line {
 export default function NewOrderPage() {
   const navigate = useNavigate()
   const { can } = useAuth()
+  const sources = useOrderSources()
   const { data: config } = useStoreConfig()
   const [customer, setCustomer] = useState({ full_name: '', phone: '', email: '' })
   const [shipping, setShipping] = useState({ address: '', area: '', city: '', district: '', postal_code: '' })
@@ -249,7 +251,7 @@ export default function NewOrderPage() {
                 <Field label="Where did this order come from?" htmlFor="n-source" hint="Shown in reports next to website orders.">
                   <Select value={orderSource} onValueChange={setOrderSourceChoice}>
                     <SelectTrigger id="n-source"><SelectValue placeholder="Choose…" /></SelectTrigger>
-                    <SelectContent>{MANUAL_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                    <SelectContent>{sources.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
               )}

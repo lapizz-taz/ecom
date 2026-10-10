@@ -3610,6 +3610,39 @@ export type Database = {
         }
         Relationships: []
       }
+      order_sources: {
+        Row: {
+          code: string
+          label: string
+          channel: string
+          is_active: boolean
+          sort_order: number
+          is_system: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          label: string
+          channel: string
+          is_active?: boolean
+          sort_order?: number
+          is_system?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          label?: string
+          channel?: string
+          is_active?: boolean
+          sort_order?: number
+          is_system?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_status_history: {
         Row: {
           id: string
@@ -4231,6 +4264,94 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_calls: {
+        Row: {
+          id: string
+          call_id: string
+          direction: string
+          from_number: string | null
+          to_number: string | null
+          customer_phone: string | null
+          extension: string | null
+          profile_id: string | null
+          customer_id: string | null
+          order_id: string | null
+          status: string
+          duration_seconds: number | null
+          recording_url: string | null
+          started_at: string | null
+          ended_at: string | null
+          events: number
+          raw: Json
+          received_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          call_id: string
+          direction?: string
+          from_number?: string | null
+          to_number?: string | null
+          customer_phone?: string | null
+          extension?: string | null
+          profile_id?: string | null
+          customer_id?: string | null
+          order_id?: string | null
+          status?: string
+          duration_seconds?: number | null
+          recording_url?: string | null
+          started_at?: string | null
+          ended_at?: string | null
+          events?: number
+          raw?: Json
+          received_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          call_id?: string
+          direction?: string
+          from_number?: string | null
+          to_number?: string | null
+          customer_phone?: string | null
+          extension?: string | null
+          profile_id?: string | null
+          customer_id?: string | null
+          order_id?: string | null
+          status?: string
+          duration_seconds?: number | null
+          recording_url?: string | null
+          started_at?: string | null
+          ended_at?: string | null
+          events?: number
+          raw?: Json
+          received_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_calls_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_calls_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_calls_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -5368,6 +5489,92 @@ export type Database = {
           },
         ]
       }
+      staff_device_sessions: {
+        Row: {
+          session_id: string
+          device_id: string
+          created_at: string
+        }
+        Insert: {
+          session_id: string
+          device_id: string
+          created_at?: string
+        }
+        Update: {
+          session_id?: string
+          device_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_device_sessions_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "staff_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_devices: {
+        Row: {
+          id: string
+          profile_id: string
+          token_hash: string
+          label: string | null
+          user_agent: string | null
+          ip: string | null
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          note: string | null
+          first_seen_at: string
+          last_seen_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          token_hash: string
+          label?: string | null
+          user_agent?: string | null
+          ip?: string | null
+          status?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          note?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          token_hash?: string
+          label?: string | null
+          user_agent?: string | null
+          ip?: string | null
+          status?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          note?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_devices_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_devices_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_reservations: {
         Row: {
           id: string
@@ -5547,6 +5754,123 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      support_ticket_messages: {
+        Row: {
+          id: string
+          ticket_id: string
+          author_id: string
+          body: string
+          is_support: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          ticket_id: string
+          author_id: string
+          body: string
+          is_support?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          ticket_id?: string
+          author_id?: string
+          body?: string
+          is_support?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_ticket_messages_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_tickets: {
+        Row: {
+          id: string
+          number: number
+          kind: string
+          category: string
+          subject: string
+          body: string
+          rating: number | null
+          status: string
+          priority: string
+          context: Json
+          created_by: string
+          replies: number
+          last_reply_at: string | null
+          last_reply_by: string | null
+          resolved_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          number?: number
+          kind: string
+          category?: string
+          subject: string
+          body: string
+          rating?: number | null
+          status?: string
+          priority?: string
+          context?: Json
+          created_by: string
+          replies?: number
+          last_reply_at?: string | null
+          last_reply_by?: string | null
+          resolved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          number?: number
+          kind?: string
+          category?: string
+          subject?: string
+          body?: string
+          rating?: number | null
+          status?: string
+          priority?: string
+          context?: Json
+          created_by?: string
+          replies?: number
+          last_reply_at?: string | null
+          last_reply_by?: string | null
+          resolved_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_last_reply_by_fkey"
+            columns: ["last_reply_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       system_logs: {
         Row: {
@@ -5773,7 +6097,18 @@ export type Database = {
         }
         Returns: string
       }
+      _device_ok: {
+        Args: {
+          p_profile: string
+          p_role: string
+        }
+        Returns: boolean
+      }
       _hr_today: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      _jwt_session: {
         Args: Record<PropertyKey, never>
         Returns: string
       }
@@ -7380,6 +7715,50 @@ export type Database = {
         }
         Returns: Json
       }
+      device_approve_recent: {
+        Args: {
+          p_days?: number
+        }
+        Returns: number
+      }
+      device_decide: {
+        Args: {
+          p_id: string
+          p_action: string
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          profile_id: string
+          token_hash: string
+          label: string | null
+          user_agent: string | null
+          ip: string | null
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          note: string | null
+          first_seen_at: string
+          last_seen_at: string
+        }
+      }
+      device_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      device_register: {
+        Args: {
+          p_token: string
+          p_label?: string
+        }
+        Returns: Json
+      }
+      device_settings_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
       expire_unpaid_advance_orders: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -7779,6 +8158,10 @@ export type Database = {
         }
         Returns: Json
       }
+      integrations_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       inventory_bulk_adjust: {
         Args: {
           p_items: Json
@@ -7865,6 +8248,27 @@ export type Database = {
         }
         Returns: number
       }
+      order_source_save: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          code: string
+          label: string
+          channel: string
+          is_active: boolean
+          sort_order: number
+          is_system: boolean
+          created_at: string
+          updated_at: string
+        }
+      }
+      order_source_stats: {
+        Args: {
+          p_days?: number
+        }
+        Returns: Json
+      }
       order_stage: {
         Args: {
           p_status: Database["public"]["Enums"]["order_status"]
@@ -7891,6 +8295,12 @@ export type Database = {
       parcel_history: {
         Args: {
           p_order_id: string
+        }
+        Returns: Json
+      }
+      pbx_settings_save: {
+        Args: {
+          p: Json
         }
         Returns: Json
       }
@@ -8735,6 +9145,73 @@ export type Database = {
           p_message: string
         }
         Returns: undefined
+      }
+      support_ticket_create: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          number: number
+          kind: string
+          category: string
+          subject: string
+          body: string
+          rating: number | null
+          status: string
+          priority: string
+          context: Json
+          created_by: string
+          replies: number
+          last_reply_at: string | null
+          last_reply_by: string | null
+          resolved_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      support_ticket_reply: {
+        Args: {
+          p_id: string
+          p_body: string
+        }
+        Returns: {
+          id: string
+          ticket_id: string
+          author_id: string
+          body: string
+          is_support: boolean
+          created_at: string
+        }
+      }
+      support_ticket_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: {
+          id: string
+          number: number
+          kind: string
+          category: string
+          subject: string
+          body: string
+          rating: number | null
+          status: string
+          priority: string
+          context: Json
+          created_by: string
+          replies: number
+          last_reply_at: string | null
+          last_reply_by: string | null
+          resolved_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      system_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       track_order: {
         Args: {

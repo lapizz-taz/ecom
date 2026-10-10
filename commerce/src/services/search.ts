@@ -18,7 +18,9 @@ export async function globalSearch(q: string): Promise<GlobalSearchResult> {
 }
 
 /** Support → Report issue: saved to the System log for owners and admins. */
-export async function reportIssue(message: string, context: { page: string; browser: string; screen: string }) {
-  const { error } = await supabase.rpc('report_issue', { p_message: message, p_context: context })
+/** Opens a bug ticket (also logged for admins); returns its number. */
+export async function reportIssue(message: string, context: { page: string; browser: string; screen: string }): Promise<number> {
+  const { data, error } = await supabase.rpc('report_issue', { p_message: message, p_context: context })
   if (error) throw error
+  return data as number
 }
