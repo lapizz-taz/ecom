@@ -46,6 +46,33 @@ describe('Delivered is final', () => {
       await asSystem(db)
       expect(await value<number>(db, `select count(*)::int from public.order_status_history where order_id = $1 and event = 'COURIER_RETURN_AFTER_DELIVERY'`, [s.id])).toBe(2)
     }))
+  it('the scanner refuses to turn a delivered parcel into a return', () =>
+    inTx(async (db) => {
+      const p = await createProduct(db, { price: 500, stock: 5 })
+      const s = await shipped(db, p.variantIds[0])
+      await courier(db, s.ship, 'DELIVERED')
+      const before = await inventory(db, p.variantIds[0])
+      const num = await value<string>(db, `select order_number from public.orders where id = $1`, [s.id])
+      await asUser(db, await createStaff(db, 'OWNER'))
+      const r = await value<Record<string, any>>(db, `select public.scan_parcel($1, 'RETURNED')`, [num])
+      expect(r.result).toBe('ERROR')
+      expect(r.message).toMatch(/final/)
+      expect((await order(db, s.id)).status).toBe('DELIVERED')
+      expect(await inventory(db, p.variantIds[0])).toEqual(before)
+    }))
+
+  it('scanning a returning parcel as Returned receives it and restocks', () =>
+    inTx(async (db) => {
+      const p = await createProduct(db, { price: 500, stock: 5 })
+      const s = await shipped(db, p.variantIds[0])
+      await courier(db, s.ship, 'FAILED')
+      const num = await value<string>(db, `select order_number from public.orders where id = $1`, [s.id])
+      await asUser(db, await createStaff(db, 'OWNER'))
+      const r = await value<Record<string, any>>(db, `select public.scan_parcel($1, 'RETURNED')`, [num])
+      expect(r.result).not.toBe('ERROR')
+      expect(await order(db, s.id)).toMatchObject({ status: 'RETURNED', stage: 'RETURNED' })
+      expect((await inventory(db, p.variantIds[0])).on_hand).toBe(5)
+    }))
 })
 
 describe('One "Return pending" stage', () => {
