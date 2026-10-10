@@ -748,6 +748,24 @@ export function visitExtras(v: Visit): Record<string, string> {
 }
 
 /** A REST order (webhook body): landing_site / referring_site, for when the journey is not ready yet. */
+/**
+ * Items Shopify put back in stock for an order (a cancel or return with
+ * "restock"), from the refunds on an order webhook. Stock here follows our
+ * own order instead, so these must not be counted a second time.
+ */
+export type StoreRestock = { line_id: string; refund_id: string; created_at: string | null; external_variant_id: string; quantity: number; location_id: string | null }
+export function restocksFromWebhook(body: Record<string, unknown>): StoreRestock[] {
+  type Line = { id?: number; quantity?: number; restock_type?: string | null; location_id?: number | null; line_item?: { variant_id?: number | null } }
+  type Refund = { id?: number; created_at?: string | null; refund_line_items?: Line[] }
+  const refunds = Array.isArray(body.refunds) ? body.refunds as Refund[] : []
+  return refunds.flatMap((r) => (r.refund_line_items ?? [])
+    .filter((l) => l.id && r.id && l.line_item?.variant_id && (l.quantity ?? 0) > 0 && ['cancel', 'return', 'legacy_restock'].includes(l.restock_type ?? ''))
+    .map((l) => ({
+      line_id: String(l.id), refund_id: String(r.id), created_at: r.created_at ?? null, external_variant_id: String(l.line_item!.variant_id),
+      quantity: l.quantity!, location_id: l.location_id ? String(l.location_id) : null,
+    })))
+}
+
 export function restTouch(body: { landing_site?: string | null; referring_site?: string | null; created_at?: string | null }) {
   const t = touchFrom(body.landing_site ?? null, body.referring_site ?? null, body.created_at ?? null)
   return t ? { first_touch: t, last_touch: t } : null

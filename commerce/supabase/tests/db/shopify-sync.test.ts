@@ -174,6 +174,48 @@ describe('a change during a running job', () => {
     }))
 })
 
+describe("Shopify's restock for an order we also have", () => {
+  it('is not counted twice: the marker moves with it and Shopify is set back to ours; each restock once; old ones ignored', () =>
+    inTx(async (db) => {
+      const tote = await createProduct(db, { price: 500, stock: 10, variants: [{ sku: 'RG-TOTE', title: 'Default', stock: 10 }] })
+      const c = await shopify(db, { location_id: 'gid://shopify/Location/1' })
+      await asService(db)
+      await db.query(`select public.channel_catalog_import($1, $2, $3)`, [c, JSON.stringify([
+        { external_variant_id: 'ext-RG-TOTE', external_product_id: 'p1', inventory_item_id: 'gid://shopify/InventoryItem/9', sku: 'RG-TOTE', product_title: 'Tote',
+          variant_title: 'Default Title', tracked: true, levels: [{ location_id: 'gid://shopify/Location/1', location: 'Warehouse', available: 10 }] },
+      ]), JSON.stringify([{ id: 'gid://shopify/Location/1', name: 'Warehouse', active: true }])])
+      await asUser(db, await createStaff(db, 'OWNER'))
+      await db.query(`select public.channel_sync_settings_save($1, '{"inventory_sync": true, "external_changes": "TWO_WAY"}')`, [c])
+      const ext = String(Math.floor(Math.random() * 1e9))
+      const order = await imported(db, c, 'RG-TOTE', 1, ext)
+      await asSystem(db)
+      const marker = () => value<number>(db, `select last_pushed_qty from public.sales_channel_variants where channel_id = $1 and variant_id = $2`, [c, tote.variantIds[0]])
+      expect(await marker()).toBe(9)
+      await db.query(`update public.channel_sync_jobs set status = 'DONE' where channel_id = $1`, [c])
+
+      // Cancelled (or returned) in Shopify with restock: Shopify 9 → 10. Expected, not a change made in Shopify.
+      const line = { line_id: '501', refund_id: '77', created_at: new Date(Date.now() + 1000).toISOString(), external_variant_id: 'ext-RG-TOTE', quantity: 1, location_id: '1' }
+      await asService(db)
+      expect(await value(db, `select public.channel_store_restock_seen($1, $2, $3)`, [c, ext, JSON.stringify([line])])).toEqual({ status: 'OK', ignored: 1 })
+      await asSystem(db)
+      expect(await marker()).toBe(10)
+      expect((await jobs(db, 'INVENTORY', tote.variantIds[0])).filter((j) => j.status === 'PENDING')).toHaveLength(1)
+      expect(await value<number>(db, `select count(*)::int from public.order_status_history where order_id = $1 and message like 'Shopify put 1 item(s) back%'`, [order])).toBe(1)
+      // Stock here is untouched (it follows our order).
+      expect((await inventory(db, tote.variantIds[0])).on_hand).toBe(10)
+
+      // The same restock again (orders/updated after orders/cancelled): once only.
+      await asService(db)
+      expect(await value(db, `select public.channel_store_restock_seen($1, $2, $3)`, [c, ext, JSON.stringify([line])])).toEqual({ status: 'OK', ignored: 0 })
+      // A restock from before this guard existed, another location, or an order we never had: left alone.
+      expect(await value(db, `select public.channel_store_restock_seen($1, $2, $3)`, [c, ext, JSON.stringify([
+        { ...line, line_id: '502', created_at: '2020-01-01T00:00:00Z' }, { ...line, line_id: '503', location_id: '2' }])])).toEqual({ status: 'OK', ignored: 0 })
+      expect(await value(db, `select public.channel_store_restock_seen($1, $2, $3)`, [c, 'not-ours', JSON.stringify([{ ...line, line_id: '504' }])])).toEqual({ status: 'NO_ORDER' })
+      await asSystem(db)
+      expect(await marker()).toBe(10)
+    }))
+})
+
 describe('Shopify stock sync', () => {
   it('links by SKU, flags duplicates, pushes our stock changes, and does not double count a Shopify order', () =>
     inTx(async (db) => {

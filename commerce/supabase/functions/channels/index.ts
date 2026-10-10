@@ -20,7 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { type Check, ChannelError, type NormalizedOrder } from '../_shared/channels/common.ts'
 import {
-  exchangeShopifyCode, restTouch, seenFromWebhook, ShopifyClient, SHOPIFY_SCOPES, shopifyClientToken, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook,
+  exchangeShopifyCode, restocksFromWebhook, restTouch, seenFromWebhook, ShopifyClient, SHOPIFY_SCOPES, shopifyClientToken, shopDomain, shopifyAuthUrl, verifyShopifyCallback, verifyShopifyWebhook,
   visitExtras,
 } from '../_shared/channels/shopify.ts'
 import { touchFrom } from '../_shared/channels/common.ts'
@@ -420,6 +420,11 @@ async function webhook(req: Request, id: string): Promise<Response> {
     if (delivery && await rpc<boolean>(admin, 'channel_delivery_seen', { p_channel_id: c.id, p_delivery_id: delivery })) return json(req, { ok: true, duplicate: true })
     const body = JSON.parse(raw || '{}') as { id?: number; admin_graphql_api_id?: string; cancel_reason?: string }
     let result: unknown = null
+    // Shopify's own restock for an order we also have: not counted twice here.
+    const restocked = async (orderId: string) => {
+      const lines = restocksFromWebhook(body as Record<string, unknown>)
+      return lines.length ? await rpc(admin, 'channel_store_restock_seen', { p_channel_id: c.id, p_external_order_id: orderId, p_lines: lines }) : null
+    }
     if ((topic === 'products/create' || topic === 'products/update' || topic === 'products/delete') && body.id) {
       s = await credsOf(admin, c)
       result = await productChanged(admin, c, s, String(body.id), topic === 'products/delete')
@@ -436,10 +441,13 @@ async function webhook(req: Request, id: string): Promise<Response> {
         : { status: 'NO_COST' }
     } else if (topic === 'orders/cancelled' && body.id) {
       result = await rpc(admin, 'channel_order_cancelled', { p_channel_id: c.id, p_external_id: String(body.id), p_reason: body.cancel_reason ?? null })
+      result = { order: result, restock: await restocked(String(body.id)) }
     } else if (topic === 'orders/updated' && body.id) {
+      const restock = await restocked(String(body.id))
       // Only fulfilments are taken from updates: the rest of our order is ours to manage.
       const seen = seenFromWebhook(body as Record<string, unknown>)
       result = seen.length ? await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: String(body.id), p_fulfillments: seen }) : { status: 'NO_FULFILMENTS' }
+      if (restock) result = { fulfilments: result, restock }
       // The customer journey is often ready only after the order was created.
       const rest = restTouch(body as Record<string, string>)
       if (rest) await rpc(admin, 'channel_order_attribution_fill', { p_channel_id: c.id, p_external_id: String(body.id), p_attribution: rest }).catch(() => undefined)
