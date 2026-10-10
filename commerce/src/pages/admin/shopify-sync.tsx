@@ -384,7 +384,7 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
             <p className="pt-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Order status on Shopify</p>
             {row('Cancel on Shopify when cancelled here', 'From Web Orders or Approved Orders. Stock is never put back twice.', 'cancel_on_shopify')}
             {row('Mark paid when delivered', 'Cash-on-delivery orders show Paid on Shopify once the courier delivers', 'mark_paid_on_delivery')}
-            {row('Show our status as a tag', 'Adds "Status: Confirmed / Shipped / Delivered / Returned …" to the Shopify order', 'status_tags')}
+            {row('Show our status as a tag', 'Adds "Fullfilio: Confirmed / Shipped / Delivered / Returned …" to the Shopify order once everything is in step ("Fullfilio: needs attention" if something failed)', 'status_tags')}
             {row('Send courier updates', 'Failed delivery and returned parcels show on the Shopify fulfilment', 'courier_events')}
           </>}
         </div>

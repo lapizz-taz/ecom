@@ -47,10 +47,11 @@ describe('profit calculation', () => {
       expect(r.net_profit).toBe(640)
     }))
 
-  it('posts delivery revenue only once even if an order is delivered twice', () =>
+  it('a delivered order is final: it cannot become a return, and its revenue is posted once', () =>
     inTx(async (db) => {
       const { order } = await deliveredExample(db)
-      await advanceOrder(db, order.id, ['RETURN_REQUESTED', 'DELIVERED'])
+      await asSystem(db)
+      await expectError(db, `select public._transition_order($1, 'RETURN_REQUESTED', 'too late')`, [order.id], /cannot move from DELIVERED/)
       expect((await pnl(db)).revenue).toBe(1120)
     }))
 
@@ -91,17 +92,16 @@ describe('profit calculation', () => {
       expect(await value(db, `select payment_status from public.orders where id = $1`, [order.id])).toBe('PAID')
     }))
 
-  it('treats refunds after delivery as contra-revenue and reverses COGS for restocked returns', () =>
+  it('treats a refund after delivery as contra-revenue (the delivered goods stay sold)', () =>
     inTx(async (db) => {
       const { order } = await deliveredExample(db)
       await asSystem(db)
       await db.query(`select public.record_order_payment($1, 'COD', 'COURIER_COD', 1120)`, [order.id])
-      await advanceOrder(db, order.id, ['RETURN_REQUESTED', 'RETURNED'])
       await db.query(`select public.refund_order($1, 1000, 'BKASH', 'Wrong size')`, [order.id])
       const r = await pnl(db)
       expect(r.refunds).toBe(1000)
       expect(r.net_revenue).toBe(120)
-      expect(r.cogs).toBe(0) // item restocked
+      expect(r.cogs).toBe(400) // delivered is final: nothing came back into stock
       expect(await value(db, `select payment_status from public.orders where id = $1`, [order.id])).toBe('PARTIALLY_REFUNDED')
       await expectError(db, `select public.refund_order($1, 500, 'BKASH', 'too much')`, [order.id], /exceeds/)
     }))

@@ -409,7 +409,7 @@ const SHOPIFY_FEATURES: Array<{ id: string; label: string; scopes: string[]; why
   { id: 'cost', label: 'Import cost prices', scopes: ['read_inventory'], why: "Read each item's cost, so profit is right." },
   { id: 'tracking', label: 'Fulfil with tracking when shipped', scopes: ['read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders'], why: 'Mark the order fulfilled on Shopify with the courier and tracking link.', off: { fulfill_on_ship: false } },
   { id: 'delivered', label: 'Mark delivered and courier updates', scopes: ['read_fulfillments', 'write_fulfillments'], why: 'Show Delivered, failed delivery and returned on the Shopify order.', off: { mark_delivered: false, courier_events: false } },
-  { id: 'status', label: 'Update order status on Shopify', scopes: ['write_orders'], why: 'Add a "Status: …" tag and mark cash-on-delivery orders paid when delivered.', off: { status_tags: false, mark_paid_on_delivery: false } },
+  { id: 'status', label: 'Update order status on Shopify', scopes: ['write_orders'], why: 'Add a "Fullfilio: …" tag and mark cash-on-delivery orders paid when delivered.', off: { status_tags: false, mark_paid_on_delivery: false } },
   { id: 'cancel', label: 'Cancel Shopify orders from here', scopes: ['write_orders'], why: 'Cancelling in Web Orders or Approved Orders cancels it on Shopify (stock never added twice).', off: { cancel_on_shopify: false } },
 ]
 const ALL_FEATURES = SHOPIFY_FEATURES.map((x) => x.id)

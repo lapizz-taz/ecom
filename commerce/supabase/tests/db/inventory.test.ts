@@ -105,7 +105,7 @@ describe('return handling', () => {
     inTx(async (db) => {
       const p = await createProduct(db, { price: 500, stock: 5 })
       const order = await createOrder(db, { items: [{ variantId: p.variantIds[0], quantity: 2 }] })
-      await advanceOrder(db, order.id, [...TO_SHIPPED, 'DELIVERED', 'RETURN_REQUESTED', 'RETURNED'])
+      await advanceOrder(db, order.id, [...TO_SHIPPED, 'RETURN_REQUESTED', 'RETURNED'])
       expect((await inventory(db, p.variantIds[0])).on_hand).toBe(5)
     }))
 })

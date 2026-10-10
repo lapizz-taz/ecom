@@ -208,7 +208,7 @@ export const MORE_PAGES: (NavChild & { parent: string })[] = [
   { parent: 'Web Orders', label: 'All Orders', to: '/admin/orders', permission: 'orders.view' },
   { parent: 'Approved Orders', label: 'Labels to Print', to: '/admin/orders/approved?print=1', permission: 'orders.fulfill' },
   { parent: 'Approved Orders', label: 'Label & Invoice Builder', to: '/admin/label-builder', permission: 'settings.view' },
-  { parent: 'Approved Orders', label: 'Pending Returns', to: '/admin/orders/approved?tab=PENDING_RETURN', permission: 'orders.view' },
+  { parent: 'Approved Orders', label: 'Return pending', to: '/admin/orders/approved?tab=RETURN_PENDING', permission: 'orders.view' },
   { parent: 'Approved Orders', label: 'Webhook Logs', to: '/admin/couriers?tab=webhooks', permission: 'couriers.view' },
 ]
 

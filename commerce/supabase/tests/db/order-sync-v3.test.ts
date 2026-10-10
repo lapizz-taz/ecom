@@ -118,7 +118,7 @@ describe('Merging Shopify orders (root cause: store imports skipped the merge ch
       expect(ctx.order).toMatchObject({ status: 'SHIPPED', own_status: 'CANCELLED' })
       expect(ctx.shipment).toMatchObject({ tracking: 'SFG1' })
       expect(ctx.lines).toEqual([expect.objectContaining({ sku, quantity: 1 })])
-      expect(ctx.merged_tag).toMatch(/^Merged: /)
+      expect(ctx.merged_tag).toMatch(/^Fullfilio: merged into /)
       // Fulfilled on Shopify (by the worker) → delivered here → both queued for Delivered.
       for (const id of [a.order_id, b.order_id]) {
         await db.query(`select public.channel_fulfillment_update($1, $2)`, [id, JSON.stringify({ status: 'FULFILLED', fulfillment_id: `gid://shopify/Fulfillment/${id.slice(0, 8)}` })])
@@ -168,12 +168,12 @@ describe('Order status → Shopify', () => {
       const a = await imported(db, c, { sku, phone: phone() })
       await advanceOrder(db, a.order_id, ['CONFIRMED'])
       await asService(db)
-      expect((await value<Record<string, any>>(db, `select public.channel_fulfillment_context($1)`, [a.order_id])).status_tag).toBe('Status: Confirmed')
+      expect((await value<Record<string, any>>(db, `select public.channel_fulfillment_context($1)`, [a.order_id])).status_tag).toBe('Fullfilio: Confirmed')
       await asSystem(db)
       await db.query(`select public._transition_order($1, 'CANCELLED', 'test')`, [a.order_id])
       expect((await sync(db, a.order_id))?.cancel_status ?? null).toBeNull()
       await asService(db)
-      expect((await value<Record<string, any>>(db, `select public.channel_fulfillment_context($1)`, [a.order_id])).status_tag).toBe('Status: Cancelled')
+      expect((await value<Record<string, any>>(db, `select public.channel_fulfillment_context($1)`, [a.order_id])).status_tag).toBe('Fullfilio: Cancelled')
       // Logged when the worker reports.
       await db.query(`select public.channel_order_sync_update($1, '{"paid_status":"MARKED"}')`, [a.order_id])
       await asSystem(db)

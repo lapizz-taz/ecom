@@ -93,7 +93,7 @@ const webhookUrl = (id: string) => `${fnBase()}/webhook/${id}`
 const secretKey = (id: string) => `channels.${id.replace(/-/g, '')}`
 const hint = (v: string) => `••••${v.slice(-4)}`
 const randomHex = (n = 32) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, '0')).join('')
-const appName = () => env('CHANNEL_APP_NAME') ?? 'Order Management'
+const appName = () => env('CHANNEL_APP_NAME') ?? 'Fullfilio'
 
 async function secretOf(admin: SupabaseClient, id: string): Promise<Secret> {
   const { data, error } = await admin.rpc('integration_secret_get', { p_key: secretKey(id) })

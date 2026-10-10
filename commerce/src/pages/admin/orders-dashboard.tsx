@@ -43,7 +43,7 @@ export default function OrdersDashboardPage() {
               { label: 'Pending over 2 days', n: aging.pending_over_2d, to: '/admin/orders/approved?tab=PENDING' },
               { label: 'RTS over 1 day', n: aging.rts_over_1d, to: '/admin/orders/approved?tab=RTS' },
               { label: 'Shipped over 7 days', n: aging.shipped_over_7d, to: '/admin/orders/approved?tab=SHIPPED' },
-              { label: 'Return open over 7 days', n: aging.return_over_7d, to: '/admin/orders/approved?tab=PENDING_RETURN' },
+              { label: 'Return open over 7 days', n: aging.return_over_7d, to: '/admin/orders/approved?tab=RETURN_PENDING' },
             ].map((a) => (
               <Link key={a.label} to={a.to} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50">
                 <AlarmClock className={cn('size-4', a.n > 0 ? 'text-amber-600' : 'text-muted-foreground')} />

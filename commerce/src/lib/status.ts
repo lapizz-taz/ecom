@@ -163,7 +163,6 @@ export const NEXT_ACTIONS: Partial<Record<OrderStatus, Array<{ to: OrderStatus; 
   PACKING: [{ to: 'READY_TO_SHIP', label: 'Mark ready to ship' }],
   READY_TO_SHIP: [{ to: 'SHIPPED', label: 'Mark shipped' }],
   SHIPPED: [{ to: 'DELIVERED', label: 'Mark delivered' }, { to: 'FAILED_DELIVERY', label: 'Delivery failed' }],
-  DELIVERED: [{ to: 'RETURN_REQUESTED', label: 'Customer return' }],
   FAILED_DELIVERY: [{ to: 'SHIPPED', label: 'Re-attempt delivery' }, { to: 'RETURNING', label: 'Coming back' }],
   RETURN_REQUESTED: [{ to: 'RETURNING', label: 'Coming back' }, { to: 'DELIVERED', label: 'Cancel return' }],
   PENDING_CANCEL: [{ to: 'CANCELLED', label: 'Courier cancelled it' }],
@@ -186,7 +185,7 @@ export const LOSABLE: OrderStatus[] = ['SHIPPED', 'FAILED_DELIVERY', 'RETURN_REQ
 
 /** Approved Orders stages (derived from the order status on the server). */
 export type OrderStage = 'PENDING' | 'PRE_ORDER' | 'RTS' | 'SHIPPED' | 'PENDING_CANCEL' | 'DELIVERED' | 'PARTIAL'
-  | 'PENDING_RETURN' | 'RETURN_PENDING' | 'RETURNED' | 'CANCELLED' | 'LOST'
+  | 'RETURN_PENDING' | 'RETURNED' | 'CANCELLED' | 'LOST'
 
 export const ORDER_STAGES: Array<{ key: OrderStage; label: string; variant: BadgeVariant; hint: string; moves: Array<{ to: OrderStatus; label: string }> }> = [
   { key: 'PENDING', label: 'Pending', variant: 'info', hint: 'Approved and being prepared',
@@ -196,16 +195,13 @@ export const ORDER_STAGES: Array<{ key: OrderStage; label: string; variant: Badg
   { key: 'RTS', label: 'RTS', variant: 'info', hint: 'Packed and ready for the courier',
     moves: [{ to: 'SHIPPED', label: 'Shipped' }, { to: 'PENDING_CANCEL', label: 'Pending cancel' }] },
   { key: 'SHIPPED', label: 'Shipped', variant: 'info', hint: 'With the courier',
-    moves: [{ to: 'DELIVERED', label: 'Delivered' }, { to: 'FAILED_DELIVERY', label: 'Pending return' }, { to: 'RETURNING', label: 'Return pending' },
+    moves: [{ to: 'DELIVERED', label: 'Delivered' }, { to: 'RETURNING', label: 'Return pending' },
       { to: 'PENDING_CANCEL', label: 'Pending cancel' }, { to: 'LOST', label: 'Lost' }] },
   { key: 'PENDING_CANCEL', label: 'Pending cancel', variant: 'warning', hint: 'Cancel asked for — waiting on the courier',
     moves: [{ to: 'CANCELLED', label: 'Cancelled' }, { to: 'RETURNING', label: 'Return pending' }] },
-  { key: 'DELIVERED', label: 'Delivered', variant: 'success', hint: 'The customer received it',
-    moves: [{ to: 'RETURN_REQUESTED', label: 'Pending return' }] },
+  { key: 'DELIVERED', label: 'Delivered', variant: 'success', hint: 'The customer received it — final, it cannot become a return', moves: [] },
   { key: 'PARTIAL', label: 'Partial', variant: 'success', hint: 'The customer kept part of the order', moves: [] },
-  { key: 'PENDING_RETURN', label: 'Pending return', variant: 'warning', hint: 'Delivery failed or a return was asked for; not on its way back yet',
-    moves: [{ to: 'RETURNING', label: 'Return pending' }, { to: 'RETURNED', label: 'Returned' }, { to: 'LOST', label: 'Lost' }] },
-  { key: 'RETURN_PENDING', label: 'Return pending', variant: 'warning', hint: 'On its way back to you',
+  { key: 'RETURN_PENDING', label: 'Return pending', variant: 'warning', hint: 'Refused or not delivered (the courier sends it here) and on its way back to you',
     moves: [{ to: 'RETURNED', label: 'Returned' }, { to: 'LOST', label: 'Lost' }] },
   { key: 'RETURNED', label: 'Returned', variant: 'neutral', hint: 'Received back', moves: [] },
   { key: 'CANCELLED', label: 'Cancelled', variant: 'neutral', hint: 'Cancelled after approval', moves: [] },
@@ -230,8 +226,7 @@ export function stageOf(status: OrderStatus, confirmedAt: string | null | undefi
     case 'PENDING_CANCEL': return 'PENDING_CANCEL'
     case 'DELIVERED': return 'DELIVERED'
     case 'PARTIALLY_DELIVERED': return 'PARTIAL'
-    case 'FAILED_DELIVERY': case 'RETURN_REQUESTED': return 'PENDING_RETURN'
-    case 'RETURNING': return 'RETURN_PENDING'
+    case 'FAILED_DELIVERY': case 'RETURN_REQUESTED': case 'RETURNING': return 'RETURN_PENDING'
     case 'RETURNED': return 'RETURNED'
     case 'LOST': return 'LOST'
     case 'CONFIRMED': case 'PROCESSING': case 'PRODUCTION': case 'QUALITY_CHECK': case 'PACKING': return 'PENDING'

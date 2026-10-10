@@ -338,7 +338,7 @@ export class ShopifyClient {
     }
   }
 
-  /** Adds / removes order tags (used for the "Status: …" tag). */
+  /** Adds / removes order tags (used for the "Fullfilio: …" tag). */
   async updateTags(orderId: string, add: string[], remove: string[]): Promise<void> {
     const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
     for (const [op, tags] of [['tagsRemove', remove], ['tagsAdd', add]] as const) {

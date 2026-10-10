@@ -6175,6 +6175,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      admin_products_bulk_update: {
+        Args: {
+          p_ids: string[]
+          p: Json
+        }
+        Returns: Json
+      }
       admin_quote_order: {
         Args: {
           p_items: Json
@@ -7291,6 +7298,13 @@ export type Database = {
       import_courier_invoice: {
         Args: {
           p: Json
+        }
+        Returns: Json
+      }
+      inventory_bulk_adjust: {
+        Args: {
+          p_items: Json
+          p_note: string
         }
         Returns: Json
       }

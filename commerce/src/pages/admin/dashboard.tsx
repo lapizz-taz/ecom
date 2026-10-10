@@ -266,7 +266,7 @@ function StatusTiles() {
     { label: 'Ready (RTS)', n: a.RTS, to: '/admin/orders/approved?tab=RTS' },
     { label: 'Shipped', n: a.SHIPPED, to: '/admin/orders/approved?tab=SHIPPED' },
     { label: 'Delivered', n: a.DELIVERED, to: '/admin/orders/approved?tab=DELIVERED', tone: 'text-emerald-600' },
-    { label: 'Pending return', n: (a.PENDING_RETURN ?? 0) + (a.RETURN_PENDING ?? 0), to: '/admin/orders/approved?tab=PENDING_RETURN', tone: 'text-amber-600' },
+    { label: 'Return pending', n: a.RETURN_PENDING ?? 0, to: '/admin/orders/approved?tab=RETURN_PENDING', tone: 'text-amber-600' },
     { label: 'Returned', n: a.RETURNED, to: '/admin/orders/approved?tab=RETURNED' },
     { label: 'Partial', n: a.PARTIAL, to: '/admin/orders/approved?tab=PARTIAL' },
     { label: 'Cancelled', n: a.CANCELLED, to: '/admin/orders/approved?tab=CANCELLED' },

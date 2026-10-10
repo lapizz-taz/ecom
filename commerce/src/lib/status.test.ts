@@ -6,7 +6,7 @@ describe('order stages', () => {
     expect(stageOf('CONFIRMATION_REQUIRED', null)).toBe('WEB')
     expect(stageOf('CANCELLED', null)).toBe('WEB')
     expect(stageOf('PACKING', '2026-10-01')).toBe('PENDING')
-    expect(stageOf('FAILED_DELIVERY', '2026-10-01')).toBe('PENDING_RETURN')
+    expect(stageOf('FAILED_DELIVERY', '2026-10-01')).toBe('RETURN_PENDING')
     expect(stageOf('RETURNING', '2026-10-01')).toBe('RETURN_PENDING')
     expect(stageOf('PARTIALLY_DELIVERED', '2026-10-01')).toBe('PARTIAL')
     expect(stageOf('CANCELLED', '2026-10-01')).toBe('CANCELLED')

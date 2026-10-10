@@ -206,3 +206,7 @@ WooCommerce connects under **Store → Sales Channels → WooCommerce**, either 
 
 **All products.** Every store product is imported, including archived ones (they appear as Archived under Inactive in Products, not for sale). The Store sync Products tab shows the store's own totals (products, variants and how many are active, draft or archived) next to what is imported here, and the reason for anything not imported yet.
 
+**Fullfilio tag on Shopify.** When every update for an order has gone through (fulfilled, delivered, paid, cancelled …), the Shopify order gets a tag like `Fullfilio: Delivered`, so you can see at a glance in Shopify that it is in step. If an update failed it shows `Fullfilio: needs attention` instead (open the order here and press "Send to Shopify again"). While Shopify is busy and the update is being retried, no tag is written yet. Older `Status: …` / `Merged: …` tags are replaced automatically on the next update.
+
+**Delivered is final.** A delivered order cannot become a return. If the courier later reports a return for it, the report is written to the order's history and the order stays delivered. Refused or failed deliveries (Steadfast "cancelled", Pathao "return" / "delivery failed") go to **Return pending** automatically — one tab for everything on its way back.
+

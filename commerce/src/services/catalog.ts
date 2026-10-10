@@ -103,6 +103,13 @@ export async function quickUpdateProduct(id: string, changes: { cost_price?: num
   return data as unknown as { id: string; cost_price: number; price: number; status: Enums<'product_status'>; track_inventory: boolean }
 }
 
+/** Same change for many products at once (all or nothing; server checks products.manage). */
+export async function bulkUpdateProducts(ids: string[], changes: { price?: number; cost_price?: number; active?: boolean; track_inventory?: boolean; category_id?: string | null }) {
+  const { data, error } = await supabase.rpc('admin_products_bulk_update', { p_ids: ids, p: asJson(changes) })
+  if (error) throw error
+  return data as unknown as { updated: number }
+}
+
 export interface ProductStats { products: number; active: number; inactive: number; variants: number; stock: number; sell_value: number; cost_value: number; low_stock: number }
 export async function productStats(): Promise<ProductStats> {
   const { data, error } = await supabase.rpc('admin_product_stats')

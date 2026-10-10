@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownUp, Columns3, ExternalLink, Filter, Minus, Package, Pencil, Plus, Trash2, Wallet, Boxes, Coins } from 'lucide-react'
+import { ArrowDownUp, Columns3, ExternalLink, Eye, EyeOff, Filter, Minus, Package, PackagePlus, Pencil, Plus, SlidersHorizontal, Trash2, Wallet, Boxes, Coins, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -13,7 +13,8 @@ import { EmptyState, ErrorState, Spinner, TableSkeleton } from '@/components/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -28,9 +29,9 @@ import { toUserMessage } from '@/lib/errors'
 import { formatMoney, formatNumber, slugify, toNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
-  type AdminProductFilters, type AdminProductRow, deleteCategory, imageUrl, listAdminProducts, listCategories, productStats, quickUpdateProduct, saveCategory,
+  type AdminProductFilters, type AdminProductRow, bulkUpdateProducts, deleteCategory, imageUrl, listAdminProducts, listCategories, productStats, quickUpdateProduct, saveCategory,
 } from '@/services/catalog'
-import { adjustStock, listStock } from '@/services/inventory'
+import { adjustStock, bulkAdjustStock, listStock } from '@/services/inventory'
 import type { Tables } from '@/types/database'
 
 const PAGE_SIZE = 25
@@ -131,6 +132,20 @@ function ProductList({ statuses }: { statuses: Array<Tables<'products'>['status'
 
   const filtersOn = Boolean(state.category)
   const rows = products.data?.items
+  // Ticked products (this page). Cleared when the page, search or filter changes.
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [bulk, setBulk] = useState<'stock' | 'edit' | null>(null)
+  const selKey = JSON.stringify([statuses, state])
+  useEffect(() => setSel(new Set()), [selKey])
+  const canBulk = manage || adjust
+  const picked = (rows ?? []).filter((r) => sel.has(r.id))
+  const allOn = !!rows?.length && rows.every((r) => sel.has(r.id))
+  const toggle = (id: string) => setSel((x) => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const bulkStatus = useMutation({
+    mutationFn: (active: boolean) => bulkUpdateProducts([...sel], { active }),
+    onSuccess: (r, active) => { toast.success(`${r.updated} product${r.updated === 1 ? '' : 's'} ${active ? 'active' : 'inactive'}`); setSel(new Set()); refresh() },
+    onError: (err) => toast.error(toUserMessage(err)),
+  })
 
   return (
     <div className="space-y-3">
@@ -163,6 +178,19 @@ function ProductList({ statuses }: { statuses: Array<Tables<'products'>['status'
         {products.isFetching && !products.isLoading && <Spinner className="size-4 text-muted-foreground" />}
       </div>
 
+      {sel.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-sm animate-in fade-in-0 slide-in-from-top-1 duration-200">
+          <span className="font-medium">{sel.size} selected</span>
+          {adjust && <Button size="sm" onClick={() => setBulk('stock')}><PackagePlus /> Add stock</Button>}
+          {manage && <>
+            <Button size="sm" variant="outline" onClick={() => setBulk('edit')}><SlidersHorizontal /> Edit price, cost, category</Button>
+            <Button size="sm" variant="outline" disabled={bulkStatus.isPending} onClick={() => bulkStatus.mutate(true)}><Eye /> Active</Button>
+            <Button size="sm" variant="outline" disabled={bulkStatus.isPending} onClick={() => bulkStatus.mutate(false)}><EyeOff /> Inactive</Button>
+          </>}
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSel(new Set())}><X /> Clear</Button>
+        </div>
+      )}
+
       <Card className="gap-0 overflow-hidden py-0">
         {products.isLoading ? <div className="p-4"><TableSkeleton rows={6} /></div>
           : products.error ? <ErrorState error={products.error} onRetry={() => products.refetch()} />
@@ -173,6 +201,7 @@ function ProductList({ statuses }: { statuses: Array<Tables<'products'>['status'
                   <table className="w-full min-w-[860px] text-sm">
                     <thead>
                       <tr className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
+                        {canBulk && <th className="w-10 px-3 py-2.5"><Checkbox checked={allOn} onCheckedChange={() => setSel(allOn ? new Set() : new Set(rows.map((r) => r.id)))} aria-label="Select all on this page" /></th>}
                         {show('code') && <th className="px-3 py-2.5">Code</th>}
                         <th className="px-3 py-2.5">Product</th>
                         {show('manage') && <th className="px-3 py-2.5 text-center">Manage stock</th>}
@@ -190,7 +219,8 @@ function ProductList({ statuses }: { statuses: Array<Tables<'products'>['status'
                         const cats = [p.categories?.name, ...(p.extra_category_ids ?? []).map((id) => catName.get(id))].filter(Boolean) as string[]
                         const excerpt = (p.short_description || p.description || '').replace(/\s+/g, ' ').trim()
                         return (
-                          <tr key={p.id} className="border-b transition-colors last:border-0 hover:bg-muted/30">
+                          <tr key={p.id} className={cn('border-b transition-colors last:border-0 hover:bg-muted/30', sel.has(p.id) && 'bg-muted/40')}>
+                            {canBulk && <td className="px-3 py-2.5"><Checkbox checked={sel.has(p.id)} onCheckedChange={() => toggle(p.id)} aria-label={`Select ${p.name}`} /></td>}
                             {show('code') && <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{p.sku ?? active[0]?.sku ?? '—'}</td>}
                             <td className="max-w-[320px] px-3 py-2.5">
                               <Link to={`/admin/products/${p.id}`} className="flex items-center gap-3">
@@ -259,7 +289,147 @@ function ProductList({ statuses }: { statuses: Array<Tables<'products'>['status'
           </div>
         )}
       </Card>
+      {bulk === 'stock' && <BulkStockDialog products={picked} onClose={() => setBulk(null)} onDone={() => { setBulk(null); setSel(new Set()); refresh() }} />}
+      {bulk === 'edit' && <BulkEditDialog products={picked} categories={categories.data ?? []} onClose={() => setBulk(null)} onDone={() => { setBulk(null); setSel(new Set()); refresh() }} />}
     </div>
+  )
+}
+
+type StockMode = 'ADD' | 'REMOVE' | 'SET'
+const MODE_LABEL: Record<StockMode, string> = { ADD: 'Add', REMOVE: 'Remove', SET: 'Set to' }
+
+/** Stock for many products at once: one box per variant, or one number for all. Saved together (all or nothing). */
+function BulkStockDialog({ products, onClose, onDone }: { products: AdminProductRow[]; onClose: () => void; onDone: () => void }) {
+  const lines = products.filter((p) => p.track_inventory).flatMap((p) => p.product_variants.filter((v) => v.is_active).map((v) => ({
+    id: v.id, name: p.name, variant: v.title && v.title !== 'Default' ? v.title : null, sku: v.sku, onHand: v.inventory?.on_hand ?? 0,
+  })))
+  const skipped = products.filter((p) => !p.track_inventory).length
+  const [mode, setMode] = useState<StockMode>('ADD')
+  const [qty, setQty] = useState<Record<string, string>>({})
+  const [note, setNote] = useState('Stock received')
+  const fillAll = (v: string) => setQty(Object.fromEntries(lines.map((l) => [l.id, v])))
+  const items = lines.flatMap((l) => {
+    const raw = (qty[l.id] ?? '').trim()
+    const n = Number(raw)
+    return raw === '' || !Number.isInteger(n) || n < 0 || (n === 0 && mode !== 'SET') ? [] : [{ variantId: l.id, quantity: n, mode }]
+  })
+  const after = (l: (typeof lines)[number]) => {
+    const raw = (qty[l.id] ?? '').trim()
+    if (raw === '' || !Number.isFinite(Number(raw))) return null
+    const n = Math.max(0, Math.trunc(Number(raw)))
+    return mode === 'ADD' ? l.onHand + n : mode === 'REMOVE' ? Math.max(0, l.onHand - n) : n
+  }
+  const save = useMutation({
+    mutationFn: () => bulkAdjustStock(items, note.trim()),
+    onSuccess: (r) => { toast.success(`Stock updated for ${r.changed} variant${r.changed === 1 ? '' : 's'}`); onDone() },
+    onError: (err) => toast.error(toUserMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Stock for {products.length} product{products.length === 1 ? '' : 's'}</DialogTitle>
+          <DialogDescription>Every change is recorded in the stock history and sent to your store. If one line fails, nothing is saved.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border p-0.5">
+            {(Object.keys(MODE_LABEL) as StockMode[]).map((m) => (
+              <button key={m} type="button" onClick={() => setMode(m)}
+                className={cn('rounded-md px-3 py-1 text-sm transition-colors', mode === m ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}>{MODE_LABEL[m]}</button>
+            ))}
+          </div>
+          <Input type="number" min="0" inputMode="numeric" placeholder="Same for all" className="h-8 w-32" onChange={(e) => fillAll(e.target.value)} aria-label="Same number for every variant" />
+        </div>
+        <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border text-sm">
+          {lines.map((l) => {
+            const a = after(l)
+            return (
+              <li key={l.id} className="flex items-center gap-3 px-3 py-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{l.name}{l.variant && <span className="font-normal text-muted-foreground"> · {l.variant}</span>}</span>
+                  <span className="block font-mono text-[11px] text-muted-foreground">{l.sku ?? '—'}</span>
+                </span>
+                <span className="w-24 text-right text-xs text-muted-foreground tabular-nums">{l.onHand}{a !== null && <> → <b className="text-foreground">{a}</b></>}</span>
+                <Input type="number" min="0" inputMode="numeric" value={qty[l.id] ?? ''} onChange={(e) => setQty((q) => ({ ...q, [l.id]: e.target.value }))}
+                  className="h-8 w-20 text-right" aria-label={`${MODE_LABEL[mode]} for ${l.name}${l.variant ? ` ${l.variant}` : ''}`} />
+              </li>
+            )
+          })}
+          {!lines.length && <li className="px-3 py-6 text-center text-muted-foreground">None of these products count stock.</li>}
+        </ul>
+        {skipped > 0 && <p className="text-xs text-muted-foreground">{skipped} product{skipped === 1 ? ' does' : 's do'} not count stock and {skipped === 1 ? 'is' : 'are'} left out.</p>}
+        <Field label="Note" hint="Shown in the stock history">
+          <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+        </Field>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={!items.length || note.trim().length < 2 || save.isPending}>
+            {save.isPending && <Spinner />} Save {items.length || ''} change{items.length === 1 ? '' : 's'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Price, cost, category and stock counting for many products at once. Empty fields are left as they are. */
+function BulkEditDialog({ products, categories, onClose, onDone }: {
+  products: AdminProductRow[]; categories: Array<{ id: string; name: string }>; onClose: () => void; onDone: () => void
+}) {
+  const [price, setPrice] = useState('')
+  const [cost, setCost] = useState('')
+  const [category, setCategory] = useState('keep')
+  const [track, setTrack] = useState('keep')
+  const num = (v: string) => (v.trim() === '' ? undefined : Number(v))
+  const bad = [price, cost].some((v) => v.trim() !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0))
+  const changes = {
+    ...(num(price) !== undefined && { price: num(price) }),
+    ...(num(cost) !== undefined && { cost_price: num(cost) }),
+    ...(category !== 'keep' && { category_id: category === 'none' ? null : category }),
+    ...(track !== 'keep' && { track_inventory: track === 'on' }),
+  }
+  const save = useMutation({
+    mutationFn: () => bulkUpdateProducts(products.map((p) => p.id), changes),
+    onSuccess: (r) => { toast.success(`${r.updated} product${r.updated === 1 ? '' : 's'} updated`); onDone() },
+    onError: (err) => toast.error(toUserMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit {products.length} product{products.length === 1 ? '' : 's'}</DialogTitle>
+          <DialogDescription>Only the fields you fill in change. Products with several variants keep each variant's own price.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Selling price"><Input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Keep" /></Field>
+          <Field label="Cost price"><Input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Keep" /></Field>
+          <Field label="Category">
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="keep">Keep</SelectItem>
+                <SelectItem value="none">No category</SelectItem>
+                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Count stock">
+            <Select value={track} onValueChange={setTrack}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="keep">Keep</SelectItem>
+                <SelectItem value="on">Yes, count stock</SelectItem>
+                <SelectItem value="off">No</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={bad || !Object.keys(changes).length || save.isPending}>{save.isPending && <Spinner />} Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

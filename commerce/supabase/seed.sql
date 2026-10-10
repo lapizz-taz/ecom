@@ -383,15 +383,12 @@ begin
     (select advance_required from public.orders where id = o), 'BK7QW33', 'Advance via bKash');
   perform pg_temp.go(o, array['PROCESSING']);
 
-  -- 17. Delivered, returned by the customer and refunded
+  -- 17. Refused at the door (wrong size): came back with the courier. Delivered orders are final and never become returns.
   o := pg_temp.seed_order('Rumana Haque', '01711000016', 'Dhaka',
     jsonb_build_array(jsonb_build_object('variant_id', pg_temp.variant('heavyweight-oversized-tee', 3), 'quantity', 1)), 22);
   perform pg_temp.ship(o, 'Steadfast', 'SF1000016');
-  perform public._transition_order(o, 'DELIVERED', null);
-  perform public.record_cod_settlement(array(select id from public.shipments where order_id = o), 'Steadfast payout #3');
-  perform public._transition_order(o, 'RETURN_REQUESTED', 'Wrong size');
+  perform public._transition_order(o, 'RETURNING', 'Customer refused: wrong size');
   perform public._transition_order(o, 'RETURNED', 'Item back in good condition');
-  perform public.refund_order(o, 990, 'BKASH', 'Returned — wrong size');
 
   -- A few more delivered orders for the charts
   for i in 1..30 loop

@@ -665,7 +665,7 @@ function transitionCopy(to: OrderStatus | null, number: string, from: OrderStatu
     case 'LOST':
       return { title: 'Mark the parcel as lost?', description: 'The cost of the goods is booked as a loss. If it turns up, receive it or mark it delivered.', reason: 'What did the courier say?', confirm: 'Mark lost' }
     case 'FAILED_DELIVERY':
-      return { title: 'Delivery failed?', description: 'The order moves to Pending return.', reason: 'What happened?', confirm: 'Mark failed' }
+      return { title: 'Delivery failed?', description: 'The order moves to Return pending.', reason: 'What happened?', confirm: 'Mark failed' }
     default:
       return { title: `Mark ${number} as ${to ? ORDER_STATUS[to].label : ''}?`, description: undefined, reason: 'Note', confirm: 'Confirm' }
   }

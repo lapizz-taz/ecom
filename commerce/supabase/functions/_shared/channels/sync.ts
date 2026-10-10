@@ -70,14 +70,19 @@ const worst = (outs: Outcome[]): Outcome => {
 }
 /** Delivery updates Shopify shows on the fulfilment, by our order status. */
 const EVENT_FOR: Record<string, string> = { FAILED_DELIVERY: 'ATTEMPTED_DELIVERY', RETURNING: 'FAILURE', RETURNED: 'FAILURE', RETURN_REQUESTED: 'FAILURE' }
-const isTag = (t: string) => t.startsWith('Status: ') || t.startsWith('Merged: ')
+/** Tags this app writes on Shopify orders ("Fullfilio: …"; older versions wrote "Status: …" / "Merged: …"). */
+export const APP_TAG = 'Fullfilio'
+const ATTENTION_TAG = `${APP_TAG}: needs attention`
+const isTag = (t: string) => t.startsWith(`${APP_TAG}: `) || t.startsWith('Status: ') || t.startsWith('Merged: ')
 
 /**
  * Keeps one Shopify order in step with ours, step by step: cancel (when it was
  * cancelled here), fulfil when shipped, Delivered when delivered, courier
  * updates (attempted / returned), mark paid when a cash-on-delivery order is
- * delivered, and the "Status: …" tag. Every step looks at Shopify first and is
- * recorded, so a retry never does anything twice.
+ * delivered, and the "Fullfilio: …" tag. The tag is written only once every other
+ * step went through ("Fullfilio: needs attention" if one failed), so a Fullfilio tag
+ * on Shopify means the order is fully in step. Every step looks at Shopify first
+ * and is recorded, so a retry never does anything twice.
  */
 export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort, opts: ChannelOpts): Promise<Outcome> {
   const ctx = await rpc<FulfillContext>('channel_fulfillment_context', { p_order_id: job.ref_id })
@@ -118,7 +123,7 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
         return { outcome: 'DONE', result: { cancel: 'fulfilled' } }
       }
       const restock = !set?.inventory_sync
-      const jobId = await shopify().cancelOrder(ext, `Cancelled in the order system (${ctx.order.order_number})`, restock)
+      const jobId = await shopify().cancelOrder(ext, `Cancelled in ${APP_TAG} (${ctx.order.order_number})`, restock)
       await saveSync({ cancel_status: 'REQUESTED', restocked_in_store: restock, cancel_error: '' })
       return { outcome: 'DONE', result: { cancel_job: jobId } }
     })
@@ -154,10 +159,13 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
     })
   }
 
-  // 5. Our status as a tag on the Shopify order.
-  const wanted = [ctx.status_tag, ctx.merged_tag].filter((t): t is string => !!t)
+  // 5. Our status as a tag on the Shopify order — only when everything above went through.
+  //    Still retrying → no tag yet (the next run writes it); a step failed → "needs attention".
+  const retrying = outs.some((o) => o.outcome === 'RETRY')
+  const failed = outs.some((o) => o.outcome === 'FAILED')
+  const wanted = failed ? [ATTENTION_TAG] : [ctx.status_tag, ctx.merged_tag].filter((t): t is string => !!t)
   const key = wanted.join(' | ')
-  if (sync && set?.status_tags && wanted.length && sync.status_tag !== key) {
+  if (!retrying && sync && set?.status_tags && wanted.length && sync.status_tag !== key) {
     await step('Status tag', 'tag_error', async () => {
       const st = await shopState()
       const remove = st.tags.filter((t) => isTag(t) && !wanted.includes(t))
@@ -355,7 +363,7 @@ export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => StockPort,
       const since = ctx.mismatch_since ? Date.parse(ctx.mismatch_since) : null
       if (since === null || now - since < GRACE_SECONDS * 1000) {
         await save({ shopify_available: current, sync_status: 'MISMATCH', error: `Changed in ${store} (${ctx.last_pushed_qty} → ${current}); checking again shortly` })
-        return { outcome: 'RETRY', error: 'waiting for orders to arrive', delay: GRACE_SECONDS }
+        return { outcome: 'RETRY', error: 'changed in the store — checking for about a minute so an order is not counted twice', delay: GRACE_SECONDS }
       }
       // Two-way: the store's change is applied here (as the difference), then
       // the result is sent back only if it differs (no loop).

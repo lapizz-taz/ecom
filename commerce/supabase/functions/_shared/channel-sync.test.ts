@@ -323,6 +323,31 @@ describe('Order status → Shopify (one job, each step once)', () => {
     expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], ['Status: New'])
   })
 
+  it('Fullfilio tag: written only when every step went through; replaces old "Status:" tags; "needs attention" when a step failed; none while retrying', async () => {
+    const updateTags = vi.fn(async () => undefined)
+    // All good → "Fullfilio: Confirmed", the old "Status: New" tag removed.
+    const ok = harness2(base({ status_tag: 'Fullfilio: Confirmed' }), { orderState: async () => st(), updateTags })
+    expect(await fulfillJob(job('FULFILL'), ok.rpc, ok.shopify, opts)).toMatchObject({ outcome: 'DONE' })
+    expect(updateTags).toHaveBeenLastCalledWith('5001', ['Fullfilio: Confirmed'], ['Status: New'])
+
+    // Cancel refused by Shopify (permission) → "Fullfilio: needs attention", not the status.
+    updateTags.mockClear()
+    const denied = new ChannelError('Shopify refused: the app needs write_orders.', 403, 'ACCESS_DENIED')
+    const bad = harness2(base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null }, status_tag: 'Fullfilio: Cancelled',
+      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: 'Fullfilio: Confirmed', events: {} } }),
+      { orderState: async () => st({ tags: ['Fullfilio: Confirmed'] }), cancelOrder: async () => { throw denied }, updateTags })
+    expect((await fulfillJob(job('FULFILL'), bad.rpc, bad.shopify, opts)).outcome).toBe('FAILED')
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Fullfilio: needs attention'], ['Fullfilio: Confirmed'])
+
+    // Shopify busy → retried later, no tag written now.
+    updateTags.mockClear()
+    const busy = harness2(base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null }, status_tag: 'Fullfilio: Cancelled',
+      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: null, events: {} } }),
+      { orderState: async () => st(), cancelOrder: async () => { throw new Error('Shopify did not answer in time') }, updateTags })
+    expect((await fulfillJob(job('FULFILL'), busy.rpc, busy.shopify, opts)).outcome).toBe('RETRY')
+    expect(updateTags).not.toHaveBeenCalled()
+  })
+
   it('stock not synced: Shopify restocks itself; already cancelled on Shopify: nothing sent; fulfilled on Shopify: refused with a clear reason', async () => {
     const cancelOrder = vi.fn(async () => 'j')
     const ctx = (over = {}) => base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null },

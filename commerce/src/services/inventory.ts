@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { Enums } from '@/types/database'
+import type { Enums, Json } from '@/types/database'
 
 export interface StockFilters {
   q?: string
@@ -69,3 +69,13 @@ export async function adjustStock(input: {
   if (error) throw error
   return data
 }
+
+/** Many stock changes in one go — each is a recorded adjustment; if one fails none is saved. */
+export async function bulkAdjustStock(items: Array<{ variantId: string; quantity: number; mode: 'ADD' | 'REMOVE' | 'SET' }>, note: string) {
+  const { data, error } = await supabase.rpc('inventory_bulk_adjust', {
+    p_items: items.map((i) => ({ variant_id: i.variantId, quantity: i.quantity, mode: i.mode })) as unknown as Json, p_note: note,
+  })
+  if (error) throw error
+  return data as unknown as { changed: number }
+}
+
