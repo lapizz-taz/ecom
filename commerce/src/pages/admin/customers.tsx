@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, Mail, Plus } from 'lucide-react'
+import { Download, Mail, Map as MapIcon, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'
@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/features/auth/auth-context'
+import { DistrictMap } from '@/features/customers/district-map'
 import { useUrlState } from '@/hooks/use-url-state'
 import { downloadCsv } from '@/lib/csv'
 import { formatDate, formatDateTime, timeAgo } from '@/lib/format'
@@ -29,14 +30,17 @@ import { createCustomer, type CustomerRow, listContactMessages, listCustomers, r
 const PAGE_SIZE = 25
 
 export default function CustomersPage() {
-  const [tab, setTab] = useState('customers')
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') ?? 'customers'
+  const setTab = (t: string) => setParams((p) => { if (t === 'customers') p.delete('tab'); else p.set('tab', t); return p }, { replace: true })
   const [creating, setCreating] = useState(false)
   return (
     <div className="space-y-4">
       <PageHeader title="Customers" actions={<Can permission="customers.manage"><Button size="sm" onClick={() => setCreating(true)}><Plus /> Add customer</Button></Can>} />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList><TabsTrigger value="customers">Customers</TabsTrigger><TabsTrigger value="messages"><Mail /> Messages</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="customers">Customers</TabsTrigger><TabsTrigger value="map"><MapIcon /> District map</TabsTrigger><TabsTrigger value="messages"><Mail /> Messages</TabsTrigger></TabsList>
         <TabsContent value="customers"><CustomerList /></TabsContent>
+        <TabsContent value="map"><DistrictMap /></TabsContent>
         <TabsContent value="messages"><Messages /></TabsContent>
       </Tabs>
       <CreateCustomerDialog open={creating} onOpenChange={setCreating} />

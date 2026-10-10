@@ -5497,6 +5497,12 @@ export type Database = {
       }
     }
     Functions: {
+      _canonical_district: {
+        Args: {
+          p_text: string
+        }
+        Returns: string
+      }
       _local_date: {
         Args: {
           p_ts: string
@@ -6868,12 +6874,23 @@ export type Database = {
           updated_at: string
         }
       }
+      assign_customer_district: {
+        Args: {
+          p_phone: string
+          p_district: string
+        }
+        Returns: Json
+      }
       assign_orders: {
         Args: {
           p_order_ids: string[]
           p_agent: string
         }
         Returns: number
+      }
+      auto_assign_districts: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       auto_pick_overview: {
         Args: Record<PropertyKey, never>
@@ -7050,6 +7067,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      customer_district_stats: {
+        Args: {
+          p_days?: number
+        }
+        Returns: Json
+      }
       customer_get_order: {
         Args: {
           p_order_id: string
@@ -7060,6 +7083,12 @@ export type Database = {
         Args: {
           p_limit?: number
           p_offset?: number
+        }
+        Returns: Json
+      }
+      customers_needing_district: {
+        Args: {
+          p_limit?: number
         }
         Returns: Json
       }

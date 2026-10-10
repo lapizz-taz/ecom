@@ -140,7 +140,13 @@ export const NAV: NavSection[] = [
           { label: 'SMS Automations', to: '/admin/sms?tab=automations', permission: 'sms.view' },
         ],
       },
-      { label: 'Customers', to: '/admin/customers', icon: <Users />, permission: 'customers.view', shortcut: 'G C' },
+      {
+        label: 'Customers', to: '/admin/customers', icon: <Users />, permission: 'customers.view', shortcut: 'G C',
+        children: [
+          { label: 'Customer List', to: '/admin/customers' },
+          { label: 'District Map', to: '/admin/customers?tab=map' },
+        ],
+      },
     ],
   },
   {

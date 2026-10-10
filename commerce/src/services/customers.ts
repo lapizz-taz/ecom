@@ -69,3 +69,32 @@ export async function resolveContactMessage(id: string, resolved: boolean) {
   const { error } = await supabase.from('contact_messages').update({ is_resolved: resolved }).eq('id', id)
   if (error) throw error
 }
+
+export interface DistrictStat { district: string; orders: number; customers: number; delivered: number; returned: number; revenue: number; order_value: number; success_rate: number | null }
+export interface DistrictStats {
+  districts: DistrictStat[]
+  totals: { orders: number; customers: number; revenue: number; order_value: number; unassigned_customers: number; unassigned_orders: number }
+}
+export interface UnassignedCustomer { phone: string; name: string | null; address: string | null; district_text: string | null; orders: number; last_order_at: string; suggestion: string | null }
+
+/** Orders, customers and value per district (server-side). */
+export async function districtStats(days: number | null): Promise<DistrictStats> {
+  const { data, error } = await supabase.rpc('customer_district_stats', { p_days: days ?? undefined })
+  if (error) throw error
+  return data as unknown as DistrictStats
+}
+export async function customersNeedingDistrict(limit = 100): Promise<UnassignedCustomer[]> {
+  const { data, error } = await supabase.rpc('customers_needing_district', { p_limit: limit })
+  if (error) throw error
+  return (data ?? []) as unknown as UnassignedCustomer[]
+}
+export async function assignCustomerDistrict(phone: string, district: string) {
+  const { data, error } = await supabase.rpc('assign_customer_district', { p_phone: phone, p_district: district })
+  if (error) throw error
+  return data as unknown as { orders: number; district: string }
+}
+export async function autoAssignDistricts() {
+  const { data, error } = await supabase.rpc('auto_assign_districts')
+  if (error) throw error
+  return data as unknown as { customers: number; orders: number; left: number }
+}
