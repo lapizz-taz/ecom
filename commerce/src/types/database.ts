@@ -313,6 +313,11 @@ export type Database = {
           tracked: boolean
           levels: Json
           imported_at: string
+          price: number | null
+          compare_at_price: number | null
+          image_url: string | null
+          options: Json
+          product_description: string | null
         }
         Insert: {
           channel_id: string
@@ -327,6 +332,11 @@ export type Database = {
           tracked?: boolean
           levels?: Json
           imported_at?: string
+          price?: number | null
+          compare_at_price?: number | null
+          image_url?: string | null
+          options?: Json
+          product_description?: string | null
         }
         Update: {
           channel_id?: string
@@ -341,6 +351,11 @@ export type Database = {
           tracked?: boolean
           levels?: Json
           imported_at?: string
+          price?: number | null
+          compare_at_price?: number | null
+          image_url?: string | null
+          options?: Json
+          product_description?: string | null
         }
         Relationships: [
           {
@@ -6595,6 +6610,22 @@ export type Database = {
         Args: {
           p_scope?: string
           p_skip?: string[]
+        }
+        Returns: Json
+      }
+      channel_catalog_adopt: {
+        Args: {
+          p_channel_id: string
+          p_product_ids: string[]
+          p_with_stock?: boolean
+          p_apply?: boolean
+        }
+        Returns: Json
+      }
+      channel_catalog_products: {
+        Args: {
+          p_channel_id: string
+          p_search?: string
         }
         Returns: Json
       }

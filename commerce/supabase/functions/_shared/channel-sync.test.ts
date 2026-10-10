@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ChannelError, type SeenFulfillment } from './channels/common.ts'
 import { type FulfillmentState, planFulfillment, seenFromWebhook } from './channels/shopify.ts'
-import { fulfillJob, GRACE_SECONDS, inventoryJob, type Job, type ShopifyPort } from './channels/sync.ts'
+import { fulfillJob, GRACE_SECONDS, inventoryJob, type Job, type ShopifyPort, wooFulfillJob, type WooPort } from './channels/sync.ts'
+import { WooClient, wooCatalogItem, wooStockFromWebhook } from './channels/woocommerce.ts'
 
 const job = (kind: Job['kind'], payload: Record<string, unknown> = {}): Job => ({ id: 'j1', channel_id: 'c0000000-0000-0000-0000-000000000000', kind, ref_id: 'o1', attempts: 1, payload })
 
@@ -161,5 +162,76 @@ describe('fulfilment helpers', () => {
     expect(fromOrder).toEqual([expect.objectContaining({ id: 'gid://shopify/Fulfillment/7', status: 'SUCCESS', tracking_number: 'SF1', all_fulfilled: true })])
     const fromFulfilment = seenFromWebhook({ id: 8, order_id: 5001, status: 'success', tracking_numbers: ['RX9'] })
     expect(fromFulfilment[0]).toMatchObject({ id: 'gid://shopify/Fulfillment/8', tracking_number: 'RX9' })
+  })
+})
+
+describe('WooCommerce fulfilment job', () => {
+  const woo = (over: Partial<WooPort> = {}) => ({
+    orderState: vi.fn(async () => ({ status: 'processing', email: 'rina@example.com', notes: [] as Array<{ id: number; note: string }> })),
+    addNote: vi.fn(async () => 55),
+    setStatus: vi.fn(async () => 'completed'),
+    ...over,
+  })
+
+  it('adds the tracking note (e-mailed to the customer) and completes the order', async () => {
+    const w = woo()
+    const h = harness(fulfilCtx(), {})
+    const out = await wooFulfillJob(job('FULFILL'), h.rpc, () => w, opts)
+    expect(out.outcome).toBe('DONE')
+    expect(w.addNote).toHaveBeenCalledWith('5001', expect.stringContaining('Tracking number: DL123'), true)
+    expect(w.addNote.mock.calls[0][1]).toContain('https://merchant.pathao.com/tracking?consignment_id=DL123')
+    expect(w.setStatus).toHaveBeenCalledWith('5001', 'completed')
+    expect(h.saves.at(-1)).toMatchObject({ status: 'FULFILLED', fulfillment_id: 'woo-note-55', notification_status: 'REQUESTED' })
+  })
+
+  it('a retry finds its earlier note and does not post another', async () => {
+    const w = woo({ orderState: vi.fn(async () => ({ status: 'completed', email: null, notes: [{ id: 9, note: 'Tracking number: DL123' }] })) })
+    const h = harness(fulfilCtx(), {})
+    await wooFulfillJob(job('FULFILL'), h.rpc, () => w, opts)
+    expect(w.addNote).not.toHaveBeenCalled()
+    expect(w.setStatus).not.toHaveBeenCalled()
+    expect(h.saves.at(-1)).toMatchObject({ status: 'FULFILLED', fulfillment_id: 'woo-note-9' })
+  })
+
+  it('never completes an order cancelled in WooCommerce, and waits for tracking', async () => {
+    const w = woo({ orderState: vi.fn(async () => ({ status: 'cancelled', email: null, notes: [] })) })
+    const h = harness(fulfilCtx(), {})
+    await wooFulfillJob(job('FULFILL'), h.rpc, () => w, opts)
+    expect(w.setStatus).not.toHaveBeenCalled()
+    expect(h.saves.at(-1)).toMatchObject({ status: 'SKIPPED' })
+    const h2 = harness(fulfilCtx({ shipment: null }), {})
+    const w2 = woo()
+    await wooFulfillJob(job('FULFILL'), h2.rpc, () => w2, opts)
+    expect(w2.orderState).not.toHaveBeenCalled()
+    expect(h2.saves.at(-1)).toMatchObject({ status: 'NEEDS_TRACKING' })
+  })
+})
+
+describe('WooCommerce stock', () => {
+  const res = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
+  it('maps products and variations to catalog items (variation stock managed by the parent is not synced)', () => {
+    const p = { id: 10, name: 'Hoodie', type: 'variable', status: 'publish', manage_stock: false, stock_quantity: null, images: [{ src: 'https://x.test/h.jpg' }], short_description: '<p>Warm &amp; soft</p>' }
+    const v = { id: 11, sku: 'HOOD-M', price: '1200', regular_price: '1450', sale_price: '1200', manage_stock: true as const, stock_quantity: 4, attributes: [{ name: 'Size', option: 'M' }] }
+    expect(wooCatalogItem(p, v)).toMatchObject({
+      external_variant_id: '11', external_product_id: '10', inventory_item_id: 'products/10/variations/11', tracked: true, variant_title: 'M',
+      levels: [{ location_id: 'default', available: 4 }], price: '1200', compare_at_price: '1450', options: { Size: 'M' }, product_status: 'ACTIVE',
+      image_url: 'https://x.test/h.jpg', product_description: 'Warm & soft',
+    })
+    expect(wooCatalogItem(p, { ...v, manage_stock: 'parent' }).tracked).toBe(false)
+    expect(wooStockFromWebhook({ id: 11, parent_id: 10, manage_stock: true, stock_quantity: 3 })).toEqual({ item: 'products/10/variations/11', available: 3 })
+    expect(wooStockFromWebhook({ id: 12, manage_stock: false, stock_quantity: null })).toBeNull()
+  })
+
+  it('sets stock only when WooCommerce still has what we last saw', async () => {
+    const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') return res({ stock_quantity: JSON.parse(String(init.body)).stock_quantity })
+      return res({ manage_stock: true, stock_quantity: url.includes('/variations/') ? 6 : 2 })
+    })
+    const c = new WooClient('https://shop.test', 'ck_x', 'cs_x', fetchFn as never)
+    await c.setAvailable('products/10/variations/11', 'default', 4, 6, 'k')
+    expect(JSON.parse(String(fetchFn.mock.calls.at(-1)![1]!.body))).toEqual({ manage_stock: true, stock_quantity: 4 })
+    await expect(c.setAvailable('products/10', 'default', 4, 5, 'k')).rejects.toMatchObject({ code: 'STALE' })
+    await expect(c.setAvailable('orders/1', 'default', 4, null, 'k')).rejects.toThrow(/Not a WooCommerce stock item/)
   })
 })

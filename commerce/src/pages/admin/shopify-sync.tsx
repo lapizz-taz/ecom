@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, DownloadCloud, ExternalLink, Link2, Play, RotateCw, Unlink } from 'lucide-react'
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, DownloadCloud, ExternalLink, ImageOff, Link2, PackagePlus, Play, RotateCw, Search, Unlink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -23,30 +23,32 @@ import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { searchVariants } from '@/services/catalog'
 import {
-  importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs, saveSyncSettings, type SyncItem,
-  type SyncOverview, syncOverview,
+  adoptStoreProducts, type AdoptPlan, importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs,
+  saveSyncSettings, type SyncItem, type SyncOverview, syncOverview, storeProducts,
 } from '@/services/channels'
+import { formatMoney } from '@/lib/format'
 
-const STATUS: Record<string, { label: string; tone: 'ok' | 'warn' | 'muted' }> = {
-  OK: { label: 'In step', tone: 'ok' }, PENDING: { label: 'Updating', tone: 'muted' }, MISMATCH: { label: 'Changed in Shopify', tone: 'warn' },
-  FAILED: { label: 'Failed', tone: 'warn' }, NEW: { label: 'Not synced yet', tone: 'muted' }, UNTRACKED: { label: 'Not tracked in Shopify', tone: 'muted' },
-}
+const status = (store: string): Record<string, { label: string; tone: 'ok' | 'warn' | 'muted' }> => ({
+  OK: { label: 'In step', tone: 'ok' }, PENDING: { label: 'Updating', tone: 'muted' }, MISMATCH: { label: `Changed in ${store}`, tone: 'warn' },
+  FAILED: { label: 'Failed', tone: 'warn' }, NEW: { label: 'Not synced yet', tone: 'muted' }, UNTRACKED: { label: `Stock not counted in ${store}`, tone: 'muted' },
+})
 const F_STATUS: Record<string, string> = {
   PENDING: 'Queued', NEEDS_TRACKING: 'Needs tracking', PROCESSING: 'Sending', FULFILLED: 'Fulfilled', FAILED: 'Failed', SKIPPED: 'Skipped',
 }
-const REASON: Record<string, string> = {
-  NO_SKU: 'No SKU in Shopify', DUPLICATE_SKU_SHOPIFY: 'SKU used twice in Shopify', DUPLICATE_SKU_HERE: 'SKU used twice here', NO_MATCH: 'No product here with this SKU',
-}
+const reason = (store: string): Record<string, string> => ({
+  NO_SKU: `No SKU in ${store}`, DUPLICATE_SKU_SHOPIFY: `SKU used twice in ${store}`, DUPLICATE_SKU_HERE: 'SKU used twice here', NO_MATCH: 'No product here with this SKU',
+})
+const storeName = (platform?: string) => (platform === 'WOOCOMMERCE' ? 'WooCommerce' : 'Shopify')
 
 function Pill({ tone, children }: { tone: 'ok' | 'warn' | 'muted'; children: React.ReactNode }) {
   return <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap',
     tone === 'ok' ? 'bg-foreground text-background' : tone === 'warn' ? 'ring-1 ring-foreground/60 ring-inset' : 'bg-muted text-muted-foreground')}>{children}</span>
 }
 
-/** Shopify fulfilment and stock: settings, mapping, differences, jobs. */
-export default function ShopifySyncPage() {
+/** Store sync (Shopify and WooCommerce): fulfilment and stock settings, mapping, differences, product import, jobs. */
+export default function StoreSyncPage() {
   const channels = useQuery({ queryKey: ['sales-channels'], queryFn: listChannels })
-  const shops = (channels.data ?? []).filter((c) => c.platform === 'SHOPIFY' && c.status !== 'DISCONNECTED')
+  const shops = (channels.data ?? []).filter((c) => c.status !== 'DISCONNECTED')
   const [state, update] = useUrlState({ channel: '', tab: 'stock' })
   const channelId = state.channel || shops[0]?.id || ''
 
@@ -55,8 +57,8 @@ export default function ShopifySyncPage() {
   if (!shops.length) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Shopify sync" description="Fulfil Shopify orders when they ship here, and keep Shopify's stock in step with yours." />
-        <EmptyState title="No Shopify store connected" description="Connect your Shopify store first." action={<Button asChild size="sm"><Link to="/admin/channels">Sales channels</Link></Button>} />
+        <PageHeader title="Store sync" description="Keep your Shopify or WooCommerce stock in step with yours, import their products, and mark orders shipped there." />
+        <EmptyState title="No store connected" description="Connect your Shopify or WooCommerce store first." action={<Button asChild size="sm"><Link to="/admin/channels">Sales channels</Link></Button>} />
       </div>
     )
   }
@@ -64,15 +66,16 @@ export default function ShopifySyncPage() {
 }
 
 function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
-  channelId: string; shops: Array<{ id: string; name: string }>; tab: string; onTab: (t: string) => void; onChannel: (id: string) => void
+  channelId: string; shops: Array<{ id: string; name: string; platform: string }>; tab: string; onTab: (t: string) => void; onChannel: (id: string) => void
 }) {
   const { can } = useAuth()
   const qc = useQueryClient()
+  const store = storeName(shops.find((s) => s.id === channelId)?.platform)
   const overview = useQuery({ queryKey: ['shopify-sync', channelId], queryFn: () => syncOverview(channelId), refetchInterval: 15_000 })
   const refresh = () => void qc.invalidateQueries({ queryKey: ['shopify-sync', channelId] })
   const catalog = useMutation({
     mutationFn: () => importCatalog(channelId),
-    onSuccess: (r) => { toast.success(`${formatNumber(r.items)} Shopify variants read · ${r.linked} newly linked by SKU · ${r.mapped} linked in total`); refresh() },
+    onSuccess: (r) => { toast.success(`${formatNumber(r.items)} ${store} items read · ${r.linked} newly linked by SKU · ${r.mapped} linked in total`); refresh() },
     onError: (e) => toast.error(toUserMessage(e)),
   })
   const run = useMutation({
@@ -85,19 +88,20 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
   if (overview.error) return <ErrorState error={overview.error} onRetry={() => overview.refetch()} />
   const o = overview.data!
   const diffs = o.items.filter((i) => i.difference !== null && i.difference !== 0 && i.status !== 'UNTRACKED')
-  const missingScopes = ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders'].filter((s) => !o.channel.scopes.includes(s))
+  const missingScopes = o.channel.platform !== 'SHOPIFY' ? []
+    : ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders', 'read_products'].filter((s) => !o.channel.scopes.includes(s))
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Shopify sync" description="Shipped orders are fulfilled on Shopify with the courier's tracking link; your stock is the source of truth for Shopify's."
+      <PageHeader title="Store sync" description={`Your stock is the source of truth for ${store}'s. Shipped orders can be marked shipped on ${store} with the courier's tracking link.`}
         actions={<>
           {shops.length > 1 && (
             <Select value={channelId} onValueChange={onChannel}>
-              <SelectTrigger size="sm" className="w-48"><SelectValue /></SelectTrigger>
-              <SelectContent>{shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+              <SelectTrigger size="sm" className="w-full sm:w-52"><SelectValue /></SelectTrigger>
+              <SelectContent>{shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} · {storeName(s.platform)}</SelectItem>)}</SelectContent>
             </Select>
           )}
-          {can('inventory.view') && <Button size="sm" variant="outline" onClick={() => catalog.mutate()} disabled={catalog.isPending}>{catalog.isPending ? <Spinner /> : <DownloadCloud />} Read Shopify catalog</Button>}
+          {can('inventory.view') && <Button size="sm" variant="outline" onClick={() => catalog.mutate()} disabled={catalog.isPending}>{catalog.isPending ? <Spinner /> : <DownloadCloud />} Read {store} catalog</Button>}
           {can('orders.update') && <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>{run.isPending ? <Spinner /> : <Play />} Run sync now</Button>}
         </>} />
 
@@ -114,25 +118,29 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
         <StatCard label="Sync jobs" value={`${o.jobs.pending} waiting`} hint={o.jobs.failed ? `${o.jobs.failed} failed` : 'None failed'} />
       </div>
 
-      <SettingsCard o={o} channelId={channelId} onSaved={refresh} />
+      <SettingsCard o={o} channelId={channelId} onSaved={refresh} store={store} />
 
       <Tabs value={tab} onValueChange={onTab}>
-        <TabsList>
-          <TabsTrigger value="stock">Stock{diffs.length ? ` · ${diffs.length}` : ''}</TabsTrigger>
-          <TabsTrigger value="unmapped">Not linked{o.unmapped.length ? ` · ${o.unmapped.length}` : ''}</TabsTrigger>
-          <TabsTrigger value="fulfilments">Fulfilments</TabsTrigger>
-          <TabsTrigger value="jobs">Jobs{o.jobs.failed ? ` · ${o.jobs.failed} failed` : ''}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="stock" className="animate-in fade-in-0"><StockTab o={o} channelId={channelId} onDone={refresh} /></TabsContent>
-        <TabsContent value="unmapped" className="animate-in fade-in-0"><UnmappedTab o={o} channelId={channelId} onDone={refresh} /></TabsContent>
-        <TabsContent value="fulfilments" className="animate-in fade-in-0"><FulfilmentsTab o={o} /></TabsContent>
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <TabsList>
+            <TabsTrigger value="stock">Stock{diffs.length ? ` · ${diffs.length}` : ''}</TabsTrigger>
+            <TabsTrigger value="unmapped">Not linked{o.unmapped.length ? ` · ${o.unmapped.length}` : ''}</TabsTrigger>
+            <TabsTrigger value="products">Import products</TabsTrigger>
+            <TabsTrigger value="fulfilments">Fulfilments</TabsTrigger>
+            <TabsTrigger value="jobs">Jobs{o.jobs.failed ? ` · ${o.jobs.failed} failed` : ''}</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="stock" className="animate-in fade-in-0"><StockTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
+        <TabsContent value="unmapped" className="animate-in fade-in-0"><UnmappedTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
+        <TabsContent value="products" className="animate-in fade-in-0"><ProductsTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
+        <TabsContent value="fulfilments" className="animate-in fade-in-0"><FulfilmentsTab o={o} store={store} /></TabsContent>
         <TabsContent value="jobs" className="animate-in fade-in-0"><JobsTab o={o} onDone={refresh} /></TabsContent>
       </Tabs>
     </div>
   )
 }
 
-function SettingsCard({ o, channelId, onSaved }: { o: SyncOverview; channelId: string; onSaved: () => void }) {
+function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; channelId: string; onSaved: () => void; store: string }) {
   const { can } = useAuth()
   const [s, setS] = useState(o.channel.settings)
   useEffect(() => setS(o.channel.settings), [o.channel.settings])
@@ -153,40 +161,44 @@ function SettingsCard({ o, channelId, onSaved }: { o: SyncOverview; channelId: s
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Settings</CardTitle>
-        <CardDescription>Web Orders, approval and Ready to ship never touch Shopify. Only Shipped does.</CardDescription>
+        <CardDescription>Web Orders, approval and Ready to ship never touch {store}. Only Shipped does.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-2">
         <div className="grid content-start gap-2">
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Fulfilment</p>
-          {row('Fulfil on Shopify when shipped', 'Creates the fulfilment with courier, tracking number and tracking link', 'fulfill_on_ship')}
-          {row("Send Shopify's shipping e-mail", 'Shopify e-mails the customer the tracking link (when the order has an e-mail)', 'notify_customer')}
+          {o.channel.platform === 'SHOPIFY'
+            ? row('Fulfil on Shopify when shipped', 'Creates the fulfilment with courier, tracking number and tracking link', 'fulfill_on_ship')
+            : row('Complete the WooCommerce order when shipped', 'Sets it to Completed and adds a note with courier, tracking number and tracking link (off by default)', 'fulfill_on_ship')}
+          {o.channel.platform === 'SHOPIFY'
+            ? row("Send Shopify's shipping e-mail", 'Shopify e-mails the customer the tracking link (when the order has an e-mail)', 'notify_customer')
+            : row('E-mail the tracking note to the customer', 'Added as a customer note, which WooCommerce e-mails', 'notify_customer')}
           {row('Allow fulfilment without tracking', 'Off: an order without a tracking number waits until one is added', 'fulfill_without_tracking')}
         </div>
         <div className="grid content-start gap-2">
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Stock</p>
-          {row('Keep Shopify stock in step', 'Your available stock (on hand − reserved) is set on Shopify after every change', 'inventory_sync')}
-          <Field label="Shopify location">
+          {row(`Keep ${store} stock in step`, `Your available stock (on hand − reserved) is set on ${store} after every change`, 'inventory_sync')}
+          <Field label={`${store} location`}>
             <Select value={s.location_id ?? ''} onValueChange={(v) => { if (v) setS((x) => ({ ...x, location_id: v })) }} disabled={!edit || !o.channel.locations.length}>
               <SelectTrigger className="w-full"><SelectValue placeholder={o.channel.locations.length ? 'Choose a location' : 'Read the catalog to load locations'} /></SelectTrigger>
               <SelectContent>{o.channel.locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}{l.active ? '' : ' (inactive)'}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          <Field label="When stock is changed by hand in Shopify">
+          <Field label={`When stock is changed by hand in ${store}`}>
             <Select value={s.external_changes} onValueChange={(v) => setS((x) => ({ ...x, external_changes: v as 'FLAG' | 'SAAS_WINS' }))} disabled={!edit}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="FLAG">Flag it for me to review (recommended)</SelectItem>
-                <SelectItem value="SAAS_WINS">This app wins — set Shopify back to my stock</SelectItem>
+                <SelectItem value="SAAS_WINS">This app wins — set {store} back to my stock</SelectItem>
               </SelectContent>
             </Select>
           </Field>
         </div>
         {edit && (
-          <div className="flex gap-2 lg:col-span-2">
+          <div className="flex flex-wrap gap-2 lg:col-span-2">
             <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Spinner /> : <Check />} Save</Button>
             {dirty && <Button size="sm" variant="ghost" onClick={() => setS(o.channel.settings)}>Cancel</Button>}
             {s.inventory_sync && !o.channel.settings.inventory_sync && (
-              <p className="self-center text-xs text-muted-foreground">Turning it on takes today's Shopify numbers as the starting point — nothing is overwritten until you review the differences.</p>
+              <p className="self-center text-xs text-muted-foreground">Turning it on takes today's {store} numbers as the starting point — nothing is overwritten until you review the differences.</p>
             )}
           </div>
         )}
@@ -195,7 +207,8 @@ function SettingsCard({ o, channelId, onSaved }: { o: SyncOverview; channelId: s
   )
 }
 
-function StockTab({ o, channelId, onDone }: { o: SyncOverview; channelId: string; onDone: () => void }) {
+function StockTab({ o, channelId, onDone, store }: { o: SyncOverview; channelId: string; onDone: () => void; store: string }) {
+  const STATUS = status(store)
   const { can } = useAuth()
   const [only, setOnly] = useState(true)
   const [sel, setSel] = useState<Set<string>>(new Set())
@@ -209,21 +222,21 @@ function StockTab({ o, channelId, onDone }: { o: SyncOverview; channelId: string
   const apply = useMutation({
     mutationFn: () => reconcileStock(channelId, plan!.result.plan.map((p) => ({ variant_id: p.variant_id, action: p.action })), true),
     onSuccess: (r) => {
-      toast.success(plan!.action === 'PUSH' ? `${r.plan.length} item(s) will be set on Shopify` : `${r.plan.length} item(s) corrected here (recorded as stock corrections)`)
+      toast.success(plan!.action === 'PUSH' ? `${r.plan.length} item(s) will be set on ${store}` : `${r.plan.length} item(s) corrected here (recorded as stock corrections)`)
       setPlan(null); setSel(new Set()); onDone(); void runSyncJobs().then(onDone).catch(() => undefined)
     },
     onError: (e) => toast.error(toUserMessage(e)),
   })
   const allOn = rows.length > 0 && rows.every((r) => sel.has(r.variant_id))
-  if (!o.items.length) return <EmptyState title="No variants linked yet" description="Click “Read Shopify catalog”: variants are linked to yours by SKU, and the rest are listed under Not linked." />
+  if (!o.items.length) return <EmptyState title="No variants linked yet" description={`Click “Read ${store} catalog”: items are linked to yours by SKU, the rest are listed under Not linked, and you can import them under Import products.`} />
   return (
     <Card className="gap-0 py-0">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <label className="flex items-center gap-2 text-sm"><Switch checked={only} onCheckedChange={setOnly} /> Only differences</label>
         {sel.size > 0 && can('inventory.adjust') && (
           <div className="ml-auto flex flex-wrap gap-2 animate-in fade-in-0">
-            <Button size="sm" variant="outline" onClick={() => preview.mutate('PUSH')} disabled={preview.isPending}><ArrowUpFromLine /> Set Shopify to mine ({sel.size})</Button>
-            <Button size="sm" variant="outline" onClick={() => preview.mutate('ADOPT')} disabled={preview.isPending}><ArrowDownToLine /> Use Shopify's number ({sel.size})</Button>
+            <Button size="sm" variant="outline" onClick={() => preview.mutate('PUSH')} disabled={preview.isPending}><ArrowUpFromLine /> Set {store} to mine ({sel.size})</Button>
+            <Button size="sm" variant="outline" onClick={() => preview.mutate('ADOPT')} disabled={preview.isPending}><ArrowDownToLine /> Use {store}'s number ({sel.size})</Button>
           </div>
         )}
       </div>
@@ -233,7 +246,7 @@ function StockTab({ o, channelId, onDone }: { o: SyncOverview; channelId: string
             <th className="w-8 px-3 py-2"><Checkbox checked={allOn} onCheckedChange={() => setSel(allOn ? new Set() : new Set(rows.map((r) => r.variant_id)))} aria-label="Select all" /></th>
             <th className="px-3 py-2">Product</th><th className="px-3 py-2">SKU</th>
             <th className="px-3 py-2 text-right">On hand</th><th className="px-3 py-2 text-right">Reserved</th><th className="px-3 py-2 text-right">Available here</th>
-            <th className="px-3 py-2 text-right">Shopify</th><th className="px-3 py-2">Status</th>
+            <th className="px-3 py-2 text-right">{store}</th><th className="px-3 py-2">Status</th>
           </tr></thead>
           <tbody>
             {rows.map((r: SyncItem) => (
@@ -256,14 +269,14 @@ function StockTab({ o, channelId, onDone }: { o: SyncOverview; channelId: string
       <Dialog open={!!plan} onOpenChange={(v) => !v && setPlan(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{plan?.action === 'PUSH' ? 'Set Shopify to your stock' : "Use Shopify's numbers here"}</DialogTitle>
-            <DialogDescription>Preview — nothing has changed yet. {plan?.action === 'ADOPT' ? 'Each change is recorded as a stock correction in the movement history.' : 'Shopify is updated by the sync job right after.'}</DialogDescription>
+            <DialogTitle>{plan?.action === 'PUSH' ? `Set ${store} to your stock` : `Use ${store}'s numbers here`}</DialogTitle>
+            <DialogDescription>Preview — nothing has changed yet. {plan?.action === 'ADOPT' ? 'Each change is recorded as a stock correction in the movement history.' : `${store} is updated by the sync job right after.`}</DialogDescription>
           </DialogHeader>
           <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border text-sm">
             {plan?.result.plan.map((p) => (
               <li key={p.variant_id} className="flex justify-between gap-3 px-3 py-2">
                 <span className="font-mono text-xs">{p.sku}</span>
-                <span className="tabular-nums">{plan.action === 'PUSH' ? 'Shopify' : 'Here'}: {p.from ?? '—'} → <strong>{p.to}</strong></span>
+                <span className="tabular-nums">{plan.action === 'PUSH' ? store : 'Here'}: {p.from ?? '—'} → <strong>{p.to}</strong></span>
               </li>
             ))}
           </ul>
@@ -302,14 +315,15 @@ function VariantPicker({ onPick }: { onPick: (id: string) => void }) {
   )
 }
 
-function UnmappedTab({ o, channelId, onDone }: { o: SyncOverview; channelId: string; onDone: () => void }) {
+function UnmappedTab({ o, channelId, onDone, store }: { o: SyncOverview; channelId: string; onDone: () => void; store: string }) {
+  const REASON = reason(store)
   const { can } = useAuth()
   const link = useMutation({
     mutationFn: ({ ext, variant }: { ext: string; variant: string | null }) => linkVariant(channelId, ext, variant),
     onSuccess: () => { toast.success('Linked'); onDone() },
     onError: (e) => toast.error(toUserMessage(e)),
   })
-  if (!o.unmapped.length) return <EmptyState title="Every Shopify variant is linked" description="New products in Shopify appear here after the next catalog read." />
+  if (!o.unmapped.length) return <EmptyState title={`Every ${store} item is linked`} description={`New products in ${store} appear here after the next catalog read.`} />
   return (
     <Card className="gap-0 py-0">
       <ul className="divide-y">
@@ -317,19 +331,19 @@ function UnmappedTab({ o, channelId, onDone }: { o: SyncOverview; channelId: str
           <li key={u.external_variant_id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{u.title}</p>
-              <p className="text-xs text-muted-foreground">{u.sku && <><span className="font-mono">{u.sku}</span> · </>}{REASON[u.reason]}{u.available !== null ? ` · ${u.available} in Shopify` : ''}</p>
+              <p className="text-xs text-muted-foreground">{u.sku && <><span className="font-mono">{u.sku}</span> · </>}{REASON[u.reason]}{u.available !== null ? ` · ${u.available} in ${store}` : ''}</p>
             </div>
             {can('inventory.adjust') && <VariantPicker onPick={(variant) => link.mutate({ ext: u.external_variant_id, variant })} />}
           </li>
         ))}
       </ul>
-      <p className="border-t px-3 py-2 text-xs text-muted-foreground">Tip: give each product the same SKU here and in Shopify — they link by themselves on the next catalog read. <Unlink className="inline size-3" /> Linking never changes either side's stock.</p>
+      <p className="border-t px-3 py-2 text-xs text-muted-foreground">Tip: give each product the same SKU here and in {store} — they link by themselves on the next catalog read. Products you don't have here yet can be created under Import products. <Unlink className="inline size-3" /> Linking never changes either side's stock.</p>
     </Card>
   )
 }
 
-function FulfilmentsTab({ o }: { o: SyncOverview }) {
-  if (!o.fulfillments.length) return <EmptyState title="No fulfilments yet" description="When a Shopify order is marked Shipped here, it shows up here." />
+function FulfilmentsTab({ o, store }: { o: SyncOverview; store: string }) {
+  if (!o.fulfillments.length) return <EmptyState title="No fulfilments yet" description={`When a ${store} order is marked Shipped here, it shows up here.`} />
   return (
     <Card className="gap-0 py-0">
       <div className="overflow-x-auto">
@@ -340,11 +354,11 @@ function FulfilmentsTab({ o }: { o: SyncOverview }) {
           <tbody>
             {o.fulfillments.map((f) => (
               <tr key={`${f.order_id}-${f.created_at}`} className="border-b last:border-0">
-                <td className="px-3 py-2"><Link to={`/admin/orders/${f.order_id}`} className="font-medium hover:underline">{f.order_number}</Link>{f.source === 'SHOPIFY' && <span className="block text-[11px] text-muted-foreground">made in Shopify</span>}</td>
+                <td className="px-3 py-2"><Link to={`/admin/orders/${f.order_id}`} className="font-medium hover:underline">{f.order_number}</Link>{f.source === 'SHOPIFY' && <span className="block text-[11px] text-muted-foreground">made in {store}</span>}</td>
                 <td className="px-3 py-2"><Pill tone={f.status === 'FULFILLED' ? 'ok' : f.status === 'FAILED' || f.status === 'NEEDS_TRACKING' ? 'warn' : 'muted'}>{F_STATUS[f.status] ?? f.status}</Pill>
                   {f.last_error && <span className="block max-w-64 truncate text-[11px] text-muted-foreground" title={f.last_error}>{f.last_error}</span>}</td>
                 <td className="px-3 py-2 text-xs">{f.courier ?? '—'} {f.tracking_url ? <a href={f.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-mono underline">{f.tracking_number}<ExternalLink className="size-3" /></a> : <span className="font-mono">{f.tracking_number}</span>}</td>
-                <td className="px-3 py-2 text-xs">{f.notification_status === 'REQUESTED' ? 'Requested from Shopify' : f.notification_status === 'NO_EMAIL' ? 'No e-mail on order' : f.notification_status === 'DISABLED' ? 'Turned off' : '—'}</td>
+                <td className="px-3 py-2 text-xs">{f.notification_status === 'REQUESTED' ? `Requested from ${store}` : f.notification_status === 'NO_EMAIL' ? 'No e-mail on order' : f.notification_status === 'DISABLED' ? 'Turned off' : '—'}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">{formatDateTime(f.fulfilled_at ?? f.created_at)}</td>
               </tr>
             ))}
@@ -379,6 +393,108 @@ function JobsTab({ o, onDone }: { o: SyncOverview; onDone: () => void }) {
           </li>
         ))}
       </ul>
+    </Card>
+  )
+}
+
+/** The store's products not in this catalog yet: preview, then create them here (optionally with the store's stock as opening stock). */
+function ProductsTab({ o, channelId, onDone, store }: { o: SyncOverview; channelId: string; onDone: () => void; store: string }) {
+  const { can } = useAuth()
+  const [q, setQ] = useState('')
+  const [onlyNew, setOnlyNew] = useState(true)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [withStock, setWithStock] = useState(true)
+  const [plan, setPlan] = useState<AdoptPlan | null>(null)
+  const products = useQuery({ queryKey: ['store-products', channelId, q], queryFn: () => storeProducts(channelId, q), enabled: !!o.channel.catalog_imported_at })
+  const rows = (products.data ?? []).filter((p) => !onlyNew || p.linked < p.variants)
+  const preview = useMutation({
+    mutationFn: () => adoptStoreProducts(channelId, [...sel], withStock && can('inventory.adjust'), false),
+    onSuccess: setPlan,
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const apply = useMutation({
+    mutationFn: () => adoptStoreProducts(channelId, [...sel], withStock && can('inventory.adjust'), true),
+    onSuccess: (r) => {
+      toast.success(`${r.created} variant${r.created === 1 ? '' : 's'} created${r.linked ? `, ${r.linked} linked to existing SKUs` : ''}`)
+      setPlan(null); setSel(new Set()); void products.refetch(); onDone()
+    },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  if (!o.channel.catalog_imported_at) return <EmptyState title={`Read the ${store} catalog first`} description="Then pick the products to bring into your catalog here." />
+  if (!can('products.manage')) return <EmptyState title="You can't create products" description="Ask an owner or inventory manager to import them." />
+  const allOn = rows.length > 0 && rows.every((r) => sel.has(r.product_id))
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  return (
+    <Card className="gap-0 py-0">
+      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+        <div className="relative w-full sm:w-64">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title or SKU" className="h-8 pl-8" />
+        </div>
+        <label className="flex items-center gap-2 text-sm"><Switch checked={onlyNew} onCheckedChange={setOnlyNew} /> Only not imported</label>
+        {sel.size > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto animate-in fade-in-0">
+            {can('inventory.adjust') && <label className="flex items-center gap-2 text-sm"><Checkbox checked={withStock} onCheckedChange={(v) => setWithStock(v === true)} /> Use {store}'s stock as opening stock</label>}
+            <Button size="sm" onClick={() => preview.mutate()} disabled={preview.isPending}>{preview.isPending ? <Spinner /> : <PackagePlus />} Import {sel.size}</Button>
+          </div>
+        )}
+      </div>
+      {products.isLoading ? <LoadingState /> : products.error ? <ErrorState error={products.error} onRetry={() => products.refetch()} /> : (
+        <ul className="divide-y">
+          {rows.length > 0 && (
+            <li className="flex items-center gap-3 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Checkbox checked={allOn} onCheckedChange={() => setSel(allOn ? new Set() : new Set(rows.map((r) => r.product_id)))} aria-label="Select all" /> {rows.length} product{rows.length === 1 ? '' : 's'}
+            </li>
+          )}
+          {rows.map((p) => (
+            <li key={p.product_id}>
+              <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/30">
+                <Checkbox checked={sel.has(p.product_id)} onCheckedChange={() => toggle(p.product_id)} aria-label={`Select ${p.title}`} />
+                {p.image_url
+                  ? <img src={p.image_url} alt="" className="size-10 shrink-0 rounded-md border object-cover" loading="lazy" />
+                  : <span className="grid size-10 shrink-0 place-items-center rounded-md border bg-muted"><ImageOff className="size-4 text-muted-foreground" /></span>}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{p.title}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {p.variants} variant{p.variants === 1 ? '' : 's'}{p.skus?.length ? ` · ${p.skus.join(', ')}` : ''}{p.status && p.status !== 'ACTIVE' ? ` · ${p.status.toLowerCase()}` : ''}
+                  </span>
+                </span>
+                <span className="hidden text-right text-xs sm:block">
+                  {p.price !== null && <span className="block tabular-nums">{formatMoney(p.price)}</span>}
+                  <span className="block text-muted-foreground tabular-nums">{p.stock ?? '—'} in stock</span>
+                </span>
+                {p.linked > 0 && <Pill tone={p.linked === p.variants ? 'ok' : 'muted'}>{p.linked === p.variants ? 'Imported' : `${p.linked}/${p.variants} linked`}</Pill>}
+              </label>
+            </li>
+          ))}
+          {!rows.length && <li className="px-3 py-8 text-center text-sm text-muted-foreground">{onlyNew ? `Every ${store} product is already here.` : 'No products found.'}</li>}
+        </ul>
+      )}
+      <Dialog open={!!plan} onOpenChange={(v) => !v && setPlan(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import into your catalog</DialogTitle>
+            <DialogDescription>Preview — nothing has been created yet. Variants whose SKU already exists here are linked, not duplicated.{withStock && can('inventory.adjust') ? ' Opening stock is recorded in the stock movement history.' : ' New variants start with 0 in stock.'}</DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border text-sm">
+            {plan?.plan.map((p) => (
+              <li key={p.external_variant_id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <span className="min-w-0"><span className="block truncate">{p.title}</span><span className="font-mono text-[11px] text-muted-foreground">{p.sku}</span></span>
+                <span className="shrink-0 text-right text-xs">
+                  <Pill tone={p.action === 'CREATE' ? 'ok' : 'muted'}>{p.action === 'CREATE' ? 'New' : p.action === 'LINK' ? 'Link existing' : 'Already here'}</Pill>
+                  {p.stock != null && <span className="block pt-0.5 text-muted-foreground tabular-nums">opening stock {p.stock}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPlan(null)}>Cancel</Button>
+            <Button onClick={() => apply.mutate()} disabled={apply.isPending || !plan?.plan.some((p) => p.action !== 'ALREADY_LINKED')}>
+              {apply.isPending && <Spinner />} Import {plan?.plan.filter((p) => p.action !== 'ALREADY_LINKED').length ?? 0}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

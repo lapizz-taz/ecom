@@ -5,10 +5,15 @@
 // Only HTTPS sites are accepted, so keys never travel in clear text. Webhooks
 // carry X-WC-Webhook-Signature (HMAC of the body with a secret we choose).
 import { type Check, ChannelError, clean, hmacBase64, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
+import type { CatalogItem } from './shopify.ts'
 
 type FetchFn = typeof fetch
 
 export const WOO_TOPICS = ['order.created', 'order.updated'] as const
+/** Stock edited in WordPress arrives at once; without it the hourly check still finds it. */
+export const WOO_OPTIONAL_TOPICS = ['product.updated'] as const
+/** WooCommerce keeps one stock figure per product or variation: shown as this one location. */
+export const WOO_LOCATION = { id: 'default', name: 'Store stock', active: true }
 /** Order statuses that mean "a real order to ship". */
 export const WOO_IMPORT_STATUSES = ['processing', 'on-hold', 'completed']
 export const WOO_CANCEL_STATUSES = ['cancelled', 'refunded', 'failed', 'trash']
@@ -123,7 +128,74 @@ export class WooClient {
       const made = await this.call<{ id: number }>('POST', 'webhooks', { name: `Orders → OMS (${topic})`, topic, delivery_url: url, secret, status: 'active' })
       out.push({ id: made.id, topic })
     }
+    for (const topic of WOO_OPTIONAL_TOPICS) {
+      const have = existing.find((w) => w.topic === topic)
+      try {
+        if (have) await this.call('PUT', `webhooks/${have.id}`, { secret, status: 'active' })
+        const id = have?.id ?? (await this.call<{ id: number }>('POST', 'webhooks', { name: `Stock → OMS (${topic})`, topic, delivery_url: url, secret, status: 'active' })).id
+        out.push({ id, topic })
+      } catch { /* optional: the hourly stock check covers it */ }
+    }
     return out
+  }
+
+  // --- stock --------------------------------------------------------------------------
+
+  /** Every product and variation with its stock (up to `max`), in the same shape as Shopify's catalog. */
+  async catalog(max = 3000): Promise<CatalogItem[]> {
+    const out: CatalogItem[] = []
+    for (let page = 1; out.length < max && page <= 60; page++) {
+      const batch = await this.call<WooProduct[]>('GET', 'products', undefined, { per_page: '100', page: String(page), status: 'any' })
+      for (const p of batch) {
+        if (p.type === 'variable') {
+          for (let vp = 1; vp <= 10; vp++) {
+            const vars = await this.call<WooVariation[]>('GET', `products/${p.id}/variations`, undefined, { per_page: '100', page: String(vp) })
+            for (const v of vars) out.push(wooCatalogItem(p, v))
+            if (vars.length < 100) break
+          }
+        } else if (p.type !== 'grouped' && p.type !== 'external') {
+          out.push(wooCatalogItem(p, null))
+        }
+      }
+      if (batch.length < 100) break
+    }
+    return out.slice(0, max)
+  }
+
+  /** Stock of one product / variation ("products/12" or "products/12/variations/34"); null when WooCommerce does not count it. */
+  async available(item: string, _location = WOO_LOCATION.id): Promise<number | null> {
+    const p = await this.call<{ manage_stock: boolean | 'parent'; stock_quantity: number | null }>('GET', wooItemPath(item))
+    return p.manage_stock === true ? p.stock_quantity ?? 0 : null
+  }
+
+  /**
+   * Sets the stock. WooCommerce has no compare-and-set, so it is read first and
+   * a change made in between is reported as STALE (the job looks again).
+   */
+  async setAvailable(item: string, _location: string, quantity: number, from: number | null, _key: string): Promise<void> {
+    const now = await this.available(item)
+    if (from !== null && now !== from) throw new ChannelError(`Stock changed in WooCommerce (${from} → ${now}) while updating`, 409, 'STALE')
+    const res = await this.call<{ stock_quantity: number | null }>('PUT', wooItemPath(item), { manage_stock: true, stock_quantity: quantity })
+    if (res.stock_quantity !== quantity) throw new ChannelError(`WooCommerce kept ${res.stock_quantity} instead of ${quantity}`, 422, 'USER_ERROR')
+  }
+
+  // --- fulfilment ---------------------------------------------------------------------
+
+  async orderState(id: string): Promise<{ status: string; email: string | null; notes: Array<{ id: number; note: string }> }> {
+    const [o, notes] = await Promise.all([
+      this.call<WooOrder>('GET', `orders/${encodeURIComponent(id)}`),
+      this.call<Array<{ id: number; note: string }>>('GET', `orders/${encodeURIComponent(id)}/notes`, undefined, { per_page: '100' }),
+    ])
+    return { status: o.status, email: clean(o.billing?.email), notes: notes.map((n) => ({ id: n.id, note: n.note })) }
+  }
+
+  /** A note on the order; a customer note is e-mailed to the customer by WooCommerce. */
+  async addNote(id: string, note: string, customer: boolean): Promise<number> {
+    return (await this.call<{ id: number }>('POST', `orders/${encodeURIComponent(id)}/notes`, { note, customer_note: customer })).id
+  }
+
+  async setStatus(id: string, status: string): Promise<string> {
+    return (await this.call<{ status: string }>('PUT', `orders/${encodeURIComponent(id)}`, { status })).status
   }
 
   async removeWebhooks(ids: number[]): Promise<void> {
@@ -148,7 +220,8 @@ export class WooClient {
         ? { key: 'webhooks', label: 'Instant order updates', status: 'fail', detail: paused.length
             ? 'WooCommerce paused the webhooks after failed deliveries — click "Fix webhooks"'
             : `Not set up: ${need.join(', ')} — click "Fix webhooks"` }
-        : { key: 'webhooks', label: 'Instant order updates', status: 'ok', detail: 'New and changed orders arrive within seconds' })
+        : { key: 'webhooks', label: 'Instant order updates', status: 'ok', detail: hooks.some((h) => h.topic === 'product.updated' && h.status === 'active')
+            ? 'New and changed orders, and stock edits, arrive within seconds' : 'New and changed orders arrive within seconds' })
     } catch (error) {
       const e = error as ChannelError
       checks.push({ key: 'webhooks', label: 'Instant order updates', status: 'fail', detail: e.unauthorized
@@ -167,6 +240,48 @@ export class WooClient {
         : { key: 'currency', label: 'Currency', status: 'warn', detail: `Store currency is ${currency}; amounts are imported as they are, not converted` })
     return { checks, currency, name: new URL(this.site).hostname }
   }
+}
+
+interface WooProduct {
+  id: number; name: string; type: string; status: string; sku?: string; price?: string; regular_price?: string; sale_price?: string
+  manage_stock: boolean; stock_quantity: number | null; images?: Array<{ src?: string }>; description?: string; short_description?: string
+}
+interface WooVariation {
+  id: number; sku?: string; price?: string; regular_price?: string; sale_price?: string; manage_stock: boolean | 'parent'; stock_quantity: number | null
+  image?: { src?: string } | null; attributes?: Array<{ name: string; option: string }>
+}
+
+/** "products/12/variations/34" (validated: only these shapes are ever called). */
+export function wooItemPath(item: string): string {
+  if (!/^products\/\d+(\/variations\/\d+)?$/.test(item)) throw new ChannelError(`Not a WooCommerce stock item: ${item}`, 422, 'NOT_FOUND')
+  return item
+}
+
+const plain = (html: string | undefined) => clean((html ?? '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')) ?? null
+const price = (v: string | undefined) => (v && /^\d+(\.\d+)?$/.test(v) ? v : null)
+
+export function wooCatalogItem(p: WooProduct, v: WooVariation | null): CatalogItem {
+  const src = v ?? p
+  const tracked = v ? v.manage_stock === true : p.manage_stock === true
+  const options = Object.fromEntries((v?.attributes ?? []).filter((a) => a.name && a.option).map((a) => [a.name, a.option]))
+  const sale = price(src.sale_price)
+  return {
+    external_variant_id: String(v?.id ?? p.id), external_product_id: String(p.id),
+    inventory_item_id: v ? `products/${p.id}/variations/${v.id}` : `products/${p.id}`,
+    sku: clean(src.sku), barcode: null, product_title: p.name,
+    variant_title: v ? Object.values(options).join(' / ') || 'Default Title' : 'Default Title',
+    product_status: p.status === 'publish' ? 'ACTIVE' : p.status.toUpperCase(), tracked,
+    levels: [{ location_id: WOO_LOCATION.id, location: WOO_LOCATION.name, available: tracked ? src.stock_quantity ?? 0 : null, on_hand: tracked ? src.stock_quantity ?? 0 : null }],
+    price: price(src.price) ?? price(src.regular_price), compare_at_price: sale ? price(src.regular_price) : null,
+    image_url: (v?.image?.src || p.images?.[0]?.src) ?? null, options, product_description: plain(p.short_description || p.description),
+  }
+}
+
+/** A product.updated webhook → the stock item it changed (null when WooCommerce does not count its stock). */
+export function wooStockFromWebhook(body: { id?: number; parent_id?: number; type?: string; manage_stock?: boolean | 'parent'; stock_quantity?: number | null }): { item: string; available: number } | null {
+  if (!body.id || body.manage_stock !== true) return null
+  const item = body.parent_id ? `products/${body.parent_id}/variations/${body.id}` : `products/${body.id}`
+  return { item, available: body.stock_quantity ?? 0 }
 }
 
 interface WooAddress { first_name?: string; last_name?: string; address_1?: string; address_2?: string; city?: string; state?: string; postcode?: string; country?: string; phone?: string; email?: string }

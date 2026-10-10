@@ -90,7 +90,7 @@ export interface SyncItem {
   status: SyncStatus; error: string | null; synced_at: string | null; track_inventory: boolean; difference: number | null
 }
 export interface SyncOverview {
-  channel: { id: string; name: string; status: string; locations: Array<{ id: string; name: string; active: boolean }>; catalog_imported_at: string | null
+  channel: { id: string; name: string; status: string; platform: ChannelPlatform; locations: Array<{ id: string; name: string; active: boolean }>; catalog_imported_at: string | null
     scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS'; fulfill_on_ship: boolean; notify_customer: boolean; fulfill_without_tracking: boolean } }
   items: SyncItem[]
   unmapped: Array<{ external_variant_id: string; sku: string | null; title: string; status: string | null; available: number | null
@@ -146,3 +146,29 @@ export async function retryChannelFulfillment(orderId: string) {
   if (error) throw error
   await runSyncJobs().catch(() => undefined)
 }
+
+// --- importing a store's products into this catalog ----------------------------------------
+
+export interface StoreProduct {
+  product_id: string; title: string; status: string | null; image_url: string | null; variants: number; linked: number
+  price: number | null; stock: number | null; skus: string[] | null
+}
+export async function storeProducts(channelId: string, search?: string): Promise<StoreProduct[]> {
+  const { data, error } = await supabase.rpc('channel_catalog_products', { p_channel_id: channelId, p_search: (search?.trim() || null) as unknown as string })
+  if (error) throw error
+  return fromJson(data)
+}
+export interface AdoptPlan {
+  applied: boolean; created: number; linked: number
+  plan: Array<{ product_id: string; external_variant_id: string; action: 'CREATE' | 'LINK' | 'ALREADY_LINKED'; title: string; sku: string | null; price?: number | null; stock?: number | null }>
+}
+/** Preview (apply = false) or import store products here; with stock records the store's quantity as opening stock. */
+export async function adoptStoreProducts(channelId: string, productIds: string[], withStock: boolean, apply: boolean): Promise<AdoptPlan> {
+  const { data, error } = await supabase.rpc('channel_catalog_adopt', { p_channel_id: channelId, p_product_ids: productIds, p_with_stock: withStock, p_apply: apply })
+  if (error) throw error
+  return fromJson(data)
+}
+
+/** Staff click only: mark the order paid, or cancel it, on Shopify (never automatic). */
+export const shopifyOrderAction = (orderId: string, op: 'mark_paid' | 'cancel', note?: string) =>
+  call<{ ok: boolean; financial_status?: string; job_id?: string }>({ action: 'order_action', order_id: orderId, op, ...(note ? { note } : {}) })

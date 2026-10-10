@@ -37,7 +37,7 @@ import {
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
-import { orderChannelInfo, retryChannelFulfillment } from '@/services/channels'
+import { orderChannelInfo, retryChannelFulfillment, shopifyOrderAction } from '@/services/channels'
 import { listOrderMessages } from '@/services/sms'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
@@ -560,7 +560,7 @@ export default function OrderDetailPage() {
           </Card>
 
           <OrderSourceCard orderId={o.id} attribution={o.attribution} orderStatus={status} />
-          {o.sales_channel_id && <ChannelOrderCard orderId={o.id} />}
+          {o.sales_channel_id && <ChannelOrderCard orderId={o.id} status={o.status} />}
 
           <Can permission="fraud.view">
             <Card>
@@ -921,9 +921,19 @@ const FULFIL_LABEL: Record<string, string> = {
 const NOTIFY_LABEL: Record<string, string> = { REQUESTED: 'Shopify asked to e-mail the customer', NO_EMAIL: 'No customer e-mail on the order', DISABLED: 'Customer e-mails turned off' }
 
 /** Orders imported from Shopify: the Shopify order, its fulfilment and tracking as Shopify has them. */
-function ChannelOrderCard({ orderId }: { orderId: string }) {
+function ChannelOrderCard({ orderId, status }: { orderId: string; status?: string }) {
   const qc = useQueryClient()
   const { can } = useAuth()
+  const [confirm, setConfirm] = useState<'mark_paid' | 'cancel' | null>(null)
+  const action = useMutation({
+    mutationFn: ({ op, note }: { op: 'mark_paid' | 'cancel'; note?: string }) => shopifyOrderAction(orderId, op, note),
+    onSuccess: (r, v) => {
+      toast.success(v.op === 'mark_paid' ? `Marked paid on Shopify (${titleCase((r.financial_status ?? 'paid').replace(/_/g, ' '))})` : 'Cancel sent to Shopify — it finishes in a few seconds')
+      qc.invalidateQueries({ queryKey: ['order-channel-info', orderId] })
+      qc.invalidateQueries({ queryKey: ['order', orderId] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
   const info = useQuery({ queryKey: ['order-channel-info', orderId], queryFn: () => orderChannelInfo(orderId), refetchInterval: (q) => (q.state.data?.job ? 10_000 : false) })
   const retry = useMutation({
     mutationFn: () => retryChannelFulfillment(orderId),
@@ -987,7 +997,28 @@ function ChannelOrderCard({ orderId }: { orderId: string }) {
             ))}
           </div>
         )}
+        {c.channel.platform === 'SHOPIFY' && can('orders.update') && (
+          <div className="flex flex-wrap gap-2 border-t pt-3">
+            {['DELIVERED', 'PARTIALLY_DELIVERED'].includes(status ?? '') && (
+              <Button size="sm" variant="outline" onClick={() => setConfirm('mark_paid')} disabled={action.isPending}>Mark paid on Shopify</Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setConfirm('cancel')} disabled={action.isPending}>Cancel on Shopify</Button>
+          </div>
+        )}
       </CardContent>
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(v) => !v && setConfirm(null)}
+        title={confirm === 'mark_paid' ? 'Mark this order paid on Shopify?' : 'Cancel this order on Shopify?'}
+        description={confirm === 'mark_paid'
+          ? 'Use this once the cash has been collected. Only Shopify changes; payments here are recorded as usual.'
+          : 'Shopify cancels the order without a refund and without restocking there — your stock here comes back through the cancel in this app and the stock sync, so nothing is counted twice. Shopify then tells this app, and this order is cancelled here too if it has not shipped. This cannot be undone.'}
+        confirmLabel={confirm === 'mark_paid' ? 'Mark paid' : 'Cancel on Shopify'}
+        destructive={confirm === 'cancel'}
+        reason={confirm === 'cancel'}
+        reasonLabel="Note for Shopify staff (optional)"
+        onConfirm={(note) => action.mutateAsync({ op: confirm!, note: note || undefined })}
+      />
     </Card>
   )
 }

@@ -276,7 +276,7 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
             <Button size="sm" variant="outline" onClick={() => test.mutate()} disabled={busy}>{test.isPending ? <Spinner /> : <Stethoscope />} Test connection</Button>
             <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={busy || c.status === 'PENDING'}>{sync.isPending ? <Spinner /> : <RefreshCw />} Fetch last 7 days</Button>
             {hookFailed && <Button size="sm" onClick={() => hooks.mutate()} disabled={busy}>{hooks.isPending ? <Spinner /> : <Webhook />} Fix webhooks</Button>}
-            {c.platform === 'SHOPIFY' && c.status === 'CONNECTED' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/shopify-sync?channel=${c.id}`}><ArrowLeftRight /> Stock & fulfilment</Link></Button>}
+            {c.status === 'CONNECTED' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/sync?channel=${c.id}`}><ArrowLeftRight /> Stock & products</Link></Button>}
             <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}><Unplug /> Disconnect</Button>
           </div>
         )}
@@ -370,7 +370,7 @@ const SHOPIFY_ACCESS: Array<{ area: string; scopes: string[]; use: string; soon?
   { area: 'Fulfilment', scopes: ['read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders'], use: 'When an order is Shipped here: fulfil it on Shopify with the courier, tracking number and tracking link.' },
   { area: 'Stock', scopes: ['read_inventory', 'write_inventory'], use: 'Keep Shopify’s available quantity equal to yours after every sale, cancel, return or purchase.' },
   { area: 'Locations', scopes: ['read_locations', 'write_locations'], use: 'Choose which Shopify location is kept in step.' },
-  { area: 'Products', scopes: ['read_products', 'write_products'], use: 'Read the catalog to link SKUs; import Shopify products into your products.', soon: true },
+  { area: 'Products', scopes: ['read_products', 'write_products'], use: 'Read the catalog to link SKUs, and import Shopify products into your products (Store Sync → Import products).' },
   { area: 'Draft orders', scopes: ['read_draft_orders', 'write_draft_orders'], use: 'Send orders taken here (phone, Messenger) to Shopify.', soon: true },
   { area: 'Returns', scopes: ['read_returns', 'write_returns'], use: 'See returns made in Shopify and record yours there.', soon: true },
 ]

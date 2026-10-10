@@ -283,6 +283,39 @@ export class ShopifyClient {
     return seenFulfillment(res.fulfillment, false)
   }
 
+  // --- order actions (only ever on a staff click) ----------------------------------------
+
+  /** Marks the order paid on Shopify (e.g. cash collected on delivery). Returns Shopify's financial status. */
+  async markPaid(orderId: string): Promise<string> {
+    const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    type R = { orderMarkAsPaid: { order: { displayFinancialStatus: string } | null; userErrors: Array<{ message: string }> } | null }
+    const { data, errors } = await this.raw<R>(`mutation($input: OrderMarkAsPaidInput!) { orderMarkAsPaid(input: $input) {
+      order { displayFinancialStatus } userErrors { message } } }`, { input: { id } })
+    if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) throw new ChannelError('Shopify refused: the app needs write_orders.', 403, 'ACCESS_DENIED')
+    const res = data?.orderMarkAsPaid
+    if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+    if (!res.order) throw new ChannelError(`Shopify would not mark it paid: ${res.userErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
+    return res.order.displayFinancialStatus
+  }
+
+  /**
+   * Cancels the order on Shopify without refunding or restocking there: stock
+   * comes back through this app's own cancel and the stock sync, so it is
+   * never counted twice. Shopify finishes the cancel in the background.
+   */
+  async cancelOrder(orderId: string, staffNote: string | null): Promise<string> {
+    const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
+    type R = { orderCancel: { job: { id: string } | null; orderCancelUserErrors: Array<{ message: string; code: string | null }> } | null }
+    const { data, errors } = await this.raw<R>(`mutation($id: ID!, $note: String) { orderCancel(orderId: $id, reason: OTHER, restock: false,
+      refundMethod: { originalPaymentMethodsRefund: false }, notifyCustomer: false, staffNote: $note) {
+      job { id } orderCancelUserErrors { message code } } }`, { id, note: staffNote?.slice(0, 255) ?? null })
+    if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) throw new ChannelError('Shopify refused: the app needs write_orders.', 403, 'ACCESS_DENIED')
+    const res = data?.orderCancel
+    if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+    if (!res.job) throw new ChannelError(`Shopify would not cancel: ${res.orderCancelUserErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
+    return res.job.id
+  }
+
   // --- inventory --------------------------------------------------------------------------
 
   async locations(): Promise<Array<{ id: string; name: string; active: boolean }>> {
@@ -297,13 +330,15 @@ export class ShopifyClient {
     let after: string | null = null
     while (out.length < max) {
       type R = { productVariants: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<{
-        legacyResourceId: string; sku: string | null; barcode: string | null; title: string
-        product: { legacyResourceId: string; title: string; status: string }
+        legacyResourceId: string; sku: string | null; barcode: string | null; title: string; price: string | null; compareAtPrice: string | null
+        selectedOptions: Array<{ name: string; value: string }>
+        product: { legacyResourceId: string; title: string; status: string; description: string | null; featuredMedia: { preview: { image: { url: string } | null } | null } | null }
         inventoryItem: { id: string; tracked: boolean; inventoryLevels: { nodes: Array<{ location: { id: string; name: string }; quantities: Array<{ name: string; quantity: number }> }> } } | null
       }> } }
       const d: R = await this.gql<R>(`query($after: String) { productVariants(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
-        nodes { legacyResourceId sku barcode title product { legacyResourceId title status }
+        nodes { legacyResourceId sku barcode title price compareAtPrice selectedOptions { name value }
+          product { legacyResourceId title status description(truncateAt: 2000) featuredMedia { preview { image { url } } } }
           inventoryItem { id tracked inventoryLevels(first: 10) { nodes { location { id name } quantities(names: ["available", "on_hand"]) { name quantity } } } } } } }`,
         { after })
       for (const v of d.productVariants.nodes) {
@@ -316,6 +351,9 @@ export class ShopifyClient {
             available: l.quantities.find((q) => q.name === 'available')?.quantity ?? null,
             on_hand: l.quantities.find((q) => q.name === 'on_hand')?.quantity ?? null,
           })),
+          price: v.price, compare_at_price: v.compareAtPrice, image_url: v.product.featuredMedia?.preview?.image?.url ?? null,
+          options: Object.fromEntries(v.selectedOptions.filter((o) => !(o.name === 'Title' && o.value === 'Default Title')).map((o) => [o.name, o.value])),
+          product_description: clean(v.product.description),
         })
       }
       if (!d.productVariants.pageInfo.hasNextPage) break
@@ -466,6 +504,8 @@ export interface CatalogItem {
   external_variant_id: string; external_product_id: string; inventory_item_id: string | null; sku: string | null; barcode: string | null
   product_title: string; variant_title: string; product_status: string; tracked: boolean
   levels: Array<{ location_id: string; location: string; available: number | null; on_hand: number | null }>
+  /** For importing the product here. */
+  price?: string | null; compare_at_price?: string | null; image_url?: string | null; options?: Record<string, string>; product_description?: string | null
 }
 
 export function seenFulfillment(f: ShopifyFulfillment, allFulfilled: boolean): SeenFulfillment {

@@ -1,4 +1,4 @@
-// Shopify sync jobs: fulfil shipped orders and keep stock in step.
+// Store sync jobs (Shopify, WooCommerce): fulfil shipped orders and keep stock in step.
 // Pure logic over two ports (the database RPCs and the Shopify client) so it
 // can be tested with mocked Shopify answers. Every outcome is written back to
 // the database; nothing is reported as done until Shopify confirmed it.
@@ -9,11 +9,19 @@ export interface Job { id: string; channel_id: string; kind: 'FULFILL' | 'INVENT
 export type Outcome = { outcome: 'DONE' | 'RETRY' | 'FAILED'; error?: string; result?: Record<string, unknown>; delay?: number }
 
 /** What the worker needs from Shopify (ShopifyClient implements it). */
-export interface ShopifyPort {
-  fulfillmentState(orderId: string): Promise<FulfillmentState>
-  createFulfillment(input: { groups: FulfillmentGroup[]; notifyCustomer: boolean; tracking: { company: string | null; number: string | null; url: string | null } | null }): Promise<SeenFulfillment>
+export interface StockPort {
   available(inventoryItemId: string, locationId: string): Promise<number | null>
   setAvailable(inventoryItemId: string, locationId: string, quantity: number, from: number | null, key: string): Promise<void>
+}
+export interface ShopifyPort extends StockPort {
+  fulfillmentState(orderId: string): Promise<FulfillmentState>
+  createFulfillment(input: { groups: FulfillmentGroup[]; notifyCustomer: boolean; tracking: { company: string | null; number: string | null; url: string | null } | null }): Promise<SeenFulfillment>
+}
+/** What the worker needs from WooCommerce (WooClient implements it). */
+export interface WooPort {
+  orderState(orderId: string): Promise<{ status: string; email: string | null; notes: Array<{ id: number; note: string }> }>
+  addNote(orderId: string, note: string, customer: boolean): Promise<number>
+  setStatus(orderId: string, status: string): Promise<string>
 }
 export type Rpc = <T>(fn: string, args: Record<string, unknown>) => Promise<T>
 
@@ -113,7 +121,68 @@ interface InventoryContext {
 /** Seconds to wait for a Shopify order to arrive before calling a difference "made in Shopify". */
 export const GRACE_SECONDS = 120
 
-export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort, now = Date.now()): Promise<Outcome> {
+/**
+ * WooCommerce has no fulfilments: the order is marked Completed and the courier,
+ * tracking number and (real) tracking link go in an order note, e-mailed to the
+ * customer as a customer note when that is on. A note already carrying the
+ * tracking number means an earlier attempt got through.
+ */
+export async function wooFulfillJob(job: Job, rpc: Rpc, woo: () => WooPort, opts: ChannelOpts): Promise<Outcome> {
+  const ctx = await rpc<FulfillContext>('channel_fulfillment_context', { p_order_id: job.ref_id })
+  const f = ctx.fulfillment
+  const save = (p: Record<string, unknown>) => rpc('channel_fulfillment_update', { p_order_id: job.ref_id, p })
+  if (!f || f.status === 'FULFILLED' || f.status === 'SKIPPED') return { outcome: 'DONE', result: { skipped: f?.status ?? 'none' } }
+  if (!SHIPPED.includes(ctx.order.status)) {
+    await save({ status: 'SKIPPED', error: `Order is ${ctx.order.status.toLowerCase().replace(/_/g, ' ')} — not completed in WooCommerce` })
+    return { outcome: 'DONE', result: { skipped: ctx.order.status } }
+  }
+  const tracking = ctx.shipment?.tracking ?? null
+  if (!tracking && !opts.fulfill_without_tracking) {
+    await save({ status: 'NEEDS_TRACKING', error: 'No courier tracking number on this order. Add it (book the courier or enter it) and it is sent automatically.' })
+    return { outcome: 'DONE', result: { waiting: 'tracking' } }
+  }
+  const company = ctx.shipment ? (CARRIER[ctx.shipment.provider ?? ''] ?? ctx.shipment.courier) : null
+  const url = ctx.shipment?.tracking_url ?? null
+  try {
+    const client = woo()
+    const state = await client.orderState(ctx.order.external_order_id)
+    if (['cancelled', 'refunded', 'failed', 'trash'].includes(state.status)) {
+      await save({ status: 'SKIPPED', error: `The order is ${state.status} in WooCommerce` })
+      return { outcome: 'DONE', result: { skipped: state.status } }
+    }
+    const email = state.email ?? ctx.order.customer_email
+    const notify = opts.notify_customer && !!email
+    const earlier = tracking ? state.notes.find((n) => n.note.includes(tracking)) : undefined
+    let noteId = earlier?.id ?? null
+    if (!noteId) {
+      await save({ status: 'PROCESSING', attempted: true, courier: company, tracking_number: tracking, tracking_url: url, shipped_at: ctx.shipment?.shipped_at })
+      const text = [`Your order has been shipped${company ? ` with ${company}` : ''}.`, tracking ? `Tracking number: ${tracking}` : null, url ? `Track it here: ${url}` : null]
+        .filter(Boolean).join('\n')
+      noteId = await client.addNote(ctx.order.external_order_id, text, notify)
+    }
+    const status = state.status === 'completed' ? state.status : await client.setStatus(ctx.order.external_order_id, 'completed')
+    if (status !== 'completed') throw new ChannelError(`WooCommerce left the order ${status}`, 422, 'USER_ERROR')
+    await save({
+      status: 'FULFILLED', fulfillment_id: `woo-note-${noteId}`, shopify_status: 'completed', error: '', courier: company, tracking_number: tracking, tracking_url: url,
+      notify_requested: notify,
+      notification_status: !opts.notify_customer ? 'DISABLED' : email ? 'REQUESTED' : 'NO_EMAIL',
+      notification_note: !opts.notify_customer ? 'Customer e-mails are turned off for this store'
+        : email ? 'WooCommerce was asked to e-mail the tracking note (delivery is not confirmed by WooCommerce)'
+          : 'The order has no customer e-mail, so WooCommerce cannot send the note',
+    })
+    return { outcome: 'DONE', result: { note_id: noteId, adopted: !!earlier } }
+  } catch (error) {
+    const message = (error as Error).message
+    if (retryable(error)) {
+      await save({ status: 'PENDING', error: `${message} — will try again` })
+      return { outcome: 'RETRY', error: message }
+    }
+    await save({ status: 'FAILED', error: message })
+    return { outcome: 'FAILED', error: message }
+  }
+}
+
+export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => StockPort, now = Date.now(), store = 'Shopify'): Promise<Outcome> {
   const ctx = await rpc<InventoryContext | null>('channel_inventory_context', { p_channel_id: job.channel_id, p_variant_id: job.ref_id })
   const save = (p: Record<string, unknown>) => rpc('channel_inventory_update', { p_channel_id: job.channel_id, p_variant_id: job.ref_id, p })
   if (!ctx || !ctx.sync_on || !ctx.location_id || !ctx.inventory_item_id) return { outcome: 'DONE', result: { skipped: 'not synced' } }
@@ -132,12 +201,12 @@ export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => ShopifyPor
     if (external) {
       const since = ctx.mismatch_since ? Date.parse(ctx.mismatch_since) : null
       if (since === null || now - since < GRACE_SECONDS * 1000) {
-        await save({ shopify_available: current, sync_status: 'MISMATCH', error: `Changed in Shopify (${ctx.last_pushed_qty} → ${current}); checking again shortly` })
+        await save({ shopify_available: current, sync_status: 'MISMATCH', error: `Changed in ${store} (${ctx.last_pushed_qty} → ${current}); checking again shortly` })
         return { outcome: 'RETRY', error: 'waiting for orders to arrive', delay: GRACE_SECONDS }
       }
       if (ctx.policy !== 'SAAS_WINS') {
         await save({ shopify_available: current, sync_status: 'MISMATCH',
-          error: `Changed in Shopify to ${current} (we last set ${ctx.last_pushed_qty}; ours is ${ctx.desired}). Review it under Reconcile.` })
+          error: `Changed in ${store} to ${current} (we last set ${ctx.last_pushed_qty}; ours is ${ctx.desired}). Review it under Reconcile.` })
         return { outcome: 'DONE', result: { flagged: current } }
       }
     }
@@ -148,7 +217,7 @@ export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => ShopifyPor
   } catch (error) {
     const e = error as ChannelError
     if (e instanceof ChannelError && e.code === 'STALE') {
-      await save({ sync_status: 'PENDING', error: 'Shopify changed while we were updating; trying again' })
+      await save({ sync_status: 'PENDING', error: `${store} changed while we were updating; trying again` })
       return { outcome: 'RETRY', error: e.message, delay: 15 }
     }
     if (retryable(error)) {
