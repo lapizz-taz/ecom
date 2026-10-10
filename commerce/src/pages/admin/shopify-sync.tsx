@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, DownloadCloud, ExternalLink, ImageOff, Link2, PackagePlus, Play, RotateCw, Search, Unlink } from 'lucide-react'
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, CircleCheck, DownloadCloud, ExternalLink, ImageOff, Link2, PackagePlus, Play, RefreshCw, RotateCw, Search, Unlink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -23,7 +23,7 @@ import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { searchVariants } from '@/services/catalog'
 import {
-  adoptStoreProducts, type AdoptPlan, importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs,
+  adoptStoreProducts, type AdoptPlan, firstSync, type FirstSyncPlan, importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs,
   saveSyncSettings, type SyncItem, type SyncOverview, syncOverview, storeProducts,
 } from '@/services/channels'
 import { formatMoney } from '@/lib/format'
@@ -35,6 +35,7 @@ const status = (store: string): Record<string, { label: string; tone: 'ok' | 'wa
 const F_STATUS: Record<string, string> = {
   PENDING: 'Queued', NEEDS_TRACKING: 'Needs tracking', PROCESSING: 'Sending', FULFILLED: 'Fulfilled', FAILED: 'Failed', SKIPPED: 'Skipped',
 }
+const D_STATUS: Record<string, string> = { PENDING: 'Sending', MARKED: 'Delivered', FAILED: 'Failed', SKIPPED: 'Skipped' }
 const reason = (store: string): Record<string, string> => ({
   NO_SKU: `No SKU in ${store}`, DUPLICATE_SKU_SHOPIFY: `SKU used twice in ${store}`, DUPLICATE_SKU_HERE: 'SKU used twice here', NO_MATCH: 'No product here with this SKU',
 })
@@ -89,7 +90,8 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
   const o = overview.data!
   const diffs = o.items.filter((i) => i.difference !== null && i.difference !== 0 && i.status !== 'UNTRACKED')
   const missingScopes = o.channel.platform !== 'SHOPIFY' ? []
-    : ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders', 'read_products'].filter((s) => !o.channel.scopes.includes(s))
+    : ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders', 'read_products', 'write_fulfillments'].filter((s) => !o.channel.scopes.includes(s))
+  const firstDone = !!o.channel.first_sync_at
 
   return (
     <div className="space-y-4">
@@ -110,8 +112,10 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
           The app is missing {missingScopes.join(', ')}. Add them to the Shopify app's access scopes, release a new version, then click Connect again on Sales channels.</p>
       )}
 
+      {!firstDone && o.channel.status === 'CONNECTED' && <FirstSyncCard o={o} channelId={channelId} store={store} onDone={refresh} />}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Linked variants" value={formatNumber(o.items.length)} hint={o.channel.catalog_imported_at ? `Catalog read ${timeAgo(o.channel.catalog_imported_at)}` : 'Read the catalog first'} />
+        <StatCard label="Linked variants" value={formatNumber(o.items.length)} hint={firstDone ? `First sync ${timeAgo(o.channel.first_sync_at!)}` : o.channel.catalog_imported_at ? `Catalog read ${timeAgo(o.channel.catalog_imported_at)}` : 'Read the catalog first'} />
         <StatCard label="In step" value={formatNumber(o.items.filter((i) => i.status === 'OK').length)} />
         <StatCard label="Differences" value={formatNumber(diffs.length)} hint="Review under Stock" />
         <StatCard label="Not linked" value={formatNumber(o.unmapped.length)} />
@@ -140,6 +144,134 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
   )
 }
 
+/**
+ * The one-time first sync: bring every store product here (SKU, prices, cost,
+ * images, stock), take the store's stock once for products already here, then
+ * keep stock in step with this app as the source of truth. Preview first.
+ */
+function FirstSyncCard({ o, channelId, store, onDone }: { o: SyncOverview; channelId: string; store: string; onDone: () => void }) {
+  const { can } = useAuth()
+  const [location, setLocation] = useState(o.channel.settings.location_id ?? (o.channel.locations.length === 1 ? o.channel.locations[0].id : ''))
+  const [auto, setAuto] = useState(true)
+  const [plan, setPlan] = useState<FirstSyncPlan | null>(null)
+  useEffect(() => { if (!location && o.channel.locations.length === 1) setLocation(o.channel.locations[0].id) }, [o.channel.locations, location])
+  const allowed = can('settings.manage') && can('products.manage') && can('inventory.adjust')
+  const read = useMutation({
+    mutationFn: () => importCatalog(channelId),
+    onSuccess: (r) => { toast.success(`${formatNumber(r.items)} ${store} items read`); onDone() },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const preview = useMutation({
+    // Fresh numbers from the store first, so the preview shows today's stock.
+    mutationFn: async () => { await importCatalog(channelId); return firstSync(channelId, location, auto, false) },
+    onSuccess: setPlan,
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const apply = useMutation({
+    mutationFn: () => firstSync(channelId, location, auto, true),
+    onSuccess: (r) => {
+      toast.success(`First sync done: ${r.create} new variant${r.create === 1 ? '' : 's'}, ${r.stock_changes.length} stock correction${r.stock_changes.length === 1 ? '' : 's'}. Your stock now leads.`)
+      setPlan(null); onDone(); void runSyncJobs().then(onDone).catch(() => undefined)
+    },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const step = (n: number, done: boolean, title: string, body: React.ReactNode) => (
+    <li className="flex gap-3">
+      <span className={cn('grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold', done ? 'bg-foreground text-background' : 'border')}>{done ? <Check className="size-3.5" /> : n}</span>
+      <div className="min-w-0 flex-1 space-y-1.5 pb-1"><p className="text-sm font-medium">{title}</p><div className="text-xs text-muted-foreground">{body}</div></div>
+    </li>
+  )
+  return (
+    <Card className="border-foreground/30">
+      <CardHeader>
+        <CardTitle className="text-base">First sync with {store}</CardTitle>
+        <CardDescription>
+          Brings every {store} product here with its SKU, prices, cost, images and stock. Products you already have (same SKU) are linked and take {store}'s stock once.
+          After that your stock here is the source of truth: every sale, return, purchase or adjustment is sent to {store} automatically.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ol className="space-y-3">
+          {step(1, !!o.channel.catalog_imported_at, `Read the ${store} catalog`, o.channel.catalog_imported_at
+            ? <span className="flex flex-wrap items-center gap-2">{formatNumber(o.channel.catalog_items)} items read {timeAgo(o.channel.catalog_imported_at)}
+                <Button size="sm" variant="ghost" className="h-7" onClick={() => read.mutate()} disabled={read.isPending}>{read.isPending ? <Spinner /> : <RefreshCw />} Read again</Button></span>
+            : <span className="flex flex-wrap items-center gap-2">It is read by itself right after connecting.
+                <Button size="sm" variant="outline" className="h-7" onClick={() => read.mutate()} disabled={read.isPending}>{read.isPending ? <Spinner /> : <DownloadCloud />} Read now</Button></span>)}
+          {step(2, !!location, `Choose the ${store} location to keep in step`, (
+            <Select value={location} onValueChange={setLocation} disabled={!o.channel.locations.length}>
+              <SelectTrigger className="w-full sm:w-72"><SelectValue placeholder={o.channel.locations.length ? 'Choose a location' : 'Read the catalog first'} /></SelectTrigger>
+              <SelectContent>{o.channel.locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}{l.active ? '' : ' (inactive)'}</SelectItem>)}</SelectContent>
+            </Select>
+          ))}
+          {step(3, false, 'Preview, then start', (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-foreground"><Switch checked={auto} onCheckedChange={setAuto} /> Import new {store} products automatically afterwards</label>
+              <Button size="sm" onClick={() => preview.mutate()} disabled={!allowed || !location || !o.channel.catalog_imported_at || preview.isPending}>
+                {preview.isPending ? <Spinner /> : <PackagePlus />} Preview first sync
+              </Button>
+              {!allowed && <p>Needs the settings, products and stock-adjust permissions (an owner can do it).</p>}
+            </div>
+          ))}
+        </ol>
+      </CardContent>
+      <Dialog open={!!plan} onOpenChange={(v) => !v && setPlan(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>First sync with {store}</DialogTitle>
+            <DialogDescription>Preview: nothing has changed yet. Every stock change is recorded in the stock history; nothing is deleted.</DialogDescription>
+          </DialogHeader>
+          {plan && (
+            <div className="min-w-0 space-y-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {([['New products', `${plan.products}`, `${plan.create} variant${plan.create === 1 ? '' : 's'}`], ['Linked by SKU', `${plan.link + plan.already_linked}`, 'already here'],
+                  ['Stock taken once', `${plan.stock_changes.length}`, `from ${store}`], ['Not counted', `${plan.untracked}`, `stock off in ${store}`]] as const).map(([l, v, h]) => (
+                  <div key={l} className="rounded-lg border p-2.5"><p className="text-[11px] text-muted-foreground">{l}</p><p className="text-lg font-semibold tabular-nums">{v}</p><p className="text-[11px] text-muted-foreground">{h}</p></div>
+                ))}
+              </div>
+              {plan.stock_changes.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold">Stock here will match {store}</p>
+                  <ul className="max-h-40 divide-y overflow-y-auto rounded-lg border text-sm">
+                    {plan.stock_changes.map((c) => (
+                      <li key={c.variant_id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                        <span className="min-w-0"><span className="block truncate">{c.title}</span><span className="font-mono text-[11px] text-muted-foreground">{c.sku}</span></span>
+                        <span className="shrink-0 tabular-nums">{c.ours} → <strong>{Math.max(c.store, 0)}</strong>{c.store < 0 && <span className="block text-[11px] text-muted-foreground">{store} had {c.store}</span>}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {plan.items.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold">Coming here</p>
+                  <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border text-sm">
+                    {plan.items.map((p) => (
+                      <li key={p.external_variant_id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                        <span className="min-w-0"><span className="block truncate">{p.title}</span><span className="font-mono text-[11px] text-muted-foreground">{p.sku}</span></span>
+                        <span className="shrink-0 text-right text-xs tabular-nums">
+                          {p.action === 'LINK' ? <Pill tone="muted">Link existing</Pill> : <>
+                            {p.price != null && <span className="block">{formatMoney(p.price)}{p.cost != null && <span className="text-muted-foreground"> · cost {formatMoney(p.cost)}</span>}</span>}
+                            <span className="block text-muted-foreground">stock {p.stock ?? 0}</span></>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="flex items-start gap-2 text-xs text-muted-foreground"><CircleCheck className="mt-0.5 size-3.5 shrink-0" />
+                Then stock sync turns on and {store} follows your stock. Orders shipped here are fulfilled on {store}{store === 'Shopify' ? ' and marked delivered when delivered' : ''}.</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPlan(null)}>Cancel</Button>
+            <Button onClick={() => apply.mutate()} disabled={apply.isPending}>{apply.isPending && <Spinner />} Start first sync</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
 function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; channelId: string; onSaved: () => void; store: string }) {
   const { can } = useAuth()
   const [s, setS] = useState(o.channel.settings)
@@ -151,7 +283,7 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
     onError: (e) => toast.error(toUserMessage(e)),
   })
   const edit = can('settings.manage')
-  const row = (label: string, hint: string, key: 'fulfill_on_ship' | 'notify_customer' | 'fulfill_without_tracking' | 'inventory_sync') => (
+  const row = (label: string, hint: string, key: 'fulfill_on_ship' | 'notify_customer' | 'fulfill_without_tracking' | 'inventory_sync' | 'auto_import_products' | 'mark_delivered') => (
     <label className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
       <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{hint}</span></span>
       <Switch checked={s[key]} disabled={!edit} onCheckedChange={(v) => setS((x) => ({ ...x, [key]: v }))} />
@@ -173,10 +305,12 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
             ? row("Send Shopify's shipping e-mail", 'Shopify e-mails the customer the tracking link (when the order has an e-mail)', 'notify_customer')
             : row('E-mail the tracking note to the customer', 'Added as a customer note, which WooCommerce e-mails', 'notify_customer')}
           {row('Allow fulfilment without tracking', 'Off: an order without a tracking number waits until one is added', 'fulfill_without_tracking')}
+          {o.channel.platform === 'SHOPIFY' && row('Mark delivered on Shopify', 'When the courier delivers it here, the order shows Delivered on Shopify too', 'mark_delivered')}
         </div>
         <div className="grid content-start gap-2">
           <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Stock</p>
           {row(`Keep ${store} stock in step`, `Your available stock (on hand − reserved) is set on ${store} after every change`, 'inventory_sync')}
+          {row(`Import new ${store} products automatically`, `A product added in ${store} comes here with its SKU, prices, cost, images and stock (after the first sync)`, 'auto_import_products')}
           <Field label={`${store} location`}>
             <Select value={s.location_id ?? ''} onValueChange={(v) => { if (v) setS((x) => ({ ...x, location_id: v })) }} disabled={!edit || !o.channel.locations.length}>
               <SelectTrigger className="w-full"><SelectValue placeholder={o.channel.locations.length ? 'Choose a location' : 'Read the catalog to load locations'} /></SelectTrigger>
@@ -349,7 +483,8 @@ function FulfilmentsTab({ o, store }: { o: SyncOverview; store: string }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
           <thead><tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-            <th className="px-3 py-2">Order</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Courier · tracking</th><th className="px-3 py-2">Customer e-mail</th><th className="px-3 py-2">When</th>
+            <th className="px-3 py-2">Order</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Courier · tracking</th><th className="px-3 py-2">Customer e-mail</th>
+            {store === 'Shopify' && <th className="px-3 py-2">Delivered on Shopify</th>}<th className="px-3 py-2">When</th>
           </tr></thead>
           <tbody>
             {o.fulfillments.map((f) => (
@@ -359,6 +494,12 @@ function FulfilmentsTab({ o, store }: { o: SyncOverview; store: string }) {
                   {f.last_error && <span className="block max-w-64 truncate text-[11px] text-muted-foreground" title={f.last_error}>{f.last_error}</span>}</td>
                 <td className="px-3 py-2 text-xs">{f.courier ?? '—'} {f.tracking_url ? <a href={f.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 font-mono underline">{f.tracking_number}<ExternalLink className="size-3" /></a> : <span className="font-mono">{f.tracking_number}</span>}</td>
                 <td className="px-3 py-2 text-xs">{f.notification_status === 'REQUESTED' ? `Requested from ${store}` : f.notification_status === 'NO_EMAIL' ? 'No e-mail on order' : f.notification_status === 'DISABLED' ? 'Turned off' : '—'}</td>
+                {store === 'Shopify' && (
+                  <td className="px-3 py-2 text-xs">
+                    {f.delivered_status ? <Pill tone={f.delivered_status === 'MARKED' ? 'ok' : f.delivered_status === 'FAILED' ? 'warn' : 'muted'}>{D_STATUS[f.delivered_status]}</Pill> : '—'}
+                    {f.delivered_error && <span className="block max-w-56 truncate text-[11px] text-muted-foreground" title={f.delivered_error}>{f.delivered_error}</span>}
+                  </td>
+                )}
                 <td className="px-3 py-2 text-xs text-muted-foreground">{formatDateTime(f.fulfilled_at ?? f.created_at)}</td>
               </tr>
             ))}
@@ -460,7 +601,7 @@ function ProductsTab({ o, channelId, onDone, store }: { o: SyncOverview; channel
                   </span>
                 </span>
                 <span className="hidden text-right text-xs sm:block">
-                  {p.price !== null && <span className="block tabular-nums">{formatMoney(p.price)}</span>}
+                  {p.price !== null && <span className="block tabular-nums">{formatMoney(p.price)}{p.cost != null && <span className="text-muted-foreground"> · cost {formatMoney(p.cost)}</span>}</span>}
                   <span className="block text-muted-foreground tabular-nums">{p.stock ?? '—'} in stock</span>
                 </span>
                 {p.linked > 0 && <Pill tone={p.linked === p.variants ? 'ok' : 'muted'}>{p.linked === p.variants ? 'Imported' : `${p.linked}/${p.variants} linked`}</Pill>}

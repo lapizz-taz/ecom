@@ -74,7 +74,7 @@ export const shopifyRedirectUri = () => `${window.location.origin}/oauth/shopify
 /** The App URL to enter in Shopify's Dev Dashboard. */
 export const shopifyAppUrl = () => `${window.location.origin}/admin/channels`
 /** The exact scope list for the app version. */
-export const SHOPIFY_APP_SCOPES = 'read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_returns,write_returns'
+export const SHOPIFY_APP_SCOPES = 'read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_fulfillments,write_fulfillments,read_returns,write_returns'
 
 export async function setStoreMode(mode: StoreMode, redirectUrl: string | null): Promise<{ mode: StoreMode; redirect_url: string | null }> {
   const { data, error } = await supabase.rpc('admin_set_store_mode', { p_mode: mode, p_redirect_url: redirectUrl ?? undefined })
@@ -91,14 +91,30 @@ export interface SyncItem {
 }
 export interface SyncOverview {
   channel: { id: string; name: string; status: string; platform: ChannelPlatform; locations: Array<{ id: string; name: string; active: boolean }>; catalog_imported_at: string | null
-    scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS'; fulfill_on_ship: boolean; notify_customer: boolean; fulfill_without_tracking: boolean } }
+    first_sync_at: string | null; catalog_items: number
+    scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS'; fulfill_on_ship: boolean; notify_customer: boolean
+      fulfill_without_tracking: boolean; auto_import_products: boolean; mark_delivered: boolean } }
   items: SyncItem[]
   unmapped: Array<{ external_variant_id: string; sku: string | null; title: string; status: string | null; available: number | null
     reason: 'NO_SKU' | 'DUPLICATE_SKU_SHOPIFY' | 'DUPLICATE_SKU_HERE' | 'NO_MATCH' }>
   jobs: { pending: number; failed: number }
   recent_jobs: Array<{ id: string; kind: 'FULFILL' | 'INVENTORY'; status: string; attempts: number; last_error: string | null; updated_at: string; ref_id: string; label: string | null }>
   fulfillments: Array<{ order_id: string; order_number: string; status: string; source: string; courier: string | null; tracking_number: string | null
-    tracking_url: string | null; notification_status: string | null; last_error: string | null; created_at: string; fulfilled_at: string | null }>
+    tracking_url: string | null; notification_status: string | null; last_error: string | null; created_at: string; fulfilled_at: string | null
+    delivered_status: DeliveredStatus | null; delivered_at: string | null; delivered_error: string | null }>
+}
+export type DeliveredStatus = 'PENDING' | 'MARKED' | 'FAILED' | 'SKIPPED'
+
+/** First sync plan (apply = false) or result: products to create, SKUs linked, stock taken from the store once. */
+export interface FirstSyncPlan {
+  applied: boolean; store: string; location_id: string; products: number; create: number; link: number; already_linked: number; untracked: number
+  stock_changes: Array<{ variant_id: string; sku: string; title: string; ours: number; store: number; change: number }>
+  items: Array<{ product_id: string; external_variant_id: string; action: 'CREATE' | 'LINK'; title: string; sku: string; price: number | null; cost: number | null; stock: number | null }>
+}
+export async function firstSync(channelId: string, locationId: string, autoImport: boolean, apply: boolean): Promise<FirstSyncPlan> {
+  const { data, error } = await supabase.rpc('channel_first_sync', { p_channel_id: channelId, p_location_id: locationId, p_auto_import: autoImport, p_apply: apply })
+  if (error) throw error
+  return fromJson(data)
 }
 
 export async function syncOverview(channelId: string): Promise<SyncOverview> {
@@ -124,16 +140,19 @@ export async function retrySyncJob(jobId: string) {
   const { error } = await supabase.rpc('channel_job_retry', { p_job_id: jobId })
   if (error) throw error
 }
-export const importCatalog = (id: string) => call<{ items: number; linked: number; mapped: number }>({ action: 'import_catalog', channel_id: id })
+export const importCatalog = (id: string) => call<{ items: number; linked: number; mapped: number; imported?: number }>({ action: 'import_catalog', channel_id: id })
+/** Connect again with the saved app keys (e.g. after the app was reinstalled in Shopify). */
+export const reconnectChannel = (id: string) => call<SetupResult>({ action: 'reconnect', channel_id: id })
 /** Runs due sync jobs now (they also run every minute on their own). */
 export const runSyncJobs = () => call<{ processed: number; results: Array<{ kind: string; outcome: string; error?: string }> }>({ action: 'process_jobs' })
 
 export interface OrderChannelInfo {
-  channel: { id: string; name: string; platform: ChannelPlatform; shop_domain: string; fulfill_on_ship: boolean; notify_customer: boolean }
+  channel: { id: string; name: string; platform: ChannelPlatform; shop_domain: string; fulfill_on_ship: boolean; notify_customer: boolean; mark_delivered?: boolean }
   external_order_id: string; external_order_number: string | null
   fulfillments: Array<{ id: string; source: 'APP' | 'SHOPIFY'; status: string; fulfillment_id: string | null; courier: string | null; tracking_number: string | null
     tracking_url: string | null; shopify_status: string | null; notification_status: 'REQUESTED' | 'NO_EMAIL' | 'DISABLED' | null; notification_note: string | null
-    attempts: number; last_error: string | null; fulfilled_at: string | null; synced_at: string | null; created_at: string }>
+    attempts: number; last_error: string | null; fulfilled_at: string | null; synced_at: string | null; created_at: string
+    delivered_status?: DeliveredStatus | null; delivered_at?: string | null; delivered_error?: string | null }>
   job: { status: string; attempts: number; next_attempt_at: string; last_error: string | null } | null
 }
 export async function orderChannelInfo(orderId: string): Promise<OrderChannelInfo | null> {
@@ -151,7 +170,7 @@ export async function retryChannelFulfillment(orderId: string) {
 
 export interface StoreProduct {
   product_id: string; title: string; status: string | null; image_url: string | null; variants: number; linked: number
-  price: number | null; stock: number | null; skus: string[] | null
+  price: number | null; cost: number | null; vendor: string | null; stock: number | null; skus: string[] | null
 }
 export async function storeProducts(channelId: string, search?: string): Promise<StoreProduct[]> {
   const { data, error } = await supabase.rpc('channel_catalog_products', { p_channel_id: channelId, p_search: (search?.trim() || null) as unknown as string })

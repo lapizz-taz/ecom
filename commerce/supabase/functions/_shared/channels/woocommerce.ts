@@ -10,8 +10,8 @@ import type { CatalogItem } from './shopify.ts'
 type FetchFn = typeof fetch
 
 export const WOO_TOPICS = ['order.created', 'order.updated'] as const
-/** Stock edited in WordPress arrives at once; without it the hourly check still finds it. */
-export const WOO_OPTIONAL_TOPICS = ['product.updated'] as const
+/** Stock and product changes made in WordPress arrive at once; without them the hourly check still finds them. */
+export const WOO_OPTIONAL_TOPICS = ['product.updated', 'product.created', 'product.deleted'] as const
 /** WooCommerce keeps one stock figure per product or variation: shown as this one location. */
 export const WOO_LOCATION = { id: 'default', name: 'Store stock', active: true }
 /** Order statuses that mean "a real order to ship". */
@@ -132,7 +132,7 @@ export class WooClient {
       const have = existing.find((w) => w.topic === topic)
       try {
         if (have) await this.call('PUT', `webhooks/${have.id}`, { secret, status: 'active' })
-        const id = have?.id ?? (await this.call<{ id: number }>('POST', 'webhooks', { name: `Stock → OMS (${topic})`, topic, delivery_url: url, secret, status: 'active' })).id
+        const id = have?.id ?? (await this.call<{ id: number }>('POST', 'webhooks', { name: `Products → OMS (${topic})`, topic, delivery_url: url, secret, status: 'active' })).id
         out.push({ id, topic })
       } catch { /* optional: the hourly stock check covers it */ }
     }
@@ -160,6 +160,29 @@ export class WooClient {
       if (batch.length < 100) break
     }
     return out.slice(0, max)
+  }
+
+  /** One product with its variations (product webhooks); [] when it is gone. */
+  async product(productId: string): Promise<CatalogItem[]> {
+    if (!/^\d+$/.test(productId)) return []
+    let p: WooProduct
+    try {
+      p = await this.call<WooProduct>('GET', `products/${productId}`)
+    } catch (error) {
+      if (error instanceof ChannelError && error.status === 404) return []
+      throw error
+    }
+    if (p.status === 'trash') return []
+    if (p.type === 'variable') {
+      const out: CatalogItem[] = []
+      for (let vp = 1; vp <= 10; vp++) {
+        const vars = await this.call<WooVariation[]>('GET', `products/${p.id}/variations`, undefined, { per_page: '100', page: String(vp) })
+        for (const v of vars) out.push(wooCatalogItem(p, v))
+        if (vars.length < 100) break
+      }
+      return out
+    }
+    return p.type === 'grouped' || p.type === 'external' ? [] : [wooCatalogItem(p, null)]
   }
 
   /** Stock of one product / variation ("products/12" or "products/12/variations/34"); null when WooCommerce does not count it. */
@@ -242,13 +265,26 @@ export class WooClient {
   }
 }
 
+type WooMeta = Array<{ key: string; value: unknown }>
 interface WooProduct {
   id: number; name: string; type: string; status: string; sku?: string; price?: string; regular_price?: string; sale_price?: string
   manage_stock: boolean; stock_quantity: number | null; images?: Array<{ src?: string }>; description?: string; short_description?: string
+  tags?: Array<{ name: string }>; categories?: Array<{ name: string }>; meta_data?: WooMeta
 }
 interface WooVariation {
   id: number; sku?: string; price?: string; regular_price?: string; sale_price?: string; manage_stock: boolean | 'parent'; stock_quantity: number | null
-  image?: { src?: string } | null; attributes?: Array<{ name: string; option: string }>
+  image?: { src?: string } | null; attributes?: Array<{ name: string; option: string }>; meta_data?: WooMeta
+}
+/** Cost price, when a cost-of-goods plugin keeps one (WooCommerce itself has none). */
+const COST_KEYS = ['_wc_cog_cost', '_alg_wc_cog_cost', '_purchase_price', 'purchase_price', '_cost_price']
+function wooCost(...metas: Array<WooMeta | undefined>): string | null {
+  for (const meta of metas) {
+    for (const key of COST_KEYS) {
+      const v = meta?.find((m) => m.key === key)?.value
+      if (v !== undefined && v !== null && /^\d+(\.\d+)?$/.test(String(v).trim())) return String(v).trim()
+    }
+  }
+  return null
 }
 
 /** "products/12/variations/34" (validated: only these shapes are ever called). */
@@ -274,6 +310,9 @@ export function wooCatalogItem(p: WooProduct, v: WooVariation | null): CatalogIt
     levels: [{ location_id: WOO_LOCATION.id, location: WOO_LOCATION.name, available: tracked ? src.stock_quantity ?? 0 : null, on_hand: tracked ? src.stock_quantity ?? 0 : null }],
     price: price(src.price) ?? price(src.regular_price), compare_at_price: sale ? price(src.regular_price) : null,
     image_url: (v?.image?.src || p.images?.[0]?.src) ?? null, options, product_description: plain(p.short_description || p.description),
+    unit_cost: wooCost(v?.meta_data, p.meta_data),
+    images: [v?.image?.src, ...(p.images ?? []).map((i) => i.src)].filter((u, i, all): u is string => !!u && all.indexOf(u) === i).slice(0, 8),
+    vendor: null, product_type: clean(p.categories?.[0]?.name), tags: (p.tags ?? []).map((t) => t.name).filter(Boolean), weight_grams: null,
   }
 }
 

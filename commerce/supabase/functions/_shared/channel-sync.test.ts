@@ -235,3 +235,60 @@ describe('WooCommerce stock', () => {
     await expect(c.setAvailable('orders/1', 'default', 4, null, 'k')).rejects.toThrow(/Not a WooCommerce stock item/)
   })
 })
+
+describe('Delivered on Shopify', () => {
+  const delivered = (fulfillment: Record<string, unknown>, extra: Record<string, unknown> = {}) => fulfilCtx({
+    order: { id: 'o1', order_number: 'ISO-1', status: 'DELIVERED', external_order_id: '5001', customer_email: null, delivered_at: '2026-10-10T08:00:00Z' },
+    fulfillment, delivered_target: fulfillment.fulfillment_id ?? null, ...extra,
+  })
+
+  it('already fulfilled: adds one Delivered event with the delivery time, never a second fulfilment', async () => {
+    const markDelivered = vi.fn(async () => ({ id: 'gid://shopify/FulfillmentEvent/5', existing: false }))
+    const createFulfillment = vi.fn()
+    const h = harness(delivered({ status: 'FULFILLED', tracking_number: 'DL123', fulfillment_id: created.id, delivered_status: 'PENDING' }),
+      { markDelivered, createFulfillment, fulfillmentState: vi.fn() })
+    const out = await fulfillJob(job('FULFILL'), h.rpc, h.shopify, opts)
+    expect(out).toMatchObject({ outcome: 'DONE', result: { delivered_event: 'gid://shopify/FulfillmentEvent/5' } })
+    expect(markDelivered).toHaveBeenCalledExactlyOnceWith(created.id, '2026-10-10T08:00:00Z')
+    expect(createFulfillment).not.toHaveBeenCalled()
+    expect(h.saves).toEqual([{ delivered_status: 'MARKED', delivered_event_id: 'gid://shopify/FulfillmentEvent/5', delivered_error: '' }])
+  })
+
+  it('delivered before the fulfilment went out: fulfils, then marks delivered, in one run', async () => {
+    const markDelivered = vi.fn(async () => ({ id: 'gid://shopify/FulfillmentEvent/6', existing: false }))
+    const h = harness(delivered({ status: 'PENDING', tracking_number: null, delivered_status: 'PENDING' }),
+      { fulfillmentState: async () => state(), createFulfillment: async () => created, markDelivered })
+    const out = await fulfillJob(job('FULFILL'), h.rpc, h.shopify, opts)
+    expect(out.outcome).toBe('DONE')
+    expect(markDelivered).toHaveBeenCalledWith(created.id, '2026-10-10T08:00:00Z')
+    expect(h.saves.map((x) => x.status ?? x.delivered_status)).toEqual(['PROCESSING', 'FULFILLED', 'MARKED'])
+  })
+
+  it('Shopify down while marking: keeps it pending and retries; missing permission: fails with the scope to add', async () => {
+    const down = harness(delivered({ status: 'FULFILLED', tracking_number: 'DL123', fulfillment_id: created.id, delivered_status: 'PENDING' }),
+      { markDelivered: async () => { throw new ChannelError('Shopify did not answer in time') } })
+    expect(await fulfillJob(job('FULFILL'), down.rpc, down.shopify, opts)).toMatchObject({ outcome: 'RETRY' })
+    expect(down.saves).toEqual([{ delivered_error: 'Shopify did not answer in time — will try again' }])
+
+    const denied = harness(delivered({ status: 'FULFILLED', tracking_number: 'DL123', fulfillment_id: created.id, delivered_status: 'PENDING' }),
+      { markDelivered: async () => { throw new ChannelError('Shopify refused: the app needs the write_fulfillments permission', 403, 'ACCESS_DENIED') } })
+    expect(await fulfillJob(job('FULFILL'), denied.rpc, denied.shopify, opts)).toMatchObject({ outcome: 'FAILED' })
+    expect(denied.saves[0]).toMatchObject({ delivered_status: 'FAILED', delivered_error: expect.stringMatching(/write_fulfillments/) })
+  })
+
+  it('not delivered (or already marked): nothing is sent', async () => {
+    const markDelivered = vi.fn()
+    const shipped = harness(fulfilCtx({ fulfillment: { status: 'FULFILLED', tracking_number: 'DL123', fulfillment_id: created.id, delivered_status: null } }), { markDelivered })
+    expect(await fulfillJob(job('FULFILL'), shipped.rpc, shipped.shopify, opts)).toMatchObject({ outcome: 'DONE' })
+    const marked = harness(delivered({ status: 'FULFILLED', tracking_number: 'DL123', fulfillment_id: created.id, delivered_status: 'MARKED' }), { markDelivered })
+    expect(await fulfillJob(job('FULFILL'), marked.rpc, marked.shopify, opts)).toMatchObject({ outcome: 'DONE' })
+    expect(markDelivered).not.toHaveBeenCalled()
+  })
+
+  it('fulfilled by hand in Shopify: that fulfilment is marked delivered', async () => {
+    const markDelivered = vi.fn(async () => ({ id: 'gid://shopify/FulfillmentEvent/7', existing: true }))
+    const h = harness(delivered({ status: 'SKIPPED', tracking_number: null, delivered_status: 'PENDING' }, { delivered_target: 'gid://shopify/Fulfillment/555' }), { markDelivered })
+    expect(await fulfillJob(job('FULFILL'), h.rpc, h.shopify, opts)).toMatchObject({ outcome: 'DONE', result: { existing: true } })
+    expect(markDelivered).toHaveBeenCalledWith('gid://shopify/Fulfillment/555', '2026-10-10T08:00:00Z')
+  })
+})

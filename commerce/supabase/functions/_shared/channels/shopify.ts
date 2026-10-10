@@ -20,6 +20,7 @@ export const SHOPIFY_API_VERSION = '2026-07'
  *   read/write_inventory           read and set quantities (+ inventory webhook)
  *   read/write_locations           choose the location to keep in step
  *   read/write_merchant_managed_fulfillment_orders   fulfil with tracking when shipped
+ *   read/write_fulfillments        mark the fulfilment Delivered when the courier delivered it
  *   read/write_returns             see returns made in Shopify, record ours there
  * Customer details come with the order (protected customer data), so
  * read_customers is not needed.
@@ -27,12 +28,15 @@ export const SHOPIFY_API_VERSION = '2026-07'
 export const SHOPIFY_SCOPES = [
   'read_orders', 'write_orders', 'read_draft_orders', 'write_draft_orders', 'read_products', 'write_products',
   'read_inventory', 'write_inventory', 'read_locations', 'write_locations',
-  'read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders', 'read_returns', 'write_returns',
+  'read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders', 'read_fulfillments', 'write_fulfillments',
+  'read_returns', 'write_returns',
 ]
 /** Needed for importing orders; the connection fails without them. */
 export const SHOPIFY_TOPICS = ['ORDERS_CREATE', 'ORDERS_CANCELLED', 'ORDERS_UPDATED', 'APP_UNINSTALLED'] as const
-/** Nice to have (faster fulfilment / stock news); a store that refuses them still works through orders/updated and the hourly check. */
-export const SHOPIFY_OPTIONAL_TOPICS = ['FULFILLMENTS_CREATE', 'FULFILLMENTS_UPDATE', 'INVENTORY_LEVELS_UPDATE'] as const
+/** Nice to have (faster fulfilment / stock / product news); a store that refuses them still works through orders/updated and the hourly check. */
+export const SHOPIFY_OPTIONAL_TOPICS = [
+  'FULFILLMENTS_CREATE', 'FULFILLMENTS_UPDATE', 'INVENTORY_LEVELS_UPDATE', 'PRODUCTS_CREATE', 'PRODUCTS_UPDATE', 'PRODUCTS_DELETE',
+] as const
 
 /** "mystore", "mystore.myshopify.com" or the admin URL → "mystore.myshopify.com" (or null if it isn't one). */
 export function shopDomain(input: string): string | null {
@@ -140,7 +144,7 @@ export class ShopifyClient {
   }
 
   /** Raw call: data plus GraphQL errors (some errors only hide part of the data). */
-  async raw<T>(query: string, variables: Record<string, unknown> = {}): Promise<{ data: T | null; errors: GqlError[] }> {
+  async raw<T>(query: string, variables: Record<string, unknown> = {}, attempt = 0): Promise<{ data: T | null; errors: GqlError[] }> {
     let res: Response
     try {
       res = await this.fetchFn(this.endpoint(), {
@@ -154,10 +158,20 @@ export class ShopifyClient {
     if (res.status === 401 || res.status === 403) throw new ChannelError('Shopify rejected the access token. Connect the store again.', res.status, 'UNAUTHORIZED')
     if (res.status === 404) throw new ChannelError(`${this.shop} was not found on Shopify`, 404, 'NOT_FOUND')
     if (res.status === 402) throw new ChannelError('This Shopify store is frozen (unpaid plan)', 402, 'FROZEN')
+    if (res.status === 429 && attempt < 4) {
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt))
+      return this.raw<T>(query, variables, attempt + 1)
+    }
     if (res.status === 429) throw new ChannelError('Shopify is rate limiting; try again in a minute', 429, 'RATE_LIMITED')
     const body = (await res.json().catch(() => null)) as { data?: T; errors?: GqlError[] | string } | null
     if (!body) throw new ChannelError(`Shopify answered HTTP ${res.status} without a body`, res.status)
     const errors = typeof body.errors === 'string' ? [{ message: body.errors }] : body.errors ?? []
+    // Query budget used up for the moment: wait and ask again (a few times).
+    if (errors.some((e) => e.extensions?.code === 'THROTTLED') && attempt < 4) {
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt))
+      return this.raw<T>(query, variables, attempt + 1)
+    }
+    if (errors.some((e) => e.extensions?.code === 'MAX_COST_EXCEEDED')) throw new ChannelError(`Shopify: query too large (${errors[0].message})`, 400, 'USER_ERROR')
     return { data: body.data ?? null, errors }
   }
 
@@ -283,6 +297,30 @@ export class ShopifyClient {
     return seenFulfillment(res.fulfillment, false)
   }
 
+  /**
+   * Adds a "Delivered" event to a fulfilment (the order then shows Delivered in
+   * Shopify). A Delivered event that is already there is returned instead of
+   * adding a second one.
+   */
+  async markDelivered(fulfillmentId: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }> {
+    type Q = { fulfillment: { id: string; displayStatus: string | null; events: { nodes: Array<{ id: string; status: string }> } } | null }
+    const seen = await this.raw<Q>(`query($id: ID!) { fulfillment(id: $id) { id displayStatus events(first: 50) { nodes { id status } } } }`, { id: fulfillmentId })
+    if (seen.data && !seen.data.fulfillment && !seen.errors.length) throw new ChannelError('This fulfilment no longer exists in Shopify', 404, 'NOT_FOUND')
+    const done = seen.data?.fulfillment?.events.nodes.find((e) => e.status === 'DELIVERED')
+    if (done) return { id: done.id, existing: true }
+    type R = { fulfillmentEventCreate: { fulfillmentEvent: { id: string; status: string } | null; userErrors: Array<{ field: string[] | null; message: string }> } | null }
+    const { data, errors } = await this.raw<R>(`mutation($e: FulfillmentEventInput!) { fulfillmentEventCreate(fulfillmentEvent: $e) {
+      fulfillmentEvent { id status } userErrors { field message } } }`,
+    { e: { fulfillmentId, status: 'DELIVERED', ...(happenedAt ? { happenedAt } : {}) } })
+    if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) {
+      throw new ChannelError('Shopify refused: the app needs the write_fulfillments permission to mark orders delivered. Add it to the app scopes and connect again.', 403, 'ACCESS_DENIED')
+    }
+    const res = data?.fulfillmentEventCreate
+    if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)
+    if (!res.fulfillmentEvent) throw new ChannelError(`Shopify would not mark it delivered: ${res.userErrors.map((e) => e.message).join('; ')}`, 422, 'USER_ERROR')
+    return { id: res.fulfillmentEvent.id, existing: false }
+  }
+
   // --- order actions (only ever on a staff click) ----------------------------------------
 
   /** Marks the order paid on Shopify (e.g. cash collected on delivery). Returns Shopify's financial status. */
@@ -324,40 +362,59 @@ export class ShopifyClient {
     return d.locations.nodes.map((l) => ({ id: l.id, name: l.name, active: l.isActive }))
   }
 
-  /** Every variant with its inventory item and per-location available quantity (up to `max`). */
-  async catalog(max = 2000): Promise<CatalogItem[]> {
+  /**
+   * Every variant with its inventory item, cost, weight and per-location
+   * quantities (up to `max`), plus each product's images. Pages are kept small
+   * so a query stays well under Shopify's cost limit of 1000 points.
+   */
+  async catalog(max = 5000): Promise<CatalogItem[]> {
     const out: CatalogItem[] = []
     let after: string | null = null
     while (out.length < max) {
-      type R = { productVariants: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<{
-        legacyResourceId: string; sku: string | null; barcode: string | null; title: string; price: string | null; compareAtPrice: string | null
-        selectedOptions: Array<{ name: string; value: string }>
-        product: { legacyResourceId: string; title: string; status: string; description: string | null; featuredMedia: { preview: { image: { url: string } | null } | null } | null }
-        inventoryItem: { id: string; tracked: boolean; inventoryLevels: { nodes: Array<{ location: { id: string; name: string }; quantities: Array<{ name: string; quantity: number }> }> } } | null
-      }> } }
-      const d: R = await this.gql<R>(`query($after: String) { productVariants(first: 100, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes { legacyResourceId sku barcode title price compareAtPrice selectedOptions { name value }
-          product { legacyResourceId title status description(truncateAt: 2000) featuredMedia { preview { image { url } } } }
-          inventoryItem { id tracked inventoryLevels(first: 10) { nodes { location { id name } quantities(names: ["available", "on_hand"]) { name quantity } } } } } } }`,
-        { after })
-      for (const v of d.productVariants.nodes) {
-        out.push({
-          external_variant_id: String(v.legacyResourceId), external_product_id: String(v.product.legacyResourceId),
-          inventory_item_id: v.inventoryItem?.id ?? null, sku: clean(v.sku), barcode: clean(v.barcode),
-          product_title: v.product.title, variant_title: v.title, product_status: v.product.status, tracked: v.inventoryItem?.tracked ?? false,
-          levels: (v.inventoryItem?.inventoryLevels.nodes ?? []).map((l) => ({
-            location_id: l.location.id, location: l.location.name,
-            available: l.quantities.find((q) => q.name === 'available')?.quantity ?? null,
-            on_hand: l.quantities.find((q) => q.name === 'on_hand')?.quantity ?? null,
-          })),
-          price: v.price, compare_at_price: v.compareAtPrice, image_url: v.product.featuredMedia?.preview?.image?.url ?? null,
-          options: Object.fromEntries(v.selectedOptions.filter((o) => !(o.name === 'Title' && o.value === 'Default Title')).map((o) => [o.name, o.value])),
-          product_description: clean(v.product.description),
-        })
-      }
+      type R = { productVariants: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ShopifyVariantNode[] } }
+      const d: R = await this.gql<R>(`query($after: String) { productVariants(first: 30, after: $after) {
+        pageInfo { hasNextPage endCursor } nodes { ${VARIANT_FIELDS} product { ${PRODUCT_FIELDS} } } } }`, { after })
+      for (const v of d.productVariants.nodes) out.push(catalogItem(v, v.product))
       if (!d.productVariants.pageInfo.hasNextPage) break
       after = d.productVariants.pageInfo.endCursor
+    }
+    // Images per product (a separate, cheap query).
+    const images = new Map<string, string[]>()
+    let pafter: string | null = null
+    for (let page = 0; page < 400; page++) {
+      type P = { products: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: Array<{ legacyResourceId: string; media: { nodes: MediaNode[] } }> } }
+      const d: P = await this.gql<P>(`query($after: String) { products(first: 40, after: $after) {
+        pageInfo { hasNextPage endCursor } nodes { legacyResourceId media(first: 8) { nodes { preview { image { url } } } } } } }`, { after: pafter })
+      for (const p of d.products.nodes) images.set(String(p.legacyResourceId), mediaUrls(p.media.nodes))
+      if (!d.products.pageInfo.hasNextPage) break
+      pafter = d.products.pageInfo.endCursor
+    }
+    for (const item of out) {
+      const urls = images.get(item.external_product_id)
+      if (urls?.length) { item.images = urls; item.image_url = urls[0] }
+    }
+    return out.slice(0, max)
+  }
+
+  /** One product's variants (products/create and products/update webhooks); [] when it no longer exists. */
+  async product(productId: string): Promise<CatalogItem[]> {
+    const id = productId.startsWith('gid://') ? productId : `gid://shopify/Product/${productId}`
+    const out: CatalogItem[] = []
+    let after: string | null = null
+    for (let page = 0; page < 20; page++) {
+      type R = { product: (ShopifyProductNode & { media: { nodes: MediaNode[] }; variants: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ShopifyVariantNode[] } }) | null }
+      const d: R = await this.gql<R>(`query($id: ID!, $after: String) { product(id: $id) { ${PRODUCT_FIELDS}
+        media(first: 8) { nodes { preview { image { url } } } }
+        variants(first: 30, after: $after) { pageInfo { hasNextPage endCursor } nodes { ${VARIANT_FIELDS} } } } }`, { id, after })
+      if (!d.product) return []
+      const urls = mediaUrls(d.product.media.nodes)
+      for (const v of d.product.variants.nodes) {
+        const item = catalogItem(v, d.product)
+        if (urls.length) { item.images = urls; item.image_url = urls[0] }
+        out.push(item)
+      }
+      if (!d.product.variants.pageInfo.hasNextPage) break
+      after = d.product.variants.pageInfo.endCursor
     }
     return out
   }
@@ -430,10 +487,13 @@ export class ShopifyClient {
     const missing = ['read_orders'].filter((x) => !has(x))
     const soft = ['read_products'].filter((x) => !has(x))
     const fulfil = ['write_merchant_managed_fulfillment_orders'].filter((x) => !info.scopes.includes(x))
+    const delivered = info.scopes.includes('write_fulfillments')
     const stock = ['read_inventory', 'write_inventory', 'read_locations'].filter((x) => !info.scopes.includes(x))
     checks.push(fulfil.length
       ? { key: 'fulfilment', label: 'Fulfilment on Shopify', status: 'warn', detail: 'Add read/write_merchant_managed_fulfillment_orders to the app, then connect again, so shipped orders are fulfilled on Shopify with tracking' }
-      : { key: 'fulfilment', label: 'Fulfilment on Shopify', status: 'ok', detail: 'Shipped orders are fulfilled on Shopify with the courier tracking link' })
+      : delivered
+        ? { key: 'fulfilment', label: 'Fulfilment on Shopify', status: 'ok', detail: 'Shipped orders are fulfilled on Shopify with the courier tracking link, and marked Delivered when delivered' }
+        : { key: 'fulfilment', label: 'Fulfilment on Shopify', status: 'warn', detail: 'Shipped orders are fulfilled with tracking. Add write_fulfillments to the app, then connect again, so delivered orders show Delivered on Shopify' })
     checks.push(stock.length
       ? { key: 'inventory', label: 'Stock sync', status: 'warn', detail: `Add ${stock.join(', ')} to the app, then connect again, to keep Shopify stock in step` }
       : { key: 'inventory', label: 'Stock sync', status: 'ok', detail: 'Stock can be kept in step (turn it on under Shopify sync)' })
@@ -506,6 +566,49 @@ export interface CatalogItem {
   levels: Array<{ location_id: string; location: string; available: number | null; on_hand: number | null }>
   /** For importing the product here. */
   price?: string | null; compare_at_price?: string | null; image_url?: string | null; options?: Record<string, string>; product_description?: string | null
+  unit_cost?: string | null; images?: string[]; vendor?: string | null; product_type?: string | null; tags?: string[]; weight_grams?: number | null
+}
+
+const VARIANT_FIELDS = `legacyResourceId sku barcode title price compareAtPrice selectedOptions { name value }
+  inventoryItem { id tracked unitCost { amount } measurement { weight { unit value } }
+    inventoryLevels(first: 5) { nodes { location { id name } quantities(names: ["available", "on_hand"]) { name quantity } } } }`
+const PRODUCT_FIELDS = 'legacyResourceId title status vendor productType tags description(truncateAt: 2000)'
+interface ShopifyProductNode { legacyResourceId: string; title: string; status: string; vendor: string | null; productType: string | null; tags: string[]; description: string | null }
+interface ShopifyVariantNode {
+  legacyResourceId: string; sku: string | null; barcode: string | null; title: string; price: string | null; compareAtPrice: string | null
+  selectedOptions: Array<{ name: string; value: string }>
+  product: ShopifyProductNode
+  inventoryItem: {
+    id: string; tracked: boolean; unitCost: { amount: string } | null; measurement: { weight: { unit: string; value: number } | null } | null
+    inventoryLevels: { nodes: Array<{ location: { id: string; name: string }; quantities: Array<{ name: string; quantity: number }> }> }
+  } | null
+}
+type MediaNode = { preview: { image: { url: string } | null } | null }
+const mediaUrls = (nodes: MediaNode[]) => nodes.map((m) => m.preview?.image?.url).filter((u): u is string => !!u)
+
+/** Shopify weight → grams. */
+export function grams(w: { unit: string; value: number } | null | undefined): number | null {
+  if (!w || !(w.value > 0)) return null
+  const factor: Record<string, number> = { GRAMS: 1, KILOGRAMS: 1000, OUNCES: 28.3495, POUNDS: 453.592 }
+  return factor[w.unit] ? Math.round(w.value * factor[w.unit]) : null
+}
+
+export function catalogItem(v: Omit<ShopifyVariantNode, 'product'>, p: ShopifyProductNode): CatalogItem {
+  return {
+    external_variant_id: String(v.legacyResourceId), external_product_id: String(p.legacyResourceId),
+    inventory_item_id: v.inventoryItem?.id ?? null, sku: clean(v.sku), barcode: clean(v.barcode),
+    product_title: p.title, variant_title: v.title, product_status: p.status, tracked: v.inventoryItem?.tracked ?? false,
+    levels: (v.inventoryItem?.inventoryLevels.nodes ?? []).map((l) => ({
+      location_id: l.location.id, location: l.location.name,
+      available: l.quantities.find((q) => q.name === 'available')?.quantity ?? null,
+      on_hand: l.quantities.find((q) => q.name === 'on_hand')?.quantity ?? null,
+    })),
+    price: v.price, compare_at_price: v.compareAtPrice, image_url: null,
+    options: Object.fromEntries(v.selectedOptions.filter((o) => !(o.name === 'Title' && o.value === 'Default Title')).map((o) => [o.name, o.value])),
+    product_description: clean(p.description),
+    unit_cost: v.inventoryItem?.unitCost?.amount ?? null, images: [], vendor: clean(p.vendor), product_type: clean(p.productType),
+    tags: p.tags ?? [], weight_grams: grams(v.inventoryItem?.measurement?.weight),
+  }
 }
 
 export function seenFulfillment(f: ShopifyFulfillment, allFulfilled: boolean): SeenFulfillment {

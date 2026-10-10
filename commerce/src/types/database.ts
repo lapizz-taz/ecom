@@ -318,6 +318,13 @@ export type Database = {
           image_url: string | null
           options: Json
           product_description: string | null
+          unit_cost: number | null
+          images: Json
+          vendor: string | null
+          product_type: string | null
+          tags: string[]
+          weight_grams: number | null
+          removed_at: string | null
         }
         Insert: {
           channel_id: string
@@ -337,6 +344,13 @@ export type Database = {
           image_url?: string | null
           options?: Json
           product_description?: string | null
+          unit_cost?: number | null
+          images?: Json
+          vendor?: string | null
+          product_type?: string | null
+          tags?: string[]
+          weight_grams?: number | null
+          removed_at?: string | null
         }
         Update: {
           channel_id?: string
@@ -356,6 +370,13 @@ export type Database = {
           image_url?: string | null
           options?: Json
           product_description?: string | null
+          unit_cost?: number | null
+          images?: Json
+          vendor?: string | null
+          product_type?: string | null
+          tags?: string[]
+          weight_grams?: number | null
+          removed_at?: string | null
         }
         Relationships: [
           {
@@ -392,6 +413,10 @@ export type Database = {
           synced_at: string | null
           created_at: string
           updated_at: string
+          delivered_status: string | null
+          delivered_at: string | null
+          delivered_event_id: string | null
+          delivered_error: string | null
         }
         Insert: {
           id?: string
@@ -417,6 +442,10 @@ export type Database = {
           synced_at?: string | null
           created_at?: string
           updated_at?: string
+          delivered_status?: string | null
+          delivered_at?: string | null
+          delivered_event_id?: string | null
+          delivered_error?: string | null
         }
         Update: {
           id?: string
@@ -442,6 +471,10 @@ export type Database = {
           synced_at?: string | null
           created_at?: string
           updated_at?: string
+          delivered_status?: string | null
+          delivered_at?: string | null
+          delivered_event_id?: string | null
+          delivered_error?: string | null
         }
         Relationships: [
           {
@@ -4617,6 +4650,7 @@ export type Database = {
           updated_at: string
           locations: Json
           catalog_imported_at: string | null
+          first_sync_at: string | null
         }
         Insert: {
           id?: string
@@ -4641,6 +4675,7 @@ export type Database = {
           updated_at?: string
           locations?: Json
           catalog_imported_at?: string | null
+          first_sync_at?: string | null
         }
         Update: {
           id?: string
@@ -4665,6 +4700,7 @@ export type Database = {
           updated_at?: string
           locations?: Json
           catalog_imported_at?: string | null
+          first_sync_at?: string | null
         }
         Relationships: [
           {
@@ -6793,6 +6829,15 @@ export type Database = {
         Args: {
           p_channel_id: string
           p_search?: string
+        }
+        Returns: Json
+      }
+      channel_first_sync: {
+        Args: {
+          p_channel_id: string
+          p_location_id: string
+          p_auto_import?: boolean
+          p_apply?: boolean
         }
         Returns: Json
       }

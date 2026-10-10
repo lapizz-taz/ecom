@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import type { StoreMode } from '@/types/domain'
 import {
   type ChannelCheck, type ChannelImport, type ChannelPlatform, disconnectChannel, fixWebhooks, listChannelImports, listChannels,
-  retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, SHOPIFY_APP_SCOPES, syncChannel,
+  reconnectChannel, retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, SHOPIFY_APP_SCOPES, syncChannel,
   testChannel, wooConnect, wooKeys,
 } from '@/services/channels'
 
@@ -95,7 +95,10 @@ export default function SalesChannelsPage() {
       <ImportsCard channels={channels.data ?? []} />
 
       {old.length > 0 && (
-        <p className="text-xs text-muted-foreground">Disconnected: {old.map((c) => c.name).join(', ')} — their imported orders stay. Connect again any time.</p>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Disconnected — their imported orders stay. Connect again any time.</p>
+          {old.map((c) => <DisconnectedRow key={c.id} c={c} manage={manage} />)}
+        </div>
       )}
 
       {dialog === 'SHOPIFY' && <ShopifyDialog onClose={() => setDialog(null)} />}
@@ -288,6 +291,33 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
   )
 }
 
+/** A disconnected store. One that went away because the app was uninstalled or reinstalled in Shopify connects again with the saved keys. */
+function DisconnectedRow({ c, manage }: { c: SalesChannel; manage: boolean }) {
+  const queryClient = useQueryClient()
+  const again = useMutation({
+    meta: { silent: true },
+    mutationFn: () => reconnectChannel(c.id),
+    onSuccess: (r) => {
+      void queryClient.invalidateQueries({ queryKey: ['sales-channels'] })
+      toast[r.ok ? 'success' : 'error'](r.ok ? `${c.name} is connected again` : 'Connected, but the test found a problem — see the list')
+    },
+    onError: (e) => toast.error((e as Error).message),
+  })
+  const uninstalled = /uninstalled/i.test(c.last_error ?? '')
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-sm">
+      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold">{PLATFORM[c.platform].mark}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">{c.name}</span>
+        <span className="block truncate text-xs text-muted-foreground">{c.shop_domain}{c.last_error ? ` · ${c.last_error}` : ''}</span>
+      </span>
+      {manage && c.platform === 'SHOPIFY' && uninstalled && (
+        <Button size="sm" variant="outline" onClick={() => again.mutate()} disabled={again.isPending}>{again.isPending ? <Spinner /> : <RefreshCw />} Reconnect</Button>
+      )}
+    </div>
+  )
+}
+
 function Stat({ label, value, onClick }: { label: string; value: ReactNode; onClick?: () => void }) {
   const inner = <><dt className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</dt><dd className="font-semibold tabular-nums">{value}</dd></>
   return onClick
@@ -368,9 +398,10 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
 const SHOPIFY_ACCESS: Array<{ area: string; scopes: string[]; use: string; soon?: boolean }> = [
   { area: 'Orders', scopes: ['read_orders', 'write_orders'], use: 'Import new orders and cancellations. Changes an order in Shopify (mark paid, cancel) only when you click it.' },
   { area: 'Fulfilment', scopes: ['read_merchant_managed_fulfillment_orders', 'write_merchant_managed_fulfillment_orders'], use: 'When an order is Shipped here: fulfil it on Shopify with the courier, tracking number and tracking link.' },
+  { area: 'Delivered', scopes: ['read_fulfillments', 'write_fulfillments'], use: 'When the courier delivers it here: mark the Shopify fulfilment Delivered.' },
   { area: 'Stock', scopes: ['read_inventory', 'write_inventory'], use: 'Keep Shopify’s available quantity equal to yours after every sale, cancel, return or purchase.' },
   { area: 'Locations', scopes: ['read_locations', 'write_locations'], use: 'Choose which Shopify location is kept in step.' },
-  { area: 'Products', scopes: ['read_products', 'write_products'], use: 'Read the catalog to link SKUs, and import Shopify products into your products (Store Sync → Import products).' },
+  { area: 'Products', scopes: ['read_products', 'write_products'], use: 'Bring Shopify products here with SKU, prices, cost, images and stock (first sync), and new ones as they are added.' },
   { area: 'Draft orders', scopes: ['read_draft_orders', 'write_draft_orders'], use: 'Send orders taken here (phone, Messenger) to Shopify.', soon: true },
   { area: 'Returns', scopes: ['read_returns', 'write_returns'], use: 'See returns made in Shopify and record yours there.', soon: true },
 ]

@@ -13,6 +13,7 @@
 //   POST process_jobs      run due sync jobs (cron every minute, or staff after shipping)
 //   POST import_catalog    {channel_id} the store's locations + variants + quantities (to link, compare and import products)
 //   POST order_action      {order_id, op: mark_paid | cancel}  staff click only: mark paid / cancel the order on Shopify
+//   POST reconnect         {channel_id}  connect again with the saved app keys (after the app was reinstalled)
 // Every connection ends with a test, so staff see straight away whether orders
 // will come through. Tokens and keys never reach a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -40,6 +41,7 @@ const background = (task: Promise<unknown>) => { if (typeof EdgeRuntime !== 'und
 interface Channel {
   id: string; platform: 'SHOPIFY' | 'WOOCOMMERCE'; name: string; shop_domain: string; status: string; auth_mode: string | null
   webhooks: Array<{ id: string | number; topic: string }>; settings: Record<string, unknown>
+  catalog_imported_at?: string | null; first_sync_at?: string | null
 }
 interface Secret {
   mode?: 'OAUTH' | 'CLIENT' | 'TOKEN' | 'KEYS'; client_id?: string; client_secret?: string; access_token?: string; api_secret?: string
@@ -64,6 +66,7 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('process_jobs'), limit: z.number().int().min(1).max(50).default(20) }),
   z.object({ action: z.literal('import_catalog'), channel_id: channelId }),
   z.object({ action: z.literal('order_action'), order_id: z.string().uuid(), op: z.enum(['mark_paid', 'cancel']), note: z.string().trim().max(255).optional() }),
+  z.object({ action: z.literal('reconnect'), channel_id: channelId }),
   z.object({ action: z.literal('retry_import'), import_id: z.string().uuid(), overrides: z.object({
     phone: z.string().trim().max(20).optional(), name: z.string().trim().max(120).optional(),
     address: z.string().trim().max(300).optional(), district: z.string().trim().max(60).optional(),
@@ -211,6 +214,7 @@ async function ingest(admin: SupabaseClient, c: Channel, order: NormalizedOrder,
 async function syncChannel(admin: SupabaseClient, c: Channel, days: number): Promise<{ id: string; name: string; ok: boolean; error?: string; found: number; imported: number; duplicate: number; failed: number; skipped: number }> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const counts = { found: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 }
+  let failure: ChannelError | null = null
   try {
     const s = await credsOf(admin, c)
     if (c.platform === 'SHOPIFY') {
@@ -223,10 +227,6 @@ async function syncChannel(admin: SupabaseClient, c: Channel, days: number): Pro
           await rpc(admin, 'channel_fulfillments_seen', { p_channel_id: c.id, p_external_order_id: o.external_id, p_fulfillments: o.fulfillments })
         }
       }
-      // Stock sync on: refresh Shopify's numbers so differences show up.
-      if (c.settings?.inventory_sync === true) await importCatalog(admin, c).catch((e) => {
-        void logEvent({ level: 'WARN', category: 'JOB', source: 'channels', message: `${c.name}: stock refresh failed — ${(e as Error).message}`, context: { channel: c.id } })
-      })
     } else {
       for (const raw of await wooClient(c, s).ordersSince(since)) {
         if (!WOO_IMPORT_STATUSES.includes(raw.status)) continue
@@ -234,18 +234,20 @@ async function syncChannel(admin: SupabaseClient, c: Channel, days: number): Pro
         const r = await ingest(admin, c, normalizeWooOrder(raw), 'SYNC')
         bump(counts, r.status)
       }
-      if (c.settings?.inventory_sync === true) await importCatalog(admin, c).catch((e) => {
-        void logEvent({ level: 'WARN', category: 'JOB', source: 'channels', message: `${c.name}: stock refresh failed — ${(e as Error).message}`, context: { channel: c.id } })
-      })
     }
+  } catch (error) {
+    failure = error as ChannelError
+  }
+  // Products and stock do not depend on orders: a problem reading orders
+  // (e.g. customer data not approved yet) must not stop the catalog.
+  if (!failure?.unauthorized) await refreshCatalog(admin, c)
+  if (!failure) {
     await rpc(admin, 'channel_update', { p_id: c.id, p: { synced: true, ...(c.status === 'ERROR' ? {} : { last_error: '' }) } })
     return { id: c.id, name: c.name, ok: true, ...counts }
-  } catch (error) {
-    const e = error as ChannelError
-    await rpc(admin, 'channel_update', { p_id: c.id, p: { last_error: `Sync: ${e.message}`, ...(e.unauthorized ? { status: 'ERROR' } : {}) } })
-    void logEvent({ level: 'ERROR', category: 'JOB', source: 'channels', message: `${c.name}: sync failed — ${e.message}`, context: { channel: c.id } })
-    return { id: c.id, name: c.name, ok: false, error: e.message, ...counts }
   }
+  await rpc(admin, 'channel_update', { p_id: c.id, p: { last_error: `Sync: ${failure.message}`, ...(failure.unauthorized ? { status: 'ERROR' } : {}) } })
+  void logEvent({ level: 'ERROR', category: 'JOB', source: 'channels', message: `${c.name}: sync failed — ${failure.message}`, context: { channel: c.id } })
+  return { id: c.id, name: c.name, ok: false, error: failure.message, ...counts }
 }
 function bump(c: { imported: number; duplicate: number; failed: number; skipped: number }, status: IngestResult['status']) {
   if (status === 'IMPORTED') c.imported++
@@ -255,6 +257,24 @@ function bump(c: { imported: number; duplicate: number; failed: number; skipped:
 }
 
 // --- store sync jobs -------------------------------------------------------------------
+
+/**
+ * Keeps the store's catalog fresh: right after connecting (so products and
+ * locations are there for the first sync), and every hour once stock sync or
+ * the first sync is on (new products come in, store numbers are compared).
+ */
+async function refreshCatalog(admin: SupabaseClient, c: Channel) {
+  if (!(c.settings?.inventory_sync === true || c.first_sync_at || !c.catalog_imported_at)) return
+  await importCatalog(admin, c).catch((e) => {
+    void logEvent({ level: 'WARN', category: 'JOB', source: 'channels', message: `${c.name}: catalog refresh failed — ${(e as Error).message}`, context: { channel: c.id } })
+  })
+}
+
+/** One product changed in the store (webhook): refresh it, import it if new (after the first sync). */
+async function productChanged(admin: SupabaseClient, c: Channel, s: Secret, productId: string, deleted: boolean) {
+  const items = deleted ? [] : c.platform === 'SHOPIFY' ? await shopifyClient(c, s).product(productId) : await wooClient(c, s).product(productId)
+  return rpc(admin, 'channel_catalog_product_upsert', { p_channel_id: c.id, p_product_id: productId, p_items: items })
+}
 
 async function importCatalog(admin: SupabaseClient, c: Channel) {
   const s = await credsOf(admin, c)
@@ -378,11 +398,16 @@ async function webhook(req: Request, id: string): Promise<Response> {
       throw new HttpError(401, 'Invalid signature', 'INVALID_SIGNATURE')
     }
     const topic = req.headers.get('x-shopify-topic') ?? ''
-    const delivery = req.headers.get('x-shopify-webhook-id') ?? req.headers.get('x-shopify-event-id') ?? ''
+    // Shopify sends the same event again (retries, duplicates) with the same event id.
+    const event = req.headers.get('x-shopify-event-id')
+    const delivery = event ? `${topic}:${event}` : req.headers.get('x-shopify-webhook-id') ?? ''
     if (delivery && await rpc<boolean>(admin, 'channel_delivery_seen', { p_channel_id: c.id, p_delivery_id: delivery })) return json(req, { ok: true, duplicate: true })
     const body = JSON.parse(raw || '{}') as { id?: number; admin_graphql_api_id?: string; cancel_reason?: string }
     let result: unknown = null
-    if (topic === 'orders/create' && body.id) {
+    if ((topic === 'products/create' || topic === 'products/update' || topic === 'products/delete') && body.id) {
+      s = await credsOf(admin, c)
+      result = await productChanged(admin, c, s, String(body.id), topic === 'products/delete')
+    } else if (topic === 'orders/create' && body.id) {
       s = await credsOf(admin, c)
       const order = await shopifyClient(c, s).order(body.admin_graphql_api_id ?? String(body.id))
       result = order ? await ingest(admin, c, order, 'WEBHOOK') : { status: 'NOT_FOUND' }
@@ -418,9 +443,14 @@ async function webhook(req: Request, id: string): Promise<Response> {
   const delivery = req.headers.get('x-wc-webhook-delivery-id') ?? ''
   if (delivery && await rpc<boolean>(admin, 'channel_delivery_seen', { p_channel_id: c.id, p_delivery_id: delivery })) return json(req, { ok: true, duplicate: true })
   let result: unknown = { status: 'IGNORED' }
-  if (topic === 'product.updated' || topic === 'product.created') {
-    const seen = wooStockFromWebhook(JSON.parse(raw || '{}'))
+  if (topic === 'product.updated' || topic === 'product.created' || topic === 'product.deleted') {
+    const body = JSON.parse(raw || '{}') as { id?: number; parent_id?: number }
+    const seen = topic === 'product.deleted' ? null : wooStockFromWebhook(body)
     if (seen) result = await rpc(admin, 'channel_inventory_seen', { p_channel_id: c.id, p_inventory_item_id: seen.item, p_location_id: WOO_LOCATION.id, p_available: seen.available })
+    const pid = body.parent_id || body.id
+    if (pid && (c.catalog_imported_at || c.first_sync_at)) {
+      result = { stock: result, product: await productChanged(admin, c, await credsOf(admin, c), String(pid), topic === 'product.deleted' && !body.parent_id) }
+    }
   } else if (topic === 'order.created' || topic === 'order.updated') {
     const raw0 = JSON.parse(raw || '{}') as WooOrder
     if (raw0.id && WOO_CANCEL_STATUSES.includes(raw0.status)) {
@@ -553,6 +583,20 @@ Deno.serve(
           const jobId = await client.cancelOrder(ctx.external_order_id, input.note ?? `Cancelled from ${appName()} (${ctx.order_number})`)
           await rpc(admin, 'channel_order_action_record', { p_order_id: input.order_id, p_action: 'CANCEL', p_actor: actor, p_detail: { job_id: jobId } })
           return json(req, { ok: true, job_id: jobId })
+        }
+        case 'reconnect': {
+          const c = await channelOf(admin, input.channel_id)
+          const s = await secretOf(admin, c.id)
+          if (c.platform !== 'SHOPIFY' || !(s.mode === 'CLIENT' || s.mode === 'TOKEN')) throw new HttpError(422, 'Open Connect and approve the app again', 'VALIDATION')
+          if (s.mode === 'CLIENT') {
+            if (!s.client_id || !s.client_secret) throw new HttpError(422, 'The app keys are not saved; open Connect and enter them', 'VALIDATION')
+            const t = await shopifyClientToken(c.shop_domain, s.client_id, s.client_secret)
+            await storeSecret(admin, c.id, { ...s, access_token: t.accessToken, expires_at: t.expiresAt }, actor, `App ${hint(s.client_id)}`)
+            if (t.scopes.length) await rpc(admin, 'channel_update', { p_id: c.id, p: { scopes: t.scopes } })
+          }
+          const done = await finishSetup(admin, c, actor)
+          if (done.ok) background(syncChannel(admin, done.channel, 7))
+          return json(req, done)
         }
         case 'retry_import': {
           const row = await rpc<{ channel_id: string; payload: NormalizedOrder }>(admin, 'channel_import_for_retry', { p_import_id: input.import_id, p_overrides: input.overrides, p_actor: actor })

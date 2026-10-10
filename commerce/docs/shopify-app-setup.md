@@ -3,10 +3,11 @@
 This connects your Shopify store to the admin so that:
 
 - Shopify orders are imported into **Web Orders**.
-- Orders you mark **Shipped** are fulfilled on Shopify with the courier name, tracking number and tracking link. Shopify then sends its own shipping e-mail.
-- Your stock (on hand − reserved) is kept in step with Shopify's *available* quantity.
-- Shopify products can be imported into your products (with opening stock if you choose).
-- Staff can **Mark paid** or **Cancel** an order on Shopify from the order page. Nothing on Shopify changes unless a person clicks.
+- **First sync:** every Shopify product comes into your Products page with its SKU, prices, cost, barcode, weight, vendor, tags, images and Shopify's stock. After that, your stock here is the source of truth and every change is sent to Shopify automatically.
+- New products added in Shopify later come in by themselves.
+- Orders you mark **Shipped** are fulfilled on Shopify automatically, with the courier name, tracking number and tracking link. Shopify then sends its own shipping e-mail.
+- Orders that are **Delivered** here are marked **Delivered** on Shopify automatically.
+- Staff can **Mark paid** or **Cancel** an order on Shopify from the order page. Nothing else on Shopify changes unless a person clicks.
 
 You create one app for your store in Shopify's **Dev Dashboard**, then connect it under **Store → Sales Channels**. This takes about five minutes. The admin shows the same steps with copy buttons in the Shopify connect dialog.
 
@@ -42,16 +43,17 @@ If you open the admin on a custom domain, use that domain in both URLs. The conn
 ## 2. Scopes (exact list)
 
 ```
-read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_returns,write_returns
+read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_fulfillments,write_fulfillments,read_returns,write_returns
 ```
 
 | Scopes | What the admin does with them |
 |---|---|
 | `read_orders`, `write_orders` | Import orders and cancellations, and read fulfilment status. **Mark paid** and **Cancel on Shopify** run only when staff click them on the order page. Cancelling never refunds and never restocks on Shopify. |
 | `read_merchant_managed_fulfillment_orders`, `write_merchant_managed_fulfillment_orders` | When an order is **Shipped** here, fulfil it on Shopify with the courier, tracking number and tracking link |
-| `read_inventory`, `write_inventory` | Keep Shopify's available quantity equal to yours, and receive the inventory webhook |
+| `read_fulfillments`, `write_fulfillments` | When an order is **Delivered** here, add a *Delivered* event to its Shopify fulfilment (Shopify's `fulfillmentEventCreate` needs `write_fulfillments`) |
+| `read_inventory`, `write_inventory` | Keep Shopify's available quantity equal to yours, read each item's cost, and receive the inventory webhook |
 | `read_locations`, `write_locations` | List locations so you can choose the one to keep in step |
-| `read_products`, `write_products` | Read the catalogue to link variants by SKU; import Shopify products into your products |
+| `read_products`, `write_products` | Bring Shopify products here (first sync), and new ones as they are added (product webhooks) |
 | `read_draft_orders`, `write_draft_orders` | Reserved for sending phone or Messenger orders to Shopify (next update) |
 | `read_returns`, `write_returns` | Reserved for syncing returns with Shopify (next update) |
 
@@ -68,7 +70,7 @@ application_url = "https://commerce-sage-eight-89.vercel.app/admin/channels"
 embedded = false
 
 [access_scopes]
-scopes = "read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_returns,write_returns"
+scopes = "read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_fulfillments,write_fulfillments,read_returns,write_returns"
 
 [auth]
 redirect_urls = [ "https://commerce-sage-eight-89.vercel.app/oauth/shopify/callback" ]
@@ -77,8 +79,9 @@ redirect_urls = [ "https://commerce-sage-eight-89.vercel.app/oauth/shopify/callb
 api_version = "2026-07"
 # No subscriptions here. The admin registers its own webhooks
 # (orders/create, orders/updated, orders/cancelled, app/uninstalled,
-# fulfillments/create, fulfillments/update, inventory_levels/update),
-# all signed with the app's client secret and checked on arrival.
+# fulfillments/create, fulfillments/update, inventory_levels/update,
+# products/create, products/update, products/delete), all signed with the
+# app's client secret and checked on arrival.
 ```
 
 ## 3. Protected customer data
@@ -126,42 +129,54 @@ When the scope list changes, do this once:
 
 **Store → Store Sync** shows a red banner listing any scope that is still missing.
 
-## 6. Turn on fulfilment and stock sync
+### If the app was uninstalled or reinstalled in Shopify
 
-Open **Store → Store Sync**.
+Shopify tells the admin, and the store moves to *Disconnected* with "The app was uninstalled in Shopify". Install the app again in the Dev Dashboard, then click **Reconnect** next to the store under **Sales Channels**. The saved App keys are used, so you don't need to type them again.
 
-**Fulfilment** (on by default for Shopify):
+## 6. First sync, then everything is automatic
 
-- *Fulfil on Shopify when shipped.* Only the **Shipped** status fulfils on Shopify. Web Orders, approval and Ready to ship never touch it.
-- *Send Shopify's shipping e-mail.* Shopify e-mails the tracking link when the order has an e-mail address. The order page shows "Shopify asked to e-mail the customer". Shopify does not confirm delivery of that e-mail, so the admin never claims it was delivered.
-- *Allow fulfilment without tracking* is off, so an order waits until it has a courier tracking number.
+Open **Store → Store Sync**. The catalog has already been read by itself right after connecting. The **First sync with Shopify** card walks you through it:
 
-**Products** (optional): under **Import products**, search (or tick *Only not imported*), select products and import them. You see a preview first. Products whose SKU already exists here are linked instead of duplicated. *Use Shopify's stock as opening stock* records an adjustment in your inventory history.
+1. Check that the catalog was read (click **Read again** for fresh numbers).
+2. Choose the **Shopify location** to keep in step.
+3. Leave **Import new Shopify products automatically afterwards** on, then click **Preview first sync**.
 
-**Stock**:
+The preview lists exactly what will happen, and nothing changes yet:
 
-1. Click **Read Shopify catalog**. Variants with the **same SKU** here and in Shopify link automatically. Link the rest under **Not linked**.
-2. Choose the **Shopify location** to keep in step (one location).
-3. Choose what happens when someone changes stock by hand in Shopify. *Flag it for me* is recommended.
-4. Turn on **Keep Shopify stock in step** and click **Save**. Nothing is overwritten at this moment; today's Shopify numbers become the starting point.
-5. Under **Stock**, review the differences. Select rows, then choose **Set Shopify to mine** or **Use Shopify's number**. You see a preview, and nothing changes until you click **Apply**. *Use Shopify's number* records a stock adjustment in your inventory history, so no entry is ever deleted.
+- **New products:** every Shopify product that isn't here yet is created with its SKU, price, compare-at price, **cost price**, barcode, weight, vendor, tags, images and **Shopify's stock as opening stock**.
+- **Linked by SKU:** a product you already have (same SKU) is linked, not duplicated. Its stock is set to Shopify's number **once**, as a recorded stock correction. Its price stays yours. Empty fields (cost, barcode, weight, image) are filled from Shopify.
+- **Not counted:** items whose stock Shopify doesn't track are linked but not synced.
 
-From then on, every stock change here (orders, cancellations, returns, purchases, manual adjustments) updates Shopify within about a minute. Failed updates retry automatically with back-off, and you can see them under **Jobs**.
+Click **Start first sync**. Stock sync then turns on, and from that moment **your stock is the source of truth**. Every sale, cancellation, return, purchase and adjustment here sets Shopify's number within about a minute. Each update reads Shopify's current number first and sets an exact value, so nothing is ever subtracted twice.
+
+**Fulfilment and delivery** (on by default):
+
+- *Fulfil on Shopify when shipped.* Marking an order **Shipped** fulfils it on Shopify automatically, with the courier, tracking number and tracking link; there's no button to click. If there's no tracking number yet, it waits and goes out as soon as one is added.
+- *Mark delivered on Shopify.* When the courier delivers it here, the Shopify fulfilment gets a **Delivered** event, so the order shows Delivered in Shopify. This needs `write_fulfillments`.
+- *Send Shopify's shipping e-mail.* Shopify e-mails the tracking link when the order has an e-mail address. Shopify does not confirm delivery of that e-mail, so the admin never claims it was delivered.
+
+**Later changes in Shopify:**
+
+- A product added in Shopify comes in by itself (with its stock), and a new size or colour joins the existing product.
+- A product deleted in Shopify stops syncing. Your product and its stock stay here.
+- If someone changes stock by hand in Shopify, it's flagged for you under **Stock** (or set back to yours if you choose *This app wins*).
+
+Failed updates retry automatically with back-off; you can see them under **Jobs**.
 
 ## 7. WooCommerce
 
 WooCommerce connects under **Store → Sales Channels → WooCommerce**, either with one click (WooCommerce asks you to approve read/write access) or with REST API keys. After that it uses the same **Store Sync** page:
 
-- **Stock:** the same matching by SKU, preview and *Keep stock in step* as Shopify. WooCommerce has a single stock figure per product or variation (shown as *Store stock*). WooCommerce can't do a safe compare-and-set, so the admin reads the current number just before writing; if it changed in between, the job is marked **stale** and you are asked again rather than overwriting it.
-- **Instant updates:** the `product.updated` webhook is optional. When it's on, stock edits made in WooCommerce are seen at once; without it, they are picked up at the next sync.
-- **Fulfilment** (off by default): when on, a Shipped order is set to **Completed** in WooCommerce with a customer note that contains the courier and tracking number.
-- **Products:** import works the same as for Shopify.
+- **First sync:** the same card and preview as Shopify. Products come in with SKU, prices, images, tags, category and stock. WooCommerce itself has no cost price; when a cost-of-goods plugin stores one (`_wc_cog_cost`, `_purchase_price` and similar), it is imported too.
+- **Stock:** after the first sync your stock is the truth, as with Shopify. WooCommerce has a single stock figure per product or variation (shown as *Store stock*). WooCommerce can't do a safe compare-and-set, so the admin reads the current number just before writing; if it changed in between, the job is marked **stale** and you are asked again rather than overwriting it.
+- **Instant updates:** the `product.created`, `product.updated` and `product.deleted` webhooks are optional. When they're on, new products and stock edits made in WooCommerce are seen at once; without them, they are picked up at the hourly check.
+- **Fulfilment** (off by default): when on, a Shipped order is set to **Completed** in WooCommerce with a customer note that contains the courier and tracking number. WooCommerce has no separate Delivered status.
 
 ## 8. Checklist
 
 - [ ] App created in the Dev Dashboard, **embedded = false**
 - [ ] App URL set (and the redirect URL on the same domain if you use *Approve on Shopify*)
-- [ ] The 14 scopes added; version released
+- [ ] The 16 scopes added; version released
 - [ ] Protected customer data requested (name, e-mail, phone, address)
 - [ ] App installed on the store (App keys) and connected under Store → Sales Channels; all checks green
-- [ ] Catalog read, location chosen, differences reviewed, stock sync on
+- [ ] First sync previewed and started under Store → Store Sync

@@ -64,13 +64,14 @@ describe('Shopify fulfilment queue', () => {
       expect(ctx.lines).toEqual([expect.objectContaining({ sku: 'TOTE-SY1', quantity: 1, external_variant_id: 'ext-TOTE-SY1' })])
       expect(p.variantIds).toHaveLength(1)
 
-      // Delivered: nothing new is queued.
+      // Delivered: one job, only to mark it delivered on Shopify (no second fulfilment).
       await asService(db)
       await db.query(`select public.channel_job_finish(id, 'DONE') from public.channel_sync_jobs where ref_id = $1`, [o])
       await db.query(`select public.channel_fulfillment_update($1, $2)`, [o, JSON.stringify({ status: 'FULFILLED', fulfillment_id: 'gid://shopify/Fulfillment/1', notification_status: 'REQUESTED' })])
       await advanceOrder(db, o, ['DELIVERED'])
       await asSystem(db)
-      expect((await jobs(db, 'FULFILL', o)).map((j) => j.status)).toEqual(['DONE'])
+      expect((await jobs(db, 'FULFILL', o)).map((j) => j.status).sort()).toEqual(['DONE', 'PENDING'])
+      expect(await fulfilment(db, o)).toMatchObject({ status: 'FULFILLED', delivered_status: 'PENDING' })
       // FULFILLED needs Shopify's id.
       await asService(db)
       await expectError(db, `select public.channel_fulfillment_update($1, '{"status":"FULFILLED"}')`, [o], /fulfilment id/)

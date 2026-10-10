@@ -918,6 +918,7 @@ const FULFIL_TONE: Record<string, BadgeVariant> = {
 const FULFIL_LABEL: Record<string, string> = {
   PENDING: 'Waiting to send', PROCESSING: 'Sending', NEEDS_TRACKING: 'Needs tracking number', FULFILLED: 'Fulfilled on Shopify', FAILED: 'Failed', SKIPPED: 'Not sent',
 }
+const DELIVERED_LABEL: Record<string, string> = { PENDING: 'Sending…', MARKED: 'Delivered', FAILED: 'Failed', SKIPPED: 'Not sent' }
 const NOTIFY_LABEL: Record<string, string> = { REQUESTED: 'Shopify asked to e-mail the customer', NO_EMAIL: 'No customer e-mail on the order', DISABLED: 'Customer e-mails turned off' }
 
 /** Orders imported from Shopify: the Shopify order, its fulfilment and tracking as Shopify has them. */
@@ -973,11 +974,17 @@ function ChannelOrderCard({ orderId, status }: { orderId: string; status?: strin
             )}
             {mine.fulfilled_at && <Row label="Fulfilled" value={formatDateTime(mine.fulfilled_at)} />}
             {mine.notification_status && <Row label="Customer e-mail" value={<span title={mine.notification_note ?? undefined}>{NOTIFY_LABEL[mine.notification_status]}</span>} />}
+            {mine.delivered_status && (
+              <Row label="Delivered on Shopify" value={mine.delivered_status === 'MARKED'
+                ? <span className="inline-flex items-center gap-1"><Check className="size-3.5" /> {mine.delivered_at ? formatDateTime(mine.delivered_at) : 'Yes'}</span>
+                : <span title={mine.delivered_error ?? undefined}>{DELIVERED_LABEL[mine.delivered_status]}</span>} />
+            )}
+            {mine.delivered_error && mine.delivered_status !== 'MARKED' && <p className="rounded-md bg-muted/60 p-2 text-xs">{mine.delivered_error}</p>}
             {mine.last_error && mine.status !== 'FULFILLED' && <p className="rounded-md bg-muted/60 p-2 text-xs">{mine.last_error}</p>}
             {c.job && c.job.status !== 'DONE' && (
               <p className="text-xs text-muted-foreground">Attempt {c.job.attempts} · next try {formatDateTime(c.job.next_attempt_at)}</p>
             )}
-            {can('orders.update') && ['FAILED', 'NEEDS_TRACKING', 'PENDING'].includes(mine.status) && (
+            {can('orders.update') && (['FAILED', 'NEEDS_TRACKING', 'PENDING'].includes(mine.status) || mine.delivered_status === 'FAILED') && (
               <Button size="sm" variant="outline" onClick={() => retry.mutate()} disabled={retry.isPending}>
                 {retry.isPending ? <Spinner /> : <RefreshCw />} Send to Shopify now
               </Button>

@@ -51,7 +51,7 @@ describe('Shopify', () => {
   it('sends staff to the store\'s approval screen with the scopes we need', () => {
     const url = new URL(shopifyAuthUrl('mystore.myshopify.com', 'abc123', 'st', 'https://x.supabase.co/functions/v1/channels/callback/shopify'))
     expect(url.host).toBe('mystore.myshopify.com')
-    expect(url.searchParams.get('scope')).toBe('read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_returns,write_returns')
+    expect(url.searchParams.get('scope')).toBe('read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_fulfillments,write_fulfillments,read_returns,write_returns')
     expect(url.searchParams.get('scope')).not.toContain('read_customers')
     expect(url.searchParams.get('state')).toBe('st')
   })

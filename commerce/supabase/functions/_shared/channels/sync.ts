@@ -16,6 +16,7 @@ export interface StockPort {
 export interface ShopifyPort extends StockPort {
   fulfillmentState(orderId: string): Promise<FulfillmentState>
   createFulfillment(input: { groups: FulfillmentGroup[]; notifyCustomer: boolean; tracking: { company: string | null; number: string | null; url: string | null } | null }): Promise<SeenFulfillment>
+  markDelivered(fulfillmentId: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }>
 }
 /** What the worker needs from WooCommerce (WooClient implements it). */
 export interface WooPort {
@@ -26,8 +27,10 @@ export interface WooPort {
 export type Rpc = <T>(fn: string, args: Record<string, unknown>) => Promise<T>
 
 interface FulfillContext {
-  order: { id: string; order_number: string; status: string; external_order_id: string; customer_email: string | null }
-  fulfillment: { status: string; tracking_number: string | null } | null
+  order: { id: string; order_number: string; status: string; external_order_id: string; customer_email: string | null; delivered_at?: string | null }
+  fulfillment: { status: string; tracking_number: string | null; fulfillment_id?: string | null; delivered_status?: string | null } | null
+  /** The Shopify fulfilment to mark Delivered: ours, or one made in Shopify. */
+  delivered_target?: string | null
   shipment: { courier: string | null; provider: string | null; tracking: string | null; tracking_url: string | null; shipped_at: string | null } | null
   lines: Array<{ variant_id: string; sku: string | null; quantity: number; external_variant_id: string | null }>
 }
@@ -44,11 +47,42 @@ export function retryable(error: unknown): boolean {
   return true
 }
 
+/**
+ * Fulfils a shipped Shopify order (once), and when the order is delivered here
+ * also marks that fulfilment Delivered on Shopify (once). Both steps look at
+ * Shopify first, so a retry never creates a second fulfilment or event.
+ */
 export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort, opts: ChannelOpts): Promise<Outcome> {
   const ctx = await rpc<FulfillContext>('channel_fulfillment_context', { p_order_id: job.ref_id })
   const f = ctx.fulfillment
   const save = (p: Record<string, unknown>) => rpc('channel_fulfillment_update', { p_order_id: job.ref_id, p })
-  if (!f || f.status === 'FULFILLED' || f.status === 'SKIPPED') return { outcome: 'DONE', result: { skipped: f?.status ?? 'none' } }
+  const wantDelivered = f?.delivered_status === 'PENDING' && ctx.order.status === 'DELIVERED'
+
+  const deliver = async (target: string | null | undefined, result: Record<string, unknown> = {}): Promise<Outcome> => {
+    if (!target) {
+      await save({ delivered_status: 'SKIPPED', delivered_error: 'There is no Shopify fulfilment to mark delivered' })
+      return { outcome: 'DONE', result: { ...result, delivered: 'no fulfilment' } }
+    }
+    try {
+      const ev = await shopify().markDelivered(target, ctx.order.delivered_at ?? null)
+      await save({ delivered_status: 'MARKED', delivered_event_id: ev.id, delivered_error: '' })
+      return { outcome: 'DONE', result: { ...result, delivered_event: ev.id, existing: ev.existing } }
+    } catch (error) {
+      const message = (error as Error).message
+      if (retryable(error)) {
+        await save({ delivered_error: `${message} — will try again` })
+        return { outcome: 'RETRY', error: message, result }
+      }
+      await save({ delivered_status: 'FAILED', delivered_error: message })
+      return { outcome: 'FAILED', error: message, result }
+    }
+  }
+
+  if (!f) return { outcome: 'DONE', result: { skipped: 'none' } }
+  if (f.status === 'FULFILLED' || f.status === 'SKIPPED') {
+    if (wantDelivered) return deliver(ctx.delivered_target)
+    return { outcome: 'DONE', result: { skipped: f.status } }
+  }
   // Cancelled (or moved back) after it was queued: never fulfil.
   if (!SHIPPED.includes(ctx.order.status)) {
     await save({ status: 'SKIPPED', error: `Order is ${ctx.order.status.toLowerCase().replace(/_/g, ' ')} — not fulfilled on Shopify` })
@@ -70,7 +104,7 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
     if (mine) {
       await save({ status: 'FULFILLED', fulfillment_id: mine.id, courier: company, tracking_number: tracking, tracking_url: ctx.shipment?.tracking_url,
         shopify_status: mine.display_status ?? mine.status, error: '' })
-      return { outcome: 'DONE', result: { adopted: mine.id } }
+      return wantDelivered ? deliver(mine.id, { adopted: mine.id }) : { outcome: 'DONE', result: { adopted: mine.id } }
     }
     const plan = planFulfillment(ctx.lines, state.fulfillmentOrders)
     if (!plan.groups.length) {
@@ -78,7 +112,7 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
         await rpc('channel_fulfillments_seen', { p_channel_id: job.channel_id, p_external_order_id: ctx.order.external_order_id,
           p_fulfillments: state.fulfillments.map((x) => ({ ...x, all_fulfilled: true })) })
         await save({ status: 'SKIPPED', error: 'Already fulfilled in Shopify' })
-        return { outcome: 'DONE', result: { skipped: 'already fulfilled' } }
+        return wantDelivered ? deliver(state.fulfillments[0].id, { skipped: 'already fulfilled' }) : { outcome: 'DONE', result: { skipped: 'already fulfilled' } }
       }
       const why = plan.unmatched.length ? `These items are not linked to Shopify products: ${plan.unmatched.join(', ')}` : 'Shopify has nothing left to fulfil on this order'
       await save({ status: 'FAILED', error: why, attempted: true })
@@ -101,7 +135,8 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
         : email ? 'Shopify was asked to send its shipping confirmation (delivery is not confirmed by Shopify)'
           : 'The order has no customer e-mail, so Shopify cannot send the shipping confirmation',
     })
-    return { outcome: 'DONE', result: { fulfillment_id: created.id, partial: plan.unmatched.length > 0 } }
+    const result = { fulfillment_id: created.id, partial: plan.unmatched.length > 0 }
+    return wantDelivered ? deliver(created.id, result) : { outcome: 'DONE', result }
   } catch (error) {
     const message = (error as Error).message
     if (retryable(error)) {
