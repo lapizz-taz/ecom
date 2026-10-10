@@ -4927,6 +4927,66 @@ export type Database = {
           },
         ]
       }
+      site_api_keys: {
+        Row: {
+          id: string
+          name: string
+          kind: string
+          prefix: string
+          key_hash: string
+          allowed_origins: string[]
+          created_by: string | null
+          created_at: string
+          last_used_at: string | null
+          request_count: number
+          revoked_at: string | null
+          revoked_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          kind: string
+          prefix: string
+          key_hash: string
+          allowed_origins?: string[]
+          created_by?: string | null
+          created_at?: string
+          last_used_at?: string | null
+          request_count?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          kind?: string
+          prefix?: string
+          key_hash?: string
+          allowed_origins?: string[]
+          created_by?: string | null
+          created_at?: string
+          last_used_at?: string | null
+          request_count?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_api_keys_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_reservations: {
         Row: {
           id: string
@@ -4981,6 +5041,50 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_domains: {
+        Row: {
+          id: string
+          domain: string
+          status: string
+          records: Json
+          detail: string | null
+          created_by: string | null
+          created_at: string
+          checked_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          domain: string
+          status?: string
+          records?: Json
+          detail?: string | null
+          created_by?: string | null
+          created_at?: string
+          checked_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          domain?: string
+          status?: string
+          records?: Json
+          detail?: string | null
+          created_by?: string | null
+          created_at?: string
+          checked_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_domains_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -6290,6 +6394,24 @@ export type Database = {
           created_at: string
           updated_at: string
         }
+      }
+      admin_site_key_create: {
+        Args: {
+          p_name: string
+          p_kind: string
+          p_origins?: string[]
+        }
+        Returns: Json
+      }
+      admin_site_key_revoke: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      admin_site_keys: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       admin_update_checkout_lead: {
         Args: {
@@ -7921,6 +8043,10 @@ export type Database = {
         Returns: Json
       }
       staff_directory: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      store_domains_list: {
         Args: Record<PropertyKey, never>
         Returns: Json
       }

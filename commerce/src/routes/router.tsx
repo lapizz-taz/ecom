@@ -81,6 +81,7 @@ export const router = createBrowserRouter([
       admin('courier-management', () => import('@/pages/admin/courier-management'), 'couriers.view'),
       admin('courier-invoices', () => import('@/pages/admin/courier-invoices'), 'couriers.view'),
       admin('store/sync', () => import('@/pages/admin/shopify-sync'), 'inventory.view'),
+      admin('store/website', () => import('@/pages/admin/website'), 'settings.view'),
       admin('store/shopify-sync', () => import('@/pages/admin/shopify-sync'), 'inventory.view'),
       admin('label-builder', () => import('@/pages/admin/label-builder'), 'settings.view'),
       admin('finance', () => import('@/pages/admin/finance'), 'finance.view'),

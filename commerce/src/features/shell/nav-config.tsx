@@ -92,6 +92,7 @@ export const NAV: NavSection[] = [
           { label: 'Sales Channels', to: '/admin/channels' },
           { label: 'Channel Imports', to: '/admin/channels?imports=FAILED', permission: 'orders.view' },
           { label: 'Store Sync', to: '/admin/store/sync', permission: 'inventory.view' },
+          { label: 'Website & Domains', to: '/admin/store/website' },
           { label: 'Theme', to: '/admin/store/theme', permission: 'settings.manage' },
         ],
       },
