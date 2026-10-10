@@ -78,8 +78,11 @@ export const NAV: NavSection[] = [
       {
         label: 'Inventory', to: '/admin/inventory', icon: <Boxes />, permission: 'inventory.view', shortcut: 'G I',
         children: [
-          { label: 'Stock', to: '/admin/inventory' },
-          { label: 'Low Stock', to: '/admin/inventory?status=LOW_STOCK' },
+          { label: 'Inventory Dashboard', to: '/admin/inventory' },
+          { label: 'Stock', to: '/admin/inventory?view=stock' },
+          { label: 'Low Stock Alerts', to: '/admin/inventory?view=alerts' },
+          { label: 'Dead Stock', to: '/admin/inventory?view=dead' },
+          { label: 'ABC & Forecast', to: '/admin/inventory?view=abc' },
           { label: 'Products', to: '/admin/products', permission: 'products.view' },
           { label: 'Stock Movements', to: '/admin/inventory/movements' },
           { label: 'Adjustments', to: '/admin/inventory/adjustments' },

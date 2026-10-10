@@ -10,8 +10,11 @@ export async function listSuppliers() {
 
 export async function saveSupplier(values: TablesInsert<'suppliers'> & { id?: string }) {
   const { id, ...rest } = values
-  const { error } = id ? await supabase.from('suppliers').update(rest).eq('id', id) : await supabase.from('suppliers').insert(rest)
+  const { data, error } = id
+    ? await supabase.from('suppliers').update(rest).eq('id', id).select('id').single()
+    : await supabase.from('suppliers').insert(rest).select('id').single()
   if (error) throw error
+  return data
 }
 
 export async function listPurchaseOrders(status?: string) {

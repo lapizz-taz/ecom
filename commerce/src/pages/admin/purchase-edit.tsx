@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, PackageCheck, Trash2, Wallet } from 'lucide-react'
+import { ArrowLeft, PackageCheck, Plus, Printer, Sparkles, Trash2, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -19,8 +19,9 @@ import { VariantPicker } from '@/features/products/variant-picker'
 import { formatDate, formatMoney, titleCase, toNumber } from '@/lib/format'
 import { PAYMENT_CHANNEL } from '@/lib/status'
 import {
-  getPurchaseOrder, listSuppliers, receivePurchaseOrder, recordPurchasePayment, savePurchaseOrder, setPurchaseOrderStatus,
+  getPurchaseOrder, listSuppliers, receivePurchaseOrder, recordPurchasePayment, saveSupplier, savePurchaseOrder, setPurchaseOrderStatus,
 } from '@/services/purchases'
+import { clearPurchasePrefill, inventoryInsights, readPurchasePrefill } from '@/services/inventory'
 import type { Enums } from '@/types/database'
 import { PO_STATUS, SETTLEMENT } from './purchases'
 
@@ -39,9 +40,21 @@ export default function PurchaseEditPage() {
   const [expected, setExpected] = useState('')
   const [shipping, setShipping] = useState('0')
   const [notes, setNotes] = useState('')
-  const [lines, setLines] = useState<Line[]>([])
+  const [lines, setLines] = useState<Line[]>(() => (isNew ? readPurchasePrefill() : []))
+  useEffect(() => { if (isNew) clearPurchasePrefill() }, [isNew])
   const [receiving, setReceiving] = useState(false)
   const [paying, setPaying] = useState(false)
+  const [newSupplier, setNewSupplier] = useState(false)
+  const insights = useQuery({ queryKey: ['inventory', 'insights', 7, 30, 60], queryFn: () => inventoryInsights(7, 30, 60), staleTime: 60_000, enabled: can('inventory.view') })
+  const stockOf = (variantId: string) => insights.data?.items.find((i) => i.variant_id === variantId)
+  const addSuggestions = () => {
+    const have = new Set(lines.map((l) => l.variant_id))
+    const add = (insights.data?.items ?? []).filter((i) => (i.suggest ?? 0) > 0 && ['OUT', 'CRITICAL', 'LOW'].includes(i.status) && !have.has(i.variant_id))
+      .map((i) => ({ variant_id: i.variant_id, label: `${i.product_name}${i.variant_title && i.variant_title !== 'Default' ? ` · ${i.variant_title}` : ''} (${i.sku})`, quantity: i.suggest!, unit_cost: toNumber(i.unit_cost) }))
+    if (!add.length) { toast.info('No more products need restocking right now'); return }
+    setLines((ls) => [...ls, ...add])
+    toast.success(`Added ${add.length} product${add.length === 1 ? '' : 's'} that are running low`)
+  }
 
   useEffect(() => {
     const d = po.data
@@ -77,12 +90,18 @@ export default function PurchaseEditPage() {
             {editable && (isNew || d?.status === 'DRAFT') && <Button onClick={() => save.mutate('ORDERED')} disabled={save.isPending || !supplierId || !lines.length}>Save & mark ordered</Button>}
             {!isNew && can('purchases.manage') && ['ORDERED', 'PARTIALLY_RECEIVED', 'DRAFT'].includes(d!.status) && <Button onClick={() => setReceiving(true)}><PackageCheck /> Receive stock</Button>}
             {!isNew && can('purchases.manage') && can('finance.manage') && toNumber(d!.total_cost) > toNumber(d!.amount_paid) && d!.status !== 'CANCELLED' && <Button variant="outline" onClick={() => setPaying(true)}><Wallet /> Record payment</Button>}
+            {!isNew && <Button variant="outline" onClick={() => window.print()}><Printer /> Print</Button>}
             {!isNew && can('purchases.manage') && ['DRAFT', 'ORDERED'].includes(d!.status) && <Button variant="ghost" onClick={() => setStatus.mutate('CANCELLED')}>Cancel PO</Button>}
           </>
         } />
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <Card>
-          <CardHeader><CardTitle className="text-sm">Items</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-sm">Items {lines.length > 0 && <span className="font-normal text-muted-foreground">· {lines.length} products · {lines.reduce((t, l) => t + l.quantity, 0)} units</span>}</CardTitle>
+            {editable && can('inventory.view') && (
+              <Button size="sm" variant="outline" onClick={addSuggestions} disabled={!insights.data}><Sparkles /> Add low-stock suggestions</Button>
+            )}
+          </CardHeader>
           <CardContent className="space-y-3">
             {editable && <VariantPicker showCost onPick={(v) => setLines((ls) => ls.some((l) => l.variant_id === v.variant_id) ? ls
               : [...ls, { variant_id: v.variant_id!, label: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''} (${v.sku})`, quantity: 1, unit_cost: toNumber(v.unit_cost) }])} />}
@@ -91,7 +110,23 @@ export default function PurchaseEditPage() {
                 const received = d?.purchase_order_items.find((i) => i.variant_id === l.variant_id)?.received_quantity ?? 0
                 return (
                   <li key={l.variant_id} className="flex flex-wrap items-center gap-2 p-2 text-sm">
-                    <div className="min-w-40 flex-1"><p className="font-medium">{l.label}</p>{!isNew && <p className="text-xs text-muted-foreground">Received {received} of {l.quantity}</p>}</div>
+                    <div className="min-w-40 flex-1">
+                      <p className="font-medium">{l.label}</p>
+                      {!isNew && <p className="text-xs text-muted-foreground">Received {received} of {l.quantity}</p>}
+                      {(() => {
+                        const st = stockOf(l.variant_id)
+                        if (!st) return null
+                        return (
+                          <p className="text-xs text-muted-foreground">
+                            In stock {st.available} · sold {st.sold_30} in 30 days{st.cover_days !== null ? ` · ${Math.floor(st.cover_days)} days left` : ''}
+                            {editable && (st.suggest ?? 0) > 0 && st.suggest !== l.quantity && (
+                              <> · <button type="button" className="text-foreground underline underline-offset-2"
+                                onClick={() => setLines((ls) => ls.map((x, i) => (i === idx ? { ...x, quantity: st.suggest! } : x)))}>use suggested {st.suggest}</button></>
+                            )}
+                          </p>
+                        )
+                      })()}
+                    </div>
                     <label className="flex items-center gap-1 text-xs">Qty<Input type="number" min={1} className="h-8 w-20" disabled={!editable} value={l.quantity}
                       onChange={(e) => setLines((ls) => ls.map((x, i) => (i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value)) } : x)))} /></label>
                     <label className="flex items-center gap-1 text-xs">Unit cost<Input type="number" min={0} className="h-8 w-24" disabled={!editable} value={l.unit_cost}
@@ -113,6 +148,7 @@ export default function PurchaseEditPage() {
                   <SelectTrigger><SelectValue placeholder="Choose supplier" /></SelectTrigger>
                   <SelectContent>{(suppliers.data ?? []).filter((s) => s.is_active || s.id === supplierId).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
+                {editable && <button type="button" onClick={() => setNewSupplier(true)} className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><Plus className="size-3" /> New supplier</button>}
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Order date" htmlFor="po-date"><Input id="po-date" type="date" value={orderDate} disabled={!editable} onChange={(e) => setOrderDate(e.target.value)} /></Field>
@@ -139,6 +175,8 @@ export default function PurchaseEditPage() {
           )}
         </div>
       </div>
+      <NewSupplierDialog open={newSupplier} onOpenChange={setNewSupplier}
+        onCreated={(id) => { void queryClient.invalidateQueries({ queryKey: ['suppliers'] }); setSupplierId(id) }} />
       {d && <ReceiveDialog po={d} open={receiving} onOpenChange={setReceiving} onDone={refresh} />}
       {d && <PayDialog poId={d.id} due={toNumber(d.total_cost) - toNumber(d.amount_paid)} open={paying} onOpenChange={setPaying} onDone={refresh} />}
     </div>
@@ -202,6 +240,34 @@ function PayDialog({ poId, due, open, onOpenChange, onDone }: { poId: string; du
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={() => pay.mutate()} disabled={pay.isPending || !(Number(amount) > 0)}>{pay.isPending && <Spinner />} Record payment</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function NewSupplierDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; onCreated: (id: string) => void }) {
+  const [form, setForm] = useState({ name: '', phone: '', email: '', address: '' })
+  useEffect(() => { if (open) setForm({ name: '', phone: '', email: '', address: '' }) }, [open])
+  const save = useMutation({
+    mutationFn: () => saveSupplier({ name: form.name.trim(), phone: form.phone.trim() || null, email: form.email.trim() || null, address: form.address.trim() || null }),
+    onSuccess: (s) => { toast.success('Supplier added'); onOpenChange(false); if (s?.id) onCreated(s.id) },
+  })
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>New supplier</DialogTitle><DialogDescription>Saved to your supplier list and chosen for this order.</DialogDescription></DialogHeader>
+        <div className="grid gap-3">
+          <Field label="Name" htmlFor="sup-name" required><Input id="sup-name" autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Phone" htmlFor="sup-phone"><Input id="sup-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+            <Field label="Email" htmlFor="sup-email"><Input id="sup-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+          </div>
+          <Field label="Address" htmlFor="sup-addr"><Input id="sup-addr" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending || form.name.trim().length < 2}>{save.isPending && <Spinner />} Add supplier</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

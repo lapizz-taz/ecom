@@ -79,3 +79,35 @@ export async function bulkAdjustStock(items: Array<{ variantId: string; quantity
   return data as unknown as { changed: number }
 }
 
+
+export interface InsightItem {
+  variant_id: string; product_id: string; product_name: string; variant_title: string; sku: string; category: string | null; image_url: string | null
+  on_hand: number; reserved: number; available: number; unit_cost: number | null; unit_price: number | null; stock_value: number | null; low_stock_threshold: number
+  sold_7: number; sold_30: number; sold_90: number; revenue_90: number; daily: number; last_sale_at: string | null
+  incoming: number; incoming_expected: string | null; cover_days: number | null; suggest: number | null; abc: 'A' | 'B' | 'C' | null; dead: boolean
+  status: 'OUT' | 'CRITICAL' | 'LOW' | 'DEAD' | 'OK'
+}
+export interface Insights { lead_days: number; cover_days: number; dead_days: number; generated_at: string; items: InsightItem[] }
+
+/** Sales-based stock insights, worked out on the server. */
+export async function inventoryInsights(lead: number, cover: number, dead: number): Promise<Insights> {
+  const { data, error } = await supabase.rpc('inventory_insights', { p_lead_days: lead, p_cover_days: cover, p_dead_days: dead })
+  if (error) throw error
+  const r = data as unknown as Insights
+  return { ...r, items: r.items.map((i) => ({ ...i, daily: Number(i.daily), cover_days: i.cover_days === null ? null : Number(i.cover_days), revenue_90: Number(i.revenue_90) })) }
+}
+
+/** Lines handed to "New purchase" (kept in this tab only). */
+export interface PurchasePrefill { variant_id: string; label: string; quantity: number; unit_cost: number }
+export function setPurchasePrefill(lines: PurchasePrefill[]) {
+  try { sessionStorage.setItem('po-prefill', JSON.stringify(lines)) } catch { /* private mode: the page opens empty */ }
+}
+export function readPurchasePrefill(): PurchasePrefill[] {
+  try {
+    const raw = sessionStorage.getItem('po-prefill')
+    return raw ? JSON.parse(raw) as PurchasePrefill[] : []
+  } catch { return [] }
+}
+export function clearPurchasePrefill() {
+  try { sessionStorage.removeItem('po-prefill') } catch { /* nothing stored */ }
+}

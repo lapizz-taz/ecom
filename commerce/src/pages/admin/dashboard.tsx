@@ -193,7 +193,7 @@ export default function DashboardPage() {
                 { n: actions.payments_to_verify, label: 'Payments to verify', to: '/admin/orders/web?tab=all', icon: <CreditCard className="size-4 text-amber-600" /> },
                 { n: actions.confirmation_required, label: 'Web orders to call', to: '/admin/orders/web', icon: <ShoppingCart className="size-4" /> },
                 { n: actions.ready_to_ship, label: 'Ready to ship', to: '/admin/orders/approved?tab=RTS', icon: <Truck className="size-4" /> },
-                { n: actions.low_stock, label: 'Low stock', to: '/admin/inventory?status=LOW_STOCK', icon: <AlertTriangle className="size-4 text-amber-600" /> },
+                { n: actions.low_stock, label: 'Low stock', to: '/admin/inventory?view=alerts', icon: <AlertTriangle className="size-4 text-amber-600" /> },
                 { n: actions.production_overdue, label: 'Production overdue', to: '/admin/production', icon: <Factory className="size-4 text-red-600" /> },
               ].filter((a) => a.n > 0).map((a) => (
                 <Link key={a.label} to={a.to} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50">

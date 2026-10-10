@@ -7314,6 +7314,14 @@ export type Database = {
         }
         Returns: Json
       }
+      inventory_insights: {
+        Args: {
+          p_lead_days?: number
+          p_cover_days?: number
+          p_dead_days?: number
+        }
+        Returns: Json
+      }
       is_staff: {
         Args: Record<PropertyKey, never>
         Returns: boolean
