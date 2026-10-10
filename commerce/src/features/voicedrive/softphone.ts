@@ -51,6 +51,8 @@ export class Softphone {
   private ringer: { ctx: AudioContext; timer: ReturnType<typeof setInterval> } | null = null
   private readonly audio: HTMLAudioElement
   private stopping = false
+  /** Phone settings → Ring sound (saved in this browser). */
+  ringSound = true
 
   constructor() {
     this.audio = document.createElement('audio')
@@ -336,7 +338,7 @@ export class Softphone {
       if (this.ringer) { clearInterval(this.ringer.timer); void this.ringer.ctx.close().catch(() => undefined); this.ringer = null }
       return
     }
-    if (this.ringer) return
+    if (this.ringer || !this.ringSound) return
     try {
       const ctx = new AudioContext()
       const beep = () => {

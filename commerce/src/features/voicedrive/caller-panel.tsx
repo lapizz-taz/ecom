@@ -28,7 +28,7 @@ export function CallerPanel({ phone, dark = false, compact = false }: { phone: s
   })
   const muted = dark ? 'text-zinc-400' : 'text-muted-foreground'
   const box = dark ? 'border-zinc-800 bg-zinc-900/60' : 'border-border bg-muted/30'
-  if (q.isLoading) return <div className={cn('rounded-lg border p-3 text-xs', box, muted)}>Looking up the caller… · কলার খোঁজা হচ্ছে…</div>
+  if (q.isLoading) return <div className={cn('rounded-lg border p-3 text-xs', box, muted)}>Looking up the caller…</div>
   if (q.error) return <div className={cn('rounded-lg border p-3 text-xs', box, muted)}>Could not load the caller's orders: {(q.error as Error).message}</div>
   if (!q.data) return null
   const { ctx, order, rating } = q.data
@@ -36,7 +36,7 @@ export function CallerPanel({ phone, dark = false, compact = false }: { phone: s
   if (!ctx.known) {
     return (
       <div className={cn('rounded-lg border p-3 text-sm', box)}>
-        <p className="flex items-center gap-1.5 font-medium"><UserRound className="size-4" /> New caller · নতুন কলার</p>
+        <p className="flex items-center gap-1.5 font-medium"><UserRound className="size-4" /> New caller</p>
         <p className={cn('mt-1 text-xs', muted)}>No orders from {ctx.phone}. Take the order with New Order.</p>
         <Link to={`/admin/orders/new?phone=${encodeURIComponent(ctx.phone)}`} className="mt-2 inline-block text-xs font-medium underline underline-offset-2">New order for this number</Link>
       </div>
@@ -70,7 +70,7 @@ export function CallerPanel({ phone, dark = false, compact = false }: { phone: s
       {order && (
         <div className={cn('rounded-lg border p-3', box)}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium uppercase tracking-wide opacity-80">Latest order · সর্বশেষ অর্ডার</p>
+            <p className="text-xs font-medium uppercase tracking-wide opacity-80">Latest order</p>
             <Link to={`/admin/orders/${order.id}`} className="inline-flex items-center gap-1 text-xs underline underline-offset-2">{order.orderNumber} <ExternalLink className="size-3" /></Link>
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -97,7 +97,7 @@ export function CallerPanel({ phone, dark = false, compact = false }: { phone: s
 
       {ctx.orders.length > 1 && !compact && (
         <div className={cn('rounded-lg border p-3', box)}>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-80">Earlier orders · আগের অর্ডার</p>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-80">Earlier orders</p>
           <ul className="space-y-1 text-xs">
             {ctx.orders.slice(1, 6).map((o) => (
               <li key={o.id} className="flex items-center justify-between gap-2">

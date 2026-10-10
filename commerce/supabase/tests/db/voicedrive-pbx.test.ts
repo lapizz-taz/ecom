@@ -180,7 +180,10 @@ describe('VoiceDrive PBX: agents and softphone credentials', () => {
   it('seats limit agents; the gateway sees only a digest of a short-lived password', () =>
     inTx(async (db) => {
       const owner = await createStaff(db, 'OWNER')
-      await readyLine(db, owner, { packageCode: 'MICRO' })
+      await readyLine(db, owner, { agents: 3 })
+      await asUser(db, owner)
+      // Micro is no longer sold.
+      expect((await value<J>(db, `select public.pbx_packages_list()`)).packages.map((p: J) => p.code)).toEqual(['STARTER', 'GROWTH', 'BUSINESS', 'SCALE', 'ENTERPRISE'])
       const a1 = await addAgent(db, owner, 'ORDER_MANAGER', '101')
       await addAgent(db, owner, 'ORDER_MANAGER')
       await addAgent(db, owner, 'ORDER_MANAGER')

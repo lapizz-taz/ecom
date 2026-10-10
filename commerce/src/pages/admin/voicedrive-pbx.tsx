@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePhone } from '@/features/voicedrive/phone-context'
 import { SuperAdminTab } from '@/features/voicedrive/super-admin-tab'
 import { rangeFor, type DateRange } from '@/lib/dates'
-import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
+import { formatDateTime, formatNumber, formatShortDate, timeAgo } from '@/lib/format'
 import {
   batch, CALL_STATUS, durationLabel, LINE_PROBLEM, OUTCOMES, pbx, REJECT_REASON,
   type Agent, type CallRecord, type Overview, type Package, type PackageList, type RingGroup,
@@ -65,26 +65,23 @@ export default function VoiceDrivePbxPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={<>VoiceDrive PBX <span className="text-base font-normal text-muted-foreground">· ভয়েসড্রাইভ পিবিএক্স</span></>}
-        description="Call customers and take calls from the browser. Outgoing calls use a prepaid balance; incoming calls are free." />
-      <HeaderStats ov={ov} />
+      <PageHeader title="VoiceDrive PBX" description="Browser phone for your team. Outgoing calls use a prepaid balance; incoming calls are free." />
+      <StatusStrip ov={ov} />
       {ov.maintenance.state !== 'none' && (
-        <Card className="border-amber-300 bg-amber-50/60 dark:bg-amber-950/20">
-          <CardContent className="flex items-start gap-2 py-3 text-sm">
-            <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
-            <p>{ov.maintenance.state === 'active' ? 'VoiceDrive is under maintenance — calls are paused' : 'Maintenance is scheduled'}
-              {ov.maintenance.startsAt ? ` from ${formatDateTime(ov.maintenance.startsAt)}` : ''}{ov.maintenance.until ? ` until ${formatDateTime(ov.maintenance.until)}` : ''}.
-              {ov.maintenance.message ? ` ${ov.maintenance.message}` : ''}</p>
-          </CardContent>
-        </Card>
+        <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-sm dark:bg-amber-950/20">
+          <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <span>{ov.maintenance.state === 'active' ? 'Under maintenance — calls are paused' : 'Maintenance is scheduled'}
+            {ov.maintenance.startsAt ? ` from ${formatDateTime(ov.maintenance.startsAt)}` : ''}{ov.maintenance.until ? ` until ${formatDateTime(ov.maintenance.until)}` : ''}.
+            {ov.maintenance.message ? ` ${ov.maintenance.message}` : ''}</span>
+        </p>
       )}
-      <HowItWorks ov={ov} />
+      {ov.lineStatus !== 'ACTIVE' && <SetupSteps ov={ov} />}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="package"><Wallet /> Package &amp; Recharge</TabsTrigger>
           {ov.canManage && <TabsTrigger value="agents"><Users /> Call Agents</TabsTrigger>}
-          {ov.canManage && <TabsTrigger value="groups"><Settings2 /> Call Group settings</TabsTrigger>}
+          {ov.canManage && <TabsTrigger value="groups"><Settings2 /> Call Groups</TabsTrigger>}
           <TabsTrigger value="setup"><Headset /> My Setup</TabsTrigger>
           <TabsTrigger value="missed"><PhoneMissed /> Missed &amp; Callback</TabsTrigger>
           {ov.canManage && <TabsTrigger value="reports"><BarChart3 /> Reports</TabsTrigger>}
@@ -102,56 +99,48 @@ export default function VoiceDrivePbxPage() {
   )
 }
 
-function HeaderStats({ ov }: { ov: Overview }) {
+/** Line, balance, seats and channels in one quiet row. */
+function StatusStrip({ ov }: { ov: Overview }) {
   const active = ov.lineStatus === 'ACTIVE'
+  const items: Array<{ label: string; value: React.ReactNode; hint?: string }> = [
+    { label: 'Line', value: <span className="flex items-center gap-1.5"><span className={`size-2 rounded-full ${active ? 'bg-emerald-500' : 'bg-amber-500'}`} />{active ? 'Active' : 'Not active'}</span>,
+      hint: ov.business.did ?? ov.business.name },
+    { label: 'Balance', value: tk(ov.balanceTk), hint: 'Outgoing calls' },
+    { label: 'Agents', value: `${ov.agentsUsed} / ${ov.limits.agents}`, hint: 'Active / paid seats' },
+    { label: 'Calls at once', value: `${ov.channelsInUse} / ${ov.limits.channels}`,
+      hint: ov.limits.active ? `${ov.limits.packageName} · until ${formatShortDate(ov.limits.expiresAt)}` : 'No package' },
+  ]
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatCard label="Line status · লাইন" icon={<PhoneCall className="size-4" />} tone={active ? 'positive' : 'warning'}
-        value={active ? 'Active' : 'Not active'} hint={ov.business.did ? `${ov.business.did} · ${ov.business.name}` : ov.business.name} />
-      <StatCard label="Outgoing balance · ব্যালেন্স" icon={<Wallet className="size-4" />} tone={ov.balanceTk > 20 ? 'default' : 'warning'}
-        value={tk(ov.balanceTk)} hint="Prepaid, for outgoing calls" />
-      <StatCard label="Agents · এজেন্ট" icon={<Users className="size-4" />}
-        value={`${ov.agentsUsed} / ${ov.limits.agents}`} hint="Active agents / paid seats" />
-      <StatCard label="Concurrent calls · একসাথে কল" icon={<Headset className="size-4" />}
-        value={`${ov.channelsInUse} / ${ov.limits.channels}`} hint={ov.limits.active ? `${ov.limits.packageName} until ${formatDateTime(ov.limits.expiresAt)}` : 'No active package'} />
+    <div className="grid grid-cols-2 divide-border rounded-xl border bg-card sm:grid-cols-4 sm:divide-x">
+      {items.map((i) => (
+        <div key={i.label} className="min-w-0 px-4 py-3">
+          <p className="text-xs text-muted-foreground">{i.label}</p>
+          <p className="text-lg font-semibold tabular-nums">{i.value}</p>
+          {i.hint && <p className="truncate text-xs text-muted-foreground">{i.hint}</p>}
+        </div>
+      ))}
     </div>
   )
 }
 
-function HowItWorks({ ov }: { ov: Overview }) {
+/** Shown only until the line works: what is still missing, in order. */
+function SetupSteps({ ov }: { ov: Overview }) {
   const steps = [
-    { done: ov.business.pbxEnabled && ov.business.bridgeReady && !!ov.business.did, title: 'Super Admin readies the PBX', bn: 'সুপার অ্যাডমিন পিবিএক্স চালু করেন',
-      text: 'Connects your IPTSP number (DID) and SIP trunk, and confirms the gateway is ready.' },
-    { done: ov.limits.active, title: 'Business buys a package', bn: 'ব্যবসা প্যাকেজ কেনে',
-      text: 'Choose agents and concurrent calls, pay with bKash, and recharge the outgoing balance (min 100 tk).' },
-    { done: !!ov.me?.seated, title: 'Users place calls', bn: 'ইউজার কল করেন',
-      text: 'Each agent starts the phone in My Setup and calls from the phone button or any order.' },
+    { done: ov.business.pbxEnabled && ov.business.bridgeReady && !!ov.business.did, title: 'Number connected', who: 'Super Admin' },
+    { done: ov.limits.active, title: 'Package active', who: 'Manager' },
+    { done: !!ov.me?.seated, title: 'You have an extension', who: 'Manager' },
   ]
   return (
-    <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-base">How this works · কীভাবে কাজ করে</CardTitle></CardHeader>
-      <CardContent>
-        <ol className="grid gap-3 md:grid-cols-3">
-          {steps.map((s, i) => (
-            <li key={s.title} className="flex gap-3 rounded-lg border p-3">
-              <span className={`flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${s.done ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
-                {s.done ? <CheckCircle2 className="size-4" /> : i + 1}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{s.title}</p>
-                <p className="text-xs text-muted-foreground">{s.bn}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{s.text}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-        {ov.lineProblems.length > 0 && (
-          <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
-            {ov.lineProblems.map((p) => <li key={p}>{LINE_PROBLEM[p]}</li>)}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border px-4 py-3 text-sm">
+      <span className="font-medium">Before calling:</span>
+      {steps.map((s, i) => (
+        <span key={s.title} className={`flex items-center gap-1.5 ${s.done ? 'text-muted-foreground line-through' : ''}`} title={`Done by the ${s.who}`}>
+          {s.done ? <CheckCircle2 className="size-4 text-emerald-600" /> : <span className="flex size-4 items-center justify-center rounded-full border text-[10px]">{i + 1}</span>}
+          {s.title}
+        </span>
+      ))}
+      {ov.lineProblems.length > 0 && <span className="w-full text-xs text-muted-foreground">{ov.lineProblems.map((p) => LINE_PROBLEM[p]).join(' · ')}</span>}
+    </div>
   )
 }
 
@@ -162,6 +151,7 @@ function PackageTab({ ov, list }: { ov: Overview; list: PackageList }) {
   const [extraAgents, setExtraAgents] = useState(0)
   const [extraChannels, setExtraChannels] = useState(0)
   const [amount, setAmount] = useState('500')
+  const [history, setHistory] = useState<'balance' | 'payments'>('balance')
   const billing = useQuery({ queryKey: ['vd-billing'], queryFn: () => pbx.billingHistory(), enabled: ov.canManage })
   const pay = useMutation({
     mutationFn: pbx.bkashStart,
@@ -172,70 +162,75 @@ function PackageTab({ ov, list }: { ov: Overview; list: PackageList }) {
   const amountNum = Number(amount)
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.3fr_1fr] [&>*]:min-w-0">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Monthly packages · মাসিক প্যাকেজ</CardTitle>
-          <CardDescription>A package sets how many agents can use phones and how many calls can run at once. It is separate from the call balance.</CardDescription>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Packages</CardTitle>
+          <CardDescription>Agents and calls at once, per month. Extra agent +{list.extraAgentTk} tk, extra channel +{list.extraChannelTk} tk.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {list.packages.map((p) => {
-            const current = ov.limits.packageCode === p.code
-            return (
-              <div key={p.id} className={`flex flex-col rounded-xl border p-4 ${current ? 'border-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20' : ''}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold">{p.name}</p>
-                  {current && <Badge variant="success">Current</Badge>}
-                </div>
-                <p className="mt-1 text-2xl font-semibold">{p.isCustom ? 'Custom' : `${formatNumber(p.monthlyPriceTk ?? 0)} tk`}<span className="text-sm font-normal text-muted-foreground">{p.isCustom ? '' : ' / month'}</span></p>
-                <p className="mt-1 text-sm text-muted-foreground">{p.isCustom ? 'Agents and channels to suit you' : `${p.concurrentChannels} concurrent calls · ${p.agentLimit} agents`}</p>
-                <div className="mt-auto pt-3">
-                  {p.isCustom
-                    ? <p className="text-xs text-muted-foreground">Ask the VoiceDrive team; it is set up by the Super Admin.</p>
-                    : <Button size="sm" variant={current ? 'outline' : 'default'} disabled={!ov.canManage} onClick={() => { setBuy(p); setMonths(1); setExtraAgents(0); setExtraChannels(0) }}>
-                        {current ? 'Renew / add' : 'Buy with bKash'}
-                      </Button>}
-                </div>
-              </div>
-            )
-          })}
+        <CardContent className="px-0">
+          <Table>
+            <TableHeader><TableRow><TableHead className="pl-6">Package</TableHead><TableHead className="text-right">Price / month</TableHead><TableHead className="text-right">Calls at once</TableHead><TableHead className="text-right">Agents</TableHead><TableHead className="pr-6" /></TableRow></TableHeader>
+            <TableBody>
+              {list.packages.map((p) => {
+                const current = ov.limits.packageCode === p.code
+                return (
+                  <TableRow key={p.id} className={current ? 'bg-emerald-500/5' : undefined}>
+                    <TableCell className="pl-6 font-medium">{p.name}{current && <Badge variant="success" className="ml-2">Current</Badge>}</TableCell>
+                    <TableCell className="text-right tabular-nums">{p.isCustom ? 'Custom' : `${formatNumber(p.monthlyPriceTk ?? 0)} tk`}</TableCell>
+                    <TableCell className="text-right tabular-nums">{p.concurrentChannels ?? '—'}</TableCell>
+                    <TableCell className="text-right tabular-nums">{p.agentLimit ?? '—'}</TableCell>
+                    <TableCell className="pr-6 text-right">
+                      {p.isCustom
+                        ? <span className="text-xs text-muted-foreground">Ask us</span>
+                        : <Button size="sm" variant={current ? 'outline' : 'ghost'} disabled={!ov.canManage} onClick={() => { setBuy(p); setMonths(1); setExtraAgents(0); setExtraChannels(0) }}>
+                            {current ? 'Renew' : 'Buy'}
+                          </Button>}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recharge outgoing balance · রিচার্জ</CardTitle>
-            <CardDescription>
-              Outgoing calls only: {list.ratePerMinTk.toFixed(2)} tk per 60 s, charged by the second, + {list.vatPercent}% VAT = {list.effectivePerMinTk.toFixed(2)} tk/min.
-              Incoming calls are free. Minimum recharge {list.minTopupTk} tk.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm">Balance now: <span className="font-semibold">{tk(ov.balanceTk)}</span> · about {formatNumber(Math.floor(ov.balanceTk / list.effectivePerMinTk))} minutes of calls</p>
-            <div className="flex flex-wrap gap-2">
-              {[100, 500, 1000, 2000].map((v) => <Button key={v} size="sm" variant={amountNum === v ? 'default' : 'outline'} onClick={() => setAmount(String(v))}>{v} tk</Button>)}
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Field label="Amount (tk)" htmlFor="vd-topup" className="w-40">
-                <Input id="vd-topup" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))} />
-              </Field>
-              <Button disabled={!ov.canManage || pay.isPending || !(amountNum >= list.minTopupTk && amountNum <= list.maxTopupTk)}
-                onClick={() => pay.mutate({ type: 'TOPUP', amount_tk: amountNum })}>
-                {pay.isPending ? <Spinner /> : <Wallet />} Recharge with bKash
-              </Button>
-            </div>
-            {!ov.canManage && <p className="text-xs text-muted-foreground">Only a manager of this business can recharge.</p>}
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Recharge</CardTitle>
+          <CardDescription>
+            Outgoing only: {list.effectivePerMinTk.toFixed(2)} tk/min incl. {list.vatPercent}% VAT, charged by the second. Minimum {list.minTopupTk} tk.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground"><span className="font-semibold text-foreground">{tk(ov.balanceTk)}</span> ≈ {formatNumber(Math.floor(ov.balanceTk / list.effectivePerMinTk))} min</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {[100, 500, 1000].map((v) => <Button key={v} size="sm" variant={amountNum === v ? 'default' : 'outline'} onClick={() => setAmount(String(v))}>{v}</Button>)}
+            <Input aria-label="Amount (tk)" className="h-8 w-24" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))} />
+            <Button size="sm" disabled={!ov.canManage || pay.isPending || !(amountNum >= list.minTopupTk && amountNum <= list.maxTopupTk)}
+              onClick={() => pay.mutate({ type: 'TOPUP', amount_tk: amountNum })}>
+              {pay.isPending ? <Spinner /> : <Wallet />} Pay with bKash
+            </Button>
+          </div>
+          {!ov.canManage && <p className="text-xs text-muted-foreground">Only a manager of this business can recharge.</p>}
+        </CardContent>
+      </Card>
 
-        {ov.canManage && (
-          <Card>
-            <CardHeader><CardTitle className="text-base">Payments · পেমেন্ট</CardTitle></CardHeader>
-            <CardContent className="overflow-x-auto">
-              {billing.isLoading ? <LoadingState /> : billing.error ? <ErrorState error={billing.error} /> : !billing.data?.payments.length ? (
-                <EmptyState title="No payments yet" />
-              ) : (
+      {ov.canManage && (
+        <Card className="xl:col-span-2">
+          <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-base">History</CardTitle>
+            <div className="flex rounded-md border p-0.5 text-xs">
+              {(['balance', 'payments'] as const).map((h) => (
+                <button key={h} type="button" onClick={() => setHistory(h)} className={`rounded px-2 py-1 ${history === h ? 'bg-muted font-medium' : 'text-muted-foreground'}`}>
+                  {h === 'balance' ? 'Balance' : 'Payments'}
+                </button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            {billing.isLoading ? <LoadingState /> : billing.error ? <ErrorState error={billing.error} /> : history === 'payments' ? (
+              !billing.data?.payments.length ? <EmptyState title="No payments yet" /> : (
                 <Table>
                   <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>For</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Status</TableHead><TableHead>bKash TrxID</TableHead></TableRow></TableHeader>
                   <TableBody>
@@ -250,36 +245,29 @@ function PackageTab({ ov, list }: { ov: Overview; list: PackageList }) {
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {ov.canManage && billing.data && billing.data.ledger.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Balance history · ব্যালেন্সের হিসাব</CardTitle><CardDescription>Every recharge and every charged call. Corrections are added as adjustments; nothing is deleted.</CardDescription></CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>What</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="text-right">Balance after</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {billing.data.ledger.map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell className="whitespace-nowrap">{formatDateTime(l.createdAt)}</TableCell>
-                    <TableCell>{l.kind === 'TOPUP' ? 'Recharge' : l.kind === 'CALL_CHARGE' ? 'Call' : 'Adjustment'} <span className="text-xs text-muted-foreground">{l.note}</span></TableCell>
-                    <TableCell className={`text-right tabular-nums ${l.amountTk < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{l.amountTk > 0 ? '+' : ''}{formatNumber(l.amountTk, 4)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatNumber(l.balanceAfterTk, 2)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              )
+            ) : !billing.data?.ledger.length ? <EmptyState title="No balance changes yet" description="Recharges and charged calls appear here. Corrections are added as adjustments; nothing is deleted." /> : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>What</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="text-right">Balance after</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {billing.data.ledger.map((l) => (
+                    <TableRow key={l.id}>
+                      <TableCell className="whitespace-nowrap">{formatDateTime(l.createdAt)}</TableCell>
+                      <TableCell>{l.kind === 'TOPUP' ? 'Recharge' : l.kind === 'CALL_CHARGE' ? 'Call' : 'Adjustment'} <span className="text-xs text-muted-foreground">{l.note}</span></TableCell>
+                      <TableCell className={`text-right tabular-nums ${l.amountTk < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{l.amountTk > 0 ? '+' : ''}{formatNumber(l.amountTk, 4)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatNumber(l.balanceAfterTk, 2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}
 
       <FormDialog open={!!buy} onOpenChange={(o) => !o && setBuy(null)} title={`Buy ${buy?.name ?? ''}`} submitLabel={`Pay ${formatNumber(price)} tk with bKash`}
         busy={pay.isPending} disabled={!buy || price <= 0}
-        description="You'll go to bKash to pay, then come back here. The package starts when bKash confirms the payment."
+        description="You'll pay on bKash and come back here. The package starts when bKash confirms the payment."
         onSubmit={() => buy && pay.mutate({ type: 'PACKAGE', package_id: buy.id, months, extra_agents: extraAgents, extra_channels: extraChannels })}>
         {buy && (
           <div className="grid gap-3 sm:grid-cols-3">
@@ -292,7 +280,7 @@ function PackageTab({ ov, list }: { ov: Overview; list: PackageList }) {
             <Field label={`Extra agents (+${list.extraAgentTk} tk/mo)`} htmlFor="vd-xa"><Input id="vd-xa" type="number" min={0} max={500} value={extraAgents} onChange={(e) => setExtraAgents(Math.max(0, Number(e.target.value) || 0))} /></Field>
             <Field label={`Extra channels (+${list.extraChannelTk} tk/mo)`} htmlFor="vd-xc"><Input id="vd-xc" type="number" min={0} max={200} value={extraChannels} onChange={(e) => setExtraChannels(Math.max(0, Number(e.target.value) || 0))} /></Field>
             <p className="text-sm sm:col-span-3">
-              {(buy.agentLimit ?? 0) + extraAgents} agents · {(buy.concurrentChannels ?? 0) + extraChannels} concurrent calls · {months} month{months > 1 ? 's' : ''}
+              {(buy.agentLimit ?? 0) + extraAgents} agents · {(buy.concurrentChannels ?? 0) + extraChannels} calls at once · {months} month{months > 1 ? 's' : ''}
               {ov.limits.active && ov.limits.packageCode !== buy.code ? ' · replaces your current package from today' : ov.limits.active ? ' · added after your current period' : ''}
             </p>
           </div>
@@ -325,7 +313,7 @@ function AgentsTab({ ov }: { ov: Overview }) {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle className="text-base">Call agents · কল এজেন্ট</CardTitle>
+          <CardTitle className="text-base">Call agents</CardTitle>
           <CardDescription>{data.agents.filter((a) => a.active).length} of {data.seats} paid seats used. Each agent gets an extension; their phone signs in with a fresh password every time.</CardDescription>
         </div>
         <Button size="sm" onClick={() => { setForm({ profile_id: '', extension: '', ring_group_id: '' }); setAdding(true) }} disabled={!data.staff.length}><Plus /> Add agent</Button>
@@ -423,7 +411,7 @@ function GroupsTab({ ov }: { ov: Overview }) {
       <Card className="xl:col-span-2">
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-base">Call groups · কল গ্রুপ</CardTitle>
+            <CardTitle className="text-base">Call groups</CardTitle>
             <CardDescription>Incoming calls ring the default group's available agents. Agents can belong to another group.</CardDescription>
           </div>
           <Button size="sm" onClick={() => setEdit({ name: '', strategy: 'RING_ALL', ringSeconds: 30, active: true })}><Plus /> New group</Button>
@@ -448,7 +436,7 @@ function GroupsTab({ ov }: { ov: Overview }) {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle className="text-base">Longest call · সর্বোচ্চ কল সময়</CardTitle><CardDescription>Outgoing and incoming calls are cut after this. 1–120 minutes.</CardDescription></CardHeader>
+        <CardHeader><CardTitle className="text-base">Longest call</CardTitle><CardDescription>Outgoing and incoming calls are cut after this. 1–120 minutes.</CardDescription></CardHeader>
         <CardContent className="flex items-end gap-2">
           <Field label="Minutes" htmlFor="vd-max" className="w-28"><Input id="vd-max" type="number" min={1} max={120} value={maxMinutes} onChange={(e) => setMaxMinutes(Number(e.target.value) || 1)} /></Field>
           <Button disabled={saveLimit.isPending || maxMinutes === ov.business.maxCallMinutes || maxMinutes < 1 || maxMinutes > 120} onClick={() => saveLimit.mutate()}>Save</Button>
@@ -490,7 +478,7 @@ function SetupTab({ ov }: { ov: Overview }) {
     <div className="grid gap-4 xl:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">My phone · আমার ফোন</CardTitle>
+          <CardTitle className="text-base">My phone</CardTitle>
           <CardDescription>Chrome or Edge with a headset works best. The phone stays on while this tab is open; you can move between pages.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -519,7 +507,7 @@ function SetupTab({ ov }: { ov: Overview }) {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle className="text-base">Can I receive calls? · ইনকামিং কল পাব?</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Can I receive calls?</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
           {eligibility.data?.eligible
             ? <p className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="size-4" /> Yes — incoming calls ring you while your phone is connected and set available.</p>
@@ -546,7 +534,7 @@ function MissedTab() {
   const items = missed.data?.items ?? []
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Missed calls · মিসড কল</CardTitle><CardDescription>Calls nobody answered, or that came while every channel was busy. Call back from here.</CardDescription></CardHeader>
+      <CardHeader><CardTitle className="text-base">Missed calls</CardTitle><CardDescription>Calls nobody answered, or that came while every channel was busy. Call back from here.</CardDescription></CardHeader>
       <CardContent className="overflow-x-auto">
         {!items.length ? <EmptyState icon={<PhoneMissed />} title="No missed calls" /> : (
           <Table>
@@ -590,7 +578,7 @@ function ReportsTab() {
           </div>
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
-              <CardHeader><CardTitle className="text-base">By agent · এজেন্ট অনুযায়ী</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">By agent</CardTitle></CardHeader>
               <CardContent className="overflow-x-auto">
                 <Table>
                   <TableHeader><TableRow><TableHead>Agent</TableHead><TableHead className="text-right">Out</TableHead><TableHead className="text-right">In answered</TableHead><TableHead className="text-right">Talk</TableHead><TableHead className="text-right">Charges</TableHead></TableRow></TableHeader>
@@ -609,7 +597,7 @@ function ReportsTab() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="text-base">By day · দিন অনুযায়ী</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">By day</CardTitle></CardHeader>
               <CardContent className="overflow-x-auto">
                 <Table>
                   <TableHeader><TableRow><TableHead>Day</TableHead><TableHead className="text-right">Calls</TableHead><TableHead className="text-right">Answered</TableHead><TableHead className="text-right">Missed</TableHead><TableHead className="text-right">Charges</TableHead></TableRow></TableHeader>
@@ -624,7 +612,7 @@ function ReportsTab() {
             </Card>
           </div>
           <Card>
-            <CardHeader><CardTitle className="text-base">Call log · কল লগ</CardTitle><CardDescription>Durations and charges come from the gateway, not the browser.</CardDescription></CardHeader>
+            <CardHeader><CardTitle className="text-base">Call log</CardTitle><CardDescription>Durations and charges come from the gateway, not the browser.</CardDescription></CardHeader>
             <CardContent className="overflow-x-auto">
               {!q.data!.recent.length ? <EmptyState icon={<PackageCheck />} title="No calls in this period" /> : (
                 <Table>

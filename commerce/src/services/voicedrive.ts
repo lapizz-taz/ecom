@@ -279,6 +279,8 @@ export const pbx = {
   getInboundCallerOrderDetail: (phone: string) => rpc<CallerOrderDetail | null>('pbx_get_inbound_caller_order_detail', { p_phone: phone }),
   resolveInboundCallerCourierRating: (phone: string) => rpc<CourierRating>('pbx_resolve_inbound_caller_courier_rating', { p_phone: phone }),
   getRecentMissedInboundCalls: (limit = 50) => rpc<{ items: CallRecord[] }>('pbx_get_recent_missed_inbound_calls', { p_limit: limit }),
+  /** My calls and the business's missed calls of the last 7 days (the phone bar's list). */
+  getMyRecentCalls: (limit = 30) => rpc<{ items: CallRecord[] }>('pbx_get_my_recent_calls', { p_limit: limit }),
 
   // telemetry (never used for billing)
   recordCallAttemptTrace: (callId: string | null, event: string, detail: Record<string, unknown> = {}) =>
@@ -330,7 +332,7 @@ export const pbxSuperAdmin = {
   rotateGatewayToken: () => invokeFunction<{ token: string }>('voicedrive', { action: 'rotateGatewayToken' }),
 }
 
-// ------------------------------------------------------------------ labels (English · বাংলা)
+// ------------------------------------------------------------------ labels
 export const LINE_PROBLEM: Record<LineProblem, string> = {
   NOT_ENABLED: 'PBX is not switched on for this business (Super Admin)',
   NO_NUMBER: 'No phone number (DID) or SIP trunk yet (Super Admin)',
@@ -357,26 +359,26 @@ export const REJECT_REASON: Record<string, string> = {
   UNKNOWN_NUMBER: 'Unknown business number',
 }
 
-export const CALL_STATUS: Record<CallStatus, { label: string; bn: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' }> = {
-  REQUESTED: { label: 'Dialling', bn: 'ডায়াল হচ্ছে', variant: 'info' },
-  RINGING: { label: 'Ringing', bn: 'রিং হচ্ছে', variant: 'info' },
-  ANSWERED: { label: 'In call', bn: 'কথা চলছে', variant: 'success' },
-  COMPLETED: { label: 'Completed', bn: 'সম্পন্ন', variant: 'success' },
-  NO_ANSWER: { label: 'No answer', bn: 'ধরেনি', variant: 'warning' },
-  BUSY: { label: 'Busy', bn: 'ব্যস্ত', variant: 'warning' },
-  FAILED: { label: 'Failed', bn: 'ব্যর্থ', variant: 'danger' },
-  CANCELLED: { label: 'Cancelled', bn: 'বাতিল', variant: 'neutral' },
-  REJECTED: { label: 'Not connected', bn: 'সংযোগ হয়নি', variant: 'danger' },
+export const CALL_STATUS: Record<CallStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' }> = {
+  REQUESTED: { label: 'Dialling', variant: 'info' },
+  RINGING: { label: 'Ringing', variant: 'info' },
+  ANSWERED: { label: 'In call', variant: 'success' },
+  COMPLETED: { label: 'Completed', variant: 'success' },
+  NO_ANSWER: { label: 'No answer', variant: 'warning' },
+  BUSY: { label: 'Busy', variant: 'warning' },
+  FAILED: { label: 'Failed', variant: 'danger' },
+  CANCELLED: { label: 'Cancelled', variant: 'neutral' },
+  REJECTED: { label: 'Not connected', variant: 'danger' },
 }
 
-export const OUTCOMES: Array<{ value: CallOutcome; label: string; bn: string }> = [
-  { value: 'CONFIRMED', label: 'Confirmed', bn: 'কনফার্ম' },
-  { value: 'CALL_BACK', label: 'Call back later', bn: 'পরে কল' },
-  { value: 'NOT_REACHABLE', label: 'Not reachable', bn: 'পাওয়া যায়নি' },
-  { value: 'WRONG_NUMBER', label: 'Wrong number', bn: 'ভুল নম্বর' },
-  { value: 'CANCEL_REQUEST', label: 'Wants to cancel', bn: 'বাতিল চায়' },
-  { value: 'RESOLVED', label: 'Question answered', bn: 'সমাধান হয়েছে' },
-  { value: 'OTHER', label: 'Other', bn: 'অন্যান্য' },
+export const OUTCOMES: Array<{ value: CallOutcome; label: string }> = [
+  { value: 'CONFIRMED', label: 'Confirmed' },
+  { value: 'CALL_BACK', label: 'Call back later' },
+  { value: 'NOT_REACHABLE', label: 'Not reachable' },
+  { value: 'WRONG_NUMBER', label: 'Wrong number' },
+  { value: 'CANCEL_REQUEST', label: 'Wants to cancel' },
+  { value: 'RESOLVED', label: 'Question answered' },
+  { value: 'OTHER', label: 'Other' },
 ]
 
 export const durationLabel = (s: number | null | undefined) =>

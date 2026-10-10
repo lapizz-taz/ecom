@@ -44,7 +44,7 @@ function GatewayCard({ data }: { data: AdminOverview }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><Server className="size-4" /> Gateway · গেটওয়ে</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base"><Server className="size-4" /> Gateway</CardTitle>
         <CardDescription>The Asterisk gateway checks in every 30 seconds. Deploy it with pbx-gateway/README.md.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
@@ -132,7 +132,7 @@ function PlatformSettings({ data }: { data: AdminOverview }) {
   const set = (p: Partial<typeof form>) => setForm({ ...form, ...p })
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Platform settings · প্ল্যাটফর্ম</CardTitle><CardDescription>Addresses the softphones use, the call rate, and maintenance windows.</CardDescription></CardHeader>
+      <CardHeader><CardTitle className="text-base">Platform settings</CardTitle><CardDescription>Addresses the softphones use, the call rate, and maintenance windows.</CardDescription></CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field label="SIP domain" htmlFor="vd-sipd" hint="e.g. pbx.example.com"><Input id="vd-sipd" value={form.sip_domain} onChange={(e) => set({ sip_domain: e.target.value })} /></Field>
         <Field label="WebSocket (WSS)" htmlFor="vd-wss" hint="wss://pbx.example.com:8089/ws"><Input id="vd-wss" value={form.wss_url} onChange={(e) => set({ wss_url: e.target.value })} /></Field>
@@ -199,7 +199,7 @@ function Businesses({ data }: { data: AdminOverview }) {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
-          <CardTitle className="flex items-center gap-2 text-base"><Building2 className="size-4" /> Businesses · ব্যবসা</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><Building2 className="size-4" /> Businesses</CardTitle>
           <CardDescription>Each business has its own IPTSP number (DID), SIP trunk, package and balance. Confirm the bridge after the gateway shows its trunk online.</CardDescription>
         </div>
         <Button size="sm" onClick={() => setNewName('')}><Plus /> Add business</Button>
