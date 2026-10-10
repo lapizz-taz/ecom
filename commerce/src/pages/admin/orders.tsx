@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { SuccessRateButton } from '@/features/orders/success-panel'
+import { ApprovedActionsMenu, BulkTagDialog, DuplicateCheckDialog, DuplicatesPanel } from '@/features/orders/approved-actions'
 import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
 import { EMPTY_FILTERS, type FilterValues, filtersFromValues, OrderFilterButton } from '@/features/orders/order-filter-panel'
 import { paidBadge } from '@/features/orders/order-source-card'
@@ -42,6 +43,8 @@ import {
   approveOrders, bulkTransition, exportOrders, fulfillmentSummary, listCheckoutLeads, listReviewStatuses, type OrderFilters, orderFilterOptions,
   queueCounts, searchOrders, setOrderTags, setWebOrderStatus, updateCheckoutLead,
 } from '@/services/orders'
+import { syncAllShipments } from '@/services/couriers'
+import type { DuplicateGroup } from '@/services/orders'
 import type { CheckoutLead, OrderListItem, OrderStatus, ReviewStatus } from '@/types/domain'
 
 type View = 'all' | 'web' | 'approved'
@@ -81,6 +84,10 @@ export function OrdersPage({ view }: { view: View }) {
   const [callDialog, setCallDialog] = useState<{ ids: string[]; code: string } | null>(null)
   const [bookOpen, setBookOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [tagOpen, setTagOpen] = useState(false)
+  const [dupOpen, setDupOpen] = useState(false)
+  const [dupResult, setDupResult] = useState<{ stages: string[]; groups: DuplicateGroup[]; orders: number } | null>(null)
+  const [selectingAll, setSelectingAll] = useState(false)
 
   const reviewStatuses = useQuery({ queryKey: ['review-statuses'], queryFn: () => listReviewStatuses(), staleTime: 60_000, enabled: view !== 'approved' })
   const counts = useQuery({ queryKey: ['orders', 'queue-counts'], queryFn: queueCounts, staleTime: 15_000, enabled: view !== 'all' })
@@ -165,6 +172,31 @@ export function OrdersPage({ view }: { view: View }) {
     mutationFn: ({ id, code }: { id: string; code: string }) => setWebOrderStatus([id], code),
     onSuccess: (r) => { reportBatch(r.updated, r.failed, 'updated'); refresh() },
   })
+
+  const refreshCourier = useMutation({
+    mutationFn: () => syncAllShipments(),
+    onSuccess: (r) => { toast.success(`Courier status checked for ${r.synced} parcel${r.synced === 1 ? '' : 's'}`); refresh() },
+    onError: (e) => toast.error((e as Error).message),
+  })
+  const selectAll = async () => {
+    setSelectingAll(true)
+    try {
+      const rows = await exportOrders(filters)
+      setSelected(new Set(rows.map((o) => o.id)))
+      if (rows.length < (orders.data?.total ?? 0)) toast.info(`Selected the first ${rows.length} orders`)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+  const printSelected = (kind: 'invoice' | 'label' | 'picking' | 'sheet') => {
+    const ids = [...selected]
+    if (ids.length > 200) toast.info('Only the first 200 orders are printed at once')
+    const list = ids.slice(0, 200).join(',')
+    if (kind === 'picking' || kind === 'sheet') navigate(`/admin/orders/sheets?kind=${kind}&ids=${list}`)
+    else navigate(`/admin/labels?ids=${list}${kind === 'invoice' ? '&kind=invoice' : ''}`)
+  }
 
   const chooseStatus = (ids: string[], code: string) => {
     const meta = statusMeta.get(code)
@@ -399,9 +431,22 @@ export function OrdersPage({ view }: { view: View }) {
                 {view === 'web' && <SelectItem value="success_rate:asc">Lowest success rate</SelectItem>}
               </SelectContent>
             </Select>
+            {view === 'approved' && (
+              <ApprovedActionsMenu
+                selected={selected.size} total={orders.data?.total ?? 0} selectingAll={selectingAll} onSelectAll={() => void selectAll()}
+                onClear={() => setSelected(new Set())} can={can} moves={stageMoves} onMove={setBulkTarget} onPrint={printSelected}
+                onBook={() => setBookOpen(true)} onRefreshCourier={() => refreshCourier.mutate()} refreshing={refreshCourier.isPending}
+                onTag={() => setTagOpen(true)} onExport={() => void exportCsv()} exporting={exporting} onDuplicates={() => setDupOpen(true)} />
+            )}
           </>
         )}
-        {selected.size > 0 && (
+        {selected.size > 0 && view === 'approved' && (
+          <span className="enter flex items-center gap-1 rounded-full border bg-card py-1 pr-1 pl-3 text-sm">
+            <span className="font-medium tabular-nums">{selected.size} selected</span>
+            <Button variant="ghost" size="sm" className="h-7 rounded-full" onClick={() => setSelected(new Set())}>Clear</Button>
+          </span>
+        )}
+        {selected.size > 0 && view !== 'approved' && (
           <div className="enter flex flex-wrap items-center gap-2 rounded-full border bg-card py-1 pr-1 pl-3">
             <span className="text-sm font-medium">{selected.size} selected</span>
             {view === 'web' ? (
@@ -445,6 +490,11 @@ export function OrdersPage({ view }: { view: View }) {
         )}
       </div>
 
+      {view === 'approved' && dupResult && (
+        <DuplicatesPanel result={dupResult} onClose={() => setDupResult(null)} onRecheck={() => setDupOpen(true)}
+          onSelect={(ids) => { setSelected(new Set(ids)); toast.success(`${ids.length} order${ids.length === 1 ? '' : 's'} selected — use Actions`) }} />
+      )}
+
       {showLeads ? <IncompleteCheckouts q={state.q} /> : (
         <DataTable
           columns={columns}
@@ -487,6 +537,13 @@ export function OrdersPage({ view }: { view: View }) {
       {callDialog && (
         <CallStatusDialog open ids={callDialog.ids} initial={callDialog.code} statuses={reviewStatuses.data ?? []}
           onOpenChange={(o) => !o && setCallDialog(null)} onDone={refresh} />
+      )}
+      {view === 'approved' && (
+        <>
+          <DuplicateCheckDialog open={dupOpen} onOpenChange={setDupOpen} onResult={setDupResult} />
+          <BulkTagDialog open={tagOpen} onOpenChange={setTagOpen} count={selected.size} known={(tagOptions.data?.tags ?? []).map((t) => t.name)}
+            onAdd={(tag) => tagOrders.mutate({ ids: [...selected], add: [tag] }, { onSuccess: () => toast.success(`Tagged ${selected.size} order(s) "${tag}"`) })} />
+        </>
       )}
       <BookCourierDialog open={bookOpen} onOpenChange={setBookOpen} orderIds={[...selected]}
         orderNumber={(id) => orders.data?.items.find((o) => o.id === id)?.order_number ?? id.slice(0, 8)}

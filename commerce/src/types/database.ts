@@ -5990,6 +5990,12 @@ export type Database = {
           duplicate_reason: string | null
         }
       }
+      admin_duplicate_orders: {
+        Args: {
+          p_stages: string[]
+        }
+        Returns: Json
+      }
       admin_fraud_queue: {
         Args: {
           p_statuses?: Database["public"]["Enums"]["order_status"][]

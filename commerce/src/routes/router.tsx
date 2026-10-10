@@ -63,6 +63,7 @@ export const router = createBrowserRouter([
       admin('orders/:id/invoice', () => import('@/pages/admin/order-print'), 'orders.view'),
       admin('orders/:id/packing-slip', () => import('@/pages/admin/order-print'), 'orders.view'),
       admin('labels', () => import('@/pages/admin/labels'), 'orders.fulfill'),
+      admin('orders/sheets', () => import('@/pages/admin/order-sheets'), 'orders.fulfill'),
       admin('scan', () => import('@/pages/admin/scan'), 'orders.fulfill'),
       admin('products', () => import('@/pages/admin/products'), 'products.view'),
       admin('products/new', () => import('@/pages/admin/product-edit'), 'products.manage'),

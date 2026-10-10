@@ -143,3 +143,33 @@ describe('Bulk product edit and bulk stock', () => {
       await expectError(db, `select public.inventory_bulk_adjust($1, '')`, [JSON.stringify([{ variant_id: a.variantIds[0], quantity: 1 }])], /note/)
     }))
 })
+
+describe('Check duplicates (Approved Orders)', () => {
+  it('groups approved orders by phone in the chosen stages and marks the same product twice', () =>
+    inTx(async (db) => {
+      const a = await createProduct(db, { price: 500, stock: 20 })
+      const b = await createProduct(db, { price: 300, stock: 20 })
+      const ph = phone()
+      const approve = async (variantId: string, to: string[] = ['CONFIRMED']) => {
+        const o = await createOrder(db, { phone: ph, items: [{ variantId, quantity: 1 }] })
+        await advanceOrder(db, o.id, to)
+        return o.id
+      }
+      const first = await approve(a.variantIds[0])
+      const second = await approve(a.variantIds[0], ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'])
+      const other = await createOrder(db, { phone: phone(), items: [{ variantId: b.variantIds[0], quantity: 1 }] })
+      await advanceOrder(db, other.id, ['CONFIRMED'])
+
+      await asUser(db, await createStaff(db, 'OWNER'))
+      const both = await value<Record<string, any>>(db, `select public.admin_duplicate_orders($1)`, [['PENDING', 'RTS', 'SHIPPED']])
+      const g = both.groups.find((x: any) => x.phone === ph)
+      expect(g).toMatchObject({ count: 2, same_items: true })
+      expect(g.orders.map((o: any) => o.id)).toEqual([first, second])
+      expect(both.groups.some((x: any) => x.orders.some((o: any) => o.id === other.id))).toBe(false)
+
+      // Only Pending chosen: one order left for this phone, so no group.
+      const pendingOnly = await value<Record<string, any>>(db, `select public.admin_duplicate_orders($1)`, [['PENDING']])
+      expect(pendingOnly.groups.some((x: any) => x.phone === ph)).toBe(false)
+      await expectError(db, `select public.admin_duplicate_orders($1)`, [[]], /choose at least one stage/)
+    }))
+})

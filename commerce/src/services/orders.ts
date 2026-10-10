@@ -467,3 +467,13 @@ export async function autoMergeScan(): Promise<{ merged: number }> {
   if (error) throw error
   return data as unknown as { merged: number }
 }
+
+export type DuplicateOrder = { id: string; order_number: string; stage: string; status: OrderStatus; total: number; created_at: string; district: string | null; items: string | null }
+export type DuplicateGroup = { phone: string; name: string | null; count: number; same_items: boolean; first_at: string; last_at: string; orders: DuplicateOrder[] }
+
+/** Customers with more than one approved order in the chosen stages (server-side check). */
+export async function findDuplicateOrders(stages: string[]) {
+  const { data, error } = await supabase.rpc('admin_duplicate_orders', { p_stages: stages })
+  if (error) throw error
+  return data as unknown as { groups: DuplicateGroup[]; orders: number }
+}
