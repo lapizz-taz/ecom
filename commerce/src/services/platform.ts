@@ -206,6 +206,9 @@ export const deleteRole = (id: string) => platformRpc('platform_role_delete', { 
 export const saveEmployee = (p: Record<string, unknown>) => platformRpc<{ pending_approval?: string }>('platform_staff_save', { p })
 export const setEmployeeActive = (userId: string, active: boolean, reason: string) =>
   platformRpc('platform_staff_set_active', { p_user: userId, p_active: active, p_reason: reason })
+/** Removes a switched-off employee for good (and their login, when it runs no business). */
+export const removeEmployee = (userId: string, reason: string) =>
+  platformRpc<{ removed: boolean; login_removed: boolean }>('platform_staff_remove', { p_user: userId, p_reason: reason })
 export function inviteEmployee(input: { email: string; full_name: string; role_id: string; title?: string; merchant_scope: 'ALL' | 'ASSIGNED'; merchant_ids: string[]; password?: string; reason?: string }) {
   return invokeFunction<{ employee: PlatformEmployee | { pending_approval: string }; invited: boolean }>('platform-admin', { action: 'invite_employee', ...input })
 }

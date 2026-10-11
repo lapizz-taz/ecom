@@ -9,8 +9,9 @@
 //               password they have now (its bcrypt hash), e.g. after switching
 //               to a new Clerk instance. New staff are created there by
 //               admin-users and platform-admin.
-//   removals  – carries out queued login removals (logins of a deleted
-//               business): blocked here, e-mail freed, deleted from Clerk.
+//   removals  – carries out queued login removals (a deleted business, a
+//               deleted person or a removed employee): blocked here, e-mail
+//               freed, deleted from Clerk.
 //
 // setup, import and removals are internal: only a scheduled-job caller (the
 // cron secret or the service role key) may use them.
@@ -46,7 +47,7 @@ type Admin = ReturnType<typeof adminClient>
 
 const isNotFound = (e: unknown) => e instanceof HttpError && (e.details as { code?: string } | undefined)?.code === 'resource_not_found'
 
-/** Removes queued logins of deleted businesses. Platform staff keep theirs. */
+/** Removes queued logins (of deleted businesses, people and employees). Current platform staff keep theirs. */
 async function processRemovals(admin: Admin, limit: number) {
   const { data: rows, error } = await admin.from('account_removals').select('id, user_id, attempts')
     .eq('status', 'PENDING').lt('attempts', 5).order('created_at').limit(limit)
@@ -55,7 +56,7 @@ async function processRemovals(admin: Admin, limit: number) {
   for (const row of rows ?? []) {
     try {
       const user = await loginById(admin, row.user_id)
-      const { data: staff } = await admin.from('platform_staff').select('user_id').eq('user_id', row.user_id).maybeSingle()
+      const { data: staff } = await admin.from('platform_staff').select('user_id').eq('user_id', row.user_id).is('removed_at', null).maybeSingle()
       const remove = !!user && !staff
       if (remove) {
         const clerkId = (user.app_metadata?.clerk_user_id as string | undefined) ??

@@ -21,7 +21,7 @@ import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import {
-  deleteRole, inviteEmployee, listEmployees, listMerchants, listRoles, type PlatformEmployee, type PlatformRole, saveEmployee, saveRole, setEmployeeActive,
+  deleteRole, inviteEmployee, listEmployees, listMerchants, listRoles, type PlatformEmployee, type PlatformRole, removeEmployee, saveEmployee, saveRole, setEmployeeActive,
 } from '@/services/platform'
 
 const ACTIONS = ['view', 'create', 'edit', 'delete', 'manage', 'export', 'approve'] as const
@@ -166,6 +166,7 @@ export default function EmployeesPage() {
   const [editing, setEditing] = useState<PlatformEmployee | null | 'new'>(null)
   const [roleEditing, setRoleEditing] = useState<PlatformRole | null | 'new'>(null)
   const [toggling, setToggling] = useState<PlatformEmployee | null>(null)
+  const [deleting, setDeleting] = useState<PlatformEmployee | null>(null)
   const [removing, setRemoving] = useState<PlatformRole | null>(null)
   const isSuper = Boolean(me?.role.is_super)
   const rows = useMemo(() => {
@@ -185,6 +186,9 @@ export default function EmployeesPage() {
         <div className="flex justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
           {can('employees', 'edit') && <Button size="sm" variant="ghost" onClick={() => setEditing(e)}>Edit</Button>}
           {can('employees', 'manage') && e.user_id !== me?.user_id && <Button size="sm" variant="ghost" onClick={() => setToggling(e)}>{e.is_active ? 'Deactivate' : 'Reactivate'}</Button>}
+          {can('employees', 'manage') && e.user_id !== me?.user_id && !e.is_active && (
+            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600" onClick={() => setDeleting(e)}>Remove</Button>
+          )}
         </div>
       ),
     },
@@ -234,6 +238,23 @@ export default function EmployeesPage() {
               void queryClient.invalidateQueries({ queryKey: ['platform-employees'] })
             } catch (e) {
               toast.error((e as Error).message)
+              throw e
+            }
+          }} />
+      )}
+      {deleting && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setDeleting(null)} title={`Remove ${deleting.full_name || deleting.email} for good?`}
+          description="They disappear from this list and cannot be switched on again. If this login runs no business, it is also blocked and removed from the sign-in service. Audit logs keep their name."
+          destructive reason reasonRequired reasonLabel="Why (kept in the platform log)" confirmLabel="Remove"
+          onConfirm={async (reason) => {
+            try {
+              await removeEmployee(deleting.user_id, reason.trim())
+              toast.success('Employee removed')
+              setDeleting(null)
+              void queryClient.invalidateQueries({ queryKey: ['platform-employees'] })
+              void queryClient.invalidateQueries({ queryKey: ['platform-roles'] })
+            } catch (e) {
+              toast.error((e as Error).message.replace(/^[A-Z_]+: /, ''))
               throw e
             }
           }} />

@@ -58,6 +58,7 @@ function SuperAdminEntry() {
 // Pages every address has: sign-in, sign-up, the admin and the Super Admin.
 const shared: RouteObject[] = [
   ...(SUPER_ADMIN_ENTRY ? [{ path: SUPER_ADMIN_ENTRY, element: <SuperAdminEntry /> }] : []),
+  { path: '/super-admin/login', errorElement: <RouteError />, ...page(() => import('@/pages/super-admin/login')) },
   {
     path: '/super-admin',
     ...page(() => import('@/layouts/super-admin-layout')),

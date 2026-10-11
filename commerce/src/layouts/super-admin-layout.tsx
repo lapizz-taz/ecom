@@ -149,7 +149,7 @@ function Panel() {
     return (
       <EmptyState className="h-screen" icon={<ShieldAlert />} title="Your Super Admin session has ended"
         description="For security, platform staff sign in again after a set time, or after being signed out by a security manager."
-        action={<Button onClick={() => signOut().then(() => navigate(`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`))}>Sign in again</Button>} />
+        action={<Button onClick={() => signOut().then(() => navigate(`/super-admin/login?next=${encodeURIComponent(location.pathname + location.search)}`))}>Sign in again</Button>} />
     )
   }
   if (!me) {
@@ -157,7 +157,7 @@ function Panel() {
       <EmptyState className="h-screen" icon={<ShieldAlert />} title="This account is not on the platform team"
         description="The Super Admin panel is for the people who run the platform."
         action={<div className="flex gap-2">{isStaff && <Button asChild variant="outline"><Link to="/admin">Open your business</Link></Button>}
-          <Button onClick={() => signOut().then(() => navigate('/admin/login'))}>Sign out</Button></div>} />
+          <Button onClick={() => signOut().then(() => navigate('/super-admin/login'))}>Sign out</Button></div>} />
     )
   }
 
@@ -221,7 +221,7 @@ function Panel() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {me.merchant_staff && <DropdownMenuItem onClick={() => navigate('/admin')}><ArrowLeftRight /> Open my business</DropdownMenuItem>}
-                <DropdownMenuItem onClick={() => signOut().then(() => navigate('/admin/login'))}><LogOut /> Sign out</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => signOut().then(() => navigate('/super-admin/login'))}><LogOut /> Sign out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -251,7 +251,7 @@ export default function SuperAdminLayout() {
   // Not entered through the secret address on this device: look like any missing page.
   if (!superAdminUnlocked()) return <MarketingNotFound />
   if (loading) return <BrandLoader label="Loading the Super Admin…" />
-  if (!session) return <Navigate to={`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  if (!session) return <Navigate to={`/super-admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   return (
     <PlatformProvider>
       <Panel />
