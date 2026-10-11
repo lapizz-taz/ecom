@@ -7090,6 +7090,53 @@ export type Database = {
           },
         ]
       }
+      platform_cost_entries: {
+        Row: {
+          id: number
+          month: string
+          category: string
+          amount: number
+          currency: string
+          note: string
+          corrects: number | null
+          recorded_by: string | null
+          recorded_by_email: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          month: string
+          category: string
+          amount: number
+          currency?: string
+          note: string
+          corrects?: number | null
+          recorded_by?: string | null
+          recorded_by_email?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          month?: string
+          category?: string
+          amount?: number
+          currency?: string
+          note?: string
+          corrects?: number | null
+          recorded_by?: string | null
+          recorded_by_email?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_cost_entries_corrects_fkey"
+            columns: ["corrects"]
+            isOneToOne: false
+            referencedRelation: "platform_cost_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_credentials: {
         Row: {
           key: string
@@ -12827,6 +12874,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      platform_business_report: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
       platform_can: {
         Args: {
           p_module: string
@@ -12847,6 +12901,26 @@ export type Database = {
         Args: {
           p_version: number
           p_reason: string
+        }
+        Returns: Json
+      }
+      platform_cost_assumptions_save: {
+        Args: {
+          p: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_cost_entries_list: {
+        Args: {
+          p_from?: string
+          p_to?: string
+        }
+        Returns: Json
+      }
+      platform_cost_entry_add: {
+        Args: {
+          p: Json
         }
         Returns: Json
       }
@@ -12955,6 +13029,12 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_merchant_health: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
       platform_merchant_note_add: {
         Args: {
           p_merchant: string
@@ -13017,6 +13097,13 @@ export type Database = {
         Returns: number
       }
       platform_overview: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      platform_overview_business: {
         Args: {
           p_from: string
           p_to: string
@@ -13239,6 +13326,13 @@ export type Database = {
           p?: Json
           p_limit?: number
           p_offset?: number
+        }
+        Returns: Json
+      }
+      platform_usage_overview: {
+        Args: {
+          p_from: string
+          p_to: string
         }
         Returns: Json
       }

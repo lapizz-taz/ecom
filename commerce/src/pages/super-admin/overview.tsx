@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, LifeBuoy, MessageSquare, PhoneCall, ShoppingBag, Store, Truck, UserPlus } from 'lucide-react'
+import { AlertTriangle, CreditCard, LifeBuoy, MessageSquare, PhoneCall, ShoppingBag, Store, Truck, UserPlus, Wallet } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
 import { PageHeader } from '@/components/common/page-header'
@@ -7,24 +7,23 @@ import { StatCard } from '@/components/common/stat-card'
 import { CardsSkeleton, ErrorState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Kind } from '@/features/platform/kind-badge'
 import { usePlatform } from '@/features/platform/platform-context'
 import { useUrlState } from '@/hooks/use-url-state'
 import { rangeFor } from '@/lib/dates'
 import { formatMoney, formatNumber, formatShortDate, timeAgo } from '@/lib/format'
+import { overviewBusiness } from '@/services/analytics'
 import { platformOverview } from '@/services/platform'
 
-/** Labels every figure as recorded, estimated or calculated, so they are never mixed up. */
-function Kind({ kind }: { kind: 'actual' | 'estimate' | 'calculated' }) {
-  const map = { actual: ['Recorded', 'success'], estimate: ['Estimate', 'warning'], calculated: ['Calculated', 'info'] } as const
-  return <Badge variant={map[kind][1]} className="text-[10px]">{map[kind][0]}</Badge>
-}
 
 export default function PlatformOverviewPage() {
   const initial = rangeFor('30d')
   const [range, setRange] = useUrlState({ from: initial.from, to: initial.to })
   const { can } = usePlatform()
   const overview = useQuery({ queryKey: ['platform-overview', range.from, range.to], queryFn: () => platformOverview(range.from, range.to) })
+  const business = useQuery({ queryKey: ['platform-overview-business', range.from, range.to], queryFn: () => overviewBusiness(range.from, range.to) })
   const o = overview.data
+  const b = business.data
   const status = o?.merchants.by_status ?? {}
   const gatewaySeen = o?.pbx.gateway_seen_at ? Date.now() - new Date(o.pbx.gateway_seen_at).getTime() < 5 * 60_000 : false
 
@@ -51,6 +50,31 @@ export default function PlatformOverviewPage() {
               tone={o.integrations.errors ? 'negative' : 'positive'} to={can('health') ? '/super-admin/health' : undefined}
               hint={`${formatNumber(o.integrations.webhook_errors)} webhook · ${formatNumber(o.integrations.failed_jobs)} failed store jobs · ${formatNumber(o.courier.webhook_failures)} courier webhooks`} />
           </div>
+
+          {b && (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {b.billing && <>
+                <StatCard label="MRR" value={formatMoney(b.billing.mrr)} icon={<CreditCard />} to={can('subscriptions') ? '/super-admin/usage?tab=revenue' : undefined}
+                  hint={<span className="flex items-center gap-1"><Kind kind="calculated" /> {formatNumber(b.billing.active)} active · {formatNumber(b.billing.trialing)} on trial</span>} />
+                <StatCard label="Money received" value={formatMoney(b.billing.revenue_in_range)}
+                  hint={<span className="flex items-center gap-1"><Kind kind="actual" /> {formatMoney(b.billing.subscription_revenue_in_range)} from plans</span>} />
+                <StatCard label="Needs billing attention" value={formatNumber(b.billing.past_due + b.billing.overdue_invoices)} tone={b.billing.past_due + b.billing.overdue_invoices ? 'warning' : 'default'}
+                  to={can('subscriptions') ? '/super-admin/subscriptions' : undefined}
+                  hint={`${b.billing.past_due} past due · ${b.billing.overdue_invoices} overdue invoices · ${b.billing.failed_payments} failed payments`} />
+                <StatCard label="Trials ending in 7 days" value={formatNumber(b.billing.trials_ending_7d)}
+                  hint={`${b.billing.cancelling} cancelling · ${b.billing.cancelled_in_range} ended in range`} />
+              </>}
+              <StatCard label="Credits left (merchants)" value={formatNumber(b.credits.sms_outstanding)} icon={<Wallet />} to={can('credits') ? '/super-admin/credits' : undefined}
+                hint={`SMS credits · ${formatNumber(b.credits.courier_outstanding)} courier credits`} />
+              <StatCard label="Metered BD Courier lookups" value={formatNumber(b.metered.bd_lookups)} icon={<Truck />} to={can('bd_courier') ? '/super-admin/bd-courier?tab=usage' : undefined}
+                tone={b.services.bd_courier_connected ? 'default' : 'negative'}
+                hint={b.services.bd_courier_connected ? `${b.metered.bd_failed} failed · ${b.metered.bd_refused} refused by policy` : 'Company account not connected'} />
+              <StatCard label="Provider costs" value={formatMoney(b.metered.provider_cost_reported)}
+                hint={<span className="flex items-center gap-1"><Kind kind="actual" /> + {b.metered.provider_cost_estimated == null ? 'unknown' : formatMoney(b.metered.provider_cost_estimated)} <Kind kind="estimate" /></span>} />
+              <StatCard label="Support tickets" value={formatNumber(b.support.open)} icon={<LifeBuoy />} to={can('support') ? '/super-admin/support' : undefined}
+                tone={b.support.overdue ? 'negative' : 'default'} hint={`${b.support.overdue} overdue · ${b.support.urgent} urgent`} />
+            </div>
+          )}
 
           <div className="grid gap-3 lg:grid-cols-3">
             <Card className="lg:col-span-2">
@@ -100,8 +124,29 @@ export default function PlatformOverviewPage() {
               </CardContent>
             </Card>
           </div>
+          {b && b.growth.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">Growth and retention, last 6 months <Kind kind="actual" /></CardTitle>
+                <CardDescription>New merchants, merchants who took orders, and paid subscriptions that ended (demo merchants left out).</CardDescription>
+              </CardHeader>
+              <CardContent className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={b.growth} margin={{ left: -20, right: 4 }}>
+                    <CartesianGrid vertical={false} strokeOpacity={0.1} />
+                    <XAxis dataKey="month" tickFormatter={(d) => String(d).slice(0, 7)} fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ background: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} cursor={{ fill: 'var(--muted)', opacity: 0.4 }} />
+                    <Bar dataKey="active" name="Took orders" fill="#a1a1aa" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="new" name="New" fill="#52525b" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="churned" name="Churned" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
           <p className="text-xs text-muted-foreground">
-            Range {o.range.from} – {o.range.to}. Subscription revenue, credits, incidents and cost estimates appear here once those modules hold data.
+            Range {o.range.from} – {o.range.to}. Recorded figures come straight from the records; calculated ones are arithmetic on them; estimates use the cost assumptions in Usage &amp; Analytics.
           </p>
         </>
       )}
