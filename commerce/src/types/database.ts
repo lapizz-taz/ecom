@@ -6945,6 +6945,158 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_announcement_deliveries: {
+        Row: {
+          announcement_id: string
+          merchant_id: string
+          status: string
+          delivered_at: string
+          first_read_at: string | null
+          readers: number
+        }
+        Insert: {
+          announcement_id: string
+          merchant_id: string
+          status: string
+          delivered_at?: string
+          first_read_at?: string | null
+          readers?: number
+        }
+        Update: {
+          announcement_id?: string
+          merchant_id?: string
+          status?: string
+          delivered_at?: string
+          first_read_at?: string | null
+          readers?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_announcement_deliveries_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "platform_announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_announcement_deliveries_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcement_reads: {
+        Row: {
+          announcement_id: string
+          profile_id: string
+          merchant_id: string
+          read_at: string
+        }
+        Insert: {
+          announcement_id: string
+          profile_id: string
+          merchant_id: string
+          read_at?: string
+        }
+        Update: {
+          announcement_id?: string
+          profile_id?: string
+          merchant_id?: string
+          read_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_announcement_reads_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "platform_announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_announcement_reads_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcements: {
+        Row: {
+          id: string
+          number: number
+          kind: string
+          severity: string
+          title: string
+          body: string
+          link: string | null
+          audience: Json
+          status: string
+          publish_at: string | null
+          expires_at: string | null
+          sent_at: string | null
+          recipients: number | null
+          source: string
+          incident_id: string | null
+          rule_id: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          number?: number
+          kind: string
+          severity?: string
+          title: string
+          body: string
+          link?: string | null
+          audience?: Json
+          status?: string
+          publish_at?: string | null
+          expires_at?: string | null
+          sent_at?: string | null
+          recipients?: number | null
+          source?: string
+          incident_id?: string | null
+          rule_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          number?: number
+          kind?: string
+          severity?: string
+          title?: string
+          body?: string
+          link?: string | null
+          audience?: Json
+          status?: string
+          publish_at?: string | null
+          expires_at?: string | null
+          sent_at?: string | null
+          recipients?: number | null
+          source?: string
+          incident_id?: string | null
+          rule_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_announcements_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "platform_incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_approvals: {
         Row: {
           id: string
@@ -7076,6 +7228,120 @@ export type Database = {
           },
         ]
       }
+      platform_automation_rules: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          trigger: string
+          conditions: Json
+          actions: Json
+          enabled: boolean
+          cooldown_minutes: number
+          max_actions_per_run: number
+          archived_at: string | null
+          last_run_at: string | null
+          last_result: Json | null
+          created_by: string | null
+          created_at: string
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          trigger: string
+          conditions?: Json
+          actions?: Json
+          enabled?: boolean
+          cooldown_minutes?: number
+          max_actions_per_run?: number
+          archived_at?: string | null
+          last_run_at?: string | null
+          last_result?: Json | null
+          created_by?: string | null
+          created_at?: string
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          trigger?: string
+          conditions?: Json
+          actions?: Json
+          enabled?: boolean
+          cooldown_minutes?: number
+          max_actions_per_run?: number
+          archived_at?: string | null
+          last_run_at?: string | null
+          last_result?: Json | null
+          created_by?: string | null
+          created_at?: string
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_automation_runs: {
+        Row: {
+          id: number
+          rule_id: string
+          subject_key: string
+          merchant_id: string | null
+          title: string | null
+          status: string
+          actions: Json
+          error: string | null
+          manual: boolean
+          actor_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          rule_id: string
+          subject_key: string
+          merchant_id?: string | null
+          title?: string | null
+          status: string
+          actions?: Json
+          error?: string | null
+          manual?: boolean
+          actor_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          rule_id?: string
+          subject_key?: string
+          merchant_id?: string | null
+          title?: string | null
+          status?: string
+          actions?: Json
+          error?: string | null
+          manual?: boolean
+          actor_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_automation_runs_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_automation_runs_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "platform_automation_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_cost_entries: {
         Row: {
           id: number
@@ -7145,6 +7411,143 @@ export type Database = {
           secret_id?: string
           hint?: string | null
           updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_incident_merchants: {
+        Row: {
+          incident_id: string
+          merchant_id: string
+        }
+        Insert: {
+          incident_id: string
+          merchant_id: string
+        }
+        Update: {
+          incident_id?: string
+          merchant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_incident_merchants_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "platform_incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_incident_merchants_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_incident_updates: {
+        Row: {
+          id: number
+          incident_id: string
+          kind: string
+          body: string | null
+          data: Json
+          actor_id: string | null
+          actor_email: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          incident_id: string
+          kind: string
+          body?: string | null
+          data?: Json
+          actor_id?: string | null
+          actor_email?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          incident_id?: string
+          kind?: string
+          body?: string | null
+          data?: Json
+          actor_id?: string | null
+          actor_email?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_incident_updates_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "platform_incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_incidents: {
+        Row: {
+          id: string
+          number: number
+          title: string
+          description: string | null
+          severity: string
+          status: string
+          integration: string | null
+          mark_unavailable: boolean
+          scope: string
+          assigned_to: string | null
+          source: string
+          rule_id: string | null
+          dedupe_key: string | null
+          started_at: string
+          resolved_at: string | null
+          resolution: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          number?: number
+          title: string
+          description?: string | null
+          severity: string
+          status?: string
+          integration?: string | null
+          mark_unavailable?: boolean
+          scope?: string
+          assigned_to?: string | null
+          source?: string
+          rule_id?: string | null
+          dedupe_key?: string | null
+          started_at?: string
+          resolved_at?: string | null
+          resolution?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          number?: number
+          title?: string
+          description?: string | null
+          severity?: string
+          status?: string
+          integration?: string | null
+          mark_unavailable?: boolean
+          scope?: string
+          assigned_to?: string | null
+          source?: string
+          rule_id?: string | null
+          dedupe_key?: string | null
+          started_at?: string
+          resolved_at?: string | null
+          resolution?: string | null
+          created_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -10034,6 +10437,10 @@ export type Database = {
       }
     }
     Functions: {
+      _announcement_optional_kinds: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
       _billing_interval: {
         Args: {
           p_interval: string
@@ -10066,6 +10473,10 @@ export type Database = {
           p_ts: string
         }
         Returns: string
+      }
+      _platform_automation_catalog: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       _platform_support_session_info: {
         Args: Record<PropertyKey, never>
@@ -11477,6 +11888,18 @@ export type Database = {
           merchant_id: string
         }
       }
+      announcement_mark_read: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      announcement_preferences_save: {
+        Args: {
+          p_muted: string[]
+        }
+        Returns: Json
+      }
       apply_fraud_decision: {
         Args: {
           p_order_id: string
@@ -12467,6 +12890,10 @@ export type Database = {
         }
         Returns: Json
       }
+      my_announcements: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       my_credits: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -12827,6 +13254,46 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_announcement_cancel: {
+        Args: {
+          p_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_announcement_get: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
+      platform_announcement_preview: {
+        Args: {
+          p_audience: Json
+          p_kind?: string
+        }
+        Returns: Json
+      }
+      platform_announcement_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_announcement_send: {
+        Args: {
+          p_id: string
+          p_expected: number
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_announcements_list: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
       platform_approval_decide: {
         Args: {
           p_id: string
@@ -12846,6 +13313,43 @@ export type Database = {
           p_filters?: Json
           p_limit?: number
           p_offset?: number
+        }
+        Returns: Json
+      }
+      platform_automation_rule_archive: {
+        Args: {
+          p_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_automation_rule_save: {
+        Args: {
+          p: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_automation_rules_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_automation_run: {
+        Args: {
+          p_rule?: string
+        }
+        Returns: Json
+      }
+      platform_automation_runs_list: {
+        Args: {
+          p_rule?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_automation_test: {
+        Args: {
+          p: Json
         }
         Returns: Json
       }
@@ -12958,6 +13462,50 @@ export type Database = {
         Args: {
           p_code: string
           p: Json
+        }
+        Returns: Json
+      }
+      platform_health: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_health_retry: {
+        Args: {
+          p_kind: string
+          p_preview: boolean
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_incident_create: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_incident_get: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
+      platform_incident_note: {
+        Args: {
+          p_id: string
+          p_body: string
+        }
+        Returns: Json
+      }
+      platform_incident_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_incidents_list: {
+        Args: {
+          p?: Json
         }
         Returns: Json
       }
@@ -13363,6 +13911,21 @@ export type Database = {
           p_reason?: string
         }
         Returns: Json
+      }
+      platform_system_logs: {
+        Args: {
+          p?: Json
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      platform_system_logs_resolve: {
+        Args: {
+          p_ids: number[]
+          p_note?: string
+        }
+        Returns: number
       }
       platform_ticket_create: {
         Args: {

@@ -54,7 +54,7 @@ export const ENTITLEMENT: Record<EntitlementState, { label: string; variant: 'su
   DISABLED_FOR_MERCHANT: { label: 'Off by admin', variant: 'danger', explain: 'Switched off for this merchant by the platform team' },
   NOT_IN_PLAN: { label: 'Not in plan', variant: 'neutral', explain: 'The current plan does not include it' },
   BETA_NOT_ENROLLED: { label: 'Early access', variant: 'violet', explain: 'In early access; not opened to this merchant' },
-  UNAVAILABLE: { label: 'Connection failing', variant: 'warning', explain: 'Allowed, but the connection it needs is reporting errors' },
+  UNAVAILABLE: { label: 'Temporarily unavailable', variant: 'warning', explain: 'Allowed, but the connection it needs is reporting errors or the platform team reported an outage' },
 }
 
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'PAUSED' | 'CANCELLED' | 'EXPIRED'

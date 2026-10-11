@@ -22,6 +22,7 @@ import { CommandPalette } from '@/features/shell/command-palette'
 import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
 import { type ShellAction, SidebarNav } from '@/features/shell/sidebar'
 import { ContactDialog, HelpDialog, ReportIssueDialog } from '@/features/shell/support-dialogs'
+import { AnnouncementBanner, AnnouncementsButton } from '@/features/shell/platform-announcements'
 import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -307,6 +308,7 @@ export default function AdminLayout() {
             {can('orders.create') && (
               <Button size="icon" variant="ghost" asChild className="md:hidden" aria-label="New order"><Link to="/admin/orders/new"><Plus /></Link></Button>
             )}
+            <AnnouncementsButton />
             <WhatsNew />
             {can('orders.view') && (
               <Button variant="ghost" size="icon" className="relative" aria-label={alerts.unseen ? `${alerts.unseen} new orders` : 'New orders'}
@@ -351,6 +353,7 @@ export default function AdminLayout() {
             </DropdownMenu>
           </div>
         </header>
+        <AnnouncementBanner />
         <main className="print-area w-full min-w-0 flex-1 p-3 sm:px-5 sm:py-5">
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">

@@ -12,6 +12,7 @@
 //   sms_connect / sms_disconnect / sms_balance / sms_send_test     (SMS Management)
 //   gateway_connect / gateway_disconnect                           (payments merchants make to the platform)
 //   pbx_trunk_secret / pbx_turn_secret / pbx_gateway_token          (PBX Setup: the shared VoiceDrive gateway)
+//   health                                                          (System Health: this runtime, its database and auth access, settings present)
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { env } from '../_shared/env.ts'
@@ -101,6 +102,7 @@ const schema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('pbx_turn_secret'), secret: z.string().min(16, 'Use at least 16 characters').max(200) }),
   z.object({ action: z.literal('pbx_gateway_token') }),
+  z.object({ action: z.literal('health') }),
 ])
 
 // VoiceDrive gateway secrets are the platform's: one gateway serves every merchant.
@@ -123,6 +125,21 @@ async function ensureLogin(admin: SupabaseClient, who: { email: string; full_nam
   if (result.error || !result.data.user) throw new HttpError(422, result.error?.message ?? 'Could not create the login', 'AUTH_ERROR')
   return { id: result.data.user.id, created: true }
 }
+
+/** Runs one check and times it; a failure is reported, never thrown. */
+async function timed(name: string, fn: () => Promise<string>) {
+  const started = performance.now()
+  try {
+    const detail = await fn()
+    return { name, ok: true, ms: Math.round(performance.now() - started), detail }
+  } catch (error) {
+    return { name, ok: false, ms: Math.round(performance.now() - started), detail: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+// Settings the edge functions read; only whether each is set is reported, never its value.
+const REQUIRED_SETTINGS = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CRON_SECRET'] as const
+const OPTIONAL_SETTINGS = ['PLATFORM_URL', 'STOREFRONT_URL', 'SENTRY_DSN'] as const
 
 const maskPhone = (to: string) => (to.length > 7 ? `${to.slice(0, -7)}••••${to.slice(-3)}` : to)
 
@@ -355,6 +372,24 @@ Deno.serve(
         await rpc(admin, 'platform_secret_store', { p_key: PBX_GATEWAY_KEY, p_value: { token_sha256: await sha256Hex(token) }, p_hint: hint, p_actor: user.id })
         await rpc(admin, 'platform_record_action', { p_actor: user.id, p_action: 'pbx.gateway_token_rotated', p_entity_type: 'platform_credential', p_entity_id: PBX_GATEWAY_KEY, p_result: 'SUCCESS', p_metadata: { hint } })
         return json(req, { token, hint }, 200, { 'Cache-Control': 'no-store' })
+      }
+      case 'health': {
+        await require(client, 'health', 'view')
+        const checks = await Promise.all([
+          timed('database', async () => {
+            const { count, error } = await admin.from('merchants').select('id', { head: true, count: 'exact' })
+            if (error) throw new Error(error.message)
+            return `Answered with the service key (${count ?? 0} merchants)`
+          }),
+          timed('auth', async () => {
+            const { error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
+            if (error) throw new Error(error.message)
+            return 'The admin API answered'
+          }),
+        ])
+        const has = (names: readonly string[]) => Object.fromEntries(names.map((name) => [name, Boolean(env(name))]))
+        return json(req, { at: new Date().toISOString(), runtime: { ok: true, version: Deno.version.deno }, checks,
+          settings: { required: has(REQUIRED_SETTINGS), optional: has(OPTIONAL_SETTINGS) } }, 200, { 'Cache-Control': 'no-store' })
       }
     }
   }),

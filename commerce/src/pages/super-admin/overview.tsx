@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CreditCard, LifeBuoy, MessageSquare, PhoneCall, ShoppingBag, Store, Truck, UserPlus, Wallet } from 'lucide-react'
+import { Link } from 'react-router'
+import { AlertTriangle, CreditCard, Siren, LifeBuoy, MessageSquare, PhoneCall, ShoppingBag, Store, Truck, UserPlus, Wallet } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
 import { PageHeader } from '@/components/common/page-header'
@@ -14,6 +15,30 @@ import { rangeFor } from '@/lib/dates'
 import { formatMoney, formatNumber, formatShortDate, timeAgo } from '@/lib/format'
 import { overviewBusiness } from '@/services/analytics'
 import { platformOverview } from '@/services/platform'
+import { listIncidents } from '@/services/platform-ops'
+
+const SEVERITY_TONE = { CRITICAL: 'danger', HIGH: 'warning', MEDIUM: 'info', LOW: 'neutral' } as const
+
+/** Open incidents, most severe first, for staff who may see them. */
+function OpenIncidents() {
+  const q = useQuery({ queryKey: ['platform-incidents', 'open'], queryFn: () => listIncidents('open'), refetchInterval: 60_000 })
+  const rows = q.data?.rows ?? []
+  if (!rows.length) return null
+  return (
+    <Card className="gap-2 border-amber-500/30 px-4 py-3">
+      <Link to="/super-admin/incidents" className="flex items-center gap-2 text-sm font-medium hover:underline"><Siren className="size-4" /> {rows.length} open incident{rows.length === 1 ? '' : 's'}</Link>
+      <ul className="space-y-1">
+        {rows.slice(0, 4).map((i) => (
+          <li key={i.id} className="flex items-center gap-2 text-sm">
+            <Badge variant={SEVERITY_TONE[i.severity]}>{i.severity.toLowerCase()}</Badge>
+            <Link className="truncate hover:underline" to={`/super-admin/incidents?incident=${i.id}`}>#{i.number} {i.title}</Link>
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground">{timeAgo(i.started_at)}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
 
 
 export default function PlatformOverviewPage() {
@@ -31,6 +56,7 @@ export default function PlatformOverviewPage() {
     <div className="space-y-5">
       <PageHeader title="Overview" description="The whole platform at a glance. Figures come from the database; estimates are labelled."
         actions={<DateRangeFilter value={range} onChange={(r) => setRange({ from: r.from, to: r.to })} />} />
+      {can('incidents') && <OpenIncidents />}
       {overview.error ? <ErrorState error={overview.error} onRetry={() => overview.refetch()} /> : !o ? <CardsSkeleton count={8} /> : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
