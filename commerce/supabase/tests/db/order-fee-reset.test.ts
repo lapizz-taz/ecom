@@ -225,8 +225,19 @@ describe('store reset', () => {
       const channel = await value<string>(db, `insert into public.sales_channels (platform, name, shop_domain, status) values ('SHOPIFY', 'Old shop', 'old-shop.myshopify.com', 'DISCONNECTED') returning id`)
       const secret = await value<string>(db, `select vault.create_secret('{"access_token":"x"}')`)
       await db.query(`insert into public.integration_credentials (key, secret_id) values ($1, $2)`, [`channels.${channel.replace(/-/g, '')}`, secret])
+      // Every other kind of connection: a courier account, an SMS provider key, a custom domain,
+      // connection settings and a store that sends visitors to the Shopify shop.
+      const courier = await value<string>(db, `insert into public.couriers (name, provider, api_enabled, api_status) values ('Steadfast', 'steadfast', true, 'CONNECTED') returning id`)
+      const courierSecret = await value<string>(db, `select vault.create_secret('{"api_key":"k"}')`)
+      await db.query(`insert into public.courier_credentials (courier_id, provider, secret_id, hint) values ($1, 'steadfast', $2, 'k…')`, [courier, courierSecret])
+      const smsSecret = await value<string>(db, `select vault.create_secret('{"api_key":"s"}')`)
+      await db.query(`insert into public.integration_credentials (key, secret_id, hint) values ('sms.provider', $1, 's…')`, [smsSecret])
+      await db.query(`insert into public.store_domains (domain, status) values ('shop.example.com', 'ACTIVE')`)
+      await db.query(`update public.settings set value = value || '{"connected": true, "provider": "bulksmsbd"}' where key = 'sms' and merchant_id = $1`, [MERCHANT_1])
+      await db.query(`update public.settings set value = value || '{"mode": "SHOPIFY", "redirect_url": "https://old-shop.myshopify.com"}' where key = 'storefront' and merchant_id = $1`, [MERCHANT_1])
       await asSystem(db, other)
       const otherChannel = await value<string>(db, `insert into public.sales_channels (platform, name, shop_domain, status) values ('SHOPIFY', 'Their shop', 'their-shop.myshopify.com', 'CONNECTED') returning id`)
+      const otherCourier = await value<string>(db, `insert into public.couriers (name, provider) values ('Pathao', 'pathao') returning id`)
 
       // Everything: products, their stock history and store connections go too; the reset is listed.
       await as(db, superId)
@@ -242,6 +253,18 @@ describe('store reset', () => {
       expect(await value<number>(db, `select count(*)::int from public.integration_credentials where merchant_id = $1 and key like 'channels.%'`, [MERCHANT_1])).toBe(0)
       expect(await value<number>(db, `select count(*)::int from vault.secrets where id = $1`, [secret])).toBe(0)
       expect(await value<number>(db, `select count(*)::int from public.sales_channels where id = $1`, [otherChannel])).toBe(1)
+      // No other connection or its key is left; the business starts with a new business's courier and settings.
+      expect(all.counts.every_connection).toBe(true)
+      expect(await value<string[]>(db, `select coalesce(array_agg(name), '{}') from public.couriers where merchant_id = $1`, [MERCHANT_1])).toEqual(['Own delivery'])
+      for (const t of ['courier_credentials', 'integration_credentials', 'store_domains', 'api_keys', 'ad_connections', 'system_logs']) {
+        expect(await value<number>(db, `select count(*)::int from public.${t} where merchant_id = $1`, [MERCHANT_1]), t).toBe(0)
+      }
+      expect(await value<number>(db, `select count(*)::int from vault.secrets where id in ($1, $2)`, [courierSecret, smsSecret])).toBe(0)
+      expect(await value<Record<string, any>>(db, `select value from public.settings where key = 'sms' and merchant_id = $1`, [MERCHANT_1])).toMatchObject({ connected: false, provider: null })
+      const storefront = await value<Record<string, any>>(db, `select value from public.settings where key = 'storefront' and merchant_id = $1`, [MERCHANT_1])
+      expect(storefront.mode).toBe('OFF')
+      expect(storefront.redirect_url).toBeUndefined()
+      expect(await value<number>(db, `select count(*)::int from public.couriers where id = $1`, [otherCourier])).toBe(1)
       expect(await balance(db, MERCHANT_1)).toBe(500)
       await as(db, superId)
       expect((await value<Record<string, any>>(db, `select public.platform_store_resets($1)`, [MERCHANT_1])).resets).toHaveLength(2)
