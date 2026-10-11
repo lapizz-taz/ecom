@@ -3,20 +3,20 @@ import type * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-  'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap [&>svg]:pointer-events-none [&>svg]:size-3',
+  'inline-flex h-[22px] w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border px-2 text-xs font-medium whitespace-nowrap [&>svg]:pointer-events-none [&>svg]:size-3',
   {
     variants: {
       variant: {
         default: 'border-transparent bg-primary text-primary-foreground',
         secondary: 'border-transparent bg-secondary text-secondary-foreground',
         destructive: 'border-transparent bg-destructive text-white',
-        outline: 'text-foreground',
+        outline: 'border-border bg-card text-foreground',
         success: 'border-transparent bg-emerald-50 text-emerald-700',
         warning: 'border-transparent bg-amber-50 text-amber-800',
         danger: 'border-transparent bg-red-50 text-red-700',
-        info: 'border-transparent bg-sky-50 text-sky-700',
+        info: 'border-transparent bg-brand-soft text-brand',
         violet: 'border-transparent bg-violet-50 text-violet-700',
-        neutral: 'border-transparent bg-zinc-100 text-zinc-700',
+        neutral: 'border-transparent bg-muted text-muted-foreground',
       },
     },
     defaultVariants: { variant: 'default' },

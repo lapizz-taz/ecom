@@ -5,8 +5,8 @@ import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { AuthFrame } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { toUserMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
@@ -33,10 +33,7 @@ export default function ResetPasswordPage() {
     },
   })
   return (
-    <div className="mx-auto max-w-sm px-4 py-16">
-      <Card>
-        <CardHeader><CardTitle>Choose a new password</CardTitle><CardDescription>{session?.user.email}</CardDescription></CardHeader>
-        <CardContent>
+    <AuthFrame admin={isAdmin} title="Choose a new password" description={session?.user.email}>
           {!loading && !session ? (
             <p className="text-sm text-muted-foreground">This link has expired or was already used. Request a new one.</p>
           ) : (
@@ -47,8 +44,6 @@ export default function ResetPasswordPage() {
               <Button type="submit" disabled={update.isPending}>{update.isPending && <Spinner />} Save password</Button>
             </form>
           )}
-        </CardContent>
-      </Card>
-    </div>
+    </AuthFrame>
   )
 }

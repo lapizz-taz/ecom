@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  AlertTriangle, ArrowDown, ArrowUp, Boxes, ClipboardList, CreditCard, Eye, EyeOff, Factory, GripVertical, LayoutGrid, PackagePlus,
-  RotateCcw, ShieldAlert, ShoppingCart, Truck, TrendingDown, Wallet,
+  AlertTriangle, ArrowDown, ArrowRight, ArrowUp, Boxes, ChevronRight, ClipboardList, CreditCard, Eye, EyeOff, Factory, GripVertical, LayoutGrid,
+  PackagePlus, Plug, RotateCcw, ShieldAlert, ShoppingCart, Sparkles, Truck, TrendingDown, TrendingUp, UserPlus, Wallet, X,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
 import { Money } from '@/components/common/money'
 import { PageHeader } from '@/components/common/page-header'
+import { percentChange, StatCard } from '@/components/common/stat-card'
 import { StatusBadge } from '@/components/common/status-badge'
 import { CardsSkeleton, ErrorState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
@@ -15,9 +16,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDashboardLayout } from '@/features/dashboard/use-dashboard-layout'
+import { useStoreConfig } from '@/hooks/use-store-config'
 import { BarsChart, ShareList, TrendChart } from '@/features/reports/charts'
 import { useRealtimeInvalidate } from '@/hooks/use-realtime'
-import { type DateRange, granularityFor, rangeFor } from '@/lib/dates'
+import { type DateRange, granularityFor, previousPeriod, rangeFor, RANGE_PRESETS } from '@/lib/dates'
 import { formatMoney, formatNumber, formatPercent, timeAgo, toNumber } from '@/lib/format'
 import { ORDER_STATUS, RISK_LEVEL } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -139,13 +141,29 @@ const WIDGETS: Widget[] = [
 const DEFAULT_ORDER = WIDGETS.map((w) => w.id)
 const SPAN = { full: 'lg:col-span-6', half: 'lg:col-span-3', third: 'lg:col-span-2' }
 
+function greeting(name: string | null | undefined) {
+  const h = new Date().getHours()
+  const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+  const first = name?.trim().split(/\s+/)[0]
+  return first ? `${part}, ${first}` : part
+}
+
+function rangeLabel(range: DateRange) {
+  const preset = RANGE_PRESETS.find((p) => { const r = rangeFor(p.key); return r.from === range.from && r.to === range.to })
+  return preset ? preset.label.toLowerCase() : `${range.from} – ${range.to}`
+}
+
 export default function DashboardPage() {
-  const { can, user } = useAuth()
+  const { can, user, access } = useAuth()
+  const { data: config } = useStoreConfig()
+  const [params, setParams] = useSearchParams()
   const [range, setRange] = useState<DateRange>(() => rangeFor('30d'))
   const [editing, setEditing] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const overview = useQuery({ queryKey: ['dashboard', range], queryFn: () => dashboardOverview(range.from, range.to) })
   const center = useQuery({ queryKey: ['dashboard', 'center', range], queryFn: () => commandCenter(range.from, range.to) })
+  const prev = previousPeriod(range)
+  const before = useQuery({ queryKey: ['dashboard', 'center', prev], queryFn: () => commandCenter(prev.from, prev.to), staleTime: 5 * 60_000 })
   const granularity = granularityFor(range)
   const series = useQuery({
     queryKey: ['dashboard', 'series', range, granularity],
@@ -162,8 +180,8 @@ export default function DashboardPage() {
     .filter((w) => w && (!w.permission || can(w.permission)))
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="Dashboard" description="Orders, couriers, money and marketing at a glance"
+    <div className="space-y-6">
+      <PageHeader title={greeting(access?.full_name)} description={`${config?.store.name ?? 'Your store'} · ${rangeLabel(range)}`}
         actions={(
           <>
             <DateRangeFilter value={range} onChange={setRange} />
@@ -173,10 +191,14 @@ export default function DashboardPage() {
           </>
         )} />
 
+      {params.get('welcome') === '1' && <WelcomeChecklist onClose={() => { params.delete('welcome'); setParams(params, { replace: true }) }} />}
+
+      <KpiRow c={center.data} prev={before.data} series={series.data as Array<Record<string, unknown>> | undefined} finance={can('finance.view')} />
+
       {!editing && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
           {QUICK_ACTIONS.filter((a) => can(a.permission)).map((a) => (
-            <Button key={a.to} variant="outline" size="sm" asChild><Link to={a.to}>{a.icon} {a.label}</Link></Button>
+            <Button key={a.to} variant="outline" size="sm" className="shrink-0 rounded-full" asChild><Link to={a.to}>{a.icon} {a.label}</Link></Button>
           ))}
         </div>
       )}
@@ -186,7 +208,7 @@ export default function DashboardPage() {
       {overview.error ? <ErrorState error={overview.error} onRetry={() => overview.refetch()} /> : !d ? <CardsSkeleton count={8} /> : (
         <>
           {actions && Object.values(actions).some((n) => n > 0) && !editing && (
-            <section aria-label="Pending tasks" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <section aria-label="Needs your attention" className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {[
                 { n: actions.fraud_review, label: 'Fraud review', to: '/admin/orders/fraud', icon: <ShieldAlert className="size-4 text-red-600" /> },
                 { n: actions.advance_pending, label: 'Awaiting advance', to: '/admin/orders/fraud?tab=advance', icon: <Wallet className="size-4 text-amber-600" /> },
@@ -196,15 +218,17 @@ export default function DashboardPage() {
                 { n: actions.low_stock, label: 'Low stock', to: '/admin/inventory?view=alerts', icon: <AlertTriangle className="size-4 text-amber-600" /> },
                 { n: actions.production_overdue, label: 'Production overdue', to: '/admin/production', icon: <Factory className="size-4 text-red-600" /> },
               ].filter((a) => a.n > 0).map((a) => (
-                <Link key={a.label} to={a.to} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50">
-                  {a.icon}<span className="flex-1 truncate">{a.label}</span><Badge variant="secondary">{a.n}</Badge>
+                <Link key={a.label} to={a.to} className="group flex items-center gap-3 rounded-2xl border bg-card px-3.5 py-3 text-sm shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted">{a.icon}</span>
+                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{a.label}</span><span className="block text-xs text-muted-foreground">{formatNumber(a.n)} waiting</span></span>
+                  <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
                 </Link>
               ))}
             </section>
           )}
 
           {editing && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed px-4 py-2.5 text-sm text-muted-foreground">
               Drag cards to reorder (or use the arrows), hide what you don't need. Saved for you on this device.
               <Button size="sm" variant="ghost" className="ml-auto" onClick={reset}><RotateCcw /> Reset</Button>
             </div>
@@ -225,7 +249,7 @@ export default function DashboardPage() {
                   onDrop={(e) => { e.preventDefault(); if (dragging && dragging !== w.id) move(dragging, layout.order.indexOf(w.id)); setDragging(null) }}
                 >
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-1.5 text-sm">
+                    <CardTitle className="flex items-center gap-1.5 text-[15px]">
                       {editing && <GripVertical className="size-4 cursor-grab text-muted-foreground" aria-hidden />}
                       {w.title}
                     </CardTitle>
@@ -275,13 +299,19 @@ function StatusTiles() {
   ]
   if (!can('orders.view')) return null
   return (
-    <section aria-label="Orders by status" className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-7 2xl:grid-cols-[repeat(13,minmax(0,1fr))]">
-      {tiles.map((t) => (
-        <Link key={t.label} to={t.to} className="rounded-lg border bg-card px-2.5 py-2 transition-colors hover:bg-muted/50">
-          <p className="truncate text-[11px] text-muted-foreground">{t.label}</p>
-          <p className={cn('text-lg font-semibold tabular-nums', (t.n ?? 0) > 0 && t.tone)}>{queue.data || status.data ? formatNumber(t.n ?? 0) : '—'}</p>
-        </Link>
-      ))}
+    <section aria-label="Orders by status" className="rounded-2xl border bg-card shadow-xs">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-1">
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Order pipeline</h2>
+        <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">All orders <ArrowRight className="size-3" /></Link>
+      </div>
+      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-b-2xl sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-12">
+        {tiles.map((t) => (
+          <Link key={t.label} to={t.to} className="group px-4 py-3 transition-colors hover:bg-muted/50">
+            <p className="truncate text-xs text-muted-foreground group-hover:text-foreground">{t.label}</p>
+            <p className={cn('mt-1 text-xl font-semibold tracking-[-0.02em] tabular-nums', (t.n ?? 0) > 0 && t.tone)}>{queue.data || status.data ? formatNumber(t.n ?? 0) : '—'}</p>
+          </Link>
+        ))}
+      </div>
     </section>
   )
 }
@@ -294,7 +324,7 @@ function Tile({ label, value, hint, tone, to }: { label: string; value: ReactNod
       {hint && <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>}
     </>
   )
-  return to ? <Link to={to} className="rounded-lg p-2 hover:bg-muted/50">{body}</Link> : <div className="p-2">{body}</div>
+  return to ? <Link to={to} className="rounded-xl p-2.5 transition-colors hover:bg-muted/60">{body}</Link> : <div className="p-2.5">{body}</div>
 }
 
 function BusinessOverview({ d, c, can }: Ctx) {
@@ -423,5 +453,57 @@ function RecentCustomers({ c }: { c: CommandCenter | undefined }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+/** Headline numbers for the period with their trend and the change against the period before. */
+function KpiRow({ c, prev, series, finance }: { c: CommandCenter | undefined; prev: CommandCenter | undefined; series: Array<Record<string, unknown>> | undefined; finance: boolean }) {
+  if (!c) return <CardsSkeleton count={4} />
+  const line = (key: string) => series?.map((p) => toNumber(p[key])) ?? undefined
+  const vs = (delta: number | null) => (delta != null ? 'vs previous period' : undefined)
+  const cards = [
+    { label: 'Sales', value: formatMoney(c.period.sales), trend: line('gross_sales'), delta: prev ? percentChange(c.period.sales, prev.period.sales) : null, fallback: `${formatMoney(c.today.sales)} today`, icon: <Wallet />, to: '/admin/orders' },
+    { label: 'Orders', value: formatNumber(c.period.orders), trend: line('orders'), delta: prev ? percentChange(c.period.orders, prev.period.orders) : null, fallback: `${formatNumber(c.today.orders)} today`, icon: <ShoppingCart />, to: '/admin/orders/web' },
+    { label: 'Average order', value: formatMoney(c.period.average_order_value), trend: undefined, delta: prev ? percentChange(c.period.average_order_value, prev.period.average_order_value) : null, fallback: `${formatNumber(c.period.orders)} orders`, icon: <ClipboardList /> },
+    finance && c.finance
+      ? { label: 'Net profit', value: formatMoney(c.finance.net_profit), trend: line('profit'), delta: prev?.finance ? percentChange(c.finance.net_profit, prev.finance.net_profit) : null, fallback: `gross ${formatMoney(c.finance.gross_profit)}`, icon: <TrendingUp />, to: '/admin/finance/profit-loss' }
+      : { label: 'COD with couriers', value: formatMoney(c.cod_in_transit), trend: undefined, delta: null, fallback: 'shipped, not yet delivered', icon: <Truck />, to: '/admin/couriers?tab=cod' },
+  ].map((k) => ({ ...k, hint: vs(k.delta) ?? k.fallback }))
+  return (
+    <section aria-label="Key numbers" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {cards.map((k) => <StatCard key={k.label} label={k.label} value={k.value} trend={k.trend} delta={k.delta} hint={k.hint} icon={k.icon} to={k.to} />)}
+    </section>
+  )
+}
+
+/** First steps for a business that has just opened its account. */
+function WelcomeChecklist({ onClose }: { onClose: () => void }) {
+  const { can } = useAuth()
+  const steps = [
+    { icon: <PackagePlus />, title: 'Add your products', text: 'Or import them from your store.', to: '/admin/products/new', permission: 'products.manage' },
+    { icon: <Plug />, title: 'Connect your store', text: 'Shopify or WooCommerce orders come in by themselves.', to: '/admin/channels', permission: 'settings.view' },
+    { icon: <Truck />, title: 'Connect a courier', text: 'Steadfast, Pathao, RedX and more.', to: '/admin/couriers', permission: 'couriers.view' },
+    { icon: <UserPlus />, title: 'Invite your team', text: 'Give each person only what they need.', to: '/admin/users', permission: 'users.manage' },
+  ].filter((x) => can(x.permission))
+  return (
+    <section aria-label="Get started" className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-xs">
+      <div aria-hidden className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-[radial-gradient(closest-side,var(--brand-soft),transparent)]" />
+      <button type="button" onClick={onClose} className="absolute top-3 right-3 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Hide"><X className="size-4" /></button>
+      <p className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]"><Sparkles className="size-4 text-brand" /> Your business is open</p>
+      <p className="mt-1 text-sm text-muted-foreground">Four short steps and your first orders can flow in.</p>
+      <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {steps.map((x, i) => (
+          <li key={x.title}>
+            <Link to={x.to} className="group flex h-full gap-3 rounded-xl border bg-background p-3 transition-colors hover:border-foreground/20">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">{x.icon}</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{i + 1}. {x.title}</span>
+                <span className="block text-xs text-muted-foreground">{x.text}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }

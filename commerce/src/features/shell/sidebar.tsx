@@ -32,7 +32,7 @@ function useCurrentLink(): string | null {
 function Badge({ value, className }: { value?: number; className?: string }) {
   if (!value) return null
   return (
-    <span className={cn('ml-auto min-w-5 rounded-full bg-brand-soft px-1.5 text-center text-[11px] leading-5 font-medium text-brand tabular-nums', className)}>
+    <span className={cn('ml-auto min-w-5 rounded-full bg-brand-soft px-1.5 text-center text-[11px] leading-[18px] font-medium text-brand tabular-nums', className)}>
       {value > 999 ? '999+' : value}
     </span>
   )
@@ -70,13 +70,13 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
     : []
 
   const itemClass = (active: boolean) => cn(
-    'group/item flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-left text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-4 [&_svg]:shrink-0',
-    collapsed && 'justify-center px-0',
-    active && 'bg-brand-soft font-medium text-brand hover:bg-brand-soft hover:text-brand',
+    'group/item flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-left text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-[17px] [&_svg]:shrink-0 [&_svg]:text-sidebar-muted',
+    collapsed && 'justify-center px-0 py-2',
+    active && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border hover:bg-sidebar-active [&_svg]:text-brand',
   )
 
   return (
-    <nav className={cn('grid gap-4 py-2 text-sm', collapsed ? 'px-2' : 'px-3')} aria-label="Admin">
+    <nav className={cn('grid gap-5 py-2 text-sm', collapsed ? 'px-2.5' : 'px-3')} aria-label="Admin">
       {!collapsed && (
         <div className="relative px-0.5">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-sidebar-muted" />
@@ -86,7 +86,7 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
             onKeyDown={(e) => { if (e.key === 'Escape') setFilter('') }}
             placeholder="Find in menu"
             aria-label="Find a page in the menu"
-            className="h-8 w-full rounded-lg border border-sidebar-border bg-transparent pr-7 pl-8 text-[13px] text-sidebar-foreground placeholder:text-sidebar-muted focus:border-ring focus:outline-none"
+            className="h-8 w-full rounded-[10px] border border-sidebar-border bg-sidebar-active/60 pr-7 pl-8 text-[13px] text-sidebar-foreground placeholder:text-sidebar-muted focus:border-ring focus:bg-sidebar-active focus:outline-none"
           />
           {filter && (
             <button type="button" className="absolute top-1/2 right-2 -translate-y-1/2 text-sidebar-muted hover:text-sidebar-foreground" onClick={() => setFilter('')} aria-label="Clear">
@@ -110,7 +110,7 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
         </div>
       ) : sections.map((section, i) => (
         <div key={section.label ?? i} className="grid gap-0.5">
-          {section.label && !collapsed && <p className="px-3 pb-1.5 text-[11px] font-medium tracking-[0.08em] text-sidebar-muted/70 uppercase">{section.label}</p>}
+          {section.label && !collapsed && <p className="px-2.5 pb-1 text-[11px] font-medium text-sidebar-muted">{section.label}</p>}
           {section.label && collapsed && i > 0 && <div className="mx-2 mb-1 border-t border-sidebar-border" />}
           {section.items.map((item) => {
             const childActive = item.children?.some((c) => c.to === current) ?? false
@@ -153,14 +153,14 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
                   <div className={cn('grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none',
                     expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')} inert={!expanded}>
                     <div className="overflow-hidden">
-                      <div className="my-1 ml-[21px] grid border-l border-sidebar-border pl-3">
+                      <div className="my-1 ml-[19px] grid gap-px border-l border-sidebar-border pl-2.5">
                         {item.children!.map((child, ci) => (
                           <Fragment key={child.to}>
                             <Link to={child.to} onClick={onNavigate} aria-current={child.to === current ? 'page' : undefined}
                               style={{ transitionDelay: expanded ? `${Math.min(ci, 8) * 25}ms` : '0ms' }}
                               className={cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-sidebar-muted transition-[color,background-color,transform,opacity] duration-300 hover:translate-x-0.5 hover:text-sidebar-foreground motion-reduce:transition-none',
                                 expanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0',
-                                child.to === current && 'bg-sidebar-accent font-medium text-sidebar-foreground')}>
+                                child.to === current && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border')}>
                               <span className="min-w-0 flex-1 truncate">{child.label}</span>
                               <Badge value={child.badge?.(counts)} className="bg-sidebar-accent text-sidebar-muted" />
                             </Link>

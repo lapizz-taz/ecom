@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 
 /**
- * Admin colour mode: light, dark or follow the system. Dark is the default
- * (black-and-grey). The choice is remembered per browser. Classes go on
+ * Admin colour mode: light, dark or follow the system. Light is the default
+ * (white panels on a grey shell); dark keeps the same layout in near-black. The choice is remembered per browser. Classes go on
  * <html> so dialogs, menus and toasts (portalled to <body>) match; the
  * storefront stays light because the classes are removed when the admin
  * unmounts.
@@ -15,9 +15,9 @@ const listeners = new Set<() => void>()
 function read(): AdminTheme {
   try {
     const v = localStorage.getItem(KEY)
-    return v === 'light' || v === 'dark' || v === 'system' ? v : 'dark'
+    return v === 'light' || v === 'dark' || v === 'system' ? v : 'light'
   } catch {
-    return 'dark'
+    return 'light'
   }
 }
 
@@ -31,7 +31,7 @@ export function setAdminTheme(theme: AdminTheme) {
   listeners.forEach((l) => l())
 }
 
-let current: AdminTheme = typeof window === 'undefined' ? 'dark' : read()
+let current: AdminTheme = typeof window === 'undefined' ? 'light' : read()
 
 function subscribe(listener: () => void) {
   listeners.add(listener)
@@ -39,7 +39,7 @@ function subscribe(listener: () => void) {
 }
 
 export function useAdminThemePreference(): AdminTheme {
-  return useSyncExternalStore(subscribe, () => current, () => 'dark')
+  return useSyncExternalStore(subscribe, () => current, () => 'light')
 }
 
 function systemDark() {

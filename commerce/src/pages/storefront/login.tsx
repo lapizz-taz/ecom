@@ -6,6 +6,7 @@ import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useAuth } from '@/features/auth/auth-context'
 import { toUserMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
@@ -23,13 +24,16 @@ export function SignInForm({ onDone, forgotPath }: { onDone: () => void; forgotP
   })
   return (
     <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); signIn.mutate() }}>
-      <Field label="Email" htmlFor="email"><Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
-      <Field label="Password" htmlFor="password">
-        <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-      </Field>
+      <Field label="Email" htmlFor="email"><Input id="email" type="email" autoComplete="email" className="h-10" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
+      <div className="grid gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="password">Password</Label>
+          <Link to={forgotPath} className="text-xs text-muted-foreground hover:text-foreground">Forgot password?</Link>
+        </div>
+        <Input id="password" type="password" autoComplete="current-password" className="h-10" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </div>
       {signIn.error && <p className="text-sm text-destructive" role="alert">{/invalid login/i.test(signIn.error.message) ? 'Email or password is incorrect' : toUserMessage(signIn.error)}</p>}
-      <Button type="submit" disabled={signIn.isPending}>{signIn.isPending && <Spinner />} Sign in</Button>
-      <Link to={forgotPath} className="text-center text-sm text-muted-foreground hover:text-foreground">Forgot your password?</Link>
+      <Button type="submit" size="lg" disabled={signIn.isPending}>{signIn.isPending && <Spinner />} Sign in</Button>
     </form>
   )
 }

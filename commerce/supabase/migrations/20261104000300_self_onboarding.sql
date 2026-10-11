@@ -27,9 +27,9 @@ security definer
 set search_path = public, pg_temp
 as $$
   select jsonb_build_object(
-    'enabled', coalesce((select (value ->> 'enabled')::boolean from public.platform_settings where key = 'signup'), true),
+    'enabled', coalesce((select value ->> 'enabled' from public.platform_settings where key = 'signup'), 'true') <> 'false',
     'default_plan', (select value ->> 'default_plan' from public.platform_settings where key = 'billing'),
-    'order_fee', (select case when coalesce((value ->> 'enabled')::boolean, false)
+    'order_fee', (select case when coalesce(value ->> 'enabled', 'false') = 'true'
                     then jsonb_build_object('fee', (value ->> 'fee')::numeric, 'free_per_month', coalesce((value ->> 'free_per_month')::int, 0)) end
                   from public.platform_settings where key = 'order_fee'),
     'plans', coalesce((select jsonb_agg(jsonb_build_object(
@@ -50,7 +50,8 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_user record;
-  v_open boolean := coalesce((select (value ->> 'enabled')::boolean from public.platform_settings where key = 'signup'), true);
+  -- Open unless the Super Admin set it to false.
+  v_open boolean := coalesce((select value ->> 'enabled' from public.platform_settings where key = 'signup'), 'true') <> 'false';
   v_plan public.plans;
   v_name text := trim(coalesce(p ->> 'business_name', ''));
   v_full_name text := nullif(trim(coalesce(p ->> 'full_name', '')), '');

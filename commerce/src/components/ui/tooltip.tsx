@@ -17,7 +17,7 @@ function TooltipContent({ className, sideOffset = 4, children, ...props }: React
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
-        className={cn('z-50 w-fit rounded-md bg-primary px-3 py-1.5 text-xs text-balance text-primary-foreground animate-in fade-in-0', className)}
+        className={cn('z-50 w-fit rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-balance text-primary-foreground shadow-md animate-in fade-in-0 zoom-in-95', className)}
         {...props}
       >
         {children}

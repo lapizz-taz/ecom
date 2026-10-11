@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfigHistory } from '@/features/platform/config-history'
@@ -22,6 +24,7 @@ import { type GlobalSettings, globalSettings } from '@/services/platform-data'
 // Where each platform setting lives. Settings with their own page are changed
 // there (they have their own checks); this page is the index.
 const CATALOG: Array<{ key: string; label: string; what: string; to?: string; system?: boolean }> = [
+  { key: 'signup', label: 'Public sign-up', what: 'Whether new businesses can open their own account and start a plan at /start' },
   { key: 'billing', label: 'Billing rules', what: 'Currency, invoice due days, grace period, expiry, the plan new merchants start on', to: '/super-admin/subscriptions?tab=rules' },
   { key: 'access_rules', label: 'Account states', what: 'What each subscription state allows (full, read-only, blocked)', to: '/super-admin/subscriptions?tab=rules' },
   { key: 'billing_gateways', label: 'Payments to the platform', what: 'bKash and PayStation accounts merchants pay into (credentials in the vault)', to: '/super-admin/subscriptions?tab=rules' },
@@ -80,12 +83,56 @@ function NumberSettingCard({ title, description, settingKey, fields, value, canE
   )
 }
 
+/** Opens or pauses the public sign-up page (/start). The database checks it on every sign-up. */
+function SignupCard({ d }: { d: GlobalSettings }) {
+  const queryClient = useQueryClient()
+  const enabled = (d.settings.signup?.value as { enabled?: boolean } | undefined)?.enabled !== false
+  const [confirm, setConfirm] = useState(false)
+  const save = useMutation({
+    mutationFn: (reason: string) => savePlatformSetting('signup', { enabled: !enabled }, reason),
+    onSuccess: () => {
+      toast.success(enabled ? 'Public sign-up paused' : 'Public sign-up open')
+      void queryClient.invalidateQueries({ queryKey: ['platform-global-settings'] })
+      void queryClient.invalidateQueries({ queryKey: ['platform-config-history'] })
+    },
+  })
+  const url = `${window.location.origin}/start`
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-3 text-base">
+          Public sign-up
+          <Badge variant={enabled ? 'success' : 'neutral'}>{enabled ? 'Open' : 'Paused'}</Badge>
+        </CardTitle>
+        <CardDescription>New businesses open their own account, choose a public plan and start its trial. They appear under Merchants as onboarding.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-xs">
+          <span className="min-w-0 flex-1 truncate font-mono">{url}</span>
+          <Button size="sm" variant="ghost" className="h-7" onClick={() => void navigator.clipboard.writeText(url).then(() => toast.success('Link copied'))}>Copy</Button>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="signup-open" className="text-sm font-normal text-muted-foreground">Let new businesses sign up</Label>
+          <Switch id="signup-open" checked={enabled} disabled={!d.can.edit || save.isPending} onCheckedChange={() => setConfirm(true)} />
+        </div>
+        {!d.can.edit && <p className="text-xs text-muted-foreground">Only staff who can edit settings can change this.</p>}
+        {confirm && (
+          <ConfirmDialog open onOpenChange={setConfirm} title={enabled ? 'Pause public sign-up?' : 'Open public sign-up?'} reason reasonRequired confirmLabel={enabled ? 'Pause' : 'Open'}
+            description={enabled ? 'The sign-up page will say sign-ups are paused. Existing businesses are not affected.' : 'Anyone with the link can open a business on a public plan.'}
+            onConfirm={(r) => save.mutateAsync(r)} />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function Index({ d }: { d: GlobalSettings }) {
   const known = new Set(CATALOG.map((c) => c.key))
   const others = Object.keys(d.settings).filter((k) => !known.has(k))
   return (
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-2">
+        <SignupCard d={d} />
         <NumberSettingCard title="Staff sessions" settingKey="security" canEdit={d.can.security} value={d.settings.security?.value ?? {}}
           description="Enforced on every Super Admin action in the database and the server functions. A staff member signed in longer than this is asked to sign in again."
           fields={[{ name: 'staff_session_hours', label: 'Sign in again after (hours)', hint: '1–720 · empty means no limit', optional: true }]} />

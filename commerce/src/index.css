@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Poppins: the one typeface across the admin, Super Admin and sign-up. */
 @import "@fontsource/poppins/latin-400.css";
 @import "@fontsource/poppins/latin-ext-400.css";
 @import "@fontsource/poppins/latin-500.css";
@@ -14,39 +15,44 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Two surfaces, one system.
- *  - Storefront: light monochrome (white, greys, near-black ink).
- *  - Admin: dark black-and-grey (html.dark, set by the admin layout), one
- *    restrained lilac accent for the current selection and focus.
+ * Fullfilio design system.
+ *  - One typeface (Poppins), an ink neutral ramp that matches the logo, and a
+ *    single electric-blue accent for the current selection, focus and links.
+ *  - Hairline borders and soft layered shadows instead of heavy fills.
+ *  - Radii: 8px controls inside cards, 10–12px buttons and inputs, 16px cards.
+ *  - The admin sits on a grey shell (sidebar) with the page on a white panel;
+ *    dark mode keeps the same structure in near-black.
  */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --background: #ffffff;
-  --foreground: #0b0b0c;
+  --foreground: #18181b;
   --card: #ffffff;
-  --card-foreground: #0b0b0c;
+  --card-foreground: #18181b;
   --popover: #ffffff;
-  --popover-foreground: #0b0b0c;
-  --primary: #0b0b0c;
-  --primary-foreground: #fafafa;
+  --popover-foreground: #18181b;
+  --primary: #18181b;
+  --primary-foreground: #ffffff;
   --secondary: #f4f4f5;
-  --secondary-foreground: #0b0b0c;
+  --secondary-foreground: #18181b;
   --muted: #f4f4f5;
-  --muted-foreground: #63636b;
-  --accent: #f1f1f3;
-  --accent-foreground: #0b0b0c;
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: #fafafa;
-  --success: oklch(0.6 0.13 155);
-  --warning: oklch(0.75 0.15 75);
-  --border: #e6e6e9;
-  --input: #dcdce0;
-  --ring: #8a8a93;
-  --brand: #0b0b0c;
-  --brand-foreground: #fafafa;
-  --brand-soft: #f1f1f3;
+  --muted-foreground: #6b6b74;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --border: #e7e7ea;
+  --input: #e2e2e6;
+  --ring: #2142e7;
+  --brand: #2142e7;
+  --brand-foreground: #ffffff;
+  --brand-soft: rgb(33 66 231 / 0.08);
+  --shell: #f4f4f5;
+  --shadow-color: 17 24 39;
   /* Categorical chart palette (validated order — never cycle or reorder). */
   --chart-1: #2a78d6;
   --chart-2: #eb6834;
@@ -56,41 +62,44 @@
   --chart-6: #008300;
   --chart-7: #4a3aa7;
   --chart-8: #e34948;
-  --chart-grid: #e7e7ea;
-  --sidebar: #0e0e10;
-  --sidebar-foreground: #e6e6e9;
-  --sidebar-muted: #8b8b94;
-  --sidebar-accent: #19191c;
-  --sidebar-border: rgb(255 255 255 / 0.06);
-  --selection: rgb(11 11 12 / 0.12);
+  --chart-grid: #ececef;
+  --sidebar: #f4f4f5;
+  --sidebar-foreground: #18181b;
+  --sidebar-muted: #6b6b74;
+  --sidebar-accent: rgb(24 24 27 / 0.05);
+  --sidebar-active: #ffffff;
+  --sidebar-border: #e4e4e7;
+  --selection: rgb(33 66 231 / 0.14);
 }
 
 .dark {
   color-scheme: dark;
-  --background: #0a0a0b;
-  --foreground: #ececee;
-  --card: #111113;
-  --card-foreground: #ececee;
-  --popover: #161618;
-  --popover-foreground: #ececee;
-  --primary: #ececee;
-  --primary-foreground: #0a0a0b;
-  --secondary: #1b1b1e;
-  --secondary-foreground: #ececee;
-  --muted: #18181b;
-  --muted-foreground: #8f8f98;
-  --accent: #1d1d21;
-  --accent-foreground: #ececee;
-  --destructive: oklch(0.66 0.2 22);
+  --background: #0f0f11;
+  --foreground: #ededef;
+  --card: #141416;
+  --card-foreground: #ededef;
+  --popover: #18181b;
+  --popover-foreground: #ededef;
+  --primary: #ededef;
+  --primary-foreground: #0f0f11;
+  --secondary: #1c1c1f;
+  --secondary-foreground: #ededef;
+  --muted: #1a1a1d;
+  --muted-foreground: #8e8e97;
+  --accent: #1f1f23;
+  --accent-foreground: #ededef;
+  --destructive: #ef4444;
   --destructive-foreground: #fafafa;
-  --success: oklch(0.72 0.15 160);
-  --warning: oklch(0.8 0.14 75);
-  --border: rgb(255 255 255 / 0.075);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.11);
-  --ring: #b996e8;
-  --brand: #c9a6f2;
-  --brand-foreground: #170d24;
-  --brand-soft: rgb(201 166 242 / 0.12);
+  --ring: #6d84ff;
+  --brand: #7b8fff;
+  --brand-foreground: #0b0f2a;
+  --brand-soft: rgb(123 143 255 / 0.14);
+  --shell: #09090b;
+  --shadow-color: 0 0 0;
   --chart-1: #3987e5;
   --chart-2: #d95926;
   --chart-3: #199e70;
@@ -99,13 +108,14 @@
   --chart-6: #008300;
   --chart-7: #9085e9;
   --chart-8: #e66767;
-  --chart-grid: #26262b;
-  --sidebar: #0d0d0f;
+  --chart-grid: #232327;
+  --sidebar: #09090b;
   --sidebar-foreground: #e6e6e9;
   --sidebar-muted: #8b8b94;
-  --sidebar-accent: #18181b;
-  --sidebar-border: rgb(255 255 255 / 0.06);
-  --selection: rgb(201 166 242 / 0.28);
+  --sidebar-accent: rgb(255 255 255 / 0.05);
+  --sidebar-active: #18181b;
+  --sidebar-border: rgb(255 255 255 / 0.07);
+  --selection: rgb(123 143 255 / 0.28);
   /* Tinted status surfaces (badges, callouts) re-mapped for a dark ground:
      light shades become dark tints, dark shades become readable text. */
   --color-red-50: oklch(0.235 0.042 22.2);
@@ -283,6 +293,12 @@
 
 @theme inline {
   --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Bengali", sans-serif;
+  /* Soft, layered shadows tinted with the ink colour (black in dark mode). */
+  --shadow-xs: 0 1px 2px 0 rgb(var(--shadow-color) / 0.04);
+  --shadow-sm: 0 1px 2px 0 rgb(var(--shadow-color) / 0.05), 0 1px 3px 0 rgb(var(--shadow-color) / 0.04);
+  --shadow-md: 0 0 0 1px rgb(var(--shadow-color) / 0.03), 0 2px 4px -1px rgb(var(--shadow-color) / 0.05), 0 6px 16px -4px rgb(var(--shadow-color) / 0.08);
+  --shadow-lg: 0 0 0 1px rgb(var(--shadow-color) / 0.03), 0 4px 8px -2px rgb(var(--shadow-color) / 0.05), 0 16px 32px -8px rgb(var(--shadow-color) / 0.12);
+  --shadow-xl: 0 0 0 1px rgb(var(--shadow-color) / 0.04), 0 8px 16px -4px rgb(var(--shadow-color) / 0.06), 0 32px 64px -16px rgb(var(--shadow-color) / 0.18);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -324,6 +340,8 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
+  --color-shell: var(--shell);
+  --color-sidebar-active: var(--sidebar-active);
 }
 
 @layer base {
@@ -370,6 +388,11 @@
   }
 }
 
+@keyframes loader {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(330%); }
+}
+
 @keyframes enter {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
@@ -402,21 +425,10 @@
   }
 }
 
-/* Admin in light mode: white surfaces, a light sidebar and a violet accent
-   (dark mode keeps the black-and-grey palette above). */
+/* The admin and Super Admin shells: the grey shell holds the menu, pages sit on a white panel. */
 .admin:not(.dark) {
-  --background: #f7f7f8;
+  --background: #ffffff;
   --card: #ffffff;
-  --brand: #6d3fc0;
-  --brand-foreground: #ffffff;
-  --brand-soft: rgb(109 63 192 / 0.09);
-  --ring: #8d6ad1;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #18181b;
-  --sidebar-muted: #6b6b74;
-  --sidebar-accent: #f1f1f3;
-  --sidebar-border: #e6e6e9;
-  --selection: rgb(109 63 192 / 0.16);
 }
 
 /* Two-handle range: two range inputs stacked; only the thumbs take pointer input. */

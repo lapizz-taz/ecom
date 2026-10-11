@@ -20,8 +20,8 @@ export function LoadingState({ label = 'Loading…', className }: { label?: stri
 export function EmptyState({ icon, title, description, action, className }: { icon?: ReactNode; title: string; description?: ReactNode; action?: ReactNode; className?: string }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-4 py-14 text-center', className)}>
-      <div className="mb-1 rounded-full bg-muted p-3 text-muted-foreground">{icon ?? <Inbox className="size-5" />}</div>
-      <p className="font-medium">{title}</p>
+      <div className="mb-1 flex size-11 items-center justify-center rounded-xl border bg-card text-muted-foreground shadow-xs [&_svg]:size-5">{icon ?? <Inbox />}</div>
+      <p className="font-medium tracking-[-0.01em]">{title}</p>
       {description && <p className="max-w-sm text-sm text-muted-foreground">{description}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
@@ -31,7 +31,7 @@ export function EmptyState({ icon, title, description, action, className }: { ic
 export function ErrorState({ error, onRetry, className }: { error: unknown; onRetry?: () => void; className?: string }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-4 py-12 text-center', className)} role="alert">
-      <div className="rounded-full bg-red-50 p-3 text-red-600"><AlertTriangle className="size-5" /></div>
+      <div className="flex size-11 items-center justify-center rounded-xl bg-red-50 text-red-600"><AlertTriangle className="size-5" /></div>
       <p className="font-medium">Could not load this</p>
       <p className="max-w-sm text-sm text-muted-foreground">{toUserMessage(error)}</p>
       {onRetry && (
@@ -45,7 +45,7 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
 
 export function TableSkeleton({ rows = 6, cols = 5 }: { rows?: number; cols?: number }) {
   return (
-    <div className="space-y-2 p-3">
+    <div className="space-y-3 p-4">
       {Array.from({ length: rows }).map((_, r) => (
         <div key={r} className="flex gap-3">
           {Array.from({ length: cols }).map((_, c) => (
@@ -60,7 +60,7 @@ export function TableSkeleton({ rows = 6, cols = 5 }: { rows?: number; cols?: nu
 export function CardsSkeleton({ count = 4, className }: { count?: number; className?: string }) {
   return (
     <div className={cn('grid grid-cols-2 gap-3 lg:grid-cols-4', className)}>
-      {Array.from({ length: count }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+      {Array.from({ length: count }).map((_, i) => <Skeleton key={i} className="h-[106px] rounded-2xl" />)}
     </div>
   )
 }

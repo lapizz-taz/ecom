@@ -3,10 +3,10 @@ import {
   BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, ShieldCheck, Sun,
   UserCog,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import { toast } from '@/lib/toast'
-import { LoadingState } from '@/components/common/states'
+import { BrandLoader, Logo, LogoMark } from '@/components/brand/logo'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
@@ -153,7 +153,8 @@ function DeviceGate({ status, email, onSignOut }: { status: string | null | unde
   const blocked = status === 'REJECTED' || status === 'REVOKED'
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-      <span className="flex size-14 items-center justify-center rounded-full bg-muted"><MonitorSmartphone className="size-7 text-muted-foreground" /></span>
+      <LogoMark className="mb-4 size-10" />
+      <span className="flex size-12 items-center justify-center rounded-xl border bg-card shadow-xs"><MonitorSmartphone className="size-6 text-muted-foreground" /></span>
       <h1 className="text-lg font-semibold">{blocked ? 'This device is blocked' : 'Waiting for approval'}</h1>
       <p className="text-sm text-muted-foreground">
         {blocked
@@ -212,22 +213,23 @@ export default function AdminLayout() {
   useShortcuts({ search: () => setDialog('search'), toggleMenu: toggleCollapsed, help: () => setDialog('help') }, can)
 
   useEffect(() => {
-    document.title = `Admin · ${config?.store.name ?? 'Store'}`
+    document.title = `${config?.store.name ?? 'Store'} · Fullfilio`
   }, [config?.store.name])
 
-  if (loading || accessLoading || (!access && platformMember.isLoading)) return <LoadingState label="Loading your workspace…" className="min-h-dvh" />
+  if (loading || accessLoading || (!access && platformMember.isLoading)) return <BrandLoader label="Loading your workspace…" />
   if (!session) return <Navigate to={`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   // Platform team members without a business of their own work in the Super Admin panel.
   if (!access && platformMember.data) return <Navigate to="/super-admin" replace />
   if (!access) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">No staff access</h1>
-        <p className="text-sm text-muted-foreground">Your account ({session.user.email}) is not a staff account or has been deactivated.</p>
-        <div className="flex gap-2">
+        <LogoMark className="mb-4 size-10" />
+        <ShieldAlert className="size-7 text-muted-foreground" />
+        <h1 className="text-lg font-semibold">No business on this account yet</h1>
+        <p className="text-sm text-muted-foreground">{session.user.email} is not part of a business, or the account was deactivated. Open your own business in a few steps, or ask your owner to invite you.</p>
+        <div className="flex flex-wrap justify-center gap-2">
           <Button variant="outline" onClick={() => signOut()}>Sign out</Button>
-          <Button asChild><Link to="/">Go to store</Link></Button>
+          <Button asChild><Link to="/start/finish">Open my business</Link></Button>
         </div>
       </div>
     )
@@ -248,24 +250,20 @@ export default function AdminLayout() {
 
   const sidebar = (rail: boolean) => (
     <div className="flex h-full flex-col text-sidebar-foreground">
-      <div className={cn('flex h-16 shrink-0 items-center gap-2.5', rail ? 'justify-center px-2' : 'px-5')}>
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-foreground">
-          {initials(config?.store.name ?? 'S')}
-        </div>
-        {!rail && (
-          <span className="min-w-0">
-            <span className="block truncate text-[15px] leading-tight font-semibold tracking-tight">{config?.store.name ?? 'Store'}</span>
-            <span className="block truncate text-[11px] text-sidebar-muted">{access.role_name}</span>
-          </span>
-        )}
+      <div className={cn('flex h-16 shrink-0 items-center', rail ? 'justify-center px-2' : 'px-4')}>
+        <Link to="/admin" onClick={() => setMobileOpen(false)} aria-label="Fullfilio — dashboard" className="rounded-xl focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none">
+          {rail ? <LogoMark /> : <Logo />}
+        </Link>
       </div>
       {!rail && (
         <div className="px-3 pb-1">
-          <button type="button" onClick={() => onAction('search')}
-            className="flex h-9 w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 text-[13px] text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground">
-            <Search className="size-3.5" /> Quick Search
-            <kbd className="ml-auto rounded border border-sidebar-border px-1.5 text-[10px]">Ctrl K</kbd>
-          </button>
+          <div className="flex items-center gap-2.5 rounded-xl border border-sidebar-border bg-sidebar-active px-2.5 py-2 shadow-xs">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-[11px] font-semibold text-foreground">{initials(config?.store.name ?? 'S')}</span>
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[13px] font-medium">{config?.store.name ?? 'Store'}</span>
+              <span className="block truncate text-[11px] text-sidebar-muted">{access.role_name}</span>
+            </span>
+          </div>
         </div>
       )}
       <div className="flex-1 overflow-y-auto pb-4">
@@ -277,34 +275,36 @@ export default function AdminLayout() {
 
   return (
     <PhoneProvider>
-    <div className="flex min-h-dvh bg-background">
-      <aside className={cn('no-print sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out lg:flex',
-        collapsed ? 'w-16' : 'w-64')}>
+    <div className="flex min-h-dvh bg-shell" style={{ '--shell-menu': collapsed ? '4.25rem' : '16rem' } as CSSProperties}>
+      <aside className={cn('no-print sticky top-0 hidden h-dvh shrink-0 flex-col bg-sidebar transition-[width] duration-200 ease-out lg:flex',
+        collapsed ? 'w-[4.25rem]' : 'w-64')}>
         {sidebar(collapsed)}
       </aside>
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 gap-0 border-0 bg-sidebar p-0">
+        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 border-0 bg-sidebar p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           {sidebar(false)}
         </SheetContent>
       </Sheet>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col lg:py-2 lg:pr-2">
+        {/* Keeps the panel's top edge in place while the page scrolls under it. */}
+        {!access.support_session && <div aria-hidden className="no-print fixed inset-x-0 top-0 z-30 hidden h-2 bg-shell lg:block" />}
+        <div className="flex min-h-dvh min-w-0 flex-1 flex-col bg-background lg:min-h-[calc(100dvh-1rem)] lg:rounded-2xl lg:border lg:shadow-xs print:border-0 print:shadow-none">
         {access.support_session && <SupportViewBanner access={access} />}
-        <header className={cn('no-print sticky z-30 flex h-14 items-center gap-1 border-b bg-background/90 px-2 backdrop-blur sm:gap-1.5 sm:px-4',
-          access.support_session ? 'top-10' : 'top-0')}>
+        <header className={cn('no-print sticky z-30 flex h-14 items-center gap-1 border-b bg-background/85 px-2 backdrop-blur-md sm:gap-1.5 sm:px-4 lg:rounded-t-2xl',
+          access.support_session ? 'top-10' : 'top-0 lg:top-2')}>
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu /></Button>
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setDialog('search')} aria-label="Quick search (Ctrl K)">
+          <Button variant="ghost" size="sm" className="text-muted-foreground lg:hidden" onClick={() => setDialog('search')} aria-label="Quick search (Ctrl K)">
             <Search /> <span className="hidden sm:inline">Search</span>
-            <kbd className="ml-1 hidden rounded border px-1 text-[10px] md:inline">Ctrl K</kbd>
           </Button>
-          <nav className="hidden items-center gap-0.5 md:flex" aria-label="Shortcuts">
+          <nav className="hidden items-center gap-0.5 md:flex [&_[data-slot=button]]:text-foreground/75 [&_[data-slot=button]:hover]:text-foreground" aria-label="Shortcuts">
             {can('orders.create') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/new"><Plus /> New Order</Link></Button>}
             {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/web"><Globe /> Web Order List</Link></Button>}
             {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/approved"><ClipboardCheck /> Order List</Link></Button>}
             {can('orders.fulfill') && <Button variant="ghost" size="sm" asChild className="hidden xl:inline-flex"><Link to="/admin/scan"><ScanBarcode /> Scan</Link></Button>}
           </nav>
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="ml-auto flex items-center gap-0.5 [&>[data-slot=button][data-size=icon]]:rounded-full">
             {can('orders.create') && (
               <Button size="icon" variant="ghost" asChild className="md:hidden" aria-label="New order"><Link to="/admin/orders/new"><Plus /></Link></Button>
             )}
@@ -333,7 +333,7 @@ export default function AdminLayout() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 pl-1.5">
-                  <span className="flex size-7 items-center justify-center rounded-full bg-brand-soft text-[11px] font-semibold text-brand">{initials(access.full_name || access.email)}</span>
+                  <span className="flex size-7 items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background">{initials(access.full_name || access.email)}</span>
                   <span className="hidden max-w-32 truncate lg:inline">{access.full_name || access.email}</span>
                 </Button>
               </DropdownMenuTrigger>
@@ -354,13 +354,14 @@ export default function AdminLayout() {
           </div>
         </header>
         <AnnouncementBanner />
-        <main className="print-area w-full min-w-0 flex-1 p-3 sm:px-5 sm:py-5">
+        <main className="print-area w-full min-w-0 flex-1 p-3 pb-24 sm:px-6 sm:py-6 sm:pb-24">
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
             {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}
             {allowed ? <Outlet /> : <PermissionDenied />}
           </div>
         </main>
+        </div>
       </div>
 
       <CommandPalette open={dialog === 'search'} onOpenChange={(o) => setDialog(o ? 'search' : null)} />

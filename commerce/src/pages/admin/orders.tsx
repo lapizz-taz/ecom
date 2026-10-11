@@ -12,6 +12,7 @@ import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
 import { Money } from '@/components/common/money'
+import { BulkBar } from '@/components/common/bulk-bar'
 import { PageHeader } from '@/components/common/page-header'
 import { Pagination } from '@/components/common/pagination'
 import { SearchInput } from '@/components/common/search-input'
@@ -447,49 +448,48 @@ export function OrdersPage({ view }: { view: View }) {
             <Button variant="ghost" size="sm" className="h-7 rounded-full" onClick={() => setSelected(new Set())}>Clear</Button>
           </span>
         )}
-        {selected.size > 0 && view !== 'approved' && (
-          <div className="enter flex flex-wrap items-center gap-2 rounded-full border bg-card py-1 pr-1 pl-3">
-            <span className="text-sm font-medium">{selected.size} selected</span>
-            {view === 'web' ? (
-              <>
-                {can('orders.status') && <Button size="sm" className="rounded-full" onClick={() => setApproveIds([...selected])}><Check /> Approve</Button>}
-                {can('orders.update') && (
-                  <Select value="" onValueChange={(code) => setCallDialog({ ids: [...selected], code })}>
-                    <SelectTrigger size="sm" className="w-40 rounded-full" aria-label="Set call status"><SelectValue placeholder="Call status…" /></SelectTrigger>
-                    <SelectContent>{(reviewStatuses.data ?? []).map((s) => <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                )}
-              </>
-            ) : (
-              <>
-                {can('orders.fulfill') && (
-                  <>
-                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>
-                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}&kind=invoice`)}><Printer /> Print invoices</Button>
-                  </>
-                )}
-                {can('shipments.manage') && (
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => setBookOpen(true)}><Truck /> Book courier</Button>
-                )}
-                {can('orders.status') && stageMoves.length > 0 && (
-                  <Select value="" onValueChange={(v) => setBulkTarget(v as OrderStatus)}>
-                    <SelectTrigger size="sm" className="w-40 rounded-full" aria-label="Move to stage"><SelectValue placeholder="Move to…" /></SelectTrigger>
-                    <SelectContent>
-                      {stageMoves.filter((m) => !['CANCELLED', 'PENDING_CANCEL'].includes(m.to) || can('orders.cancel'))
-                        .map((m) => <SelectItem key={m.to} value={m.to}>{m.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-              </>
-            )}
-            {can('orders.update') && (
-              <BulkTagButton known={(tagOptions.data?.tags ?? []).map((t) => t.name)}
-                onAdd={(tag) => tagOrders.mutate({ ids: [...selected], add: [tag] }, { onSuccess: () => toast.success(`Tagged ${selected.size} order(s) "${tag}"`) })} />
-            )}
-            <Button variant="ghost" size="sm" className="rounded-full" onClick={() => setSelected(new Set())}>Clear</Button>
-          </div>
-        )}
       </div>
+
+      {view !== 'approved' && (
+        <BulkBar count={selected.size} onClear={() => setSelected(new Set())}>
+          {view === 'web' ? (
+            <>
+              {can('orders.status') && <Button size="sm" onClick={() => setApproveIds([...selected])}><Check /> Approve</Button>}
+              {can('orders.update') && (
+                <Select value="" onValueChange={(code) => setCallDialog({ ids: [...selected], code })}>
+                  <SelectTrigger size="sm" className="w-40" aria-label="Set call status"><SelectValue placeholder="Call status…" /></SelectTrigger>
+                  <SelectContent>{(reviewStatuses.data ?? []).map((s) => <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+            </>
+          ) : (
+            <>
+              {can('orders.fulfill') && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}&kind=invoice`)}><Printer /> Print invoices</Button>
+                </>
+              )}
+              {can('shipments.manage') && (
+                <Button size="sm" variant="outline" onClick={() => setBookOpen(true)}><Truck /> Book courier</Button>
+              )}
+              {can('orders.status') && stageMoves.length > 0 && (
+                <Select value="" onValueChange={(v) => setBulkTarget(v as OrderStatus)}>
+                  <SelectTrigger size="sm" className="w-40" aria-label="Move to stage"><SelectValue placeholder="Move to…" /></SelectTrigger>
+                  <SelectContent>
+                    {stageMoves.filter((m) => !['CANCELLED', 'PENDING_CANCEL'].includes(m.to) || can('orders.cancel'))
+                      .map((m) => <SelectItem key={m.to} value={m.to}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            </>
+          )}
+          {can('orders.update') && (
+            <BulkTagButton known={(tagOptions.data?.tags ?? []).map((t) => t.name)}
+              onAdd={(tag) => tagOrders.mutate({ ids: [...selected], add: [tag] }, { onSuccess: () => toast.success(`Tagged ${selected.size} order(s) "${tag}"`) })} />
+          )}
+        </BulkBar>
+      )}
 
       {view === 'approved' && dupResult && (
         <DuplicatesPanel result={dupResult} onClose={() => setDupResult(null)} onRecheck={() => setDupOpen(true)}

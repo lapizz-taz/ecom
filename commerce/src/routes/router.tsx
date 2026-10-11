@@ -76,6 +76,8 @@ export const router = createBrowserRouter([
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],
   },
+  { path: '/start', errorElement: <RouteError />, ...page(() => import('@/pages/start/start')) },
+  { path: '/start/finish', errorElement: <RouteError />, ...page(() => import('@/pages/start/finish')) },
   { path: '/admin/login', errorElement: <RouteError />, ...page(() => import('@/pages/admin/login')) },
   { path: '/admin/forgot-password', ...page(() => import('@/pages/storefront/forgot-password')) },
   { path: '/admin/reset-password', ...page(() => import('@/pages/storefront/reset-password')) },

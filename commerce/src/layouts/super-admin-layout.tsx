@@ -1,12 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, Eye, LogOut, Menu, Search, ShieldAlert } from 'lucide-react'
+import { ArrowLeftRight, Eye, LogOut, Menu, Monitor, Moon, Search, ShieldAlert, Sun } from 'lucide-react'
+import type * as React from 'react'
 import { useEffect, useLayoutEffect, useState } from 'react'
+import { BrandLoader, Logo, LogoMark } from '@/components/brand/logo'
 import { Link, Navigate, NavLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import { EmptyState, LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -14,24 +17,32 @@ import { useAuth } from '@/features/auth/auth-context'
 import { PLATFORM_NAV } from '@/features/platform/nav'
 import { NotificationsBell } from '@/features/platform/notifications-bell'
 import { PlatformProvider, usePlatform } from '@/features/platform/platform-context'
+import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { initials, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { platformSearch } from '@/services/platform'
 import { endSupportSession } from '@/services/support-center'
 
-/** The Super Admin panel is always dark. */
-function useDarkPanel() {
+/** The Super Admin panel follows the same light / dark / system choice as the business admin. */
+function usePanelTheme() {
+  useAdminTheme()
   useLayoutEffect(() => {
     const root = document.documentElement
-    root.classList.add('admin', 'dark', 'platform')
-    return () => root.classList.remove('admin', 'dark', 'platform')
+    root.classList.add('platform')
+    return () => root.classList.remove('platform')
   }, [])
 }
+
+const THEMES: Array<{ value: AdminTheme; label: string; icon: typeof Sun }> = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+]
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { can } = usePlatform()
   return (
-    <nav className="flex flex-col gap-0.5 px-2 py-3" aria-label="Super Admin">
+    <nav className="flex flex-col gap-0.5 px-3 py-2" aria-label="Super Admin">
       {PLATFORM_NAV.filter((item) => can(item.module)).map((item) => (
         <NavLink
           key={item.module}
@@ -39,11 +50,11 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           end={item.to === '/super-admin'}
           onClick={onNavigate}
           className={({ isActive }) => cn(
-            'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground',
-            isActive && 'bg-muted text-foreground',
+            'group flex items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] hover:bg-sidebar-accent hover:text-sidebar-foreground',
+            isActive && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border hover:bg-sidebar-active',
           )}
         >
-          <item.icon className="size-4 shrink-0" />
+          <item.icon className="size-[17px] shrink-0 text-sidebar-muted group-aria-[current=page]:text-brand" />
           <span className="truncate">{item.label}</span>
         </NavLink>
       ))}
@@ -80,7 +91,7 @@ function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (op
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">Search</DialogTitle>
-        <div className="flex items-center gap-2 border-b px-3">
+        <div className="flex items-center gap-2 border-b px-4">
           <Search className="size-4 text-muted-foreground" />
           <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Merchants, order numbers, stores, employees, tickets…"
             className="h-11 border-0 bg-transparent shadow-none focus-visible:ring-0" />
@@ -95,7 +106,7 @@ function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (op
                       <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{g.title}</p>
                       {g.items.map((i) => (
                         <button key={i.key} type="button" onClick={() => go(i.to)}
-                          className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
+                          className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted">
                           <span className="truncate">{i.label}</span>
                           {i.hint && <span className="shrink-0 truncate text-xs text-muted-foreground">{i.hint}</span>}
                         </button>
@@ -116,6 +127,8 @@ function Panel() {
   const matches = useMatches()
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
+  const theme = useAdminThemePreference()
+  const ThemeIcon = THEMES.find((t) => t.value === theme)?.icon ?? Moon
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -128,7 +141,7 @@ function Panel() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  if (loading) return <LoadingState className="h-screen" />
+  if (loading) return <BrandLoader label="Loading the Super Admin…" />
   if (error) return <EmptyState className="h-screen" title="Could not load your access" description={(error as Error).message} />
   if (me?.session_expired) {
     return (
@@ -151,36 +164,52 @@ function Panel() {
   const allowed = !module || can(module)
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-sidebar lg:flex">
-        <Link to="/super-admin" className="flex h-14 items-center gap-2 border-b px-4 font-semibold tracking-tight">
-          <span className="grid size-7 place-items-center rounded-md bg-foreground text-xs font-bold text-background">SA</span>
-          Super Admin
+    <div className="flex min-h-dvh bg-shell text-foreground" style={{ '--shell-menu': '16rem' } as React.CSSProperties}>
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col bg-sidebar lg:flex">
+        <Link to="/super-admin" className="flex h-16 items-center px-4" aria-label="Fullfilio Super Admin — overview">
+          <Logo subtitle="Super Admin" />
         </Link>
-        <div className="flex-1 overflow-y-auto"><Sidebar /></div>
-        <div className="border-t p-3 text-xs text-muted-foreground">{me.role.name}{me.merchant_scope === 'ASSIGNED' && ' · assigned merchants'}</div>
+        <div className="flex-1 overflow-y-auto pb-3"><Sidebar /></div>
+        <div className="mx-3 mb-3 rounded-xl border border-sidebar-border bg-sidebar-active px-3 py-2 text-xs shadow-xs">
+          <p className="truncate font-medium text-sidebar-foreground">{me.role.name}</p>
+          <p className="truncate text-sidebar-muted">{me.merchant_scope === 'ASSIGNED' ? 'Assigned merchants only' : 'All merchants'}</p>
+        </div>
       </aside>
       <Sheet open={menu} onOpenChange={setMenu}>
-        <SheetContent side="left" className="w-64 p-0">
-          <SheetTitle className="flex h-14 items-center border-b px-4">Super Admin</SheetTitle>
-          <Sidebar onNavigate={() => setMenu(false)} />
+        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 border-0 bg-sidebar p-0">
+          <SheetTitle className="flex h-16 items-center px-4"><Logo subtitle="Super Admin" /></SheetTitle>
+          <div className="overflow-y-auto"><Sidebar onNavigate={() => setMenu(false)} /></div>
         </SheetContent>
       </Sheet>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur sm:px-5">
+      <div className="flex min-w-0 flex-1 flex-col lg:py-2 lg:pr-2">
+        <div aria-hidden className="fixed inset-x-0 top-0 z-30 hidden h-2 bg-shell lg:block" />
+        <div className="flex min-h-dvh min-w-0 flex-1 flex-col bg-background lg:min-h-[calc(100dvh-1rem)] lg:rounded-2xl lg:border lg:shadow-xs">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur-md sm:px-5 lg:top-2 lg:rounded-t-2xl">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMenu(true)} aria-label="Menu"><Menu /></Button>
+          <LogoMark className="size-7 lg:hidden" />
           <button type="button" onClick={() => setSearch(true)}
-            className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground hover:bg-muted">
+            className="flex h-9 w-full max-w-md items-center gap-2 rounded-[10px] border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/15 hover:bg-muted">
             <Search className="size-4" /> <span className="truncate">Search merchants, orders, stores…</span>
-            <kbd className="ml-auto hidden rounded border px-1.5 text-[10px] sm:inline">Ctrl K</kbd>
+            <kbd className="ml-auto hidden rounded-md border bg-card px-1.5 py-px text-[10px] sm:inline">Ctrl K</kbd>
           </button>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1 [&>[data-slot=button][data-size=icon]]:rounded-full">
             <NotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 px-2">
-                  <span className="grid size-7 place-items-center rounded-full bg-muted text-xs font-semibold">{initials(me.full_name || me.email)}</span>
-                  <span className="hidden text-sm sm:inline">{me.full_name || me.email}</span>
+                <Button variant="ghost" size="icon" aria-label={`Colour mode: ${theme}`}><ThemeIcon /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Colour mode</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setAdminTheme(v as AdminTheme)}>
+                  {THEMES.map((t) => <DropdownMenuRadioItem key={t.value} value={t.value}><t.icon /> {t.label}</DropdownMenuRadioItem>)}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2 rounded-full pr-2.5 pl-1">
+                  <span className="grid size-7 place-items-center rounded-full bg-foreground text-[11px] font-semibold text-background">{initials(me.full_name || me.email)}</span>
+                  <span className="hidden max-w-40 truncate text-sm sm:inline">{me.full_name || me.email}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -203,9 +232,10 @@ function Panel() {
             <Button size="sm" variant="ghost" className="h-7" onClick={() => void endSupportSession().then(() => refresh())}>End</Button>
           </div>
         )}
-        <main key={location.pathname} className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
+        <main key={location.pathname} className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-6 sm:py-6">
           {allowed ? <Outlet /> : <EmptyState icon={<ShieldAlert />} title="Your role does not include this section" description="Ask a Super Admin if you need it." />}
         </main>
+        </div>
       </div>
       <GlobalSearch open={search} onOpenChange={setSearch} />
     </div>
@@ -213,10 +243,10 @@ function Panel() {
 }
 
 export default function SuperAdminLayout() {
-  useDarkPanel()
+  usePanelTheme()
   const { session, loading } = useAuth()
   const location = useLocation()
-  if (loading) return <LoadingState className="h-screen" />
+  if (loading) return <BrandLoader label="Loading the Super Admin…" />
   if (!session) return <Navigate to={`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   return (
     <PlatformProvider>
