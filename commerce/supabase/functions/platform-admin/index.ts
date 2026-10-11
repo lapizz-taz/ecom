@@ -11,6 +11,7 @@
 //   bd_courier_connect / bd_courier_test / bd_courier_disconnect   (BD Courier Integration)
 //   sms_connect / sms_disconnect / sms_balance / sms_send_test     (SMS Management)
 //   gateway_connect / gateway_disconnect                           (payments merchants make to the platform)
+//   pbx_trunk_secret / pbx_turn_secret / pbx_gateway_token          (PBX Setup: the shared VoiceDrive gateway)
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { env } from '../_shared/env.ts'
@@ -24,6 +25,7 @@ import {
 } from '../_shared/sms/providers.ts'
 import { connectedSmsProvider, smsSecretKey } from '../_shared/sms/registry.ts'
 import { adminClient, optionalUser, rpc, userClient } from '../_shared/supabase.ts'
+import { randomPassword, sha256Hex } from '../_shared/voicedrive.ts'
 
 const person = {
   email: z.email().max(160).transform((e) => e.toLowerCase()),
@@ -91,7 +93,20 @@ const schema = z.discriminatedUnion('action', [
     }),
   }),
   z.object({ action: z.literal('gateway_disconnect'), provider: z.enum(PLATFORM_GATEWAYS) }),
+  z.object({
+    action: z.literal('pbx_trunk_secret'),
+    merchant_id: z.uuid(),
+    // Empty clears the saved password.
+    password: z.string().max(200).regex(/^\S*$/, 'The trunk password has no spaces'),
+  }),
+  z.object({ action: z.literal('pbx_turn_secret'), secret: z.string().min(16, 'Use at least 16 characters').max(200) }),
+  z.object({ action: z.literal('pbx_gateway_token') }),
 ])
+
+// VoiceDrive gateway secrets are the platform's: one gateway serves every merchant.
+const PBX_GATEWAY_KEY = 'voicedrive.gateway'
+const PBX_TURN_KEY = 'voicedrive.turn'
+const pbxTrunkKey = (businessId: string) => `voicedrive.trunk.${businessId.replace(/-/g, '')}`
 
 const GATEWAY_FIELDS: Record<(typeof PLATFORM_GATEWAYS)[number], string[]> = {
   bkash: ['app_key', 'app_secret', 'username', 'password'],
@@ -111,8 +126,8 @@ async function ensureLogin(admin: SupabaseClient, who: { email: string; full_nam
 
 const maskPhone = (to: string) => (to.length > 7 ? `${to.slice(0, -7)}••••${to.slice(-3)}` : to)
 
-async function require(client: SupabaseClient, module: string, action: string) {
-  if (!(await rpc<boolean>(client, 'platform_can', { p_module: module, p_action: action, p_merchant: null }))) {
+async function require(client: SupabaseClient, module: string, action: string, merchant: string | null = null) {
+  if (!(await rpc<boolean>(client, 'platform_can', { p_module: module, p_action: action, p_merchant: merchant }))) {
     await client.rpc('platform_report_denied', { p_action: `${module}.${action}`, p_detail: {} })
     throw new HttpError(403, `${module} ${action} is not allowed for your role`, 'PERMISSION_DENIED')
   }
@@ -306,6 +321,40 @@ Deno.serve(
         await rpc(admin, 'platform_secret_clear', { p_key: platformGatewaySecret(input.provider), p_actor: user.id })
         const gateways = await rpc(admin, 'platform_billing_gateway_set', { p_provider: input.provider, p_connected: false, p_hint: null, p_sandbox: null, p_actor: user.id })
         return json(req, { ok: true, gateways })
+      }
+
+      // ------------------------------------------------- PBX Setup (VoiceDrive gateway)
+      case 'pbx_trunk_secret': {
+        await require(client, 'pbx', 'manage', input.merchant_id)
+        const detail = await rpc<{ business: { id: string } | null }>(client, 'platform_pbx_merchant', { p_merchant: input.merchant_id })
+        if (!detail.business) throw new HttpError(422, 'Set up the merchant\'s PBX line first', 'NOT_CONFIGURED')
+        const key = pbxTrunkKey(detail.business.id)
+        let hint: string | null = null
+        if (input.password) {
+          hint = `••${input.password.slice(-2)}`
+          await rpc(admin, 'platform_secret_store', { p_key: key, p_value: { password: input.password }, p_hint: hint, p_actor: user.id })
+        } else {
+          await rpc(admin, 'platform_secret_clear', { p_key: key, p_actor: user.id })
+        }
+        // As the employee: the database checks their access again, marks the line and records it.
+        const business = await rpc(client, 'platform_pbx_trunk_secret_saved', { p_merchant: input.merchant_id, p_set: Boolean(input.password), p_hint: hint })
+        return json(req, { ok: true, business })
+      }
+      case 'pbx_turn_secret': {
+        await require(client, 'pbx', 'manage')
+        const hint = `••••${input.secret.slice(-3)}`
+        await rpc(admin, 'platform_secret_store', { p_key: PBX_TURN_KEY, p_value: { secret: input.secret }, p_hint: hint, p_actor: user.id })
+        await rpc(admin, 'platform_record_action', { p_actor: user.id, p_action: 'pbx.turn_secret_saved', p_entity_type: 'platform_credential', p_entity_id: PBX_TURN_KEY, p_result: 'SUCCESS', p_metadata: { hint } })
+        return json(req, { ok: true, hint })
+      }
+      case 'pbx_gateway_token': {
+        await require(client, 'pbx', 'manage')
+        // Shown once; only its SHA-256 is kept. The running gateway keeps working until it is given the new token.
+        const token = randomPassword(32)
+        const hint = `vdgw_••••${token.slice(-4)}`
+        await rpc(admin, 'platform_secret_store', { p_key: PBX_GATEWAY_KEY, p_value: { token_sha256: await sha256Hex(token) }, p_hint: hint, p_actor: user.id })
+        await rpc(admin, 'platform_record_action', { p_actor: user.id, p_action: 'pbx.gateway_token_rotated', p_entity_type: 'platform_credential', p_entity_id: PBX_GATEWAY_KEY, p_result: 'SUCCESS', p_metadata: { hint } })
+        return json(req, { token, hint }, 200, { 'Cache-Control': 'no-store' })
       }
     }
   }),

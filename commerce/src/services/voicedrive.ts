@@ -193,39 +193,6 @@ export interface Reports {
 export interface OrderCallState { lastStatus: CallStatus; lastOutcome: CallOutcome | null; lastAt: string; attempts: number; answered: number; live: boolean }
 export interface CallStateAvailability { lineActive: boolean; lineProblems: LineProblem[]; canCall: boolean; hasExtension: boolean }
 
-export interface AdminBusiness {
-  id: string
-  code: number
-  name: string
-  isPrimary: boolean
-  did: string | null
-  callerId: string | null
-  trunkHost: string | null
-  trunkPort: number
-  trunkTransport: 'udp' | 'tcp' | 'tls'
-  trunkUser: string | null
-  trunkRegister: boolean
-  trunkSecretSet: boolean
-  dialFormat: 'LOCAL' | 'E164' | 'E164_NO_PLUS'
-  maxCallMinutes: number
-  pbxEnabled: boolean
-  bridgeReady: boolean
-  bridgeReadyAt: string | null
-  limits: Limits
-  balanceTk: number
-  agents: number
-  members: number
-  lineProblems: LineProblem[]
-}
-export interface AdminOverview {
-  businesses: AdminBusiness[]
-  gateway: { lastSeenAt: string | null; version: string | null; online: boolean; detail: { trunks?: Array<{ name: string; state: string }>; softphonesOnline?: number; activeCalls?: number } }
-  settings: { sipDomain: string | null; wssUrl: string | null; stunUrls: string[]; turnUrls: string[]; turnTtlSeconds: number; credentialTtlSeconds: number; ratePerMinTk: number; vatPercent: number; minTopupTk: number; maintenance: { starts_at: string | null; until: string | null; message: string | null } }
-  secrets: { gatewayToken: { hint: string; at: string } | null; turnSecret: { hint: string; at: string } | null }
-  packages: Package[]
-  staff: Array<{ profileId: string; name: string; email: string; businessId: string | null }>
-}
-
 // ------------------------------------------------------------------ batch
 const BATCHABLE = {
   overview: null as unknown as Overview,
@@ -315,28 +282,11 @@ export const pbxMaintenance = {
   status: () => rpc<Maintenance>('pbx_maintenance_status'),
 }
 
-/** Super Admin only (checked in the database and the edge function). */
-export const pbxSuperAdmin = {
-  overview: () => rpc<AdminOverview>('pbx_admin_list_businesses'),
-  saveBusiness: (p: { id?: string; name: string }) => rpc<{ id: string }>('pbx_admin_save_business', { p }),
-  provisionBusinessDid: (p: { business_id: string; did: string; caller_id?: string; trunk_host: string; trunk_port?: number; trunk_transport?: string; trunk_user?: string; trunk_register?: boolean; dial_format?: string; pbx_enabled?: boolean }) =>
-    rpc<{ id: string; bridgeReady: boolean }>('pbx_provision_business_did', { p }),
-  saveTrunkSecret: (businessId: string, password: string) => invokeFunction<{ ok: true }>('voicedrive', { action: 'saveTrunkSecret', business_id: businessId, password }),
-  setPbxBridgeReady: (businessId: string, ready: boolean) => rpc<{ bridgeReady: boolean }>('pbx_set_pbx_bridge_ready', { p_business_id: businessId, p_ready: ready }),
-  setMember: (profileId: string, businessId: string | null) => rpc<void>('pbx_admin_set_member', { p_profile_id: profileId, p_business_id: businessId }),
-  grantPackage: (p: { business_id: string; package_id: string; months: number; extra_agents?: number; extra_channels?: number; agents?: number; channels?: number; amount_tk?: number; note?: string }) =>
-    rpc<unknown>('pbx_admin_grant_package', { p }),
-  adjustBalance: (businessId: string, amount: number, note: string) => rpc<{ balanceTk: number }>('pbx_admin_adjust_balance', { p_business_id: businessId, p_amount: amount, p_note: note }),
-  saveSettings: (p: Record<string, unknown>) => rpc<unknown>('pbx_admin_save_settings', { p }),
-  saveTurnSecret: (secret: string) => invokeFunction<{ ok: true }>('voicedrive', { action: 'saveTurnSecret', secret }),
-  rotateGatewayToken: () => invokeFunction<{ token: string }>('voicedrive', { action: 'rotateGatewayToken' }),
-}
-
 // ------------------------------------------------------------------ labels
 export const LINE_PROBLEM: Record<LineProblem, string> = {
-  NOT_ENABLED: 'PBX is not switched on for this business (Super Admin)',
-  NO_NUMBER: 'No phone number (DID) or SIP trunk yet (Super Admin)',
-  BRIDGE_NOT_READY: 'The PBX bridge is not confirmed ready (Super Admin)',
+  NOT_ENABLED: 'PBX is not switched on for this business yet (the platform team does this)',
+  NO_NUMBER: 'No phone number (DID) or SIP trunk yet (the platform team sets it up)',
+  BRIDGE_NOT_READY: 'The line has not been tested yet (the platform team does this)',
   NO_PACKAGE: 'No active package — buy one under Package & Recharge',
   MAINTENANCE: 'VoiceDrive is under maintenance',
   NOT_FOUND: 'Business not found',

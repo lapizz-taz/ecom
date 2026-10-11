@@ -21,7 +21,6 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePhone } from '@/features/voicedrive/phone-context'
-import { SuperAdminTab } from '@/features/voicedrive/super-admin-tab'
 import { rangeFor, type DateRange } from '@/lib/dates'
 import { formatDateTime, formatNumber, formatShortDate, timeAgo } from '@/lib/format'
 import {
@@ -76,6 +75,9 @@ export default function VoiceDrivePbxPage() {
         </p>
       )}
       {ov.lineStatus !== 'ACTIVE' && <SetupSteps ov={ov} />}
+      {ov.isSuperAdmin && (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-3.5" /> The number, trunk, packages and gateway are set up in <a className="underline" href="/super-admin/pbx">Super Admin → PBX Setup</a>.</p>
+      )}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="h-auto flex-wrap justify-start">
@@ -85,7 +87,6 @@ export default function VoiceDrivePbxPage() {
           <TabsTrigger value="setup"><Headset /> My Setup</TabsTrigger>
           <TabsTrigger value="missed"><PhoneMissed /> Missed &amp; Callback</TabsTrigger>
           {ov.canManage && <TabsTrigger value="reports"><BarChart3 /> Reports</TabsTrigger>}
-          {ov.isSuperAdmin && <TabsTrigger value="admin"><ShieldCheck /> Super Admin</TabsTrigger>}
         </TabsList>
         <TabsContent value="package" className="mt-4">{packages && <PackageTab ov={ov} list={packages} />}</TabsContent>
         {ov.canManage && <TabsContent value="agents" className="mt-4"><AgentsTab ov={ov} /></TabsContent>}
@@ -93,7 +94,6 @@ export default function VoiceDrivePbxPage() {
         <TabsContent value="setup" className="mt-4"><SetupTab ov={ov} /></TabsContent>
         <TabsContent value="missed" className="mt-4"><MissedTab /></TabsContent>
         {ov.canManage && <TabsContent value="reports" className="mt-4"><ReportsTab /></TabsContent>}
-        {ov.isSuperAdmin && <TabsContent value="admin" className="mt-4"><SuperAdminTab /></TabsContent>}
       </Tabs>
     </div>
   )

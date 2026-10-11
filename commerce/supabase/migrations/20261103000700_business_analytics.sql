@@ -161,6 +161,7 @@ declare
   v_assumptions text[] := '{}';
   v_paying_start int;
   v_churned int;
+  v_pbx numeric;
 begin
   perform public._platform_require('subscriptions', 'view');
   if p_to < p_from or p_to - p_from > 731 then
@@ -181,6 +182,10 @@ begin
   from public.billing_payments p join public.billing_invoices i on i.id = p.invoice_id
   where p.status = 'SUCCEEDED' and coalesce(p.verified_at, p.created_at) >= v_from and coalesce(p.verified_at, p.created_at) < v_to
     and p.merchant_id = any (v_real);
+  -- VoiceDrive packages and call top-ups, paid to the platform with bKash.
+  v_pbx := (select coalesce(sum(t.amount_tk), 0) from public.pbx_bkash_transactions t
+            where t.status = 'COMPLETED' and t.completed_at >= v_from and t.completed_at < v_to and t.merchant_id = any (v_real));
+  v_paid := v_paid || jsonb_build_object('pbx', v_pbx, 'total', (v_paid ->> 'total')::numeric + v_pbx);
   v_revenue := (v_paid ->> 'total')::numeric;
 
   -- SMS: credit sales vs what sending cost.
@@ -332,7 +337,9 @@ begin
     'by_merchant', (select coalesce(jsonb_agg(x order by x.revenue desc, x.number), '[]'::jsonb) from (
         select m.id, m.number, m.name,
           coalesce((select sum(p.amount) from public.billing_payments p where p.merchant_id = m.id and p.status = 'SUCCEEDED'
-                    and coalesce(p.verified_at, p.created_at) >= v_from and coalesce(p.verified_at, p.created_at) < v_to), 0) as revenue,
+                    and coalesce(p.verified_at, p.created_at) >= v_from and coalesce(p.verified_at, p.created_at) < v_to), 0)
+          + coalesce((select sum(t.amount_tk) from public.pbx_bkash_transactions t where t.merchant_id = m.id and t.status = 'COMPLETED'
+                    and t.completed_at >= v_from and t.completed_at < v_to), 0) as revenue,
           coalesce((select sum(coalesce(u.provider_cost, case when u.status = 'SUCCEEDED' then u.units * (v_assume ->> 'sms_per_part')::numeric end))
                     from public.service_usage u where u.merchant_id = m.id and u.service = 'SMS' and u.created_at >= v_from and u.created_at < v_to), 0) as sms_cost,
           (select count(*) from public.service_usage u where u.merchant_id = m.id and u.service = 'BD_COURIER' and u.status = 'SUCCEEDED'
@@ -347,7 +354,9 @@ begin
                             and coalesce(p.verified_at, p.created_at) >= mo and coalesce(p.verified_at, p.created_at) < mo + interval '1 month'),
         'credits', (select coalesce(sum(p.amount), 0) from public.billing_payments p join public.billing_invoices i on i.id = p.invoice_id
                     where p.status = 'SUCCEEDED' and i.kind <> 'SUBSCRIPTION' and p.merchant_id = any (v_real)
-                      and coalesce(p.verified_at, p.created_at) >= mo and coalesce(p.verified_at, p.created_at) < mo + interval '1 month'),
+                      and coalesce(p.verified_at, p.created_at) >= mo and coalesce(p.verified_at, p.created_at) < mo + interval '1 month')
+                 + (select coalesce(sum(t.amount_tk), 0) from public.pbx_bkash_transactions t where t.status = 'COMPLETED' and t.merchant_id = any (v_real)
+                      and t.completed_at >= mo and t.completed_at < mo + interval '1 month'),
         'costs', (select coalesce(sum(amount), 0) from public.platform_cost_entries where month = mo::date),
         'new_merchants', (select count(*) from public.merchants where id = any (v_real) and created_at >= mo and created_at < mo + interval '1 month'),
         'churned', (select count(*) from public.subscriptions s where s.merchant_id = any (v_real) and s.price > 0 and s.status in ('CANCELLED', 'EXPIRED')
@@ -599,7 +608,9 @@ begin
         'cancelled_in_range', (select count(*) from public.subscriptions x where x.merchant_id = any (v_real) and x.status in ('CANCELLED', 'EXPIRED')
                                and x.ended_at >= v_from and x.ended_at < v_to),
         'revenue_in_range', (select coalesce(sum(p.amount), 0) from public.billing_payments p where p.status = 'SUCCEEDED' and p.merchant_id = any (v_real)
-                             and coalesce(p.verified_at, p.created_at) >= v_from and coalesce(p.verified_at, p.created_at) < v_to),
+                             and coalesce(p.verified_at, p.created_at) >= v_from and coalesce(p.verified_at, p.created_at) < v_to)
+                          + (select coalesce(sum(t.amount_tk), 0) from public.pbx_bkash_transactions t where t.status = 'COMPLETED' and t.merchant_id = any (v_real)
+                             and t.completed_at >= v_from and t.completed_at < v_to),
         'subscription_revenue_in_range', (select coalesce(sum(p.amount), 0) from public.billing_payments p join public.billing_invoices i on i.id = p.invoice_id
                              where p.status = 'SUCCEEDED' and i.kind = 'SUBSCRIPTION' and p.merchant_id = any (v_real)
                                and coalesce(p.verified_at, p.created_at) >= v_from and coalesce(p.verified_at, p.created_at) < v_to),

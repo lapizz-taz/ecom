@@ -22,7 +22,7 @@ export interface BusinessReport {
   range: { from: string; to: string }
   mrr: { mrr: number; arr: number; at_risk: number; trialing: number; paying: number }
   mrr_by_plan: Array<{ code: string; name: string; active: number; trialing: number; mrr: number }>
-  revenue: { total: number; subscriptions: number; credits: number; addons: number; other: number; payments: number
+  revenue: { total: number; subscriptions: number; credits: number; addons: number; other: number; pbx: number; payments: number
     by_plan: Array<{ code: string; name: string; amount: number }>; refunds: number; refunds_note: string }
   merchants: { new: number; active: number; total: number }
   subscriptions: { renewals: number; cancelled: number; expired: number; paying_at_start: number; churned: number; churn_rate: number | null }

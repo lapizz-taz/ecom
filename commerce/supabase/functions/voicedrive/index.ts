@@ -4,9 +4,8 @@
 //     getMyWebRtcCredentials  pbx.call          fresh SIP password (digest stored, password returned once),
 //                                               WSS address and STUN/TURN with time-limited credentials
 //     bkashStart              pbx.manage        package or top-up: the amount is set by the database
-//     saveTrunkSecret         pbx.super_admin   IPTSP trunk password → Vault (never returned)
-//     saveTurnSecret          pbx.super_admin   coturn static-auth-secret → Vault
-//     rotateGatewayToken      pbx.super_admin   new gateway token, shown once; only its SHA-256 is kept
+//   (Trunk passwords, the TURN secret and the gateway token are saved by
+//   platform PBX staff through the platform-admin function.)
 //
 //   bKash browser return (GET ?bkash=callback&ref=…&paymentID=…&status=…)
 //     verified with bKash server-to-server, applied once, then back to the admin page.
@@ -22,12 +21,12 @@ import { env, requireEnv } from '../_shared/env.ts'
 import { formOrQuery } from '../_shared/payment-flow.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
-import { loadPaymentProvider, type PaymentSettings } from '../_shared/payments/registry.ts'
 import type { PaymentProvider, VerifiedPayment } from '../_shared/payments/types.ts'
+import { platformGateway } from '../_shared/platform-billing.ts'
 import { parse } from '../_shared/schemas.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { adminClient, forEachMerchant, getSettings, merchantFor, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, merchantFor, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 import { constantTimeEqual, iceServers, randomPassword, sha256Hex, type VoiceDriveSettings } from '../_shared/voicedrive.ts'
 
 const GATEWAY_KEY = 'voicedrive.gateway'
@@ -47,9 +46,6 @@ const staffSchema = z.discriminatedUnion('action', [
     amount_tk: z.number().positive().max(1_000_000).optional(),
     business_id: uuid.optional(),
   }),
-  z.object({ action: z.literal('saveTrunkSecret'), business_id: uuid, password: z.string().min(1).max(200).regex(/^\S+$/, 'The trunk password has no spaces') }),
-  z.object({ action: z.literal('saveTurnSecret'), secret: z.string().min(16, 'Use at least 16 characters').max(200) }),
-  z.object({ action: z.literal('rotateGatewayToken') }),
 ])
 
 const gatewaySchema = z.discriminatedUnion('action', [
@@ -67,9 +63,6 @@ const gatewaySchema = z.discriminatedUnion('action', [
 const PERMISSION: Record<string, string> = {
   getMyWebRtcCredentials: 'pbx.call',
   bkashStart: 'pbx.manage',
-  saveTrunkSecret: 'pbx.super_admin',
-  saveTurnSecret: 'pbx.super_admin',
-  rotateGatewayToken: 'pbx.super_admin',
 }
 
 // The gateway token, TURN secret and SIP trunk passwords belong to the shared
@@ -80,18 +73,19 @@ async function secret<T>(key: string): Promise<T | null> {
   return (data ?? null) as T | null
 }
 
-async function storeSecret(key: string, value: Record<string, unknown>, hint: string, actor: string) {
-  await rpc(adminClient(), 'platform_secret_store', { p_key: key, p_value: value, p_hint: hint, p_actor: actor })
+/** The platform's VoiceDrive settings (gateway address, ICE servers, TTLs) — the same for every merchant. */
+async function voiceDriveSettings(): Promise<VoiceDriveSettings> {
+  return (await rpc<VoiceDriveSettings | null>(adminClient(), 'platform_voicedrive_config')) ?? ({} as VoiceDriveSettings)
 }
 
 const functionsBase = () => `${requireEnv('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1`
 
-async function bkash(admin: SupabaseClient): Promise<PaymentProvider> {
-  const settings = await getSettings<PaymentSettings>(admin, 'payments')
+/** Packages and top-ups are paid to the platform's bKash account, never the merchant's own. */
+async function bkash(): Promise<PaymentProvider> {
   try {
-    return await loadPaymentProvider(admin, 'bkash', settings, { allowDisabled: true })
+    return await platformGateway('bkash')
   } catch (error) {
-    throw new HttpError(422, `bKash is not connected (Settings → Payments): ${(error as Error).message}`, 'NOT_CONFIGURED')
+    throw new HttpError(422, `bKash payments to the platform are not available right now: ${(error as Error).message}`, 'NOT_CONFIGURED')
   }
 }
 
@@ -119,7 +113,7 @@ async function bkashReturn(req: Request): Promise<Response> {
     if (!merchantId) throw new Error('Unknown payment reference')
     const found = params.paymentID ? await rpc<{ reference: string } | null>(admin, 'pbx_bkash_find', { p_payment_id: params.paymentID }) : null
     if (!found || found.reference !== reference) throw new Error('This bKash payment does not belong to this recharge')
-    const verified = await (await bkash(admin)).verifyCallback!({ ...params, reference })
+    const verified = await (await bkash()).verifyCallback!({ ...params, reference })
     const result = await complete(admin, verified, reference)
     type = result.type ?? ''
     outcome = ['completed', 'already_completed'].includes(result.status) ? 'success' : result.status === 'amount_mismatch' ? 'review' : 'failed'
@@ -184,10 +178,11 @@ async function gateway(req: Request, body: Record<string, unknown>): Promise<Res
 
 async function reconcile(req: Request): Promise<Response> {
   if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
+  let provider: PaymentProvider | null = null
   return json(req, await forEachMerchant('voicedrive', async (admin) => {
     const pending = await rpc<Array<{ reference: string; paymentId: string; ageMinutes: number }>>(admin, 'pbx_bkash_pending', { p_limit: 20 })
     if (!pending?.length) return { checked: 0 }
-    const provider = await bkash(admin)
+    provider ??= await bkash()
     const counts: Record<string, number> = {}
     for (const p of pending) {
       try {
@@ -219,10 +214,6 @@ Deno.serve(
     const input = parse(staffSchema, body)
     const staff = await requireStaff(req, PERMISSION[input.action])
     const admin = staff.admin
-    // Gateway, TURN and trunk secrets are shared by every merchant: only platform staff may change them.
-    if (PERMISSION[input.action] === 'pbx.super_admin' && !(await rpc<boolean>(staff.client, 'is_platform_staff'))) {
-      throw new HttpError(403, 'Only the platform team can change the shared PBX gateway', 'PERMISSION_DENIED')
-    }
 
     if (input.action === 'getMyWebRtcCredentials') {
       rateLimit(`vd-cred:${staff.user.id}`, 12)
@@ -230,8 +221,8 @@ Deno.serve(
       // Runs as the user: the database checks the agent, seat, line and maintenance.
       const issued = await rpc<{ sipUsername: string; sipUri: string; sipDomain: string; extension: string; expiresAt: string; ttlSeconds: number; agentId: string; businessId: string }>(
         staff.client, 'pbx_issue_my_credential', { p_password: password, p_user_agent: input.userAgent ?? req.headers.get('user-agent') })
-      const settings = await getSettings<VoiceDriveSettings>(admin, 'voicedrive')
-      if (!settings.wss_url) throw new HttpError(422, 'The gateway WebSocket address is not set (Super Admin → Gateway)', 'NOT_CONFIGURED')
+      const settings = await voiceDriveSettings()
+      if (!settings.wss_url) throw new HttpError(422, 'The gateway WebSocket address is not set (Super Admin → PBX Setup)', 'NOT_CONFIGURED')
       const turn = await secret<{ secret?: string }>(TURN_KEY)
       return json(req, {
         sipUri: issued.sipUri,
@@ -251,7 +242,7 @@ Deno.serve(
       rateLimit(`vd-bkash:${staff.user.id}`, 6)
       const { action: _a, ...p } = input
       const tx = await rpc<{ id: string; reference: string; amountTk: number; type: string; businessPhone: string | null }>(staff.client, 'pbx_bkash_start', { p })
-      const provider = await bkash(admin)
+      const provider = await bkash()
       const back = `${functionsBase()}/voicedrive?bkash=callback&ref=${tx.reference}`
       let started
       try {
@@ -268,21 +259,6 @@ Deno.serve(
       if (started.session) await rpc(admin, 'pbx_bkash_attach', { p_id: tx.id, p_payment_id: started.session })
       return json(req, { reference: tx.reference, amountTk: Number(tx.amountTk), redirectUrl: started.redirectUrl })
     }
-
-    if (input.action === 'saveTrunkSecret') {
-      await storeSecret(trunkKey(input.business_id), { password: input.password }, `••••${input.password.slice(-2)}`, staff.user.id)
-      await rpc(admin, 'pbx_admin_mark_trunk_secret', { p_business_id: input.business_id, p_set: true })
-      return json(req, { ok: true })
-    }
-
-    if (input.action === 'saveTurnSecret') {
-      await storeSecret(TURN_KEY, { secret: input.secret }, `••••${input.secret.slice(-3)}`, staff.user.id)
-      return json(req, { ok: true })
-    }
-
-    // rotateGatewayToken
-    const token = randomPassword(32)
-    await storeSecret(GATEWAY_KEY, { token_sha256: await sha256Hex(token) }, `vdgw_••••${token.slice(-4)}`, staff.user.id)
-    return json(req, { token }, 200, { 'Cache-Control': 'no-store' })
+    throw new HttpError(400, 'Unknown action', 'VALIDATION')
   }),
 )

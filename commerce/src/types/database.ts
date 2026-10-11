@@ -6019,24 +6019,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "pbx_businesses_bridge_ready_by_fkey"
-            columns: ["bridge_ready_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "pbx_businesses_merchant_id_fkey"
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pbx_businesses_provisioned_by_fkey"
-            columns: ["provisioned_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -12975,6 +12961,18 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_integration_retry: {
+        Args: {
+          p_kind: string
+          p_id: string
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_integrations_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       platform_invoice_void: {
         Args: {
           p_invoice: string
@@ -13122,6 +13120,91 @@ export type Database = {
           p_payment: string
           p_approve: boolean
           p_note?: string
+        }
+        Returns: Json
+      }
+      platform_pbx_adjust_balance: {
+        Args: {
+          p_merchant: string
+          p_amount: number
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_pbx_agent_save: {
+        Args: {
+          p_merchant: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_pbx_bridge_ready: {
+        Args: {
+          p_merchant: string
+          p_ready: boolean
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_pbx_check: {
+        Args: {
+          p_merchant: string
+        }
+        Returns: Json
+      }
+      platform_pbx_grant_package: {
+        Args: {
+          p_merchant: string
+          p: Json
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_pbx_merchant: {
+        Args: {
+          p_merchant: string
+        }
+        Returns: Json
+      }
+      platform_pbx_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_pbx_ring_group_save: {
+        Args: {
+          p_merchant: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_pbx_set_enabled: {
+        Args: {
+          p_merchant: string
+          p_enabled: boolean
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_pbx_settings_save: {
+        Args: {
+          p: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_pbx_setup: {
+        Args: {
+          p_merchant: string
+          p: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_pbx_trunk_secret_saved: {
+        Args: {
+          p_merchant: string
+          p_set: boolean
+          p_hint?: string
         }
         Returns: Json
       }

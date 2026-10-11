@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
-import { asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
+import { MERCHANT_1, asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
 import { createOrder, createProduct, createStaff } from '../support/fixtures'
 
 afterAll(closePool)
@@ -8,20 +8,37 @@ afterAll(closePool)
 const md5 = (s: string) => createHash('md5').update(s).digest('hex')
 type J = Record<string, any>
 
+/**
+ * A platform PBX admin acting inside merchant 1, as the Super Admin panel does
+ * (lines, packages, balances and the shared settings are the platform's).
+ */
+async function asPbx(db: Db) {
+  await asSystem(db, null)
+  let id = await value<string | null>(db, `select (select user_id from public.platform_staff where email = 'pbx-admin@platform.test')`)
+  if (!id) {
+    id = randomUUID()
+    await db.query(`insert into auth.users (id, email) values ($1, 'pbx-admin@platform.test')`, [id])
+    await db.query(`insert into public.platform_staff (user_id, email, full_name, role_id)
+      values ($1, 'pbx-admin@platform.test', 'PBX Admin', (select id from public.platform_roles where code = 'PBX_ADMIN'))`, [id])
+  }
+  await asUser(db, id, 'pbx-admin@platform.test', null)
+  await db.query(`select set_config('app.merchant_id', $1, true)`, [MERCHANT_1])
+}
+
 /** The primary business with a number, trunk, gateway check-in and a package. */
 async function readyLine(db: Db, owner: string, opts: { packageCode?: string; channels?: number; agents?: number; balance?: number } = {}) {
   await asSystem(db)
   const businessId = await value<string>(db, `select id from public.pbx_businesses where is_primary`)
-  await asUser(db, owner)
+  const pkg = await value<string>(db, `select id from public.pbx_packages where code = $1`, [opts.packageCode ?? 'ENTERPRISE'])
+  await asPbx(db)
   await db.query(`select public.pbx_provision_business_did($1)`, [JSON.stringify({ business_id: businessId, did: '09639123456',
     trunk_host: 'sip.iptsp.example', trunk_user: 'acct1', pbx_enabled: true })])
   await asService(db)
   await db.query(`select public.pbx_admin_mark_trunk_secret($1, true)`, [businessId])
   await db.query(`select public.pbx_gw_ping('test', '{}')`)
-  await asUser(db, owner)
-  await db.query(`select public.pbx_admin_save_settings($1)`, [JSON.stringify({ sip_domain: 'pbx.example.com', wss_url: 'wss://pbx.example.com:8089/ws' })])
+  await asPbx(db)
+  await db.query(`select public.platform_pbx_settings_save($1)`, [JSON.stringify({ sip_domain: 'pbx.example.com', wss_url: 'wss://pbx.example.com:8089/ws' })])
   await db.query(`select public.pbx_set_pbx_bridge_ready($1, true)`, [businessId])
-  const pkg = await value<string>(db, `select p ->> 'id' from jsonb_array_elements(public.pbx_packages_list() -> 'packages') p where p ->> 'code' = $1`, [opts.packageCode ?? 'ENTERPRISE'])
   await db.query(`select public.pbx_admin_grant_package($1)`, [JSON.stringify({ business_id: businessId, package_id: pkg,
     agents: opts.agents ?? 10, channels: opts.channels ?? 5, months: 1 })])
   if (opts.balance) await db.query(`select public.pbx_admin_adjust_balance($1, $2, 'test credit')`, [businessId, opts.balance])
@@ -50,9 +67,14 @@ describe('VoiceDrive PBX: provisioning and access', () => {
 
       await asUser(db, admin)
       await expectError(db, `select public.pbx_provision_business_did($1)`, [JSON.stringify({ business_id: businessId, did: '09639000001', trunk_host: 'x.example' })],
-        /pbx.super_admin/)
-
+        /set up by the platform team/)
+      // Not even the owner: lines, packages and call credit are the platform's to give.
       await asUser(db, owner)
+      await expectError(db, `select public.pbx_provision_business_did($1)`, [JSON.stringify({ business_id: businessId, did: '09639000001', trunk_host: 'x.example' })],
+        /set up by the platform team/)
+      await expectError(db, `select public.pbx_admin_adjust_balance($1, 1000, 'free credit')`, [businessId], /set up by the platform team/)
+
+      await asPbx(db)
       await expectError(db, `select public.pbx_provision_business_did($1)`, [JSON.stringify({ business_id: businessId, did: '12', trunk_host: 'x.example' })], /DID/)
       const prov = await value<J>(db, `select public.pbx_provision_business_did($1)`, [JSON.stringify({ business_id: businessId, did: '+8809639000001',
         trunk_host: 'SIP.Example.com', trunk_user: 'u1', pbx_enabled: true })])
@@ -60,12 +82,13 @@ describe('VoiceDrive PBX: provisioning and access', () => {
       await expectError(db, `select public.pbx_set_pbx_bridge_ready($1, true)`, [businessId], /trunk password/)
       await asService(db)
       await db.query(`select public.pbx_admin_mark_trunk_secret($1, true)`, [businessId])
-      await asUser(db, owner)
+      await asPbx(db)
       await expectError(db, `select public.pbx_set_pbx_bridge_ready($1, true)`, [businessId], /gateway has not checked in/)
       await asService(db)
       await db.query(`select public.pbx_gw_ping('Asterisk 23', '{}')`)
-      await asUser(db, owner)
+      await asPbx(db)
       expect((await value<J>(db, `select public.pbx_set_pbx_bridge_ready($1, true)`, [businessId])).bridgeReady).toBe(true)
+      await asUser(db, owner)
 
       // Without a package the line stays inactive.
       const ov = await value<J>(db, `select public.pbx_overview()`)
@@ -87,10 +110,10 @@ describe('VoiceDrive PBX: provisioning and access', () => {
       await asUser(db, agent1)
       await db.query(`select public.pbx_start_manual_call('01711000111')`)
 
-      await asUser(db, owner)
+      await asPbx(db)
       const b2 = await value<J>(db, `select public.pbx_admin_save_business('{"name":"Second shop"}')`)
       const admin2 = await createStaff(db, 'ADMIN')
-      await asUser(db, owner)
+      await asPbx(db)
       await db.query(`select public.pbx_admin_set_member($1, $2)`, [admin2, b2.id])
       await asUser(db, admin2)
       expect((await value<J>(db, `select public.pbx_overview()`)).business.name).toBe('Second shop')
@@ -229,15 +252,17 @@ describe('VoiceDrive PBX: agents and softphone credentials', () => {
       const owner = await createStaff(db, 'OWNER')
       await readyLine(db, owner)
       const { staff } = await addAgent(db, owner)
-      await asUser(db, owner)
-      await db.query(`select public.pbx_admin_save_settings($1)`, [JSON.stringify({ maintenance: { starts_at: new Date(Date.now() - 60_000).toISOString(),
+      await asPbx(db)
+      await db.query(`select public.platform_pbx_settings_save($1)`, [JSON.stringify({ maintenance: { starts_at: new Date(Date.now() - 60_000).toISOString(),
         until: new Date(Date.now() + 3_600_000).toISOString(), message: 'Upgrade' } })])
+      await asUser(db, owner)
       expect((await value<J>(db, `select public.pbx_maintenance_status()`)).state).toBe('active')
       await asUser(db, staff)
       await expectError(db, `select public.pbx_issue_my_credential($1)`, ['x'.repeat(32)], /MAINTENANCE/)
-      await asUser(db, owner)
-      await db.query(`select public.pbx_admin_save_settings($1)`, [JSON.stringify({ maintenance: { starts_at: new Date(Date.now() + 3_600_000).toISOString(),
+      await asPbx(db)
+      await db.query(`select public.platform_pbx_settings_save($1)`, [JSON.stringify({ maintenance: { starts_at: new Date(Date.now() + 3_600_000).toISOString(),
         until: new Date(Date.now() + 7_200_000).toISOString() } })])
+      await asUser(db, owner)
       expect((await value<J>(db, `select public.pbx_maintenance_status()`)).state).toBe('scheduled')
       await asUser(db, staff)
       expect((await issue(db, staff)).sipUsername).toBeTruthy()
@@ -331,6 +356,7 @@ describe('VoiceDrive PBX: outgoing calls and billing on the gateway record', () 
       // Empty balance: the app refuses before dialling.
       await asUser(db, owner)
       const bid = await value<string>(db, `select public.pbx_overview() -> 'business' ->> 'id'`)
+      await asPbx(db)
       await db.query(`select public.pbx_admin_adjust_balance($1, -1, 'test')`, [bid])
       await asUser(db, b.staff)
       await expectError(db, `select public.pbx_start_manual_call('01811000222')`, [], /balance is empty/)
