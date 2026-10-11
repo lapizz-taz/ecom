@@ -257,6 +257,10 @@ Seeded logins (password `Password123!` for all):
      money in / out. A Meta account linked to one has each finished day's spend withdrawn the day after; if Meta later
      revises a day, the difference is posted as a correction. Movements are permanent.
      Paste the URL parameters from **Ads → Tracking setup** into every ad so orders carry the campaign, ad set and ad.
+   - Super Admin operations need nothing extra: the migrations schedule `platform-ops` (pg_cron, every 10 minutes) to
+     end customer-view sessions, publish scheduled announcements, run automation rules and, once a day, apply the
+     retention policy. Platform staff sign in again after 24 hours by default (**Global Settings → Staff sessions**).
+     VoiceDrive gateway secrets (trunk passwords, TURN secret, gateway token) are set in **Super Admin → PBX Setup**.
    - Pathao and Steadfast status webhooks: **Couriers → Connections → Webhook** shows the callback URL
      (`…/functions/v1/courier-webhook?courier=<id>&provider=pathao|steadfast`) and a secret to paste into the courier's
      panel. Pathao sends it in `X-PATHAO-Signature`, Steadfast as `Authorization: Bearer …`; it is kept in Vault.
@@ -280,6 +284,8 @@ Seeded logins (password `Password123!` for all):
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email notifications |
+| `PLATFORM_URL` | The admin app's address: links in staff invitations, and where merchants return after paying the platform |
+| `MANAGEMENT_API_TOKEN`, `PROJECT_REF` (optional) | A Supabase personal access token (and the project ref, when it is not the one in the URL) so **Super Admin → Data Management** can show backup status. Without it the panel says it cannot see backups. Edge function secrets cannot start with `SUPABASE_`, hence the names |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected by Supabase. Which provider is *used* is
 chosen in **Settings**; settings rows never contain credentials.
