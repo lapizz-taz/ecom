@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, closePool, inTx, num, value, type Db } from '../support/db'
-import { createProduct, inventory } from '../support/fixtures'
+import { createProduct, createStaff, inventory } from '../support/fixtures'
+import { asUser } from '../support/db'
 
 afterAll(closePool)
 
@@ -158,5 +159,53 @@ describe('store order import fixes', () => {
       // Recalculated later (e.g. an edit): the tax stays in.
       await db.query(`select public.recalculate_order_totals($1)`, [r.order_id])
       expect(num(await value(db, `select total_amount from public.orders where id = $1`, [r.order_id]))).toBe(2203.85)
+    }))
+
+  it('a store order through edits and cancels moves stock exactly once at each step', () =>
+    inTx(async (db) => {
+      const { c, v, marker } = await syncedStore(db, 'lifecycle.myshopify.com')
+      const second = await createProduct(db, { price: 500, stock: 4 })
+      const v2 = second.variantIds[0]
+      await asSystem(db)
+      await db.query(`insert into public.sales_channel_variants(channel_id, external_variant_id, external_product_id, variant_id, inventory_item_id, last_pushed_qty, shopify_available, sync_status)
+        values ($1, 'v-2', 'p-2', $2, 'gid://shopify/InventoryItem/2', 4, 4, 'OK')`, [c, v2])
+      const releases = () => value<number>(db, `select count(*)::int from public.inventory_movements where variant_id in ($1, $2) and movement_type = 'RELEASE'`, [v, v2])
+      // One order, two products, the first one twice in the cart.
+      const r = await ingest(db, c, order({ external_id: '7601', number: '#7601', lines: [
+        { external_variant_id: 'v-1', external_product_id: 'p-1', sku: null, title: 'Necklace', variant_title: null, quantity: 1, unit_price: 1899, image_url: null },
+        { external_variant_id: 'v-1', external_product_id: 'p-1', sku: null, title: 'Necklace', variant_title: null, quantity: 1, unit_price: 1899, image_url: null },
+        { external_variant_id: 'v-2', external_product_id: 'p-2', sku: null, title: 'Belt', variant_title: null, quantity: 3, unit_price: 500, image_url: null }],
+      total: 5298 }))
+      expect(r.status).toBe('IMPORTED')
+      expect(await inventory(db, v)).toMatchObject({ on_hand: 5, reserved: 2, available: 3 })
+      expect(await inventory(db, v2)).toMatchObject({ on_hand: 4, reserved: 3, available: 1 })
+      expect(await marker()).toBe(3)
+
+      // Staff take one belt off and drop the second necklace: only those come back.
+      await asUser(db, await createStaff(db, 'ADMIN'))
+      await db.query(`select public.admin_set_order_items($1, $2)`, [r.order_id, JSON.stringify([{ variant_id: v, quantity: 1 }, { variant_id: v2, quantity: 2 }])])
+      expect(await inventory(db, v)).toMatchObject({ reserved: 1, available: 4 })
+      expect(await inventory(db, v2)).toMatchObject({ reserved: 2, available: 2 })
+
+      // Cancelled here: everything still reserved comes back, once.
+      await asSystem(db)
+      await db.query(`select public._transition_order($1, 'CANCELLED', 'test')`, [r.order_id])
+      expect(await inventory(db, v)).toMatchObject({ on_hand: 5, reserved: 0, available: 5 })
+      expect(await inventory(db, v2)).toMatchObject({ on_hand: 4, reserved: 0, available: 4 })
+      const after = await releases()
+      // Cancelled again here, and Shopify's cancel webhook twice: nothing more.
+      await db.query(`savepoint again`)
+      await db.query(`select public._transition_order($1, 'CANCELLED', 'again')`, [r.order_id]).catch(() => db.query(`rollback to savepoint again`))
+      await asService(db)
+      for (let i = 0; i < 2; i++) {
+        expect(await value<Record<string, any>>(db, `select public.channel_order_cancelled($1, '7601', 'customer')`, [c])).toMatchObject({ status: 'ALREADY' })
+      }
+      expect(await releases()).toBe(after)
+      expect(await inventory(db, v)).toMatchObject({ on_hand: 5, available: 5 })
+      expect(await inventory(db, v2)).toMatchObject({ on_hand: 4, available: 4 })
+      // Shopify's own restock of the same cancel (orders/cancelled with restock): expected, not counted here.
+      expect(await value(db, `select public.channel_store_restock_seen($1, '7601', $2)`, [c, JSON.stringify([
+        { line_id: '901', refund_id: '91', created_at: new Date(Date.now() + 1000).toISOString(), external_variant_id: 'v-1', quantity: 2, location_id: '1' }])])).toMatchObject({ status: 'OK' })
+      expect(await inventory(db, v)).toMatchObject({ on_hand: 5, available: 5 })
     }))
 })
