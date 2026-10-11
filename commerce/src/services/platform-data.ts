@@ -76,7 +76,10 @@ export const resetStore = (merchant: string, scope: ResetScope, confirmName: str
     { p_merchant: merchant, p_scope: scope, p_confirm_name: confirmName, p_reason: reason })
 /** Asks for the merchant and all its data to be deleted; another Super Admin approves it under Approvals. */
 export const requestMerchantDelete = (merchant: string, confirmName: string, reason: string) =>
-  platformRpc<{ approval_id: string }>('platform_merchant_delete_request', { p_merchant: merchant, p_confirm_name: confirmName, p_reason: reason })
+  platformRpc<{ approval_id: string; can_self_approve?: boolean }>('platform_merchant_delete_request', { p_merchant: merchant, p_confirm_name: confirmName, p_reason: reason })
+/** Deletes one person of a merchant: login blocked and removed from Clerk; their profile stays for history. */
+export const deleteMerchantUser = (merchant: string, userId: string, reason: string) =>
+  platformRpc<{ deleted: boolean }>('platform_merchant_user_delete', { p_merchant: merchant, p_user: userId, p_reason: reason })
 export const createDeletionRequest = (merchant: string, reason: string) => platformRpc<DeletionRequest>('platform_deletion_request_create', { p_merchant: merchant, p_reason: reason })
 export const decideDeletionRequest = (id: string, approve: boolean, note: string) =>
   platformRpc<DeletionRequest>('platform_deletion_request_decide', { p_id: id, p_approve: approve, p_note: note })

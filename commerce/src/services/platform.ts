@@ -59,7 +59,7 @@ export interface MerchantDetail {
   merchant: MerchantListItem & { website: string | null; address: string | null; business_type: string | null; notes: string | null; timezone: string; status_changed_at: string | null }
   account_manager: { id: string; name: string; email: string } | null
   onboarding: OnboardingState
-  staff: Array<{ id: string; email: string; full_name: string; role: string; is_active: boolean; last_seen_at: string | null }>
+  staff: Array<{ id: string; email: string; full_name: string; role: string; is_active: boolean; last_seen_at: string | null; deleted_at?: string | null }>
   stores: Array<{ id: string; platform: string; name: string; shop_domain: string; status: string; last_sync_at: string | null; last_error: string | null; orders_imported: number }>
   couriers: Array<{ id: string; name: string; provider: string | null; api_enabled: boolean; api_status: string | null; is_active: boolean }>
   activity: {
@@ -116,6 +116,7 @@ export interface Approval {
   error: string | null
   mine: boolean
   can_decide: boolean
+  self_approved?: boolean
 }
 
 export interface PlatformAuditRow {

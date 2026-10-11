@@ -23,6 +23,7 @@ describe('delete a merchant', () => {
   it('needs the right person, the exact name, a reason and a fresh export; the asker cannot approve', () =>
     inTx(async (db) => {
       const superA = await createPlatformStaff(db, 'SUPER_ADMIN')
+      await createPlatformStaff(db, 'SUPER_ADMIN')
       const viewer = await createPlatformStaff(db, 'VIEWER')
       const shop = await doomedShop(db, superA)
       await as(db, viewer)
@@ -85,6 +86,44 @@ describe('delete a merchant', () => {
       // Deleted once only.
       await as(db, superA)
       await expectError(db, `select public.platform_merchant_delete_request($1, $2, 'Closing the test account')`, [shop.id, m.name], /already deleted/)
+    }))
+
+  it('lets the asker approve their own request only while nobody else could approve it', () =>
+    inTx(async (db) => {
+      const superA = await createPlatformStaff(db, 'SUPER_ADMIN')
+      await asSystem(db, null)
+      await db.query(`update public.platform_staff set is_active = false where user_id <> $1`, [superA])
+      const shop = await doomedShop(db, superA)
+      await db.query(`select public.platform_merchant_export($1, 'Copy before deleting the merchant')`, [shop.id])
+      const req = await value<{ approval_id: string; can_self_approve: boolean }>(db,
+        `select public.platform_merchant_delete_request($1, 'Doomed Shop', 'Closing the test account')`, [shop.id])
+      expect(req.can_self_approve).toBe(true)
+      // Someone who may only look does not count as a second approver.
+      await createPlatformStaff(db, 'VIEWER')
+      await as(db, superA)
+      const listed = await value<Array<Record<string, any>>>(db, `select public.platform_approvals_list('PENDING')`)
+      expect(listed.find((a) => a.id === req.approval_id)).toMatchObject({ mine: true, can_decide: true })
+
+      // A second active Super Admin brings the two-person rule back.
+      const superB = await createPlatformStaff(db, 'SUPER_ADMIN')
+      await as(db, superA)
+      expect((await value<Array<Record<string, any>>>(db, `select public.platform_approvals_list('PENDING')`))
+        .find((a) => a.id === req.approval_id)?.can_decide).toBe(false)
+      await expectError(db, `select public.platform_approval_decide($1, true, null)`, [req.approval_id], /second person/)
+      await asSystem(db, null)
+      await db.query(`update public.platform_staff set is_active = false where user_id = $1`, [superB])
+
+      await as(db, superA)
+      const done = await value<Record<string, any>>(db, `select public.platform_approval_decide($1, true, 'Owner asked by phone')`, [req.approval_id])
+      expect(done.error ?? null).toBeNull()
+      expect(done.status).toBe('EXECUTED')
+      await asSystem(db, null)
+      const row = await value<Record<string, any>>(db, `select to_jsonb(a) from public.platform_approvals a where id = $1`, [req.approval_id])
+      expect(row).toMatchObject({ status: 'EXECUTED', decided_by: superA, self_approved: true })
+      expect(row.decision_note).toMatch(/self-approved/)
+      expect(await value<boolean>(db,
+        `select (after->>'self_approved')::boolean from public.platform_audit_logs where action = 'approval.executed' and entity_id = $1::text`, [req.approval_id])).toBe(true)
+      expect(await value<boolean>(db, `select has_function_privilege('authenticated', 'public._platform_sole_approver(text, uuid)', 'execute')`)).toBe(false)
     }))
 
   it('finds a login by its Clerk account only for the server', () =>

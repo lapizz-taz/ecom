@@ -56,7 +56,7 @@ function Approvals() {
               <Badge variant={STATUS[a.status]}>{a.status.toLowerCase()}</Badge>
               {a.can_decide && <>
                 <Button size="sm" onClick={() => setDeciding({ approval: a, approve: true })}><Check /> Approve</Button>
-                <Button size="sm" variant="outline" onClick={() => setDeciding({ approval: a, approve: false })}><X /> Reject</Button>
+                {!a.mine && <Button size="sm" variant="outline" onClick={() => setDeciding({ approval: a, approve: false })}><X /> Reject</Button>}
               </>}
               {a.mine && a.status === 'PENDING' && <Button size="sm" variant="ghost" onClick={() => setDeciding({ approval: a, approve: false })}>Withdraw</Button>}
             </div>

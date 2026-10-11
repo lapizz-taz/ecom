@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/lib/toast'
-import type { MerchantDetail } from '@/services/platform'
+import { decideApproval, type MerchantDetail } from '@/services/platform'
 import { requestMerchantDelete, storeResets } from '@/services/platform-data'
 
 const REMOVES = 'The business and all its data: orders, customers, products and stock, couriers, stores and every connection with its keys, staff, roles, settings, HR, phone system set-up and logs. Logins that belong only to this business are removed here and from the sign-in service (Clerk).'
@@ -18,7 +19,8 @@ const KEEPS = 'Money records, for the accounts: plan, invoices and payments, cre
 /**
  * Deleting a merchant takes two people: this asks for it (typed name, reason,
  * fresh export); another Super Admin approves it under Security → Approvals.
- * The database checks every rule again.
+ * While nobody else on the team could approve it, the person asking approves
+ * it here themselves. The database checks every rule again.
  */
 export function MerchantDeletePanel({ detail }: { detail: MerchantDetail }) {
   const m = detail.merchant
@@ -27,11 +29,13 @@ export function MerchantDeletePanel({ detail }: { detail: MerchantDetail }) {
   const [open, setOpen] = useState(false)
   const [confirm, setConfirm] = useState('')
   const [reason, setReason] = useState('')
+  const [selfApprove, setSelfApprove] = useState<string | null>(null)
   const request = useMutation({
     meta: { silent: true },
     mutationFn: () => requestMerchantDelete(m.id, confirm, reason.trim()),
-    onSuccess: () => {
-      toast.success('Sent for approval', { description: 'Another Super Admin must approve it under Security → Approvals. Nothing is deleted until then.' })
+    onSuccess: (r) => {
+      if (r.can_self_approve) setSelfApprove(r.approval_id)
+      else toast.success('Sent for approval', { description: 'Another Super Admin must approve it under Security → Approvals. Nothing is deleted until then.' })
       setOpen(false)
       setConfirm('')
       setReason('')
@@ -45,7 +49,7 @@ export function MerchantDeletePanel({ detail }: { detail: MerchantDetail }) {
     <Card className="border-red-300 dark:border-red-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm"><Trash2 className="size-4 text-red-500" /> Delete merchant</CardTitle>
-        <p className="text-xs text-muted-foreground">Permanent. Needs a second Super Admin to approve, and a full export from the last 24 hours (step 1 above).</p>
+        <p className="text-xs text-muted-foreground">Permanent. Needs a full export from the last 24 hours (step 1 above), and a second Super Admin to approve when there is one.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Removes:</span> {REMOVES}</p>
@@ -61,7 +65,7 @@ export function MerchantDeletePanel({ detail }: { detail: MerchantDetail }) {
         </div>
       </CardContent>
       {open && (
-        <FormDialog open onOpenChange={(o) => !o && setOpen(false)} title={`Delete ${m.name}?`} submitLabel="Ask for approval" busy={request.isPending}
+        <FormDialog open onOpenChange={(o) => !o && setOpen(false)} title={`Delete ${m.name}?`} submitLabel="Continue" busy={request.isPending}
           disabled={confirm.trim().toLowerCase() !== m.name.trim().toLowerCase() || reason.trim().length < 10} onSubmit={() => request.mutate()}
           description={REMOVES}>
           <Field label={`Type the merchant name (${m.name}) to confirm`} required>
@@ -70,9 +74,30 @@ export function MerchantDeletePanel({ detail }: { detail: MerchantDetail }) {
           <Field label="Why" required hint="At least 10 characters; the approver sees it, and it stays in the platform log">
             <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. The owner asked to close the account" />
           </Field>
-          <p className="text-xs text-muted-foreground">After you ask, another Super Admin approves it under <Link to="/super-admin/security?tab=approvals" className="underline">Security → Approvals</Link>.</p>
+          <p className="text-xs text-muted-foreground">If another Super Admin could approve it, they do so under <Link to="/super-admin/security?tab=approvals" className="underline">Security → Approvals</Link>. If nobody else could, you confirm it yourself next.</p>
           {request.error && <p className="text-sm text-red-500" role="alert">{(request.error as Error).message.replace(/^[A-Z_]+: /, '')}</p>}
         </FormDialog>
+      )}
+      {selfApprove && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setSelfApprove(null)} destructive reason reasonLabel="Note (optional)"
+          title={`Delete ${m.name} now?`} confirmLabel="Delete now"
+          description="Nobody else on the team can approve this, so you approve it yourself; it is recorded as self-approved. This cannot be undone. Closing this keeps the request under Security → Approvals."
+          onConfirm={async (note) => {
+            try {
+              const r = await decideApproval(selfApprove, true, note || undefined)
+              if (r.status === 'FAILED') {
+                toast.error('Could not delete the merchant', { description: r.error })
+              } else {
+                toast.success('Merchant deleted', { description: 'Money records and audit logs are kept.' })
+              }
+              setSelfApprove(null)
+              void queryClient.invalidateQueries({ queryKey: ['platform-approvals'] })
+              void queryClient.invalidateQueries({ queryKey: ['platform-merchant', m.id] })
+            } catch (e) {
+              toast.error((e as Error).message.replace(/^[A-Z_]+: /, ''))
+              throw e
+            }
+          }} />
       )}
     </Card>
   )

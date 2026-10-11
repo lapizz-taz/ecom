@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, Circle, Pencil, Pin, UserPlus } from 'lucide-react'
+import { ArrowLeft, Check, Circle, Pencil, Pin, Trash2, UserPlus } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link, useParams } from 'react-router'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
 import { PageHeader } from '@/components/common/page-header'
@@ -28,6 +29,7 @@ import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatDateTime, formatMoney, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { addMerchantNote, getMerchant, listEmployees, type MerchantDetail, setMerchantOwner, updateMerchant } from '@/services/platform'
+import { deleteMerchantUser } from '@/services/platform-data'
 
 /** Tabs from other modules, shown to employees who can view that module for this merchant. */
 const merchantTabs: Array<{ key: string; label: string; module: string; render: (m: MerchantDetail) => ReactNode }> = [
@@ -133,6 +135,7 @@ export default function MerchantDetailPage() {
   const [owner, setOwner] = useState(false)
   const [status, setStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'CLOSED' | null>(null)
   const [note, setNote] = useState('')
+  const [removing, setRemoving] = useState<MerchantDetail['staff'][number] | null>(null)
   const detail = useQuery({ queryKey: ['platform-merchant', id], queryFn: () => getMerchant(id) })
   const addNote = useMutation({
     mutationFn: (pinned: boolean) => addMerchantNote(id, note.trim(), pinned),
@@ -243,19 +246,40 @@ export default function MerchantDetailPage() {
           <Card className="py-0">
             {d.staff.length === 0 ? <EmptyState title="No staff yet" description="Add the owner to start." /> : (
               <table className="w-full text-sm">
-                <thead className="text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Name</th><th className="px-4 py-2 font-medium">Role</th><th className="px-4 py-2 font-medium">Last seen</th></tr></thead>
+                <thead className="text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Name</th><th className="px-4 py-2 font-medium">Role</th><th className="px-4 py-2 font-medium">Last seen</th><th /></tr></thead>
                 <tbody>
                   {d.staff.map((s) => (
                     <tr key={s.id} className="border-t">
                       <td className="px-4 py-2">{s.full_name || s.email}<p className="text-xs text-muted-foreground">{s.email}</p></td>
-                      <td className="px-4 py-2"><Badge variant={s.is_active ? 'neutral' : 'danger'}>{s.role.toLowerCase().replace(/_/g, ' ')}{!s.is_active && ' · off'}</Badge></td>
+                      <td className="px-4 py-2"><Badge variant={s.is_active ? 'neutral' : 'danger'}>{s.role.toLowerCase().replace(/_/g, ' ')}{s.deleted_at ? ' · deleted' : !s.is_active && ' · off'}</Badge></td>
                       <td className="px-4 py-2 text-xs text-muted-foreground">{s.last_seen_at ? timeAgo(s.last_seen_at) : '—'}</td>
+                      <td className="px-4 py-2 text-right">
+                        {d.can.manage && !s.deleted_at && (
+                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600" onClick={() => setRemoving(s)}><Trash2 /> Delete</Button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </Card>
+          {removing && (
+            <ConfirmDialog open onOpenChange={(o) => !o && setRemoving(null)} destructive reason reasonRequired reasonLabel="Why (kept in the platform log)"
+              title={`Delete ${removing.full_name || removing.email}?`} confirmLabel="Delete user"
+              description="Their sign-in is switched off for good and removed from the sign-in service (Clerk) within a minute; their e-mail can be used again later. Orders, notes and logs they made stay, under their name. This cannot be undone."
+              onConfirm={async (reason) => {
+                try {
+                  await deleteMerchantUser(m.id, removing.id, reason.trim())
+                  toast.success('User deleted')
+                  setRemoving(null)
+                  void queryClient.invalidateQueries({ queryKey: ['platform-merchant', id] })
+                } catch (e) {
+                  toast.error((e as Error).message.replace(/^[A-Z_]+: /, ''))
+                  throw e
+                }
+              }} />
+          )}
           <p className="mt-2 text-xs text-muted-foreground">Passwords are never shown. To look at the merchant's screens, open a time-limited support view from Support & Issues.</p>
         </TabsContent>
 
