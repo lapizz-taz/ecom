@@ -45,6 +45,17 @@ describe('ShopifyClient.abandonedCheckouts', () => {
     expect(JSON.parse(fetchFn.mock.calls[1][1].body).query).toContain('customer { firstName lastName email phone }')
   })
 
+  it('without read_customers, asks again without the customer and keeps name and phone from the address', async () => {
+    // Shopify's answer when the app lacks read_customers (seen on a real store).
+    const denied = { message: 'Access denied for customer field. Required access: `read_customers` access scope.', path: ['abandonedCheckouts', 'nodes', 0, 'customer'], extensions: { code: 'ACCESS_DENIED' } }
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(reply({ errors: [denied], data: { abandonedCheckouts: { nodes: [{ ...node, customer: null }], pageInfo: { hasNextPage: false, endCursor: null } } } }))
+      .mockResolvedValueOnce(reply({ data: { abandonedCheckouts: { nodes: [{ ...node, customer: undefined }], pageInfo: { hasNextPage: false, endCursor: null } } } }))
+    const { rows } = await new ShopifyClient('t.myshopify.com', 'shpat_x', fetchFn).abandonedCheckouts({ since: '2026-10-01' })
+    expect(rows[0]).toMatchObject({ customer_name: 'Mina Akter', phone: '+8801755000333', email: null, total: 1560 })
+    expect(JSON.parse(fetchFn.mock.calls[1][1].body).query).not.toContain('customer {')
+  })
+
   it('explains a refused permission', async () => {
     const fetchFn = vi.fn().mockResolvedValue(reply({ errors: [{ message: 'Access denied for abandonedCheckouts field.', extensions: { code: 'ACCESS_DENIED' } }] }))
     await expect(new ShopifyClient('t.myshopify.com', 'shpat_x', fetchFn).abandonedCheckouts({ since: '2026-10-01' })).rejects.toThrow(/read_orders/)

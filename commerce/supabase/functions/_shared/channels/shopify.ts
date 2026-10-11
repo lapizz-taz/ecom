@@ -112,7 +112,7 @@ export async function shopifyClientToken(shop: string, clientId: string, clientS
   }
 }
 
-interface GqlError { message: string; extensions?: { code?: string } }
+interface GqlError { message: string; path?: Array<string | number>; extensions?: { code?: string } }
 
 const ORDER_FIELDS = `
   id legacyResourceId name createdAt cancelledAt test email phone note displayFinancialStatus paymentGatewayNames
@@ -531,8 +531,15 @@ export class ShopifyClient {
       const { data, errors }: { data: R | null; errors: GqlError[] } = await this.raw<R>(`query($first: Int!, $after: String, $q: String) {
         abandonedCheckouts(first: $first, after: $after, query: $q, reverse: true) { nodes { ${ABANDONED_FIELDS[tier]} } pageInfo { hasNextPage endCursor } } }`,
       { first: Math.min(20, max - rows.length), after, q: opts.since ? `created_at:>=${opts.since.slice(0, 10)}` : null })
-      if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) {
-        throw new ChannelError('Shopify refused abandoned checkouts: the app needs read_orders, and the store must allow the app to read checkouts.', 403, 'ACCESS_DENIED')
+      const denied = errors.filter((e) => e.extensions?.code === 'ACCESS_DENIED')
+      // The customer record needs read_customers; without it the checkout still has the
+      // shipping name, phone and address, so ask again without the customer.
+      if (denied.length && tier < NO_CUSTOMER_TIER && denied.every((e) => (e.path ?? []).includes('customer') || /read_customers/.test(e.message))) {
+        tier = NO_CUSTOMER_TIER
+        continue
+      }
+      if (denied.length) {
+        throw new ChannelError(`Shopify refused abandoned checkouts: ${denied[0].message} The app needs read_orders, and the staff account that installed it needs the "Manage abandoned checkouts" permission.`, 403, 'ACCESS_DENIED')
       }
       if (!data?.abandonedCheckouts) {
         if (errors.some((e) => /doesn't exist|undefinedField|not exist/i.test(e.message)) && tier < ABANDONED_FIELDS.length - 1) { tier++; continue }
@@ -859,9 +866,12 @@ const ABANDONED_BASE = `id name abandonedCheckoutUrl createdAt updatedAt complet
   shippingAddress { name phone address1 address2 city province country }
   billingAddress { name phone country }`
 /** Most complete first; each next one drops fields an older / newer API version doesn't have. */
+const NO_CUSTOMER_TIER = 2
 const ABANDONED_FIELDS = [
   `${ABANDONED_BASE} customer { firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } } ${ABANDONED_LINES}`,
   `${ABANDONED_BASE} customer { firstName lastName email phone } ${ABANDONED_LINES}`,
+  // Without read_customers: the shipping address still carries name and phone.
+  `${ABANDONED_BASE} ${ABANDONED_LINES}`,
   `id abandonedCheckoutUrl createdAt updatedAt completedAt totalPriceSet { shopMoney { amount currencyCode } } lineItems(first: 8) { nodes { title quantity } }`,
 ]
 
