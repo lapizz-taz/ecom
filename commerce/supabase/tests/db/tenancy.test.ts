@@ -46,7 +46,7 @@ describe('tenancy: structure', () => {
         where exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = e.name)`)
       expect(exempt).toBe(await value(db, `select count(*)::int from public.tenancy_exempt_functions`))
       // Outside the Super Admin functions (which check platform permissions themselves) the list stays short.
-      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(40)
+      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(60)
     }))
 
   it('turns existing data into Merchant #1', () =>

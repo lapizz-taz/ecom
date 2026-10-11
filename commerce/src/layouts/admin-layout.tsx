@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { PhoneProvider } from '@/features/voicedrive/phone-context'
 import { PhoneWidget } from '@/features/voicedrive/phone-widget'
 import { useAuth } from '@/features/auth/auth-context'
+import { AccountRestricted, ReadOnlyBanner } from '@/features/billing/account-restricted'
 import { CommandPalette } from '@/features/shell/command-palette'
 import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
 import { type ShellAction, SidebarNav } from '@/features/shell/sidebar'
@@ -234,6 +235,10 @@ export default function AdminLayout() {
     return <DeviceGate status={access.device?.status} email={access.email} onSignOut={() => void signOut().then(() => navigate('/admin/login'))} />
   }
 
+  if (access.access_mode === 'BLOCKED') {
+    return <AccountRestricted email={access.email} onSignOut={() => void signOut().then(() => navigate('/admin/login'))} />
+  }
+
   const required = [...matches].reverse().map((m) => (m.handle as { permission?: string } | undefined)?.permission).find(Boolean)
   const allowed = !required || can(required)
   const onAction = (action: ShellAction) => { setMobileOpen(false); setDialog(action) }
@@ -346,6 +351,7 @@ export default function AdminLayout() {
         <main className="print-area w-full min-w-0 flex-1 p-3 sm:px-5 sm:py-5">
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
+            {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}
             {allowed ? <Outlet /> : <PermissionDenied />}
           </div>
         </main>

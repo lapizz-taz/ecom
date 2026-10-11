@@ -1,23 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
 import { MERCHANT_1, asSystem, asUser, closePool, expectError, inTx, value, type Db } from '../support/db'
-import { createOrder, createProduct, createStaff } from '../support/fixtures'
+import { createOrder, createPlatformStaff, createProduct, createStaff } from '../support/fixtures'
 
 afterAll(closePool)
 
-/** A platform employee with a built-in role (signed in through the normal app login). */
-async function platformStaff(db: Db, role: string, opts: { scope?: 'ALL' | 'ASSIGNED'; merchants?: string[] } = {}): Promise<string> {
-  await asSystem(db, null)
-  const id = randomUUID()
-  const email = `${role.toLowerCase()}-${id.slice(0, 6)}@platform.example`
-  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, '{"full_name":"Platform ${role}"}')`, [id, email])
-  await db.query(`insert into public.platform_staff (user_id, email, full_name, role_id, merchant_scope)
-    values ($1, $2, $3, (select id from public.platform_roles where code = $4), $5)`, [id, email, `Platform ${role}`, role, opts.scope ?? 'ALL'])
-  for (const m of opts.merchants ?? []) {
-    await db.query(`insert into public.platform_staff_merchants (user_id, merchant_id) values ($1, $2)`, [id, m])
-  }
-  return id
-}
+const platformStaff = createPlatformStaff
 
 const as = (db: Db, id: string) => asUser(db, id, 'staff@platform.example', null)
 

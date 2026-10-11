@@ -12,12 +12,23 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { usePlatform } from '@/features/platform/platform-context'
-import { slugify } from '@/lib/format'
+import { formatMoney, slugify } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+import { listPlans } from '@/services/billing'
 import { createMerchant, listEmployees } from '@/services/platform'
 
-const STEPS = ['Business', 'Owner', 'Review'] as const
+function PlanOption({ selected, onSelect, title, detail }: { selected: boolean; onSelect: () => void; title: string; detail: string }) {
+  return (
+    <button type="button" onClick={onSelect} aria-pressed={selected}
+      className={cn('rounded-md border p-3 text-left text-sm transition-colors', selected ? 'border-foreground bg-muted/50' : 'hover:bg-muted/30')}>
+      <span className="block font-medium">{title}</span>
+      <span className="block text-xs text-muted-foreground">{detail}</span>
+    </button>
+  )
+}
+
+const STEPS = ['Business', 'Owner', 'Plan', 'Review'] as const
 
 /** Guided onboarding: the business, its owner's login, then one review before anything is created. */
 export default function MerchantNewPage() {
@@ -26,10 +37,13 @@ export default function MerchantNewPage() {
   const [step, setStep] = useState(0)
   const [biz, setBiz] = useState({ name: '', slug: '', phone: '', business_type: '', website: '', address: '', notes: '', is_demo: false, account_manager_id: me?.user_id ?? '' })
   const [owner, setOwner] = useState({ full_name: '', email: '', password: '' })
+  const [planCode, setPlanCode] = useState('')
   const employees = useQuery({ queryKey: ['platform-employees'], queryFn: listEmployees, enabled: can('employees') })
+  const plans = useQuery({ queryKey: ['platform-plans'], queryFn: listPlans, enabled: can('subscriptions') })
+  const plan = plans.data?.plans.find((p) => p.code === planCode)
   const create = useMutation({
     mutationFn: () => createMerchant({
-      merchant: Object.fromEntries(Object.entries({ ...biz, slug: biz.slug || undefined }).filter(([, v]) => v !== '' && v !== undefined)),
+      merchant: Object.fromEntries(Object.entries({ ...biz, slug: biz.slug || undefined, plan_code: planCode || undefined }).filter(([, v]) => v !== '' && v !== undefined)),
       owner: { full_name: owner.full_name.trim(), email: owner.email.trim(), password: owner.password || undefined },
     }),
     onSuccess: (r) => {
@@ -104,12 +118,27 @@ export default function MerchantNewPage() {
 
       {step === 2 && (
         <Card>
+          <CardHeader><CardTitle className="text-base">Plan</CardTitle>
+            <CardDescription>A plan with a free trial starts as a trial; a free plan starts straight away. A paid plan without a trial can be started later from the merchant's Plan & billing tab.</CardDescription></CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-2">
+            <PlanOption selected={planCode === ''} onSelect={() => setPlanCode('')} title="Default plan" detail="The plan set in Subscriptions & Plans → Billing rules" />
+            {(plans.data?.plans ?? []).filter((p) => p.status === 'ACTIVE' && (p.trial_days > 0 || p.price === 0)).map((p) => (
+              <PlanOption key={p.id} selected={planCode === p.code} onSelect={() => setPlanCode(p.code)} title={`${p.name}${p.is_public ? '' : ' (hidden)'}`}
+                detail={`${formatMoney(p.price)}/${p.billing_interval === 'YEAR' ? 'year' : 'month'} · ${p.trial_days ? `${p.trial_days}-day trial` : 'no trial'}`} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {step === 3 && (
+        <Card>
           <CardHeader><CardTitle className="text-base">Review</CardTitle><CardDescription>After this the merchant connects its store and couriers from its own admin.</CardDescription></CardHeader>
           <CardContent className="space-y-1 text-sm">
             <p><span className="text-muted-foreground">Business:</span> {biz.name}{biz.is_demo && ' (demo)'}</p>
             {biz.phone && <p><span className="text-muted-foreground">Phone:</span> {biz.phone}</p>}
             <p><span className="text-muted-foreground">Owner:</span> {owner.full_name} · {owner.email}</p>
             <p><span className="text-muted-foreground">Login:</span> {owner.password ? 'password set by you' : 'invitation e-mail'}</p>
+            <p><span className="text-muted-foreground">Plan:</span> {plan ? `${plan.name}${plan.trial_days ? ` (${plan.trial_days}-day trial)` : ''}` : 'the default plan'}</p>
             <p className="pt-2 text-xs text-muted-foreground">Created with: 8 staff roles, order statuses and sources, finance categories, fraud rules, delivery zones, message templates and default settings — none of another merchant's data.</p>
           </CardContent>
         </Card>

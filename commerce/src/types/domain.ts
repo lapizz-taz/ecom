@@ -463,6 +463,8 @@ export interface MyAccess {
   /** The business this staff member works for. */
   merchant_id: string
   merchant?: { id: string; number: number; name: string; status: string }
+  /** What the account's subscription and status allow: read-only keeps viewing and exports; blocked keeps nothing. */
+  access_mode?: 'FULL' | 'READ_ONLY' | 'BLOCKED'
   email: string
   full_name: string
   role: string

@@ -303,6 +303,150 @@ export type Database = {
           },
         ]
       }
+      billing_invoices: {
+        Row: {
+          id: string
+          number: string
+          merchant_id: string
+          subscription_id: string | null
+          kind: string
+          period_start: string | null
+          period_end: string | null
+          lines: Json
+          total: number
+          amount_paid: number
+          currency: string
+          status: string
+          due_at: string
+          paid_at: string | null
+          void_reason: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          number?: string
+          merchant_id: string
+          subscription_id?: string | null
+          kind?: string
+          period_start?: string | null
+          period_end?: string | null
+          lines?: Json
+          total: number
+          amount_paid?: number
+          currency?: string
+          status?: string
+          due_at: string
+          paid_at?: string | null
+          void_reason?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          number?: string
+          merchant_id?: string
+          subscription_id?: string | null
+          kind?: string
+          period_start?: string | null
+          period_end?: string | null
+          lines?: Json
+          total?: number
+          amount_paid?: number
+          currency?: string
+          status?: string
+          due_at?: string
+          paid_at?: string | null
+          void_reason?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_invoices_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_invoices_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_payments: {
+        Row: {
+          id: string
+          merchant_id: string
+          invoice_id: string
+          amount: number
+          method: string
+          provider: string | null
+          reference: string | null
+          status: string
+          recorded_by: string | null
+          verified_by: string | null
+          verified_at: string | null
+          note: string | null
+          raw: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          invoice_id: string
+          amount: number
+          method: string
+          provider?: string | null
+          reference?: string | null
+          status?: string
+          recorded_by?: string | null
+          verified_by?: string | null
+          verified_at?: string | null
+          note?: string | null
+          raw?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          invoice_id?: string
+          amount?: number
+          method?: string
+          provider?: string | null
+          reference?: string | null
+          status?: string
+          recorded_by?: string | null
+          verified_by?: string | null
+          verified_at?: string | null
+          note?: string | null
+          raw?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "billing_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_payments_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           id: string
@@ -1101,6 +1245,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      config_versions: {
+        Row: {
+          id: number
+          kind: string
+          ref: string
+          data: Json | null
+          note: string | null
+          changed_by: string | null
+          changed_at: string
+        }
+        Insert: {
+          id?: number
+          kind: string
+          ref: string
+          data?: Json | null
+          note?: string | null
+          changed_by?: string | null
+          changed_at?: string
+        }
+        Update: {
+          id?: number
+          kind?: string
+          ref?: string
+          data?: Json | null
+          note?: string | null
+          changed_by?: string | null
+          changed_at?: string
+        }
+        Relationships: []
       }
       contact_messages: {
         Row: {
@@ -1963,6 +2137,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      features: {
+        Row: {
+          code: string
+          name: string
+          description: string | null
+          category: string
+          is_core: boolean
+          globally_enabled: boolean
+          release_stage: string
+          depends_on: string | null
+          sort_order: number
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          name: string
+          description?: string | null
+          category?: string
+          is_core?: boolean
+          globally_enabled?: boolean
+          release_stage?: string
+          depends_on?: string | null
+          sort_order?: number
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          name?: string
+          description?: string | null
+          category?: string
+          is_core?: boolean
+          globally_enabled?: boolean
+          release_stage?: string
+          depends_on?: string | null
+          sort_order?: number
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       finance_account_movements: {
         Row: {
@@ -3245,6 +3461,92 @@ export type Database = {
           },
         ]
       }
+      merchant_features: {
+        Row: {
+          merchant_id: string
+          feature_code: string
+          enabled: boolean | null
+          limit_value: number | null
+          reason: string | null
+          expires_at: string | null
+          set_by: string | null
+          set_at: string
+        }
+        Insert: {
+          merchant_id: string
+          feature_code: string
+          enabled?: boolean | null
+          limit_value?: number | null
+          reason?: string | null
+          expires_at?: string | null
+          set_by?: string | null
+          set_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          feature_code?: string
+          enabled?: boolean | null
+          limit_value?: number | null
+          reason?: string | null
+          expires_at?: string | null
+          set_by?: string | null
+          set_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_features_feature_code_fkey"
+            columns: ["feature_code"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "merchant_features_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_notes: {
+        Row: {
+          id: string
+          merchant_id: string
+          author_id: string
+          author_email: string | null
+          body: string
+          pinned: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          author_id: string
+          author_email?: string | null
+          body: string
+          pinned?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          author_id?: string
+          author_email?: string | null
+          body?: string
+          pinned?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_notes_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       merchants: {
         Row: {
           id: string
@@ -3260,6 +3562,15 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          account_manager_id: string | null
+          business_type: string | null
+          website: string | null
+          address: string | null
+          timezone: string
+          onboarding: Json
+          onboarded_at: string | null
+          status_changed_at: string | null
+          status_changed_by: string | null
         }
         Insert: {
           id?: string
@@ -3275,6 +3586,15 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          account_manager_id?: string | null
+          business_type?: string | null
+          website?: string | null
+          address?: string | null
+          timezone?: string
+          onboarding?: Json
+          onboarded_at?: string | null
+          status_changed_at?: string | null
+          status_changed_by?: string | null
         }
         Update: {
           id?: string
@@ -3290,8 +3610,25 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          account_manager_id?: string | null
+          business_type?: string | null
+          website?: string | null
+          address?: string | null
+          timezone?: string
+          onboarding?: Json
+          onboarded_at?: string | null
+          status_changed_at?: string | null
+          status_changed_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "merchants_account_manager_id_fkey"
+            columns: ["account_manager_id"]
+            isOneToOne: false
+            referencedRelation: "platform_staff"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       meta_ad_accounts: {
         Row: {
@@ -6199,6 +6536,171 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_addons: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          description: string | null
+          price: number
+          grants: Json
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          description?: string | null
+          price: number
+          grants?: Json
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          description?: string | null
+          price?: number
+          grants?: Json
+          status?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      plans: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          description: string | null
+          status: string
+          is_public: boolean
+          price: number
+          currency: string
+          billing_interval: string
+          trial_days: number
+          limits: Json
+          overage: Json
+          features: Json
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          description?: string | null
+          status?: string
+          is_public?: boolean
+          price?: number
+          currency?: string
+          billing_interval?: string
+          trial_days?: number
+          limits?: Json
+          overage?: Json
+          features?: Json
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          description?: string | null
+          status?: string
+          is_public?: boolean
+          price?: number
+          currency?: string
+          billing_interval?: string
+          trial_days?: number
+          limits?: Json
+          overage?: Json
+          features?: Json
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_approvals: {
+        Row: {
+          id: string
+          action: string
+          module: string
+          merchant_id: string | null
+          summary: string
+          payload: Json
+          reason: string
+          status: string
+          requested_by: string
+          requested_at: string
+          expires_at: string
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          result: Json | null
+          error: string | null
+        }
+        Insert: {
+          id?: string
+          action: string
+          module: string
+          merchant_id?: string | null
+          summary: string
+          payload?: Json
+          reason: string
+          status?: string
+          requested_by: string
+          requested_at?: string
+          expires_at?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          result?: Json | null
+          error?: string | null
+        }
+        Update: {
+          id?: string
+          action?: string
+          module?: string
+          merchant_id?: string | null
+          summary?: string
+          payload?: Json
+          reason?: string
+          status?: string
+          requested_by?: string
+          requested_at?: string
+          expires_at?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          result?: Json | null
+          error?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_approvals_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_approvals_module_fkey"
+            columns: ["module"]
+            isOneToOne: false
+            referencedRelation: "platform_modules"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       platform_audit_logs: {
         Row: {
           id: number
@@ -6213,6 +6715,8 @@ export type Database = {
           after: Json | null
           metadata: Json
           created_at: string
+          result: string
+          request_id: string | null
         }
         Insert: {
           id?: number
@@ -6227,6 +6731,8 @@ export type Database = {
           after?: Json | null
           metadata?: Json
           created_at?: string
+          result?: string
+          request_id?: string | null
         }
         Update: {
           id?: number
@@ -6241,6 +6747,8 @@ export type Database = {
           after?: Json | null
           metadata?: Json
           created_at?: string
+          result?: string
+          request_id?: string | null
         }
         Relationships: [
           {
@@ -6274,6 +6782,96 @@ export type Database = {
           secret_id?: string
           hint?: string | null
           updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_modules: {
+        Row: {
+          code: string
+          name: string
+          sort_order: number
+          actions: string[]
+        }
+        Insert: {
+          code: string
+          name: string
+          sort_order: number
+          actions: string[]
+        }
+        Update: {
+          code?: string
+          name?: string
+          sort_order?: number
+          actions?: string[]
+        }
+        Relationships: []
+      }
+      platform_role_permissions: {
+        Row: {
+          role_id: string
+          module: string
+          action: string
+        }
+        Insert: {
+          role_id: string
+          module: string
+          action: string
+        }
+        Update: {
+          role_id?: string
+          module?: string
+          action?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_role_permissions_module_fkey"
+            columns: ["module"]
+            isOneToOne: false
+            referencedRelation: "platform_modules"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "platform_role_permissions_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "platform_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_roles: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          description: string | null
+          is_system: boolean
+          is_super: boolean
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          description?: string | null
+          is_system?: boolean
+          is_super?: boolean
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          description?: string | null
+          is_system?: boolean
+          is_super?: boolean
+          created_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -6315,6 +6913,11 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          role_id: string
+          merchant_scope: string
+          title: string | null
+          phone: string | null
+          last_seen_at: string | null
         }
         Insert: {
           user_id: string
@@ -6324,6 +6927,11 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          role_id: string
+          merchant_scope?: string
+          title?: string | null
+          phone?: string | null
+          last_seen_at?: string | null
         }
         Update: {
           user_id?: string
@@ -6333,8 +6941,57 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          role_id?: string
+          merchant_scope?: string
+          title?: string | null
+          phone?: string | null
+          last_seen_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "platform_staff_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "platform_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_staff_merchants: {
+        Row: {
+          user_id: string
+          merchant_id: string
+          assigned_by: string | null
+          assigned_at: string
+        }
+        Insert: {
+          user_id: string
+          merchant_id: string
+          assigned_by?: string | null
+          assigned_at?: string
+        }
+        Update: {
+          user_id?: string
+          merchant_id?: string
+          assigned_by?: string | null
+          assigned_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_staff_merchants_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_staff_merchants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "platform_staff"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       product_images: {
         Row: {
@@ -8126,6 +8783,187 @@ export type Database = {
           },
         ]
       }
+      subscription_addons: {
+        Row: {
+          id: string
+          merchant_id: string
+          subscription_id: string
+          addon_id: string
+          quantity: number
+          price: number
+          started_at: string
+          ended_at: string | null
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          subscription_id: string
+          addon_id: string
+          quantity?: number
+          price: number
+          started_at?: string
+          ended_at?: string | null
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          subscription_id?: string
+          addon_id?: string
+          quantity?: number
+          price?: number
+          started_at?: string
+          ended_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_addons_addon_id_fkey"
+            columns: ["addon_id"]
+            isOneToOne: false
+            referencedRelation: "plan_addons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_addons_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_addons_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_events: {
+        Row: {
+          id: number
+          merchant_id: string
+          subscription_id: string | null
+          event: string
+          detail: Json
+          actor_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id: string
+          subscription_id?: string | null
+          event: string
+          detail?: Json
+          actor_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          subscription_id?: string | null
+          event?: string
+          detail?: Json
+          actor_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_events_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_events_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          id: string
+          merchant_id: string
+          plan_id: string
+          status: string
+          price: number
+          currency: string
+          billing_interval: string
+          started_at: string
+          trial_ends_at: string | null
+          current_period_start: string | null
+          current_period_end: string | null
+          grace_until: string | null
+          cancel_at_period_end: boolean
+          paused_at: string | null
+          cancelled_at: string | null
+          ended_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          plan_id: string
+          status: string
+          price: number
+          currency?: string
+          billing_interval: string
+          started_at?: string
+          trial_ends_at?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          grace_until?: string | null
+          cancel_at_period_end?: boolean
+          paused_at?: string | null
+          cancelled_at?: string | null
+          ended_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          plan_id?: string
+          status?: string
+          price?: number
+          currency?: string
+          billing_interval?: string
+          started_at?: string
+          trial_ends_at?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          grace_until?: string | null
+          cancel_at_period_end?: boolean
+          paused_at?: string | null
+          cancelled_at?: string | null
+          ended_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           id: string
@@ -8614,6 +9452,12 @@ export type Database = {
       }
     }
     Functions: {
+      _billing_interval: {
+        Args: {
+          p_interval: string
+        }
+        Returns: string
+      }
       _canonical_district: {
         Args: {
           p_text: string
@@ -10493,6 +11337,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      feature_enabled: {
+        Args: {
+          p_code: string
+          p_merchant?: string
+        }
+        Returns: boolean
+      }
       finance_account_move: {
         Args: {
           p_account_id: string
@@ -10956,6 +11807,30 @@ export type Database = {
         }
         Returns: Json
       }
+      merchant_access_mode: {
+        Args: {
+          p_merchant?: string
+        }
+        Returns: string
+      }
+      merchant_entitlements: {
+        Args: {
+          p_merchant?: string
+        }
+        Returns: Json
+      }
+      merchant_limits: {
+        Args: {
+          p_merchant?: string
+        }
+        Returns: Json
+      }
+      merchant_usage: {
+        Args: {
+          p_merchant?: string
+        }
+        Returns: Json
+      }
       meta_accounts_list: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -10975,6 +11850,10 @@ export type Database = {
           p_exchange_rate?: number
           p_tax_percent?: number
         }
+        Returns: Json
+      }
+      my_plan: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       notification_conditions_error: {
@@ -11320,6 +12199,303 @@ export type Database = {
       pbx_start_web_order_call: {
         Args: {
           p_order_id: string
+        }
+        Returns: Json
+      }
+      platform_addon_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_approval_decide: {
+        Args: {
+          p_id: string
+          p_approve: boolean
+          p_note?: string
+        }
+        Returns: Json
+      }
+      platform_approvals_list: {
+        Args: {
+          p_status?: string
+        }
+        Returns: Json
+      }
+      platform_audit_list: {
+        Args: {
+          p_filters?: Json
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      platform_can: {
+        Args: {
+          p_module: string
+          p_action: string
+          p_merchant?: string
+        }
+        Returns: boolean
+      }
+      platform_config_history: {
+        Args: {
+          p_kind?: string
+          p_ref?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_config_rollback: {
+        Args: {
+          p_version: number
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_feature_bulk_apply: {
+        Args: {
+          p_merchants: string[]
+          p_code: string
+          p_enabled: boolean
+          p_reason: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      platform_feature_bulk_preview: {
+        Args: {
+          p_merchants: string[]
+          p_code: string
+          p_enabled: boolean
+        }
+        Returns: Json
+      }
+      platform_feature_save: {
+        Args: {
+          p_code: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_invoice_void: {
+        Args: {
+          p_invoice: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      platform_invoices_list: {
+        Args: {
+          p_filters?: Json
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      platform_me: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_merchant_billing: {
+        Args: {
+          p_merchant: string
+        }
+        Returns: Json
+      }
+      platform_merchant_create: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_merchant_feature_set: {
+        Args: {
+          p_merchant: string
+          p_code: string
+          p_enabled: boolean
+          p_reason: string
+          p_limit?: number
+          p_expires_at?: string
+        }
+        Returns: Json
+      }
+      platform_merchant_get: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
+      platform_merchant_note_add: {
+        Args: {
+          p_merchant: string
+          p_body: string
+          p_pinned?: boolean
+        }
+        Returns: Json
+      }
+      platform_merchant_set_owner: {
+        Args: {
+          p_merchant: string
+          p_user: string
+          p_full_name?: string
+        }
+        Returns: Json
+      }
+      platform_merchant_set_status: {
+        Args: {
+          p_ids: string[]
+          p_status: string
+          p_reason: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      platform_merchant_status_preview: {
+        Args: {
+          p_ids: string[]
+          p_status: string
+        }
+        Returns: Json
+      }
+      platform_merchant_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_merchants_list: {
+        Args: {
+          p_filters?: Json
+          p_sort?: string
+          p_direction?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      platform_overview: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      platform_payment_record: {
+        Args: {
+          p_invoice: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_payment_verify: {
+        Args: {
+          p_payment: string
+          p_approve: boolean
+          p_note?: string
+        }
+        Returns: Json
+      }
+      platform_plan_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_plan_set_status: {
+        Args: {
+          p_id: string
+          p_status: string
+        }
+        Returns: undefined
+      }
+      platform_plans_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_report_denied: {
+        Args: {
+          p_action: string
+          p_detail?: Json
+        }
+        Returns: undefined
+      }
+      platform_request_approval: {
+        Args: {
+          p_module: string
+          p_action: string
+          p_merchant: string
+          p_summary: string
+          p_payload: Json
+          p_reason: string
+        }
+        Returns: string
+      }
+      platform_role_delete: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      platform_role_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_roles_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_search: {
+        Args: {
+          p_q: string
+        }
+        Returns: Json
+      }
+      platform_setting_save: {
+        Args: {
+          p_key: string
+          p_value: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_settings_get: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_staff_assign: {
+        Args: {
+          p_user: string
+          p_merchants: string[]
+        }
+        Returns: undefined
+      }
+      platform_staff_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_staff_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_staff_set_active: {
+        Args: {
+          p_user: string
+          p_active: boolean
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      platform_subscription_action: {
+        Args: {
+          p_merchant: string
+          p_action: string
+          p?: Json
         }
         Returns: Json
       }
@@ -11865,6 +13041,18 @@ export type Database = {
           p_filters?: Json
         }
         Returns: Json
+      }
+      require_feature: {
+        Args: {
+          p_code: string
+        }
+        Returns: undefined
+      }
+      require_limit: {
+        Args: {
+          p_key: string
+        }
+        Returns: undefined
       }
       retain_order_advance: {
         Args: {

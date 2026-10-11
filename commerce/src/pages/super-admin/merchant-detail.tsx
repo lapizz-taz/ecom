@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { MerchantBillingTab, MerchantFeaturesTab } from '@/features/platform/billing/merchant-tabs'
 import { MERCHANT_STATUS } from '@/features/platform/nav'
 import { usePlatform } from '@/features/platform/platform-context'
 import { StatusChangeDialog } from '@/features/platform/status-change-dialog'
@@ -24,8 +25,11 @@ import { formatDate, formatDateTime, formatMoney, formatNumber, timeAgo } from '
 import { toast } from '@/lib/toast'
 import { addMerchantNote, getMerchant, listEmployees, type MerchantDetail, setMerchantOwner, updateMerchant } from '@/services/platform'
 
-/** Extra tabs other modules add to the merchant page (plan, credits, features, support, PBX). */
-export const merchantTabs: Array<{ key: string; label: string; module: string; render: (m: MerchantDetail) => ReactNode }> = []
+/** Tabs from other modules, shown to employees who can view that module for this merchant. */
+const merchantTabs: Array<{ key: string; label: string; module: string; render: (m: MerchantDetail) => ReactNode }> = [
+  { key: 'billing', label: 'Plan & billing', module: 'subscriptions', render: (m) => <MerchantBillingTab detail={m} /> },
+  { key: 'features', label: 'Features', module: 'features', render: (m) => <MerchantFeaturesTab detail={m} /> },
+]
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (

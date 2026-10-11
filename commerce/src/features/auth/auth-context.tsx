@@ -68,7 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       accessLoading: Boolean(userId) && accessQuery.isLoading,
       isStaff: Boolean(access),
-      can: (permission) => Boolean(access && !access.device_blocked && (access.role === 'OWNER' || access.permissions.includes(permission))),
+      // Mirrors the database: a read-only account keeps *.view and *.export, a blocked one nothing.
+      can: (permission) => Boolean(access && !access.device_blocked && access.access_mode !== 'BLOCKED'
+        && (access.access_mode !== 'READ_ONLY' || /\.(view|export)$/.test(permission))
+        && (access.role === 'OWNER' || access.permissions.includes(permission))),
       signOut: async () => {
         await supabase.auth.signOut()
       },

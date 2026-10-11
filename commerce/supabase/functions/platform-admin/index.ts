@@ -41,6 +41,7 @@ const schema = z.discriminatedUnion('action', [
       notes: z.string().trim().max(2000).optional(),
       is_demo: z.boolean().default(false),
       account_manager_id: z.uuid().optional(),
+      plan_code: z.string().trim().regex(/^[A-Z][A-Z0-9_]{1,30}$/).optional(),
     }),
     owner: z.object(person),
   }),

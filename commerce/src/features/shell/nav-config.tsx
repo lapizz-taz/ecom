@@ -189,6 +189,7 @@ export const NAV: NavSection[] = [
         children: [
           { label: 'Business Profile', to: '/admin/settings?tab=store' },
           { label: 'Merchant Profile', to: '/admin/settings?tab=merchant' },
+          { label: 'Plan & Billing', to: '/admin/settings/billing' },
           { label: 'Device Approvals', to: '/admin/settings/devices', permission: 'devices.manage' },
           { label: 'Website Integration', to: '/admin/store/website' },
           { label: 'Courier Integration', to: '/admin/couriers', permission: 'couriers.view' },

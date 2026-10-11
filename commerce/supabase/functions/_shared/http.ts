@@ -61,6 +61,9 @@ const DB_CODES: Record<string, number> = {
   DUPLICATE: 409,
   INVALID_TRANSITION: 409,
   IMMUTABLE_RECORD: 409,
+  FEATURE_OFF: 403,
+  LIMIT_REACHED: 402,
+  ACCOUNT_RESTRICTED: 403,
 }
 
 export function fromDbError(error: { message?: string; code?: string; details?: string } | null | undefined): HttpError {

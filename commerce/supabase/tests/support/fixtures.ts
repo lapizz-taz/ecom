@@ -13,6 +13,20 @@ export async function createStaff(db: Db, roleCode: string, email = `${roleCode.
   return id
 }
 
+/** A platform employee with a built-in role (signed in through the normal app login). */
+export async function createPlatformStaff(db: Db, role: string, opts: { scope?: 'ALL' | 'ASSIGNED'; merchants?: string[] } = {}): Promise<string> {
+  await asSystem(db, null)
+  const id = randomUUID()
+  const email = `${role.toLowerCase()}-${id.slice(0, 6)}@platform.example`
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, '{"full_name":"Platform ${role}"}')`, [id, email])
+  await db.query(`insert into public.platform_staff (user_id, email, full_name, role_id, merchant_scope)
+    values ($1, $2, $3, (select id from public.platform_roles where code = $4), $5)`, [id, email, `Platform ${role}`, role, opts.scope ?? 'ALL'])
+  for (const m of opts.merchants ?? []) {
+    await db.query(`insert into public.platform_staff_merchants (user_id, merchant_id) values ($1, $2)`, [id, m])
+  }
+  return id
+}
+
 export async function createCustomerUser(db: Db, email = `customer-${randomUUID().slice(0, 8)}@example.com`): Promise<string> {
   await asSystem(db)
   const id = randomUUID()
