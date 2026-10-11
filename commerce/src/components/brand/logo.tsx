@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-export const BRAND_NAME = 'Fullfilio'
+const BRAND_NAME = 'Fullfilio'
 
 /* The Fullfilio logo, traced from the brand artwork: a split, slanted "F"
    followed by blocky lowercase letters. Paths share one coordinate space so

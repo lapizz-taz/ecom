@@ -98,3 +98,12 @@ export async function autoAssignDistricts() {
   if (error) throw error
   return data as unknown as { customers: number; orders: number; left: number }
 }
+
+/** The saved customer for a phone number (new-order form), or null. */
+export async function findCustomerByPhone(phone: string) {
+  const { data, error } = await supabase.from('customers')
+    .select('id, full_name, email, address, area, city, district, segment, status, total_orders, delivered_orders')
+    .eq('phone', phone).maybeSingle()
+  if (error) throw error
+  return data
+}

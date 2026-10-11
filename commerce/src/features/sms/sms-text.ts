@@ -1,6 +1,6 @@
-import type { Enums } from '@/types/database'
+import type { Condition, ConditionField, SmsEvent } from '@/types/sms'
 
-export type SmsEvent = Exclude<Enums<'notification_event'>, 'ADVANCE_RECEIVED'>
+export type { Condition, ConditionField, SmsEvent }
 
 /** Events an automation can react to, in the order an order lives through them. */
 export const SMS_EVENTS: Array<{ value: SmsEvent; label: string; when: string }> = [
@@ -92,13 +92,6 @@ export function smsParts(text: string): SmsParts {
 // -----------------------------------------------------------------------------
 // Conditions
 // -----------------------------------------------------------------------------
-export type ConditionField = 'payment_method' | 'total' | 'district' | 'source' | 'first_order' | 'courier'
-export interface Condition {
-  field: ConditionField
-  op: 'in' | 'not_in' | 'gte' | 'lte' | 'eq'
-  value: string[] | number | boolean
-}
-
 export const CONDITION_FIELDS: Array<{ value: ConditionField; label: string }> = [
   { value: 'payment_method', label: 'Payment' },
   { value: 'total', label: 'Order total' },

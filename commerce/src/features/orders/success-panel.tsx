@@ -15,11 +15,11 @@ const COURIER_NAME: Record<string, string> = {
   pathao: 'Pathao', steadfast: 'Steadfast', redx: 'RedX', carrybee: 'CarryBee', paperfly: 'Paperfly', parceldex: 'ParcelDex', courierfast: 'CourierFast',
 }
 
-export const courierName = (c: CourierLineRecord) =>
+const courierName = (c: CourierLineRecord) =>
   c.name ?? COURIER_NAME[c.courier.replace(/[^a-z]/g, '')] ?? c.courier.replace(/^\w/, (x) => x.toUpperCase())
 
 /** Green / amber / red only for the rate itself; everything else stays grey. */
-export function rateColor(rate: number | null | undefined) {
+function rateColor(rate: number | null | undefined) {
   if (rate === null || rate === undefined) return { text: 'text-muted-foreground', bar: 'bg-muted-foreground' }
   return rate >= 80 ? { text: 'text-emerald-500', bar: 'bg-emerald-500' }
     : rate >= 50 ? { text: 'text-amber-500', bar: 'bg-amber-500' } : { text: 'text-red-500', bar: 'bg-red-500' }

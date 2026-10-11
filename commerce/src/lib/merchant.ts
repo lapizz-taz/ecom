@@ -24,10 +24,10 @@ export interface SiteInfo {
 }
 
 /** A store opened by path on the platform address: /s/<store name>/… */
-export const STORE_PATH = /^\/s\/([a-z0-9][a-z0-9-]{1,40})(?=\/|$)/
+const STORE_PATH = /^\/s\/([a-z0-9][a-z0-9-]{1,40})(?=\/|$)/
 
 /** The store name in the address, when the store is opened by path. */
-export function storeSlugInPath(pathname = typeof location === 'undefined' ? '' : location.pathname): string | null {
+function storeSlugInPath(pathname = typeof location === 'undefined' ? '' : location.pathname): string | null {
   return STORE_PATH.exec(pathname)?.[1] ?? null
 }
 

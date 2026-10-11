@@ -1,4 +1,4 @@
-import { env } from '@/lib/env'
+import { functionsUrl } from '@/lib/env'
 import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 
@@ -47,7 +47,7 @@ export async function revokeSiteKey(id: string) {
   const { error } = await supabase.rpc('admin_site_key_revoke', { p_id: id })
   if (error) throw error
 }
-export const siteApiBase = () => `${env.supabaseUrl.replace(/\/+$/, '')}/functions/v1/site-api/v1`
+export const siteApiBase = () => functionsUrl('site-api/v1')
 
 /** Where the business's online store is published (see merchant_store_address). */
 export interface StoreAddress {

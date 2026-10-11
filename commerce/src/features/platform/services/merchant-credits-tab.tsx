@@ -15,7 +15,7 @@ import { AdjustCreditsDialog } from './adjust-credits-dialog'
 import { ServiceOverrideDialog } from './override-dialog'
 
 /** What a merchant may use now: feature, free allowance, monthly cap and how extra use is paid. */
-export function UsageStateCard({ title, state, onEdit }: { title: string; state: UsageState; onEdit?: () => void }) {
+function UsageStateCard({ title, state, onEdit }: { title: string; state: UsageState; onEdit?: () => void }) {
   const unit = state.unit === 'LOOKUP' ? 'lookups' : state.unit === 'MESSAGE' ? 'messages' : 'SMS parts'
   const ent = ENTITLEMENT[state.feature_state as EntitlementState]
   return (

@@ -21,11 +21,11 @@ import { useStoreConfig } from '@/hooks/use-store-config'
 import { invokeFunction } from '@/lib/functions'
 import { formatMoney, toNumber } from '@/lib/format'
 import { normalizePhone } from '@/lib/phone'
-import { supabase } from '@/lib/supabase'
 import { PAYMENT_METHOD } from '@/lib/status'
 import { variantsByIds } from '@/services/catalog'
 import { useOrderSources } from '@/hooks/use-order-sources'
 import { getStoreCart, linkStoreCart } from '@/services/abandoned'
+import { findCustomerByPhone } from '@/services/customers'
 import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, setOrderSource } from '@/services/orders'
 import type { PastedOrder } from '@/lib/order-paste'
 import type { Enums } from '@/types/database'
@@ -114,10 +114,7 @@ export default function NewOrderPage() {
   const known = useQuery({
     queryKey: ['customer-by-phone', phone],
     enabled: phone.length >= 10 && can('customers.view'),
-    queryFn: async () => {
-      const { data } = await supabase.from('customers').select('id, full_name, email, address, area, city, district, segment, status, total_orders, delivered_orders').eq('phone', phone).maybeSingle()
-      return data
-    },
+    queryFn: () => findCustomerByPhone(phone),
   })
 
   const quoteInput = useDebounce({ lines: lines.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: priceOverride ? l.unit_price : undefined })), district: shipping.district, area: shipping.area, method, coupon }, 300)

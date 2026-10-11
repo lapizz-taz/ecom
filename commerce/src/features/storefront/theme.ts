@@ -277,7 +277,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
 }
 
 /** Text on the accent colour: white on dark colours, near-black on light ones. */
-export function onColor(color: string): string {
+function onColor(color: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(color.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#0b0b0c' : '#fafafa'

@@ -42,11 +42,6 @@ export async function updateProduction(id: string, values: { assigned_to: string
   if (error) throw error
 }
 
-export async function createProductionOrder(orderId: string) {
-  const { error } = await supabase.rpc('admin_create_production_order', { p_order_id: orderId })
-  if (error) throw error
-}
-
 /** Which actions make sense for each production status. */
 export const PRODUCTION_ACTIONS: Record<Enums<'production_status'>, Array<{ action: ProductionAction; label: string; needsNote?: boolean; variant?: 'default' | 'outline' | 'destructive' }>> = {
   WAITING: [{ action: 'START', label: 'Start production' }, { action: 'MOVE_TO_PACKING', label: 'Skip to packing', variant: 'outline' }],

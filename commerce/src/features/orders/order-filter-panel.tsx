@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 import { type OrderFilters, orderFilterOptions } from '@/services/orders'
 
 /** Filter values as they live in the URL (all strings; tags comma-separated). */
-export const FILTER_KEYS = [
+const FILTER_KEYS = [
   'date_from', 'date_to', 'reference', 'web_source', 'channel', 'tags', 'employee', 'product_code', 'product_name', 'only_product',
   'qty_min', 'qty_max', 'orders_min', 'orders_max', 'rate_min', 'rate_max', 'printed', 'uploaded', 'fraud_status',
   'payment_status', 'risk_level', 'source', 'district',
@@ -50,7 +50,7 @@ export function filtersFromValues(v: FilterValues): OrderFilters {
   }
 }
 
-export function activeFilterCount(v: FilterValues) {
+function activeFilterCount(v: FilterValues) {
   const pairs: FilterKey[][] = [['date_from', 'date_to'], ['qty_min', 'qty_max'], ['orders_min', 'orders_max'], ['rate_min', 'rate_max']]
   const paired = new Set(pairs.flat())
   return FILTER_KEYS.filter((k) => !paired.has(k) && k !== 'only_product' && v[k]).length + pairs.filter((p) => p.some((k) => v[k])).length

@@ -1,3 +1,4 @@
+import { env } from '@/lib/env'
 // Turns Supabase / edge function / network errors into messages a person can
 // act on. Database functions raise "CODE: message"; only the message is shown.
 // Unknown errors never expose raw SQL details.
@@ -36,7 +37,7 @@ export function toUserMessage(error: unknown): string {
   if (/JWT expired|invalid jwt/i.test(message)) return 'Your session expired. Please sign in again.'
   if (/duplicate key/i.test(message)) return FRIENDLY['23505']
   if (/violates foreign key/i.test(message)) return FRIENDLY['23503']
-  if (import.meta.env.DEV) return message
+  if (env.isDev) return message
   return 'Something went wrong. Please try again.'
 }
 
@@ -44,10 +45,4 @@ export function errorCode(error: unknown): string | undefined {
   if (error instanceof AppError) return error.code
   const message = (error as ErrorLike)?.message ?? ''
   return /^([A-Z_]+): /.exec(message)?.[1] ?? (error as ErrorLike)?.code
-}
-
-/** Unwraps `{ data, error }` from supabase-js, throwing on error. */
-export function unwrap<T>(result: { data: T; error: unknown }): T {
-  if (result.error) throw result.error
-  return result.data
 }

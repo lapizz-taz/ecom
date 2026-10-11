@@ -34,16 +34,3 @@ export function PageHeader({ title, description, actions, className, back, icon 
     </div>
   )
 }
-
-/** A titled group inside a page (settings sections, report blocks). */
-export function SectionHeader({ title, description, actions, className }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; className?: string }) {
-  return (
-    <div className={cn('mb-3 flex flex-wrap items-end justify-between gap-2', className)}>
-      <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
-        {description && <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>}
-      </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
-    </div>
-  )
-}

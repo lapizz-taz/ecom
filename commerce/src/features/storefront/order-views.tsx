@@ -10,7 +10,7 @@ import type { PublicOrder } from '@/types/domain'
 
 const STOPPED = ['CANCELLED', 'REJECTED_FRAUD', 'RETURNED']
 
-export function OrderProgress({ order }: { order: PublicOrder }) {
+function OrderProgress({ order }: { order: PublicOrder }) {
   if (STOPPED.includes(order.status)) {
     return <Badge variant="neutral" className="text-sm">{ORDER_STATUS[order.status].customer}</Badge>
   }

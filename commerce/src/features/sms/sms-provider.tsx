@@ -12,7 +12,7 @@ import { smsParts } from './sms-text'
 
 interface CredentialField { key: string; label: string; secret?: boolean; placeholder?: string; hint?: string }
 
-export const SMS_PROVIDERS: Array<{
+const SMS_PROVIDERS: Array<{
   code: SmsProviderCode
   name: string
   blurb: string

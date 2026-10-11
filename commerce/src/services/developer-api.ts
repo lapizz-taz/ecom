@@ -1,4 +1,4 @@
-import { env } from '@/lib/env'
+import { functionsUrl } from '@/lib/env'
 import { supabase } from '@/lib/supabase'
 
 export const API_SCOPES = [
@@ -40,4 +40,4 @@ export async function listApiLogs(limit = 200): Promise<ApiLog[]> {
   if (error) throw error
   return data as unknown as ApiLog[]
 }
-export const externalApiBase = () => `${env.supabaseUrl.replace(/\/+$/, '')}/functions/v1/api/v1`
+export const externalApiBase = () => functionsUrl('api/v1')

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Palette, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { reportError } from '@/lib/monitoring'
 import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Field } from '@/components/common/field'
@@ -385,7 +386,13 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
       const done = async (r: SetupResult) => {
         // Features not chosen are switched off right away.
         const off = settingsFor(features)
-        if (r.channel?.id && Object.keys(off).length) await saveSyncSettings(r.channel.id, off).catch(() => undefined)
+        // The store is connected either way; if this save fails, say so instead of leaving features on unnoticed.
+        if (r.channel?.id && Object.keys(off).length) {
+          await saveSyncSettings(r.channel.id, off).catch((e: unknown) => {
+            reportError(e, { where: 'shopify_connect_features' })
+            toast.warning('Connected, but the features you left out are still on', { description: 'Turn them off under Store Sync.' })
+          })
+        }
         return r
       }
       if (mode === 'client') return done(await shopifyClientConnect({ shop: f.shop, client_id: f.client_id, client_secret: f.client_secret || undefined }))

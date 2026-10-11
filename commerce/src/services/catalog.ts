@@ -92,11 +92,6 @@ export async function saveProduct(payload: ProductPayload) {
   return data
 }
 
-export async function setProductStatus(id: string, status: Enums<'product_status'>) {
-  const { error } = await supabase.from('products').update({ status }).eq('id', id)
-  if (error) throw error
-}
-
 /** One-field edits from the product list (server checks products.manage). */
 export async function quickUpdateProduct(id: string, changes: { cost_price?: number; price?: number; active?: boolean; track_inventory?: boolean }) {
   const { data, error } = await supabase.rpc('admin_product_quick_update', { p_id: id, p: asJson(changes) })
@@ -116,11 +111,6 @@ export async function productStats(): Promise<ProductStats> {
   const { data, error } = await supabase.rpc('admin_product_stats')
   if (error) throw error
   return data as unknown as ProductStats
-}
-
-export async function deleteProduct(id: string) {
-  const { error } = await supabase.from('products').delete().eq('id', id)
-  if (error) throw error
 }
 
 // Categories ----------------------------------------------------------------

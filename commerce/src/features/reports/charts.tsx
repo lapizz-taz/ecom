@@ -7,11 +7,11 @@ import { formatMoney, formatNumber, formatShortDate } from '@/lib/format'
 
 // Categorical slots in their validated order. A series keeps its slot no
 // matter which other series are visible.
-export const SERIES_COLORS = Array.from({ length: 8 }, (_, i) => `var(--chart-${i + 1})`)
+const SERIES_COLORS = Array.from({ length: 8 }, (_, i) => `var(--chart-${i + 1})`)
 
 export type ValueFormat = 'money' | 'number' | 'percent'
 
-export function formatValue(value: unknown, format: ValueFormat): string {
+function formatValue(value: unknown, format: ValueFormat): string {
   if (format === 'money') return formatMoney(value)
   if (format === 'percent') return `${formatNumber(value, 1)}%`
   return formatNumber(value)

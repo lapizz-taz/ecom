@@ -23,8 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, formatMoney, formatNumber, toNumber } from '@/lib/format'
 import { ORDER_STATUS } from '@/lib/status'
-import { supabase } from '@/lib/supabase'
-import { couponUsage, type CouponRow, listCoupons, saveCoupon } from '@/services/coupons'
+import { couponUsage, type CouponRow, deleteCoupon, listCoupons, saveCoupon, setCouponActive } from '@/services/coupons'
 import type { OrderStatus } from '@/types/domain'
 
 function couponState(c: CouponRow): { label: string; variant: 'success' | 'neutral' | 'warning' | 'secondary' } {
@@ -49,17 +48,11 @@ export default function CouponsPage() {
   const [editing, setEditing] = useState<Partial<CouponRow> | null>(null)
   const [usageFor, setUsageFor] = useState<CouponRow | null>(null)
   const remove = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('coupons').delete().eq('id', id)
-      if (error) throw error
-    },
+    mutationFn: deleteCoupon,
     onSuccess: () => { toast.success('Coupon deleted'); void queryClient.invalidateQueries({ queryKey: ['coupons'] }) },
   })
   const toggle = useMutation({
-    mutationFn: async (c: CouponRow) => {
-      const { error } = await supabase.from('coupons').update({ is_active: !c.is_active }).eq('id', c.id)
-      if (error) throw error
-    },
+    mutationFn: (c: CouponRow) => setCouponActive(c.id, !c.is_active),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['coupons'] }),
   })
 

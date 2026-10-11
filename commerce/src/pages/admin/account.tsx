@@ -11,8 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/auth-context'
-import { supabase } from '@/lib/supabase'
-import { updateMyProfile } from '@/services/users'
+import { changeMyPassword, getMyProfile, updateMyProfile } from '@/services/users'
 
 export default function AccountPage() {
   const { user, access, signOut } = useAuth()
@@ -44,11 +43,7 @@ function Profile() {
   const profile = useQuery({
     queryKey: ['my-profile', user?.id],
     enabled: !!user,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('full_name, phone').eq('id', user!.id).single()
-      if (error) throw error
-      return data
-    },
+    queryFn: () => getMyProfile(user!.id),
   })
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -89,13 +84,7 @@ function ChangePassword() {
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const change = useMutation({
-    mutationFn: async () => {
-      // Re-authenticate first so a session left open on a shared device cannot change the password.
-      const check = await supabase.auth.signInWithPassword({ email: user!.email!, password: current })
-      if (check.error) throw new Error('VALIDATION: your current password is incorrect')
-      const { error } = await supabase.auth.updateUser({ password: next })
-      if (error) throw error
-    },
+    mutationFn: () => changeMyPassword(user!.email!, current, next),
     onSuccess: () => {
       toast.success('Password changed')
       setCurrent(''); setNext(''); setConfirm('')

@@ -1,5 +1,6 @@
 import { AppError } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
+import { env } from '@/lib/env'
 
 // Errors are reported, never silently swallowed:
 //  - to Sentry when VITE_SENTRY_DSN is set (storefront and admin);
@@ -7,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 // Expected outcomes (validation, permissions, "not found", rate limits) are
 // not errors and are not reported.
 
-const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined
+const dsn = env.sentry.dsn
 const EXPECTED = new Set([
   'VALIDATION', 'PERMISSION_DENIED', 'UNAUTHENTICATED', 'NOT_FOUND', 'RATE_LIMITED', 'COUPON_INVALID',
   'INSUFFICIENT_STOCK', 'DUPLICATE', 'INVALID_TRANSITION', 'NETWORK', 'ORDER_BLOCKED', 'NOT_CONNECTED',
@@ -26,8 +27,8 @@ export async function initMonitoring() {
   const Sentry = await import('@sentry/react')
   Sentry.init({
     dsn,
-    environment: (import.meta.env.VITE_SENTRY_ENVIRONMENT as string | undefined) ?? import.meta.env.MODE,
-    release: import.meta.env.VITE_RELEASE as string | undefined,
+    environment: env.sentry.environment,
+    release: env.sentry.release,
     sendDefaultPii: false,
     tracesSampleRate: 0.1,
     integrations: [Sentry.browserTracingIntegration()],
@@ -55,13 +56,13 @@ function isExpected(error: unknown): boolean {
 
 export function reportError(error: unknown, context: Record<string, unknown> = {}) {
   if (!error || isExpected(error)) return
-  if (import.meta.env.DEV) console.error(error, context)
+  if (env.isDev) console.error(error, context)
   withSentry((Sentry) => Sentry.captureException(error, { extra: context }))
   if (staff) {
     const message = error instanceof Error ? error.message : String(error)
     void supabase.rpc('log_client_error', {
       p_message: message.slice(0, 2000),
       p_context: { ...context, path: window.location.pathname, stack: error instanceof Error ? error.stack?.split('\n').slice(0, 5).join('\n') : undefined },
-    }).then(({ error: logError }) => { if (logError && import.meta.env.DEV) console.warn('Could not write to the system log', logError) })
+    }).then(({ error: logError }) => { if (logError && env.isDev) console.warn('Could not write to the system log', logError) })
   }
 }

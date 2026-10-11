@@ -18,9 +18,8 @@ import { ConfigHistory } from '@/features/platform/config-history'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { supabase } from '@/lib/supabase'
 import { savePlatformSetting } from '@/services/billing'
-import { type GlobalSettings, globalSettings } from '@/services/platform-data'
+import { type GlobalSettings, globalSettings, saveStoreDomains } from '@/services/platform-data'
 
 // Where each platform setting lives. Settings with their own page are changed
 // there (they have their own checks); this page is the index.
@@ -132,13 +131,10 @@ function StoreDomainsCard({ d }: { d: GlobalSettings }) {
   const queryClient = useQueryClient()
   const value = (d.settings.store_domains?.value ?? {}) as { root_domain?: string | null; main_site?: string }
   const [root, setRoot] = useState(value.root_domain ?? '')
-  const [main, setMain] = useState(value.main_site === 'store' ? 'store' : 'marketing')
+  const [main, setMain] = useState<'store' | 'marketing'>(value.main_site === 'store' ? 'store' : 'marketing')
   const [confirm, setConfirm] = useState(false)
   const save = useMutation({
-    mutationFn: async (reason: string) => {
-      const { error } = await supabase.rpc('platform_store_domains_save', { p_value: { root_domain: root.trim() || null, main_site: main }, p_reason: reason })
-      if (error) throw error
-    },
+    mutationFn: (reason: string) => saveStoreDomains({ root_domain: root.trim() || null, main_site: main }, reason),
     onSuccess: () => {
       toast.success('Store addresses saved')
       void queryClient.invalidateQueries({ queryKey: ['platform-global-settings'] })

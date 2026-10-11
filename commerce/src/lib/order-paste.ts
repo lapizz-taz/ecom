@@ -16,7 +16,7 @@ export interface PastedOrder {
 }
 
 const BN_DIGITS = '০১২৩৪৫৬৭৮৯'
-export const toAsciiDigits = (s: string) => s.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)))
+const toAsciiDigits = (s: string) => s.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)))
 
 /** The 64 districts as used for delivery, with Bangla names and common spellings. */
 const DISTRICT_NAMES: Record<string, string[]> = {
@@ -84,7 +84,7 @@ export function findPhones(text: string): string[] {
 }
 
 /** The district a piece of text names, from the store's district list. */
-export function findDistrict(text: string, districts: readonly string[]): string | undefined {
+function findDistrict(text: string, districts: readonly string[]): string | undefined {
   const t = ` ${fold(text)} `
   let best: { name: string; at: number } | undefined
   for (const name of districts) {

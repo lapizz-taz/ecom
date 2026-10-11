@@ -1,4 +1,4 @@
-import type { Condition, SmsEvent } from '@/features/sms/sms-text'
+import type { Condition, SmsEvent } from '@/types/sms'
 import { invokeFunction } from '@/lib/functions'
 import { fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'

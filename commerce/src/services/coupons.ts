@@ -20,3 +20,13 @@ export async function couponUsage(couponId: string) {
   if (error) throw error
   return data ?? []
 }
+
+export async function deleteCoupon(id: string) {
+  const { error } = await supabase.from('coupons').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function setCouponActive(id: string, active: boolean) {
+  const { error } = await supabase.from('coupons').update({ is_active: active }).eq('id', id)
+  if (error) throw error
+}

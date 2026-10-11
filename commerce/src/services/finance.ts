@@ -53,7 +53,7 @@ export interface TransactionFilters {
   pageSize: number
 }
 
-export async function listTransactions(f: TransactionFilters) {
+async function listTransactions(f: TransactionFilters) {
   let query = supabase
     .from('finance_transactions')
     .select('*, finance_categories(code, name, pnl_group), orders(order_number), suppliers(name)', { count: 'exact' })
@@ -81,22 +81,6 @@ export async function listTransactions(f: TransactionFilters) {
   return { items: items.map((t) => ({ ...t, reversed: reversed.has(t.id) })), total: count ?? 0 }
 }
 export type TransactionRow = Awaited<ReturnType<typeof listTransactions>>['items'][number]
-
-export async function createTransaction(values: {
-  type: Enums<'finance_type'>
-  category_id: string
-  amount: number
-  txn_date: string
-  payment_channel?: Enums<'payment_channel'> | null
-  reference?: string | null
-  notes?: string | null
-  supplier_id?: string | null
-  is_cash?: boolean
-}) {
-  const { data, error } = await supabase.rpc('create_finance_transaction', { p: asJson(values) })
-  if (error) throw error
-  return data
-}
 
 export async function reverseTransaction(id: string, reason: string) {
   const { error } = await supabase.rpc('reverse_finance_transaction', { p_id: id, p_reason: reason })

@@ -32,13 +32,6 @@ export async function listSystemLogs(f: { level?: string; category?: string; sta
 }
 export type SystemLogRow = Awaited<ReturnType<typeof listSystemLogs>>['items'][number]
 
-export async function openSystemProblems(): Promise<number> {
-  const { count, error } = await supabase.from('system_logs').select('id', { count: 'exact', head: true })
-    .is('resolved_at', null).eq('level', 'ERROR')
-  if (error) throw error
-  return count ?? 0
-}
-
 export async function resolveSystemLogs(ids: number[]) {
   const { data, error } = await supabase.rpc('admin_resolve_system_logs', { p_ids: ids })
   if (error) throw error

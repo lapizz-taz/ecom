@@ -32,7 +32,7 @@ import {
 } from './statement-parse'
 
 /** What the courier paid against what they should have: correct, short or over. */
-export function Difference({ value, className }: { value: number | string; className?: string }) {
+function Difference({ value, className }: { value: number | string; className?: string }) {
   const n = toNumber(value)
   if (Math.abs(n) < 1) return <span className={cn('inline-flex items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-xs font-medium text-background', className)}><CheckCircle2 className="size-3" />Correct</span>
   return (
@@ -43,7 +43,7 @@ export function Difference({ value, className }: { value: number | string; class
 }
 
 /** Plain-words verdict shown at the top of a statement. */
-export function Verdict({ difference, flagged, courier }: { difference: number | string | null; flagged: number; courier?: string | null }) {
+function Verdict({ difference, flagged, courier }: { difference: number | string | null; flagged: number; courier?: string | null }) {
   const n = toNumber(difference ?? 0)
   const who = courier ?? 'The courier'
   const ok = Math.abs(n) < 1
@@ -261,7 +261,7 @@ function Compare({ actual, expected }: { actual: number | string | null; expecte
   )
 }
 
-export function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
+function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<'flagged' | 'all'>('flagged')

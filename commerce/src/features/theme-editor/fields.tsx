@@ -25,7 +25,7 @@ export function FieldRow({ label, hint, children, inline }: { label: string; hin
 
 const LINKS = ['/', '/shop', '/shop?sort=newest', '/track-order', '/contact', '/policies/shipping', '/policies/returns', '/policies/privacy', '/policies/terms']
 
-export function LinkInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+function LinkInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const categories = useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
   const id = useRef(`links-${Math.random().toString(36).slice(2)}`).current
   return (
@@ -39,7 +39,7 @@ export function LinkInput({ value, onChange, placeholder }: { value: string; onC
   )
 }
 
-export function ImageInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ImageInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const file = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const upload = async (f: File) => {

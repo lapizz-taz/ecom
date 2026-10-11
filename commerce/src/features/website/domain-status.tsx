@@ -14,7 +14,7 @@ const copy = (v: string) => void navigator.clipboard.writeText(v).then(() => toa
 export type Tone = 'live' | 'warn' | 'pending' | 'error'
 
 /** One word for where a domain stands, from its status and last diagnosis. */
-export function domainTone(d: StoreDomain): Tone {
+function domainTone(d: StoreDomain): Tone {
   const diag = d.diagnostics
   if (d.status === 'ERROR' || diag?.issues.some((i) => i.severity === 'error')) return d.status === 'ACTIVE' ? 'warn' : 'error'
   if (d.status === 'ACTIVE') return diag?.issues.some((i) => i.severity === 'warning') ? 'warn' : 'live'
@@ -28,7 +28,7 @@ const TONE: Record<Tone, { label: string; chip: string }> = {
   error: { label: 'Not connected', chip: 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10 dark:text-red-300' },
 }
 
-export function DomainChip({ d }: { d: StoreDomain }) {
+function DomainChip({ d }: { d: StoreDomain }) {
   const t = TONE[domainTone(d)]
   return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset', t.chip)}>{t.label}</span>
 }

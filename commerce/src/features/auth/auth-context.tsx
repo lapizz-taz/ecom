@@ -4,6 +4,7 @@ import { createContext, type ReactNode, useContext, useEffect, useMemo, useState
 import { registerDevice } from '@/lib/device'
 import { setStaffMerchant } from '@/lib/merchant'
 import { setMonitoringUser } from '@/lib/monitoring'
+import { getMyAccess } from '@/services/users'
 import { supabase } from '@/lib/supabase'
 import type { MyAccess } from '@/types/domain'
 
@@ -46,9 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: async () => {
       // Link this sign-in to this browser first, so device approval (when on) can recognise it.
       await registerDevice()
-      const { data, error } = await supabase.rpc('get_my_access')
-      if (error) throw error
-      return (data as unknown as MyAccess | null) ?? null
+      return getMyAccess()
     },
   })
 

@@ -31,7 +31,7 @@ const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 /** For .or() filters, where commas and brackets would split the expression. */
 const orLike = (q: string) => like(q.replace(/[,()]/g, ' ').trim())
 /** Digits of a phone number as stored (01XXXXXXXXX), accepting +880 / 880. */
-export function phoneDigits(q: string): string {
+function phoneDigits(q: string): string {
   let d = q.replace(/[০-৯]/g, (c) => String('০১২৩৪৫৬৭৮৯'.indexOf(c))).replace(/\D/g, '')
   if (d.startsWith('880')) d = `0${d.slice(3)}`
   return d

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from '@/lib/toast'
-import { currentAttribution, sessionId, visitorId } from '@/lib/attribution'
-import { supabase } from '@/lib/supabase'
+import { currentAttribution } from '@/lib/attribution'
+import { restoreCart, syncCart } from '@/services/storefront'
 import { type CartItem, useCart } from './cart-store'
+import { env } from '@/lib/env'
 
 /**
  * Keeps a copy of the cart on the server so a cart left behind can be followed
@@ -21,9 +22,8 @@ export function useCartSync() {
     const t = window.setTimeout(() => {
       last.current = key
       const lines = useCart.getState().items.map((i) => ({ variant_id: i.variantId, quantity: i.quantity }))
-      void supabase.rpc('storefront_cart_sync' as never, {
-        p_visitor_id: visitorId(), p_session_id: sessionId(), p_items: lines, p_attribution: lines.length ? currentAttribution() : null,
-      } as never).then(({ error }) => { if (error && import.meta.env.DEV) console.warn('storefront_cart_sync', error.message) })
+      // Best effort: a failed sync only means staff miss this abandoned cart.
+      syncCart(lines, lines.length ? currentAttribution() : null).catch((error: unknown) => { if (env.isDev) console.warn('storefront_cart_sync', error) })
     }, 2000)
     return () => window.clearTimeout(t)
   }, [key])
@@ -38,13 +38,13 @@ export function useCartRestore(): boolean {
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return
     let cancelled = false
     setBusy(true)
-    void supabase.rpc('storefront_cart_restore' as never, { p_id: id } as never).then(({ data, error }) => {
+    void restoreCart(id).then((data) => ({ data, error: null }), (error: unknown) => ({ data: [] as unknown[], error })).then(({ data, error }) => {
       if (cancelled) return
       setBusy(false)
       const next = new URLSearchParams(params)
       next.delete('restore')
       setParams(next, { replace: true })
-      const restored = (data ?? []) as unknown as CartItem[]
+      const restored = data as CartItem[]
       if (error || !restored.length) {
         toast.info('This cart link has expired', { description: 'The items may be sold out or already ordered.' })
         return

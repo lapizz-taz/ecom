@@ -18,7 +18,7 @@ import { formatDate, formatMoney, formatNumber, timeAgo, toNumber } from '@/lib/
 import { cn } from '@/lib/utils'
 import { type InsightItem, type Insights, setPurchasePrefill } from '@/services/inventory'
 
-export const INSIGHT_STATUS: Record<InsightItem['status'], { label: string; variant: BadgeVariant }> = {
+const INSIGHT_STATUS: Record<InsightItem['status'], { label: string; variant: BadgeVariant }> = {
   OUT: { label: 'Out of stock', variant: 'danger' },
   CRITICAL: { label: 'Critical', variant: 'danger' },
   LOW: { label: 'Low', variant: 'warning' },

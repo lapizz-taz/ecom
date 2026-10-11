@@ -12,7 +12,7 @@ import { payInvoice } from '@/services/credits'
 import { PayDialog, useMyCredits } from './credits-section'
 
 /** Why the account is limited, in the merchant's words. */
-export function accessExplanation(p: MyPlan): string | null {
+function accessExplanation(p: MyPlan): string | null {
   if (p.access_mode === 'FULL') return null
   if (p.merchant.status === 'SUSPENDED') return `Your account is suspended by the platform${p.merchant.status_reason ? `: ${p.merchant.status_reason}` : ''}.`
   if (p.merchant.status === 'CLOSED') return 'Your account is closed.'
@@ -25,7 +25,7 @@ export function accessExplanation(p: MyPlan): string | null {
   return null
 }
 
-export function usePlan() {
+function usePlan() {
   return useQuery({ queryKey: ['my-plan'], queryFn: myPlan, staleTime: 60_000 })
 }
 

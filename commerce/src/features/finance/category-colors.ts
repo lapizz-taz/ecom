@@ -1,5 +1,5 @@
 /** Category colours: a dot, a soft tint for matrix cells and a readable text tone. Full class names so Tailwind keeps them. */
-export const CATEGORY_COLORS = {
+const CATEGORY_COLORS = {
   violet: { dot: 'bg-violet-500', soft: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-300', ring: 'ring-violet-500/30' },
   blue: { dot: 'bg-blue-500', soft: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-300', ring: 'ring-blue-500/30' },
   teal: { dot: 'bg-teal-500', soft: 'bg-teal-500/10', text: 'text-teal-600 dark:text-teal-300', ring: 'ring-teal-500/30' },

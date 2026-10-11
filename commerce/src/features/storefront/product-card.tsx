@@ -19,7 +19,7 @@ export function PriceTag({ price, compareAt, maxPrice, className }: { price: num
 }
 
 /** Editorial product card: full-bleed image, small name and price under it. */
-export function ProductCard({ product }: { product: ProductCardData }) {
+function ProductCard({ product }: { product: ProductCardData }) {
   const t = useStoreTheme().product_card
   const onSale = product.compare_at_price != null && Number(product.compare_at_price) > Number(product.price)
   return (

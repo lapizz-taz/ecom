@@ -127,16 +127,16 @@ export const BLOCK_DEFAULTS: Record<BlockId, Omit<LabelBlock, 'uid'>> = {
 const b = (id: BlockId, patch: Partial<LabelBlock> = {}): LabelBlock => ({ ...BLOCK_DEFAULTS[id], uid: id, ...patch })
 
 /** The classic courier label (shop + COD, barcodes, big address). */
-export const CLASSIC_BLOCKS: LabelBlock[] = [
+const CLASSIC_BLOCKS: LabelBlock[] = [
   b('header'), b('order_barcode'), b('recipient'), b('courier'), b('items'), b('note'),
 ]
 
 /** Sticker with prices: order summary, consignment barcode, product table and totals. */
-export const STICKER_BLOCKS: LabelBlock[] = [
+const STICKER_BLOCKS: LabelBlock[] = [
   b('invoice_header'), b('courier', { show_barcode: true }), b('product_table', { max_items: 6 }), b('price_summary'), b('note'),
 ]
 
-export const INVOICE_BLOCKS: LabelBlock[] = [
+const INVOICE_BLOCKS: LabelBlock[] = [
   b('business_header'), b('divider', { uid: 'divider' }), b('invoice_header'), b('product_table', { max_items: 30, show_sku: true }),
   b('price_summary'), b('note'), b('custom_text', { text: 'Thank you for shopping with us!', bold: false, size: 'S' }),
 ]
@@ -156,7 +156,7 @@ export const starter = (kind: TemplateKind, key?: string): LabelTemplate => {
   return { version: 1, kind, ...structuredClone(s.template) }
 }
 
-export const DEFAULT_TEMPLATE: LabelTemplate = { version: 1, kind: 'label', name: 'Courier label', paper: '100x150', custom_width: 100, custom_height: 150, padding: 4, text_size: 'M', border: false, grow: false, blocks: CLASSIC_BLOCKS }
+const DEFAULT_TEMPLATE: LabelTemplate = { version: 1, kind: 'label', name: 'Courier label', paper: '100x150', custom_width: 100, custom_height: 150, padding: 4, text_size: 'M', border: false, grow: false, blocks: CLASSIC_BLOCKS }
 
 export const TEXT_SCALE: Record<LabelTemplate['text_size'], number> = { S: 0.85, M: 1, L: 1.15, XL: 1.3 }
 

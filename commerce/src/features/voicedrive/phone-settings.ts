@@ -36,7 +36,7 @@ function load(): PhoneSettings {
 
 let current = load()
 
-export function getPhoneSettings(): PhoneSettings {
+function getPhoneSettings(): PhoneSettings {
   return current
 }
 

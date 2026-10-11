@@ -4,6 +4,7 @@ import { merchantFolder } from '@/lib/merchant'
 import { supabase } from '@/lib/supabase'
 import type { Enums, TablesInsert } from '@/types/database'
 import type { CodReceivableItem } from '@/types/domain'
+import { functionsUrl } from '@/lib/env'
 
 export async function listCouriers(activeOnly = false) {
   let query = supabase.from('couriers').select('*').order('name')
@@ -106,7 +107,7 @@ export function bookShipments(orderIds: string[], courierId: string, storeId?: s
 
 /** The address a courier posts status updates to. */
 export function courierWebhookUrl(courierId: string): string {
-  return `${String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/courier-webhook?courier=${courierId}`
+  return functionsUrl(`courier-webhook?courier=${courierId}`)
 }
 
 /** Saves the secret the courier sends with each webhook (kept in Vault). */

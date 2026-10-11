@@ -1,9 +1,10 @@
 import { type Attribution, sessionId, visitorId } from '@/lib/attribution'
 import { invokeFunction } from '@/lib/functions'
+import { env } from '@/lib/env'
 import { asJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
 import type {
-  CategoryPublic, MyOrdersPage, PaymentInitResponse, PaymentMethod, PaymentRequirement, ProductDetail, ProductList,
+  CategoryPublic, MyOrdersPage, StoreConfig, PaymentInitResponse, PaymentMethod, PaymentRequirement, ProductDetail, ProductList,
   PublicOrder, Quote,
 } from '@/types/domain'
 
@@ -147,5 +148,27 @@ export function trackEvent(type: 'PAGE_VIEW' | 'VIEW_PRODUCT' | 'ADD_TO_CART' | 
     p_event_type: type,
     p_product_id: productId,
     p_page: `${window.location.pathname}${window.location.search}`.slice(0, 300),
-  }).then(({ error }) => { if (error && import.meta.env.DEV) console.warn('track_visit_event', error.message) })
+  }).then(({ error }) => { if (error && env.isDev) console.warn('track_visit_event', error.message) })
+}
+
+/** The store's public configuration: name, currency, theme, checkout and payment options. */
+export async function getStoreConfig(): Promise<StoreConfig> {
+  const { data, error } = await supabase.rpc('storefront_config')
+  if (error) throw error
+  return data as unknown as StoreConfig
+}
+
+/** Keeps the visitor's cart on the server so staff can follow up abandoned carts. */
+export async function syncCart(lines: Array<{ variant_id: string; quantity: number }>, attribution: unknown) {
+  const { error } = await supabase.rpc('storefront_cart_sync' as never, {
+    p_visitor_id: visitorId(), p_session_id: sessionId(), p_items: lines, p_attribution: attribution,
+  } as never)
+  if (error) throw error
+}
+
+/** The items of a cart shared by staff ("finish your order" link); empty when it expired. */
+export async function restoreCart(id: string): Promise<unknown[]> {
+  const { data, error } = await supabase.rpc('storefront_cart_restore' as never, { p_id: id } as never)
+  if (error) throw error
+  return (data ?? []) as unknown[]
 }

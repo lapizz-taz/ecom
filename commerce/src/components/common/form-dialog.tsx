@@ -41,7 +41,7 @@ export function FormDialog({ open, onOpenChange, title, description, children, s
 }
 
 export type PaymentChannel = Enums<'payment_channel'>
-export const PAYMENT_CHANNELS = Object.keys(PAYMENT_CHANNEL) as PaymentChannel[]
+const PAYMENT_CHANNELS = Object.keys(PAYMENT_CHANNEL) as PaymentChannel[]
 
 export function ChannelSelect({ value, onChange, id, allowNone }: { value: PaymentChannel | null; onChange: (v: PaymentChannel | null) => void; id?: string; allowNone?: boolean }) {
   return (

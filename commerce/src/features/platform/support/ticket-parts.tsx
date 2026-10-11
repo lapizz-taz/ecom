@@ -27,7 +27,7 @@ import {
   type TicketEvent, type TicketPriority, type TicketStatus, updateTicket,
 } from '@/services/support-center'
 
-export const TICKET_STATUS: Record<TicketStatus, { label: string; variant: 'info' | 'warning' | 'success' | 'neutral' }> = {
+const TICKET_STATUS: Record<TicketStatus, { label: string; variant: 'info' | 'warning' | 'success' | 'neutral' }> = {
   OPEN: { label: 'Open', variant: 'info' },
   IN_PROGRESS: { label: 'In progress', variant: 'warning' },
   RESOLVED: { label: 'Resolved', variant: 'success' },
@@ -36,7 +36,7 @@ export const TICKET_STATUS: Record<TicketStatus, { label: string; variant: 'info
 const PRIORITIES = Object.keys(TICKET_PRIORITY) as TicketPriority[]
 
 /** "in 3h", "2h late" — how long until (or since) a due time. */
-export function dueLabel(at: string | null): string {
+function dueLabel(at: string | null): string {
   if (!at) return '—'
   const minutes = Math.round((new Date(at).getTime() - Date.now()) / 60_000)
   const abs = Math.abs(minutes)

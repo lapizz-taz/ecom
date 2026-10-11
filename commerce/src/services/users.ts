@@ -1,5 +1,6 @@
 import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
+import type { MyAccess, StaffMember } from '@/types/domain'
 
 export interface StaffUser {
   id: string
@@ -53,4 +54,41 @@ export async function setRolePermission(roleId: string, permissionId: string, gr
 export async function updateMyProfile(fullName: string, phone?: string) {
   const { error } = await supabase.rpc('update_my_profile', { p_full_name: fullName, p_phone: phone || undefined })
   if (error) throw error
+}
+
+/** The signed-in person's own name and phone. */
+export async function getMyProfile(userId: string) {
+  const { data, error } = await supabase.from('profiles').select('full_name, phone').eq('id', userId).single()
+  if (error) throw error
+  return data
+}
+
+/** Is the signed-in person on the platform (Super Admin) team? */
+export async function isPlatformStaff(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_platform_staff')
+  if (error) throw error
+  return data === true
+}
+
+/** Change the signed-in person's password, after checking the current one again. */
+export async function changeMyPassword(email: string, current: string, next: string) {
+  // Re-authenticate first so a session left open on a shared device cannot change the password.
+  const check = await supabase.auth.signInWithPassword({ email, password: current })
+  if (check.error) throw new Error('VALIDATION: your current password is incorrect')
+  const { error } = await supabase.auth.updateUser({ password: next })
+  if (error) throw error
+}
+
+/** The signed-in person's business, role and permissions (null: not staff anywhere). */
+export async function getMyAccess(): Promise<MyAccess | null> {
+  const { data, error } = await supabase.rpc('get_my_access')
+  if (error) throw error
+  return (data as unknown as MyAccess | null) ?? null
+}
+
+/** Names of everyone on the team, for "created by" and assignee columns. */
+export async function staffDirectory(): Promise<StaffMember[]> {
+  const { data, error } = await supabase.rpc('staff_directory')
+  if (error) throw error
+  return (data as unknown as StaffMember[] | null) ?? []
 }

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils'
 
 /** Ad-platform URL parameters that let every order show its campaign, ad set and ad. */
-export const TRACKING_TEMPLATES = [
+const TRACKING_TEMPLATES = [
   {
     key: 'meta', name: 'Meta (Facebook / Instagram)', where: 'Ads Manager → ad → Tracking → URL parameters',
     value: 'utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&site_source_name={{site_source_name}}&placement={{placement}}',

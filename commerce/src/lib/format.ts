@@ -13,10 +13,6 @@ export function configureCurrency(next: Partial<CurrencyConfig>): void {
   currency = { ...currency, ...Object.fromEntries(Object.entries(next).filter(([, v]) => v)) }
 }
 
-export function currencySymbol(): string {
-  return currency.symbol
-}
-
 const numberFormatters = new Map<string, Intl.NumberFormat>()
 function nf(decimals: number): Intl.NumberFormat {
   const key = `${currency.locale}:${decimals}`

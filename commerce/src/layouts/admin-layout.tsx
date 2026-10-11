@@ -31,6 +31,7 @@ import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { queueCounts, statusCounts } from '@/services/orders'
+import { isPlatformStaff } from '@/services/users'
 import { useStoreAddress } from '@/hooks/use-store-address'
 import { unlockSuperAdmin } from '@/lib/super-admin-gate'
 
@@ -203,11 +204,7 @@ export default function AdminLayout() {
     queryKey: ['is-platform-staff', session?.user.id],
     enabled: Boolean(session),
     staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('is_platform_staff')
-      if (error) throw error
-      return data === true
-    },
+    queryFn: isPlatformStaff,
   })
   const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')))
   const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')))

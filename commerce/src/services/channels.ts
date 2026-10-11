@@ -115,8 +115,6 @@ export const retryImport = (importId: string, overrides: { phone?: string; name?
 export const shopifyRedirectUri = () => `${window.location.origin}/oauth/shopify/callback`
 /** The App URL to enter in Shopify's Dev Dashboard. */
 export const shopifyAppUrl = () => `${window.location.origin}/admin/channels`
-/** The exact scope list for the app version. */
-export const SHOPIFY_APP_SCOPES = 'read_orders,write_orders,read_draft_orders,write_draft_orders,read_products,write_products,read_inventory,write_inventory,read_locations,write_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_fulfillments,write_fulfillments,read_returns,write_returns'
 
 export async function setStoreMode(mode: StoreMode, redirectUrl: string | null): Promise<{ mode: StoreMode; redirect_url: string | null }> {
   const { data, error } = await supabase.rpc('admin_set_store_mode', { p_mode: mode, p_redirect_url: redirectUrl ?? undefined })

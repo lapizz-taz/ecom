@@ -18,6 +18,7 @@
     "test:db": "vitest run --project db",
     "test:watch": "vitest",
     "db:types": "node scripts/gen-db-types.mjs",
+    "build:woo-plugin": "node scripts/build-woo-plugin.mjs",
     "functions:check": "cd supabase/functions && deno check --config deno.json */index.ts"
   },
   "dependencies": {
@@ -30,7 +31,6 @@
     "@zxing/library": "^0.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "date-fns": "^4.4.0",
     "framer-motion": "^14.1.0",
     "goey-toast": "^0.5.0",
     "jsbarcode": "^3.12.3",
@@ -45,7 +45,6 @@
     "read-excel-file": "^9.3.10",
     "recharts": "^3.10.1",
     "sip.js": "^0.21.2",
-    "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"

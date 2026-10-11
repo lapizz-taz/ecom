@@ -1,6 +1,7 @@
 import { invokeFunction } from '@/lib/functions'
 import { fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
+import { functionsUrl } from '@/lib/env'
 
 export type AdPlatform = 'tiktok' | 'google'
 
@@ -72,5 +73,5 @@ export const syncAdPlatform = (platform: AdPlatform, days = 7, accountId?: strin
 
 /** Where the platform must send staff back (register it on the developer app). */
 export function adRedirectUri(platform: AdPlatform): string {
-  return `${String(import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')}/functions/v1/ad-platforms/callback/${platform}`
+  return functionsUrl(`ad-platforms/callback/${platform}`)
 }

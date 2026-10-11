@@ -278,10 +278,6 @@ export const pbxCallState = {
   getOrderCallStateAvailability: () => rpc<CallStateAvailability>('pbx_get_order_call_state_availability'),
 }
 
-export const pbxMaintenance = {
-  status: () => rpc<Maintenance>('pbx_maintenance_status'),
-}
-
 // ------------------------------------------------------------------ labels
 export const LINE_PROBLEM: Record<LineProblem, string> = {
   NOT_ENABLED: 'PBX is not switched on for this business yet (the platform team does this)',

@@ -158,12 +158,6 @@ export interface OrderFeeState {
   balance_tk: number; orders_left: number | null; low_balance: boolean
   month: { approved: number; charged: number; free: number; unpaid: number; amount_tk: number }
 }
-export const ORDER_FEE_CHARGE: Record<OrderFeeCharge, { label: string; variant: 'success' | 'info' | 'neutral' | 'warning' }> = {
-  CHARGED: { label: 'Charged', variant: 'neutral' },
-  FREE: { label: 'Free', variant: 'success' },
-  EXEMPT: { label: 'No fee', variant: 'info' },
-  UNPAID: { label: 'Unpaid', variant: 'warning' },
-}
 export const orderFeeOverview = (q?: string) =>
   platformRpc<{
     settings: OrderFeeSettings
@@ -174,9 +168,6 @@ export const orderFeeOverview = (q?: string) =>
 export const saveOrderFeeSettings = (p: OrderFeeSettings, reason: string) => platformRpc<OrderFeeSettings>('platform_order_fee_settings_save', { p, p_reason: reason })
 export const setOrderFeeOverride = (merchant: string, fee: number | null, exempt: boolean, reason: string) =>
   platformRpc<OrderFeeState>('platform_order_fee_override_set', { p_merchant: merchant, p_fee: fee, p_exempt: exempt, p_reason: reason })
-export const orderFeeCharges = (merchant: string) =>
-  platformRpc<Array<{ id: number; order_id: string; order_number: string | null; fee: number; charge: OrderFeeCharge; created_at: string }>>(
-    'platform_order_fee_charges', { p_merchant: merchant, p_limit: 100 })
 
 // ---- The merchant's own credits
 export interface MyCredits {
@@ -189,12 +180,6 @@ export interface MyCredits {
   can_pay: boolean
   gateways: Array<'bkash' | 'paystation'>
   order_fee?: OrderFeeState
-}
-
-export async function myOrderFee(): Promise<OrderFeeState & { recent: Array<{ id: number; order_number: string | null; fee: number; charge: OrderFeeCharge; created_at: string }> }> {
-  const { data, error } = await supabase.rpc('my_order_fee' as never)
-  if (error) throw error
-  return data as never
 }
 
 export async function myCredits(): Promise<MyCredits> {

@@ -19,10 +19,10 @@ import { type BillingPayment, type Invoice, PAYMENT_METHODS, recordPayment, veri
 const INVOICE_STATUS = { OPEN: 'warning', PAID: 'success', VOID: 'neutral' } as const
 const PAYMENT_STATUS = { PENDING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', REJECTED: 'neutral' } as const
 
-export const isOverdue = (i: Pick<Invoice, 'status' | 'due_at'>) => i.status === 'OPEN' && new Date(i.due_at).getTime() < Date.now()
+const isOverdue = (i: Pick<Invoice, 'status' | 'due_at'>) => i.status === 'OPEN' && new Date(i.due_at).getTime() < Date.now()
 
 /** A payment received outside a gateway. It counts only after a second person verifies it. */
-export function RecordPaymentDialog({ invoice, open, onOpenChange, onDone }: { invoice: Invoice; open: boolean; onOpenChange: (o: boolean) => void; onDone: () => void }) {
+function RecordPaymentDialog({ invoice, open, onOpenChange, onDone }: { invoice: Invoice; open: boolean; onOpenChange: (o: boolean) => void; onDone: () => void }) {
   const [form, setForm] = useState({ amount: String(Math.max(invoice.total - invoice.amount_paid, 0)), method: 'BANK', reference: '', note: '' })
   const save = useMutation({
     mutationFn: () => recordPayment(invoice.id, { amount: Number(form.amount), method: form.method, reference: form.reference.trim(), note: form.note || undefined }),

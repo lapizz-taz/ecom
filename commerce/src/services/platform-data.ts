@@ -103,3 +103,9 @@ async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> 
 export const myDeletionRequest = () => rpc<MyDeletionRequest | null>('my_data_deletion_request')
 export const requestDataDeletion = (reason: string) => rpc<{ id: string; number: number }>('merchant_data_deletion_request', { p_reason: reason })
 export const cancelDataDeletion = () => rpc<void>('merchant_data_deletion_cancel')
+
+/** Super Admin: the root domain for store subdomains and what the platform address shows. */
+export async function saveStoreDomains(value: { root_domain: string | null; main_site: 'marketing' | 'store' }, reason: string) {
+  const { error } = await supabase.rpc('platform_store_domains_save', { p_value: value, p_reason: reason })
+  if (error) throw error
+}

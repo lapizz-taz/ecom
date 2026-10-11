@@ -10,6 +10,9 @@ audit log.
 
 This app lives in `commerce/` and is independent of the Next.js project at the repository root.
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the folder structure, layering rules, data access, state,
+error handling, configuration and naming conventions.
+
 ---
 
 ## How it fits together

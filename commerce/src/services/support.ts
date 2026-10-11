@@ -1,4 +1,4 @@
-import { env } from '@/lib/env'
+import { functionsUrl } from '@/lib/env'
 import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 import type { Tables } from '@/types/database'
@@ -50,11 +50,6 @@ export const createTicket = (p: { kind: TicketKind; category: string; subject: s
 export const replyTicket = (id: string, body: string) => rpc<TicketMessage>('support_ticket_reply', { p_id: id, p_body: body })
 export const updateTicket = (id: string, p: { status?: TicketStatus; priority?: string }) => rpc<Ticket>('support_ticket_update', { p_id: id, p })
 
-/** Page, browser and screen size attached to a bug report. */
-export function pageContext(): Record<string, string> {
-  return { page: location.pathname + location.search, browser: navigator.userAgent, screen: `${window.innerWidth}×${window.innerHeight}` }
-}
-
 // ------------------------------------------------------------ devices
 
 export type DeviceStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED'
@@ -97,7 +92,7 @@ export const systemStatus = () => rpc<{ checked_at: string; components: StatusCo
 
 /** Edge functions answer a CORS preflight when they are deployed and running. */
 export async function pingFunction(name: string): Promise<{ ok: boolean; ms: number }> {
-  const url = `${env.supabaseUrl}/functions/v1/${name}`
+  const url = functionsUrl(name)
   const started = performance.now()
   try {
     const res = await fetch(url, { method: 'OPTIONS', signal: AbortSignal.timeout(8000) })
