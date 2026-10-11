@@ -44,7 +44,9 @@ export default function StartPage() {
   useEffect(() => {
     const o = options.data
     if (!o || business.plan_code) return
-    const code = o.plans.find((p) => p.code === o.default_plan)?.code ?? o.plans[0]?.code ?? ''
+    // A plan picked on the product site comes in as ?plan=CODE.
+    const wanted = new URLSearchParams(window.location.search).get('plan')
+    const code = o.plans.find((p) => p.code === wanted)?.code ?? o.plans.find((p) => p.code === o.default_plan)?.code ?? o.plans[0]?.code ?? ''
     setBusiness((b) => ({ ...b, plan_code: code }))
   }, [options.data, business.plan_code])
 

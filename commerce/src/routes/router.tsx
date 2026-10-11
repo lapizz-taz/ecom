@@ -76,6 +76,7 @@ export const router = createBrowserRouter([
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],
   },
+  { path: '/fullfilio', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/home')) },
   { path: '/start', errorElement: <RouteError />, ...page(() => import('@/pages/start/start')) },
   { path: '/start/finish', errorElement: <RouteError />, ...page(() => import('@/pages/start/finish')) },
   { path: '/admin/login', errorElement: <RouteError />, ...page(() => import('@/pages/admin/login')) },

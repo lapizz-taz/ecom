@@ -1,5 +1,5 @@
 import { ExternalLink, Menu, MessageCircle, Search, ShoppingBag, Store, User } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -13,6 +13,7 @@ import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { cartCount, useCart } from '@/features/cart/cart-store'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useQuery } from '@tanstack/react-query'
+import { isMarketingHost } from '@/lib/env'
 import { cn } from '@/lib/utils'
 import { captureNavigation } from '@/lib/attribution'
 import { getCategories, trackEvent } from '@/services/storefront'
@@ -22,7 +23,16 @@ function useCategories() {
   return useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
 }
 
+const MarketingHome = lazy(() => import('@/pages/marketing/home'))
+
 export default function StorefrontLayout() {
+  const { pathname } = useLocation()
+  // The platform's own domain can show the Fullfilio product site at "/" (VITE_MARKETING_HOSTS).
+  if (pathname === '/' && isMarketingHost() && !isThemePreview()) return <Suspense fallback={null}><MarketingHome /></Suspense>
+  return <Storefront />
+}
+
+function Storefront() {
   const { data: config } = useStoreConfig()
   const sf = useStorefront(config?.storefront)
   const theme = resolveTheme(sf)
