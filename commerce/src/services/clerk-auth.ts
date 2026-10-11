@@ -12,32 +12,6 @@ export async function exchangeClerkSession(clerkToken: string): Promise<void> {
   if (error) throw error
 }
 
-/**
- * Someone who signed up before Clerk: checks their existing password and
- * creates their Clerk account with it. "exists": already in Clerk (the
- * password was simply wrong); "unconfirmed": they never confirmed their e-mail.
- */
-export function moveAccountToClerk(email: string, password: string) {
-  return invokeFunction<{ status: 'created' | 'exists' | 'unconfirmed' | 'legacy' }>('clerk-auth', { action: 'migrate', email: email.trim(), password })
-}
-
-/** The built-in password sign-in, for accounts Clerk cannot take yet. */
-export async function legacyPasswordSignIn(email: string, password: string): Promise<void> {
-  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-  if (error) throw error
-}
-
-/** The built-in reset e-mail (a link), for accounts Clerk cannot take yet. */
-export async function legacyResetEmail(email: string, redirectTo: string): Promise<void> {
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
-  if (error) throw error
-}
-
-/** Before a password reset: makes sure an existing account can receive Clerk's reset code. */
-export async function prepareClerkReset(email: string): Promise<void> {
-  await invokeFunction('clerk-auth', { action: 'ensure', email: email.trim() })
-}
-
 /** Ends the Supabase side of a Clerk sign-in (Clerk itself is signed out by the caller). */
 export async function endSupabaseSession(): Promise<void> {
   await supabase.auth.signOut()

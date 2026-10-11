@@ -7,6 +7,7 @@
 // platform credential "auth.clerk" ({ "secret_key": "sk_..." }).
 import { env } from './env.ts'
 import { HttpError } from './http.ts'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminClient } from './supabase.ts'
 
 const API = 'https://api.clerk.com/v1'
@@ -139,4 +140,28 @@ export function createClerkUser(input: { email: string; password?: string; fullN
       ...(input.password ? { password: input.password, skip_password_checks: true } : { skip_password_requirement: true }),
     }),
   }, f)
+}
+
+/** Clerk's organization settings (Fullfilio does not use Clerk organizations). */
+export function updateOrganizationSettings(patch: Record<string, unknown>, f: Fetch = fetch) {
+  return api<{ force_organization_selection?: boolean }>('/instance/organization_settings', { method: 'PATCH', body: JSON.stringify(patch) }, f)
+}
+
+/** Clerk is set up on this server (its secret key is available). */
+export const clerkEnabled = (): Promise<boolean> => clerkSecret().then(() => true, () => false)
+
+/**
+ * Gives a Fullfilio login its Clerk account (once) and links the two, so the
+ * person signs in with Clerk: with the password given, an e-mail code, or
+ * "Forgot password". False when Clerk is not set up.
+ */
+export async function ensureClerkAccount(admin: SupabaseClient, who: { userId: string; email: string; password?: string; fullName?: string | null }): Promise<boolean> {
+  if (!(await clerkEnabled())) return false
+  const existing = await findClerkUserByEmail(who.email)
+  const clerkId = existing?.id ?? (await createClerkUser({ email: who.email, password: who.password, fullName: who.fullName, externalId: who.userId })).id
+  const { data } = await admin.auth.admin.getUserById(who.userId)
+  if (data.user && data.user.app_metadata?.clerk_user_id !== clerkId) {
+    await admin.auth.admin.updateUserById(who.userId, { app_metadata: { ...data.user.app_metadata, clerk_user_id: clerkId } })
+  }
+  return true
 }

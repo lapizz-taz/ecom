@@ -1,3 +1,4 @@
+import { SignIn } from '@clerk/clerk-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
@@ -21,7 +22,7 @@ import { clearSignupDraft, readSignupDraft, selfOnboard, signupOptions, type Sig
 export default function StartFinishPage() {
   useAdminTheme()
   const linkError = useAuthLinkError()
-  const { session, user, access, loading, accessLoading } = useAuth()
+  const { session, user, access, loading, accessLoading, usesClerk } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const options = useQuery({ queryKey: ['signup-options'], queryFn: signupOptions, staleTime: 5 * 60_000, enabled: Boolean(session) })
@@ -68,7 +69,10 @@ export default function StartFinishPage() {
             <ResendConfirmation returnPath="/start/finish" />
           </div>
         )}
-        <div className="mt-8"><SignInForm onDone={() => undefined} forgotPath="/admin/forgot-password" /></div>
+        <div className="mt-8 flex justify-center">
+          {usesClerk ? <SignIn routing="hash" signUpUrl="/start" forceRedirectUrl="/start/finish" />
+            : <SignInForm onDone={() => undefined} forgotPath="/admin/forgot-password" />}
+        </div>
       </AuthShell>
     )
   }

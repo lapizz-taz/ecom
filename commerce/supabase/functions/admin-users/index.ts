@@ -2,6 +2,7 @@
 // every role change goes through admin_set_user_role() as the caller, so the
 // database enforces who may grant what (no privilege escalation).
 import { z } from 'zod'
+import { clerkEnabled, ensureClerkAccount } from '../_shared/clerk.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
@@ -49,9 +50,11 @@ Deno.serve(
         const existingId = await rpc<string | null>(admin, 'find_auth_user_id', { p_email: input.email })
         let userId = existingId
         let created = false
+        const clerk = await clerkEnabled()
         if (!userId) {
           const redirectTo = `${appBase(req)}/admin/reset-password`
-          const result = input.password
+          // With Clerk, Clerk does the e-mailing: no Supabase invite.
+          const result = input.password || clerk
             ? await admin.auth.admin.createUser({
                 email: input.email, password: input.password, email_confirm: true, user_metadata: { full_name: input.full_name },
               })
@@ -64,7 +67,9 @@ Deno.serve(
         }
         try {
           const profile = await rpc(staff.client, 'admin_set_user_role', { p_user_id: userId, p_role_code: input.role, p_is_active: true })
-          return json(req, { profile, invited: created && !input.password }, 201)
+          // Their Clerk account: they sign in with the password given, an e-mail code, or "Forgot password".
+          await ensureClerkAccount(admin, { userId: userId!, email: input.email, password: input.password, fullName: input.full_name })
+          return json(req, { profile, invited: created && !input.password && !clerk, clerk }, 201)
         } catch (error) {
           if (created) await admin.auth.admin.deleteUser(userId!)
           throw error

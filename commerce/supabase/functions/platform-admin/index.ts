@@ -17,6 +17,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { env } from '../_shared/env.ts'
+import { clerkEnabled, ensureClerkAccount } from '../_shared/clerk.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { COURIER_HISTORY_SERVICES, CourierHistoryProvider } from '../_shared/fraud/courier-history.ts'
 import { courierHistoryConfig, platformCourierHistorySecret, PLATFORM_BD_COURIER_SECRET } from '../_shared/fraud/service.ts'
@@ -119,13 +120,20 @@ const GATEWAY_FIELDS: Record<(typeof PLATFORM_GATEWAYS)[number], string[]> = {
 
 /** Finds the login for this email, or creates it (invitation e-mail, or a password the employee hands over). */
 async function ensureLogin(admin: SupabaseClient, who: { email: string; full_name: string; password?: string }, redirectTo: string) {
+  const clerk = await clerkEnabled()
   const existing = await rpc<string | null>(admin, 'find_auth_user_id', { p_email: who.email })
-  if (existing) return { id: existing, created: false }
-  const result = who.password
-    ? await admin.auth.admin.createUser({ email: who.email, password: who.password, email_confirm: true, user_metadata: { full_name: who.full_name } })
-    : await admin.auth.admin.inviteUserByEmail(who.email, { data: { full_name: who.full_name }, redirectTo })
-  if (result.error || !result.data.user) throw new HttpError(422, result.error?.message ?? 'Could not create the login', 'AUTH_ERROR')
-  return { id: result.data.user.id, created: true }
+  let id = existing
+  if (!id) {
+    // With Clerk, Clerk does the e-mailing: no Supabase invite.
+    const result = who.password || clerk
+      ? await admin.auth.admin.createUser({ email: who.email, password: who.password, email_confirm: true, user_metadata: { full_name: who.full_name } })
+      : await admin.auth.admin.inviteUserByEmail(who.email, { data: { full_name: who.full_name }, redirectTo })
+    if (result.error || !result.data.user) throw new HttpError(422, result.error?.message ?? 'Could not create the login', 'AUTH_ERROR')
+    id = result.data.user.id
+  }
+  await ensureClerkAccount(admin, { userId: id, email: who.email, password: who.password, fullName: who.full_name })
+  // invited: Supabase e-mailed an invitation (without Clerk, and no password given).
+  return { id, created: !existing, invited: !existing && !clerk && !who.password }
 }
 
 /** Runs one check and times it; a failure is reported, never thrown. */
@@ -174,7 +182,7 @@ Deno.serve(
             p: { user_id: login.id, full_name: input.full_name, role_id: input.role_id, title: input.title ?? null,
               merchant_scope: input.merchant_scope, merchant_ids: input.merchant_ids, reason: input.reason ?? null },
           })
-          return json(req, { employee: saved, invited: login.created && !input.password }, 201)
+          return json(req, { employee: saved, invited: login.invited }, 201)
         } catch (error) {
           // A login made only for this refused request is removed again.
           if (login.created) await admin.auth.admin.deleteUser(login.id)
@@ -192,7 +200,7 @@ Deno.serve(
           // The merchant stays (in onboarding) so the owner can be added again from its page.
           throw error
         }
-        return json(req, { merchant_id: created.id, owner_invited: login.created && !input.owner.password }, 201)
+        return json(req, { merchant_id: created.id, owner_invited: login.invited }, 201)
       }
       case 'set_owner': {
         await require(client, 'merchants', 'manage')
@@ -203,7 +211,7 @@ Deno.serve(
           if (login.created) await admin.auth.admin.deleteUser(login.id)
           throw error
         }
-        return json(req, { ok: true, owner_invited: login.created && !input.password })
+        return json(req, { ok: true, owner_invited: login.invited })
       }
 
       // ------------------------------------------------- BD Courier (platform account)

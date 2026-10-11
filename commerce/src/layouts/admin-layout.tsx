@@ -1,3 +1,4 @@
+import { UserButton } from '@clerk/clerk-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, Sun,
@@ -119,6 +120,19 @@ function useNewOrderAlerts(enabled: boolean) {
   return { unseen, reset: () => setUnseen(0) }
 }
 
+/** Clerk's account menu (manage account, sign out) with the admin's own shortcuts. */
+function ClerkAccountMenu({ showLowStock }: { showLowStock: boolean }) {
+  const navigate = useNavigate()
+  return (
+    <UserButton showName appearance={{ elements: { userButtonOuterIdentifier: 'hidden text-[13px] lg:block' } }}>
+      <UserButton.MenuItems>
+        <UserButton.Action label="My account" labelIcon={<UserCog className="size-4" />} onClick={() => navigate('/admin/account')} />
+        {showLowStock ? <UserButton.Action label="Low stock" labelIcon={<Boxes className="size-4" />} onClick={() => navigate('/admin/inventory?view=alerts')} /> : null}
+      </UserButton.MenuItems>
+    </UserButton>
+  )
+}
+
 /** Signs staff out after the inactivity time set in Settings → Advanced (0 = never). */
 function useIdleSignOut(minutes: number, signOut: () => Promise<void>) {
   const navigate = useNavigate()
@@ -192,7 +206,7 @@ function ViewStoreItem() {
 }
 
 export default function AdminLayout() {
-  const { session, loading, access, accessLoading, can, signOut } = useAuth()
+  const { session, loading, access, accessLoading, can, signOut, usesClerk } = useAuth()
   const { data: config } = useStoreConfig()
   const location = useLocation()
   const navigate = useNavigate()
@@ -338,6 +352,7 @@ export default function AdminLayout() {
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+            {usesClerk ? <ClerkAccountMenu showLowStock={can('inventory.view')} /> : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 pl-1.5">
@@ -358,6 +373,7 @@ export default function AdminLayout() {
                 <DropdownMenuItem onClick={() => signOut().then(() => navigate('/admin/login'))}><LogOut /> Sign out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
         </header>
         <AnnouncementBanner />

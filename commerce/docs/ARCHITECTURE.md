@@ -137,8 +137,10 @@ The database still works with Supabase Auth users: every row-level rule, role
 and staff record is keyed by their ids. So a Clerk session is exchanged for the
 matching Supabase session:
 
-1. The browser signs in with Clerk (`features/auth/clerk-forms.tsx`, using
-   Clerk's hooks inside the existing screens; no Clerk widgets).
+1. The browser signs in with Clerk's own boxes: `<SignIn>` on `/admin/login`
+   and `/start/finish`, `<SignUp>` in step 2 of `/start`, and `<UserButton>` as
+   the account menu in the admin header. Shoppers on a merchant's store keep
+   the store's own customer sign-in.
 2. `ClerkSessionSync` (`features/auth/clerk.tsx`) sends the Clerk session token
    to the `clerk-auth` edge function.
 3. The function checks the token's signature with Clerk's keys, reads the
@@ -146,10 +148,11 @@ matching Supabase session:
    Supabase user with that e-mail (linking `app_metadata.clerk_user_id`) and
    returns a one-time sign-in hash, which the browser turns into a session.
 
-Accounts from before Clerk move over on their first sign-in: the old password
-is checked and their Clerk account is created with it (`migrate`). If Clerk's
-settings cannot take an account yet (for example a required phone number), the
-built-in sign-in is used for it meanwhile.
+Accounts from before Clerk were imported into Clerk with their passwords.
+New staff (`admin-users`) and new owners added by Super Admin (`platform-admin`)
+get their Clerk account at once (`ensureClerkAccount` in `_shared/clerk.ts`).
+Clerk organizations are not used (Fullfilio has its own businesses); the
+`clerk-auth` `setup` action turns off Clerk's "choose an organization" step.
 
 Configuration: `VITE_CLERK_PUBLISHABLE_KEY` (browser; empty = built-in
 sign-in) and Clerk's secret key on the server only, as the `CLERK_SECRET_KEY`

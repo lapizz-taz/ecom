@@ -1,5 +1,6 @@
 import { ClerkProvider, useAuth as useClerkAuth, useClerk } from '@clerk/clerk-react'
 import { isClerkAPIResponseError } from '@clerk/clerk-react/errors'
+import { dark } from '@clerk/themes'
 import type { Session } from '@supabase/supabase-js'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '@/lib/env'
@@ -7,21 +8,51 @@ import { currentSite } from '@/lib/merchant'
 import { reportError } from '@/lib/monitoring'
 import { endSupabaseSession, exchangeClerkSession } from '@/services/clerk-auth'
 
-// Clerk handles sign-up, e-mail codes, sign-in and password resets on the
-// Fullfilio site and the staff pages. Shoppers on a merchant's own store keep
-// the store's own customer sign-in: those pages run on many different domains.
+// Clerk handles sign-up, e-mail codes, sign-in (password, e-mail code, Google)
+// and password resets on the Fullfilio site and the staff pages, with Clerk's
+// own sign-in and sign-up boxes and account menu. Shoppers on a merchant's own
+// store keep the store's own customer sign-in: those pages run on many domains.
 
 /** Clerk is used on this page: a key is set and this is the Fullfilio site or a staff page. */
 export const clerkEnabled = (): boolean =>
   Boolean(env.clerkPublishableKey) && (currentSite().kind === 'platform' || location.pathname.startsWith('/admin'))
 
-export function ClerkRoot({ children }: { children: ReactNode }) {
-  if (!clerkEnabled()) return <>{children}</>
+/** Follows the page's dark class (the admin theme can change while the page is open). */
+function useDarkPage(): boolean {
+  const [isDark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const root = document.documentElement
+    const watch = new MutationObserver(() => setDark(root.classList.contains('dark')))
+    watch.observe(root, { attributes: true, attributeFilter: ['class'] })
+    return () => watch.disconnect()
+  }, [])
+  return isDark
+}
+
+function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
+  const isDark = useDarkPage()
   return (
-    <ClerkProvider publishableKey={env.clerkPublishableKey!} afterSignOutUrl="/admin/login">
+    <ClerkProvider
+      publishableKey={env.clerkPublishableKey!}
+      signInUrl="/admin/login"
+      signUpUrl="/start"
+      signInFallbackRedirectUrl="/admin"
+      signUpFallbackRedirectUrl="/start/finish"
+      afterSignOutUrl="/admin/login"
+      appearance={{
+        baseTheme: isDark ? dark : undefined,
+        layout: { logoImageUrl: '/favicon.svg', socialButtonsPlacement: 'top', socialButtonsVariant: 'blockButton' },
+        variables: { colorPrimary: '#2142e7', borderRadius: '0.75rem', fontFamily: 'inherit' },
+      }}
+    >
       {children}
     </ClerkProvider>
   )
+}
+
+export function ClerkRoot({ children }: { children: ReactNode }) {
+  if (!clerkEnabled()) return <>{children}</>
+  return <ClerkProviderWithTheme>{children}</ClerkProviderWithTheme>
 }
 
 export interface ClerkLink {
@@ -108,12 +139,3 @@ export function clerkErrorMessage(error: unknown): string {
 /** The Clerk error code, when there is one. */
 export const clerkErrorCode = (error: unknown): string | null =>
   isClerkAPIResponseError(error) ? (error.errors[0]?.code ?? null) : null
-
-/** +880… from a Bangladeshi number as typed (Clerk wants international format). */
-export function toE164(phone: string): string | null {
-  const d = phone.replace(/\D/g, '')
-  if (/^01\d{9}$/.test(d)) return `+880${d.slice(1)}`
-  if (/^8801\d{9}$/.test(d)) return `+${d}`
-  if (/^\d{8,15}$/.test(d) && phone.trim().startsWith('+')) return `+${d}`
-  return null
-}
