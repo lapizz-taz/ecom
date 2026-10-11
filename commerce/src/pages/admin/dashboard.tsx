@@ -307,11 +307,11 @@ function StatusTiles() {
         <h2 className="text-[13px] font-semibold">Order pipeline</h2>
         <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">All orders <ArrowRight className="size-3" /></Link>
       </div>
-      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-b-2xl sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-12">
+      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-b-2xl sm:grid-cols-4 lg:grid-cols-6">
         {tiles.map((t) => (
           <Link key={t.label} to={t.to} className="group px-4 py-2.5 transition-colors hover:bg-muted/50">
             <p className="truncate text-[11px] text-muted-foreground group-hover:text-foreground">{t.label}</p>
-            <p className={cn('mt-0.5 text-[15px] font-semibold tabular-nums', (t.n ?? 0) > 0 && t.tone)}>{queue.data || status.data ? formatNumber(t.n ?? 0) : '—'}</p>
+            <p className={cn('mt-0.5 text-[17px] font-semibold tabular-nums', (t.n ?? 0) > 0 && t.tone)}>{queue.data || status.data ? formatNumber(t.n ?? 0) : '—'}</p>
           </Link>
         ))}
       </div>

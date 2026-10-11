@@ -41,8 +41,10 @@ type Report = {
   margin: { revenue: number; known_costs: number; estimated_costs: number; contribution: number; complete: boolean; missing: string[]; assumptions: string[] }
   merchants: { new: number; total: number }
 }
-const today = () => new Date().toISOString().slice(0, 10)
-const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
+// Report dates are business days in Bangladesh, not UTC days (they differ from 18:00 UTC).
+const dhakaDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(d)
+const today = () => dhakaDate(new Date())
+const daysAgo = (n: number) => dhakaDate(new Date(Date.now() - n * 86_400_000))
 
 describe('analytics: revenue, costs and margin', () => {
   it('counts only verified money, labels estimates, lists what is missing and leaves demo merchants out', () =>

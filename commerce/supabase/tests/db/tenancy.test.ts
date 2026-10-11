@@ -371,7 +371,7 @@ describe('tenancy: scheduled jobs', () => {
       await createOrder(db, { phone: '01711000931', items: [{ variantId: p2.variantIds[0], quantity: 2 }], merchantId: m2 })
       const owner2 = await createStaff(db, 'OWNER', undefined, m2)
       await asUser(db, owner2)
-      const dash = await value<{ orders: number }>(db, `select public.dashboard_overview(current_date - 1, current_date)`)
+      const dash = await value<{ orders: number }>(db, `select public.dashboard_overview((now() at time zone 'Asia/Dhaka')::date - 1, (now() at time zone 'Asia/Dhaka')::date)`)
       expect(num(dash.orders)).toBe(1)
     }))
 })

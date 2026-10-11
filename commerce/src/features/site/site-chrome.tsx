@@ -8,7 +8,7 @@ import { Wordmark } from '@/components/brand/logo'
 // they work from any page.
 
 const NAV: Array<[string, string]> = [
-  ['Product', '/#product'], ['Integrations', '/#integrations'], ['Pricing', '/#pricing'], ['Blog', '/blog'], ['Contact', '/contact'],
+  ['Product', '/#product'], ['Features', '/#orders'], ['Pricing', '/#pricing'], ['Changelog', '/#changelog'], ['Blog', '/blog'], ['Contact', '/contact'],
 ]
 
 const FOOTER: Array<[string, Array<[string, string]>]> = [
