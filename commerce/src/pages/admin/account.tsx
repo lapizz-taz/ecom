@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/auth-context'
+import { useClerkPasswordChange } from '@/features/auth/clerk-forms'
 import { changeMyPassword, getMyProfile, updateMyProfile } from '@/services/users'
 
 export default function AccountPage() {
@@ -78,13 +79,18 @@ function Profile() {
   )
 }
 
+const noClerkChange = () => null
+
 function ChangePassword() {
-  const { user } = useAuth()
+  const { user, usesClerk } = useAuth()
+  // Clerk accounts change their password at Clerk (the hook choice is fixed for the page's life).
+  const [usePasswordChange] = useState(() => (usesClerk ? useClerkPasswordChange : noClerkChange))
+  const clerkChange = usePasswordChange()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const change = useMutation({
-    mutationFn: () => changeMyPassword(user!.email!, current, next),
+    mutationFn: () => (clerkChange ? clerkChange(current, next) : changeMyPassword(user!.email!, current, next)),
     onSuccess: () => {
       toast.success('Password changed')
       setCurrent(''); setNext(''); setConfirm('')

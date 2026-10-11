@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router'
 import { Toaster } from '@/components/ui/toaster'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/features/auth/auth-context'
+import { ClerkRoot } from '@/features/auth/clerk'
 import { env } from '@/lib/env'
 import { queryClient } from '@/lib/query-client'
 import { createAppRouter } from '@/routes/router'
@@ -26,12 +27,14 @@ export default function App() {
   if (!env.isConfigured || !router) return <MissingConfig />
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-          <Toaster position="top-right" />
-        </TooltipProvider>
-      </AuthProvider>
+      <ClerkRoot>
+        <AuthProvider>
+          <TooltipProvider>
+            <RouterProvider router={router} />
+            <Toaster position="top-right" />
+          </TooltipProvider>
+        </AuthProvider>
+      </ClerkRoot>
     </QueryClientProvider>
   )
 }

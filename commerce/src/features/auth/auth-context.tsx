@@ -1,6 +1,7 @@
 import type { Session, User } from '@supabase/supabase-js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
+import { type ClerkLink, clerkEnabled, ClerkSessionSync } from '@/features/auth/clerk'
 import { registerDevice } from '@/lib/device'
 import { setStaffMerchant } from '@/lib/merchant'
 import { setMonitoringUser } from '@/lib/monitoring'
@@ -18,6 +19,12 @@ interface AuthState {
   isStaff: boolean
   can: (permission: string) => boolean
   signOut: () => Promise<void>
+  /** Clerk is the sign-in on this page (otherwise the built-in sign-in is used). */
+  usesClerk: boolean
+  /** After a Clerk sign-in: resolves once the account is open in this browser. */
+  syncClerk: () => Promise<void>
+  /** A Clerk sign-in that could not be opened here (shown on the sign-in page). */
+  clerkError: Error | null
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -26,6 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const queryClient = useQueryClient()
+  const [usesClerk] = useState(clerkEnabled)
+  const [clerk, setClerk] = useState<ClerkLink | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -64,7 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       access,
-      loading,
+      // With Clerk, wait until its sign-in and the account here agree.
+      loading: loading || (usesClerk && !clerk?.ready),
       accessLoading: Boolean(userId) && accessQuery.isLoading,
       isStaff: Boolean(access),
       // Mirrors the database: a read-only account keeps *.view and *.export, a blocked one nothing.
@@ -72,12 +82,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         && (access.access_mode !== 'READ_ONLY' || /\.(view|export)$/.test(permission))
         && (access.role === 'OWNER' || access.permissions.includes(permission))),
       signOut: async () => {
-        await supabase.auth.signOut()
+        if (clerk) await clerk.signOut()
+        else await supabase.auth.signOut()
       },
+      usesClerk,
+      syncClerk: () => clerk?.sync() ?? Promise.resolve(),
+      clerkError: clerk?.error ?? null,
     }
-  }, [session, loading, userId, accessQuery.data, accessQuery.isLoading])
+  }, [session, loading, userId, accessQuery.data, accessQuery.isLoading, usesClerk, clerk])
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {usesClerk && <ClerkSessionSync session={session} onChange={setClerk} />}
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth(): AuthState {

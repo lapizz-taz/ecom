@@ -1,17 +1,33 @@
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { Field } from '@/components/common/field'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useAuth } from '@/features/auth/auth-context'
 import { AuthFrame } from '@/features/auth/auth-shell'
+import { ClerkResetForm } from '@/features/auth/clerk-forms'
 import { toUserMessage } from '@/lib/errors'
 import { authRedirect } from '@/lib/auth-links'
 import { supabase } from '@/lib/supabase'
 
 export default function ForgotPasswordPage() {
   const isAdmin = useLocation().pathname.startsWith('/admin')
+  const { usesClerk } = useAuth()
+  const navigate = useNavigate()
+  if (usesClerk) {
+    return (
+      <AuthFrame admin={isAdmin} title="Reset your password" description="We'll email you a 6-digit code, then you choose a new password.">
+        <ClerkResetForm size={isAdmin ? 'lg' : 'default'} onDone={() => navigate(isAdmin ? '/admin' : '/account', { replace: true })} />
+        <Link to={isAdmin ? '/admin/login' : '/login'} className="mt-4 block text-center text-sm text-muted-foreground hover:text-foreground">Back to sign in</Link>
+      </AuthFrame>
+    )
+  }
+  return <LinkResetForm isAdmin={isAdmin} />
+}
+
+function LinkResetForm({ isAdmin }: { isAdmin: boolean }) {
   const [email, setEmail] = useState('')
   const send = useMutation({
     meta: { silent: true },

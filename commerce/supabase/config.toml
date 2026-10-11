@@ -128,3 +128,8 @@ import_map = "./functions/import_map.json"
 [functions.billing]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+
+# Clerk sign-in bridge: the caller proves who they are with a Clerk session token, checked in the function.
+[functions.clerk-auth]
+verify_jwt = false
+import_map = "./functions/import_map.json"

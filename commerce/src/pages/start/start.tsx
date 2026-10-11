@@ -7,6 +7,8 @@ import { ErrorState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { CodeField, type OwnerSignUp, useClerkOwnerSignUp } from '@/features/auth/clerk-forms'
+import { clerkErrorMessage } from '@/features/auth/clerk'
 import { ResendConfirmation } from '@/features/auth/link-problem'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
@@ -17,6 +19,8 @@ import { normalizePhone } from '@/lib/phone'
 import {
   clearSignupDraft, readSignupDraft, signInOnceConfirmed, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
 } from '@/services/onboarding'
+
+const noClerk = (): OwnerSignUp | null => null
 
 const EMPTY: SignupBusiness = {
   business_name: '', full_name: '', phone: '', business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '',
@@ -29,7 +33,13 @@ const EMPTY: SignupBusiness = {
  */
 export default function StartPage() {
   useAdminTheme()
-  const { session, access, loading, accessLoading } = useAuth()
+  const { session, access, loading, accessLoading, usesClerk } = useAuth()
+  // With Clerk the account is confirmed with a 6-digit code (the hook choice is fixed for the page's life).
+  const [useOwnerSignUp] = useState(() => (usesClerk ? useClerkOwnerSignUp : noClerk))
+  const clerkFlow = useOwnerSignUp()
+  const minPassword = clerkFlow?.minPassword ?? 8
+  const [codeStep, setCodeStep] = useState<null | 'email_code' | 'phone_code'>(null)
+  const [code, setCode] = useState('')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const options = useQuery({ queryKey: ['signup-options'], queryFn: signupOptions, staleTime: 5 * 60_000 })
@@ -51,23 +61,48 @@ export default function StartPage() {
     setBusiness((b) => ({ ...b, plan_code: code }))
   }, [options.data, business.plan_code])
 
+  const payload = () => ({ ...business, phone: normalizePhone(business.phone), business_name: business.business_name.trim(), full_name: business.full_name.trim(), website: business.website.trim() })
   const open = useMutation({
     meta: { silent: true },
     mutationFn: async () => {
-      const payload = { ...business, phone: normalizePhone(business.phone), business_name: business.business_name.trim(), full_name: business.full_name.trim(), website: business.website.trim() }
-      if (session) return { opened: await selfOnboard(payload) }
-      saveSignupDraft(payload)
-      const res = await signUpOwner(email, password, payload)
-      if (res.session) return { opened: await selfOnboard(payload) }
+      if (session) return { opened: await selfOnboard(payload()) }
+      saveSignupDraft(payload())
+      if (clerkFlow) {
+        await clerkFlow.start({ email, password, fullName: business.full_name, phone: business.phone })
+        setCode('')
+        setCodeStep('email_code')
+        return { code: true }
+      }
+      const res = await signUpOwner(email, password, payload())
+      if (res.session) return { opened: await selfOnboard(payload()) }
       return { confirm: email.trim() }
     },
     onSuccess: async (r) => {
+      if ('code' in r) return
       if ('confirm' in r && r.confirm) { setSentTo(r.confirm); return }
       clearSignupDraft()
       await queryClient.invalidateQueries({ queryKey: ['my-access'] })
       navigate('/admin?welcome=1', { replace: true })
     },
   })
+
+  // Clerk: the code from the e-mail (or SMS) finishes the account, then the business opens.
+  const verify = useMutation({
+    meta: { silent: true },
+    mutationFn: async () => {
+      const next = await clerkFlow!.verify(code)
+      if (next === 'phone_code') { setCode(''); setCodeStep('phone_code'); return false }
+      await selfOnboard(payload())
+      return true
+    },
+    onSuccess: async (done) => {
+      if (!done) return
+      clearSignupDraft()
+      await queryClient.invalidateQueries({ queryKey: ['my-access'] })
+      navigate('/admin?welcome=1', { replace: true })
+    },
+  })
+  const resend = useMutation({ meta: { silent: true }, mutationFn: () => clerkFlow!.resend() })
 
   // While waiting for the confirmation, check now and then (and whenever this
   // tab comes back into view) whether the link was opened somewhere else.
@@ -87,12 +122,36 @@ export default function StartPage() {
     return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check) }
   }, [sentTo, session, password, navigate])
 
+  if (codeStep && !verify.isSuccess) {
+    return (
+      <AuthShell>
+        <span className="flex size-12 items-center justify-center rounded-2xl border bg-card shadow-xs"><MailCheck className="size-6 text-brand" /></span>
+        <h1 className="mt-5 text-[26px] leading-tight font-semibold tracking-[-0.025em]">{codeStep === 'email_code' ? 'Check your inbox' : 'Check your phone'}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          We sent a 6-digit code to <span className="font-medium text-foreground">{codeStep === 'email_code' ? email.trim() : business.phone}</span>. Enter it here and {business.business_name.trim() || 'your business'} opens with everything you entered.
+        </p>
+        <form className="mt-6 grid gap-4" onSubmit={(e) => { e.preventDefault(); if (code.length === 6) verify.mutate() }}>
+          <CodeField value={code} onChange={setCode} label={codeStep === 'email_code' ? 'Code from the e-mail' : 'Code from the SMS'} />
+          {verify.error && <p className="text-sm text-destructive" role="alert">{clerkErrorMessage(verify.error)}</p>}
+          <Button type="submit" size="lg" variant="brand" disabled={verify.isPending || code.length !== 6}>{verify.isPending && <Spinner />} Confirm and open my business</Button>
+        </form>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[13px] text-muted-foreground">
+          <button type="button" className="hover:text-foreground disabled:opacity-50" disabled={resend.isPending || resend.isSuccess} onClick={() => resend.mutate()}>
+            {resend.isSuccess ? 'New code sent' : 'Send a new code'}
+          </button>
+          <button type="button" className="hover:text-foreground" onClick={() => { setCodeStep(null); setStep(2); open.reset(); verify.reset() }}>Use a different e-mail</button>
+        </div>
+        {resend.error && <p className="mt-2 text-sm text-destructive">{clerkErrorMessage(resend.error)}</p>}
+      </AuthShell>
+    )
+  }
+
   if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
   if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
   const errors = businessErrors(business)
   const stepsLabels = ['Plan', 'Business', session ? 'Confirm' : 'Account']
-  const accountError = !session && (!/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter your e-mail address' : password.length < 8 ? 'Use at least 8 characters for the password' : !agree ? 'Accept the terms to continue' : null)
+  const accountError = !session && (!/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter your e-mail address' : password.length < minPassword ? `Use at least ${minPassword} characters for the password` : !agree ? 'Accept the terms to continue' : null)
 
   if (sentTo) {
     return (
@@ -151,13 +210,14 @@ export default function StartPage() {
                 <Field label="Work e-mail" required>
                   <Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-10" placeholder="you@yourshop.com" />
                 </Field>
-                <Field label="Password" required hint="At least 8 characters">
+                <Field label="Password" required hint={`At least ${minPassword} characters`}>
                   <Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-10" />
                 </Field>
                 <label className="flex items-start gap-2.5 text-[13px] text-muted-foreground">
                   <Checkbox checked={agree} onCheckedChange={(v) => setAgree(v === true)} className="mt-0.5" />
                   <span>I agree to the terms of service and privacy policy, and confirm I run this business.</span>
                 </label>
+                {usesClerk && <div id="clerk-captcha" />}
               </div>
             )}
             {step === 2 && (
@@ -174,9 +234,9 @@ export default function StartPage() {
 
           {(open.error || (touched && step === 2 && accountError)) && (
             <p className="mt-4 text-sm text-destructive" role="alert">
-              {open.error ? (/already has an account/.test(open.error.message)
+              {open.error ? (/already has an account/i.test(clerkErrorMessage(open.error))
                 ? <>This e-mail already has an account. <Link to="/admin/login?next=/start/finish" className="font-medium underline">Sign in</Link> and your business opens there.</>
-                : toUserMessage(open.error)) : accountError}
+                : usesClerk ? clerkErrorMessage(open.error) : toUserMessage(open.error)) : accountError}
             </p>
           )}
 

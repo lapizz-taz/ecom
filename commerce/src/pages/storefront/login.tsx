@@ -7,12 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ClerkSignInForm } from '@/features/auth/clerk-forms'
 import { LinkErrorNotice, ResendConfirmation, useAuthLinkError } from '@/features/auth/link-problem'
 import { useAuth } from '@/features/auth/auth-context'
 import { toUserMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 
-export function SignInForm({ onDone, forgotPath }: { onDone: () => void; forgotPath: string }) {
+/** Clerk on the Fullfilio site and staff pages; the built-in sign-in on stores. */
+export function SignInForm(props: { onDone: () => void; forgotPath: string }) {
+  const { usesClerk } = useAuth()
+  return usesClerk ? <ClerkSignInForm {...props} /> : <PasswordSignInForm {...props} />
+}
+
+function PasswordSignInForm({ onDone, forgotPath }: { onDone: () => void; forgotPath: string }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const signIn = useMutation({
