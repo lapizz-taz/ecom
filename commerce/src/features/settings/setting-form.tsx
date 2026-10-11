@@ -42,6 +42,8 @@ export function useSettingDraft(key: string) {
     get: (path: Path) => getIn(draft, path),
     set: (path: Path, value: unknown) => setDraft((d) => setIn(d, path, value)),
     reset: () => server && setDraft(structuredClone(server)),
+    /** Replaces the whole draft (undo / redo). */
+    replace: (next: Record<string, unknown>) => setDraft(next),
   }
 }
 export type SettingDraft = ReturnType<typeof useSettingDraft>

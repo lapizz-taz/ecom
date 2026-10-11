@@ -1,203 +1,494 @@
-import { ArrowDown, ArrowUp, ExternalLink, Laptop, Smartphone } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
-import { Field } from '@/components/common/field'
+import { useQuery } from '@tanstack/react-query'
+import {
+  ArrowLeft, Blocks, ChevronDown, Copy, Eye, EyeOff, GripVertical, Home, LayoutTemplate, Maximize2, Monitor, MoreHorizontal, MousePointerClick,
+  Package, Paintbrush, PanelBottom, PanelTop, Plus, Redo2, ShoppingCart, Smartphone, Store, Trash2, Undo2, X,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router'
 import { Spinner } from '@/components/common/states'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import { useSettingDraft } from '@/features/settings/setting-form'
-import { ACCENTS, FONTS, RADII, resolveTheme, SECTION_LABELS, type SectionType, type StoreTheme, type Storefront } from '@/features/storefront/theme'
+import {
+  ACCENTS, DEFAULT_THEME, FONTS, makeSection, RADII, resolveTheme, SECTIONS, type MenuLink, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
+} from '@/features/storefront/theme'
+import { ColorInput, FieldRow, inputClass, ListField, RangeInput, SchemaField, SelectInput } from '@/features/theme-editor/fields'
+import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-picker'
+import { useStoreConfig } from '@/hooks/use-store-config'
 import { cn } from '@/lib/utils'
+import { getCategories, listProducts } from '@/services/storefront'
 
-/** Theme builder for the store we host: look, header, home-page sections, footer — previewed live. */
+type Tab = 'sections' | 'settings' | 'apps'
+type Page = 'home' | 'collection' | 'product' | 'cart'
+const FIXED: Record<string, string> = { announcement: 'Announcement bar', header: 'Header', footer: 'Footer', 'collection-banner': 'Collection banner', 'collection-grid': 'Product grid' }
+const PAGES: Array<{ value: Page; label: string; icon: ReactNode }> = [
+  { value: 'home', label: 'Home page', icon: <Home className="size-3.5" /> },
+  { value: 'collection', label: 'Collections', icon: <LayoutTemplate className="size-3.5" /> },
+  { value: 'product', label: 'Products', icon: <Package className="size-3.5" /> },
+  { value: 'cart', label: 'Cart', icon: <ShoppingCart className="size-3.5" /> },
+]
+
+/** The theme editor: sections and theme settings on the left, the live store in the middle, the selected item's settings on the right. */
 export default function StoreThemePage() {
   const s = useSettingDraft('storefront')
+  const navigate = useNavigate()
+  const { data: config } = useStoreConfig()
   const frame = useRef<HTMLIFrameElement>(null)
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
-  const [open, setOpen] = useState<SectionType | null>('hero')
+  const [tab, setTab] = useState<Tab>('sections')
+  const [page, setPage] = useState<Page>('home')
+  const [selected, setSelected] = useState<string | null>(null)
+  const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
+  const [inspect, setInspect] = useState(true)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const history = useRef<{ past: Storefront[]; future: Storefront[]; last: number }>({ past: [], future: [], last: 0 })
+  const [, bump] = useState(0)
   const draft = s.draft as Storefront | undefined
-  const theme = resolveTheme(draft)
+  const theme = useMemo(() => resolveTheme(draft), [draft])
 
-  // Send every change to the preview (and again when it says it is ready).
+  const categories = useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
+  const firstProduct = useQuery({ queryKey: ['products', 'editor-first'], queryFn: () => listProducts({ limit: 1, sort: 'newest' }), staleTime: 5 * 60_000 })
+  const firstCategory = categories.data?.find((c) => c.product_count > 0)?.slug
+  const path = page === 'home' ? '/' : page === 'collection' ? (firstCategory ? `/collection/${firstCategory}` : '/shop')
+    : page === 'product' ? (firstProduct.data?.items[0] ? `/product/${firstProduct.data.items[0].slug}` : '/shop') : '/cart'
+
+  const post = useCallback((msg: Record<string, unknown>) => frame.current?.contentWindow?.postMessage(msg, window.location.origin), [])
+
+  // Every change goes to the preview; the selection follows.
+  useEffect(() => { post({ type: 'theme-preview', storefront: draft, selected, inspect }) }, [draft, inspect, post, selected])
+  useEffect(() => { post({ type: 'theme-select', id: selected, scroll: true }) }, [selected, post])
   useEffect(() => {
-    const post = () => frame.current?.contentWindow?.postMessage({ type: 'theme-preview', storefront: draft }, window.location.origin)
-    post()
-    const onMessage = (e: MessageEvent) => { if (e.origin === window.location.origin && e.data?.type === 'theme-preview-ready') post() }
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type === 'theme-preview-ready') post({ type: 'theme-preview', storefront: draft, selected, inspect })
+      if (e.data?.type === 'theme-section-click') { setSelected(e.data.id); setTab('sections') }
+    }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [draft])
+  }, [draft, inspect, post, selected])
 
-  if (!draft) return <div className="grid place-items-center py-24"><Spinner /></div>
-  const setTheme = (patch: Partial<StoreTheme>) => s.set(['theme'], { ...theme, ...patch })
-  const text = (path: string) => ({ value: String(s.get([path]) ?? ''), onChange: (e: { target: { value: string } }) => s.set([path], e.target.value) })
-  const move = (i: number, by: number) => {
-    const next = [...theme.sections]
-    const [item] = next.splice(i, 1)
-    next.splice(i + by, 0, item)
-    setTheme({ sections: next })
+  // Leaving with unsaved changes asks first.
+  useEffect(() => {
+    if (!s.dirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [s.dirty])
+
+  const commit = useCallback((next: Storefront) => {
+    if (!draft) return
+    const h = history.current
+    if (Date.now() - h.last > 600) { h.past.push(draft); if (h.past.length > 100) h.past.shift() }
+    h.future = []
+    h.last = Date.now()
+    s.replace(next as Record<string, unknown>)
+    bump((n) => n + 1)
+  }, [draft, s])
+  const undo = useCallback(() => {
+    const h = history.current
+    const prev = h.past.pop()
+    if (!prev || !draft) return
+    h.future.push(draft); h.last = 0
+    s.replace(prev as Record<string, unknown>); bump((n) => n + 1)
+  }, [draft, s])
+  const redo = useCallback(() => {
+    const h = history.current
+    const next = h.future.pop()
+    if (!next || !draft) return
+    h.past.push(draft); h.last = 0
+    s.replace(next as Record<string, unknown>); bump((n) => n + 1)
+  }, [draft, s])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || (e.target as HTMLElement)?.closest('input, textarea')) return
+      if (e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo() }
+      if (e.key.toLowerCase() === 'y') { e.preventDefault(); redo() }
+      if (e.key.toLowerCase() === 's') { e.preventDefault(); if (s.dirty && s.canEdit) s.save.mutate() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [redo, s, undo])
+
+  if (!draft) return <div className="fixed inset-0 z-[60] grid place-items-center bg-[#f1f1f1]"><Spinner /></div>
+
+  const setTheme = (patch: Partial<StoreTheme>) => commit({ ...draft, theme: { ...theme, ...patch } as unknown as Record<string, unknown> })
+  const setSections = (sections: ThemeSection[]) => setTheme({ sections })
+  const setSectionSettings = (id: string, key: string, v: unknown) =>
+    setSections(theme.sections.map((x) => (x.id === id ? { ...x, settings: { ...x.settings, [key]: v } } : x)))
+  const addSection = (type: SectionType) => {
+    const sec = makeSection(type)
+    setSections([...theme.sections, sec])
+    setSelected(sec.id); setPickerOpen(false)
   }
+  const removeSection = (id: string) => { setSections(theme.sections.filter((x) => x.id !== id)); setSelected(null) }
+  const duplicate = (id: string) => {
+    const i = theme.sections.findIndex((x) => x.id === id)
+    const copy = { ...makeSection(theme.sections[i].type), settings: structuredClone(theme.sections[i].settings) }
+    setSections([...theme.sections.slice(0, i + 1), copy, ...theme.sections.slice(i + 1)])
+    setSelected(copy.id)
+  }
+  const exit = () => { if (!s.dirty || window.confirm('Leave without saving your changes?')) navigate('/admin/store/sales-channels') }
+  const h = history.current
+  const current = theme.sections.find((x) => x.id === selected)
 
   return (
-    <div className="-m-3 flex flex-col sm:-mx-5 sm:-my-5 lg:h-[calc(100dvh-3.5rem)]">
-      <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5">
-        <div className="mr-auto">
-          <h1 className="text-base font-semibold">Theme</h1>
-          <p className="text-xs text-muted-foreground">Your store's look. Changes show on the right; customers see them after you publish.</p>
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f1f1f1] text-[13px] text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      {/* Top bar */}
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-zinc-200 bg-white px-2 dark:border-zinc-800 dark:bg-zinc-900">
+        <IconButton label="Exit" onClick={exit}><ArrowLeft /></IconButton>
+        <div className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
+        <IconButton label="Sections" active={tab === 'sections'} onClick={() => setTab('sections')}><PanelTop /></IconButton>
+        <IconButton label="Theme settings" active={tab === 'settings'} onClick={() => setTab('settings')}><Paintbrush /></IconButton>
+        <IconButton label="App embeds" active={tab === 'apps'} onClick={() => setTab('apps')}><Blocks /></IconButton>
+
+        <div className="mx-auto flex min-w-0 items-center gap-2">
+          <span className="hidden items-center gap-1.5 font-medium sm:flex"><Store className="size-3.5 text-zinc-500" />{config?.store.name ?? 'Store'}</span>
+          <span className="hidden rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800 sm:inline dark:bg-emerald-500/15 dark:text-emerald-300">Active</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              {PAGES.find((p) => p.value === page)?.icon}{PAGES.find((p) => p.value === page)?.label}<ChevronDown className="size-3.5 text-zinc-500" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="z-[70] w-48">
+              {PAGES.map((p) => <DropdownMenuItem key={p.value} onClick={() => { setPage(p.value); setSelected(null) }}>{p.icon}{p.label}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <div className="flex rounded-lg border p-0.5" role="group" aria-label="Preview size">
-          {(['desktop', 'mobile'] as const).map((d) => (
-            <button key={d} type="button" onClick={() => setDevice(d)} aria-pressed={device === d} aria-label={d}
-              className={cn('grid size-7 place-items-center rounded-md', device === d ? 'bg-foreground text-background' : 'text-muted-foreground')}>
-              {d === 'desktop' ? <Laptop className="size-4" /> : <Smartphone className="size-4" />}
-            </button>
-          ))}
+
+        <IconButton label={inspect ? 'Inspector on: click the preview to select' : 'Inspector off'} active={inspect} onClick={() => setInspect(!inspect)}><MousePointerClick /></IconButton>
+        <div className="hidden items-center sm:flex">
+          <IconButton label="Desktop" active={device === 'desktop'} onClick={() => setDevice('desktop')}><Monitor /></IconButton>
+          <IconButton label="Mobile" active={device === 'mobile'} onClick={() => setDevice('mobile')}><Smartphone /></IconButton>
+          <IconButton label="Full width" active={device === 'full'} onClick={() => setDevice('full')}><Maximize2 /></IconButton>
         </div>
-        <Button size="sm" variant="ghost" asChild><a href="/" target="_blank" rel="noreferrer"><ExternalLink /> View store</a></Button>
-        <Button size="sm" variant="outline" onClick={s.reset} disabled={!s.dirty}>Discard</Button>
-        <Button size="sm" onClick={() => s.save.mutate()} disabled={!s.dirty || !s.canEdit || s.save.isPending}>{s.save.isPending && <Spinner />} Publish</Button>
-      </div>
+        <div className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
+        <IconButton label="Undo" disabled={!h.past.length} onClick={undo}><Undo2 /></IconButton>
+        <IconButton label="Redo" disabled={!h.future.length} onClick={redo}><Redo2 /></IconButton>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><button type="button" aria-label="More" className="grid size-8 place-items-center rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 [&_svg]:size-4"><MoreHorizontal /></button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="z-[70] w-52">
+            <DropdownMenuItem asChild><a href="/" target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled={!s.dirty} onClick={() => { s.reset(); history.current = { past: [], future: [], last: 0 }; bump((n) => n + 1) }}>Discard changes</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { if (window.confirm('Reset the theme to the default look? You can still discard before saving.')) commit({ ...draft, theme: structuredClone(DEFAULT_THEME) as unknown as Record<string, unknown> }) }}>Reset to default theme</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <button type="button" onClick={() => s.save.mutate()} disabled={!s.dirty || !s.canEdit || s.save.isPending}
+          className="ml-1 flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-[13px] font-medium text-white shadow-[inset_0_-1px_0_rgb(255_255_255/.15)] transition-opacity disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-zinc-900 dark:disabled:bg-zinc-800">
+          {s.save.isPending && <Spinner className="size-3.5" />} Save
+        </button>
+      </header>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <aside className="min-h-0 shrink-0 overflow-y-auto border-b p-4 lg:w-[22rem] lg:border-r lg:border-b-0">
-          <fieldset disabled={!s.canEdit} className="space-y-6">
-            <Group title="Colour">
-              <div className="flex flex-wrap gap-2">
-                {ACCENTS.map((c) => (
-                  <button key={c} type="button" onClick={() => setTheme({ accent: c })} aria-label={`Colour ${c}`} aria-pressed={theme.accent === c}
-                    className={cn('size-8 rounded-full border-2 transition-transform hover:scale-110', theme.accent === c ? 'border-foreground' : 'border-transparent')}
-                    style={{ background: c }} />
-                ))}
-                <label className="flex items-center gap-1.5 rounded-full border px-2 text-xs">
-                  <input type="color" value={theme.accent} onChange={(e) => setTheme({ accent: e.target.value })} className="size-5 cursor-pointer bg-transparent" aria-label="Custom colour" />
-                  {theme.accent}
-                </label>
-              </div>
-            </Group>
-
-            <Group title="Font">
-              <div className="grid grid-cols-3 gap-2">
-                {Object.entries(FONTS).map(([k, f]) => (
-                  <Choice key={k} active={theme.font === k} onClick={() => setTheme({ font: k as StoreTheme['font'] })}>
-                    <span className="text-xl" style={{ fontFamily: f.family }}>{f.sample}</span>
-                    <span className="text-[11px] text-muted-foreground">{f.label}</span>
-                  </Choice>
-                ))}
-              </div>
-            </Group>
-
-            <Group title="Corners">
-              <div className="grid grid-cols-3 gap-2">
-                {Object.entries(RADII).map(([k, r]) => (
-                  <Choice key={k} active={theme.radius === k} onClick={() => setTheme({ radius: k as StoreTheme['radius'] })}>
-                    <span className="size-6 border-2 border-foreground" style={{ borderRadius: r.value }} />
-                    <span className="text-[11px] text-muted-foreground">{r.label}</span>
-                  </Choice>
-                ))}
-              </div>
-            </Group>
-
-            <Group title="Header">
-              <div className="grid grid-cols-2 gap-2">
-                {(['left', 'center'] as const).map((p) => (
-                  <Choice key={p} active={theme.logo_position === p} onClick={() => setTheme({ logo_position: p })}>
-                    <span className={cn('flex h-4 w-16 items-center rounded bg-muted px-1', p === 'center' && 'justify-center')}><span className="h-1.5 w-5 rounded bg-foreground" /></span>
-                    <span className="text-[11px] text-muted-foreground">Logo {p}</span>
-                  </Choice>
-                ))}
-              </div>
-              <Field label="Announcement bar" hint="Leave empty to hide"><Input {...text('announcement')} placeholder="Free delivery inside Dhaka" /></Field>
-            </Group>
-
-            <Group title="Home page">
-              <ul className="divide-y rounded-lg border">
-                {theme.sections.map((sec, i) => (
-                  <li key={sec.type}>
-                    <div className="flex items-center gap-2 px-2.5 py-2">
-                      <button type="button" className="min-w-0 flex-1 truncate text-left text-sm" onClick={() => setOpen(open === sec.type ? null : sec.type)}>
-                        {SECTION_LABELS[sec.type]}
-                      </button>
-                      <Button size="icon-sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${SECTION_LABELS[sec.type]} up`}><ArrowUp /></Button>
-                      <Button size="icon-sm" variant="ghost" disabled={i === theme.sections.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${SECTION_LABELS[sec.type]} down`}><ArrowDown /></Button>
-                      <Switch checked={sec.enabled} aria-label={`Show ${SECTION_LABELS[sec.type]}`}
-                        onCheckedChange={(v) => setTheme({ sections: theme.sections.map((x) => (x.type === sec.type ? { ...x, enabled: v } : x)) })} />
-                    </div>
-                    {open === sec.type && (
-                      <div className="space-y-3 border-t bg-muted/30 p-3">
-                        {sec.type === 'hero' && <>
-                          <Field label="Title"><Input {...text('hero_title')} /></Field>
-                          <Field label="Subtitle"><Textarea rows={2} {...text('hero_subtitle')} /></Field>
-                          <Field label="Image URL"><Input {...text('hero_image_url')} placeholder="https://…" /></Field>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Field label="Button"><Input {...text('hero_cta_label')} /></Field>
-                            <Field label="Link"><Input {...text('hero_cta_link')} /></Field>
-                          </div>
-                        </>}
-                        {sec.type === 'trust' && theme.trust.map((t, k) => (
-                          <div key={k} className="grid grid-cols-2 gap-2">
-                            <Input aria-label={`Badge ${k + 1} title`} value={t.title} onChange={(e) => setTheme({ trust: theme.trust.map((x, j) => (j === k ? { ...x, title: e.target.value } : x)) })} />
-                            <Input aria-label={`Badge ${k + 1} text`} value={t.text} onChange={(e) => setTheme({ trust: theme.trust.map((x, j) => (j === k ? { ...x, text: e.target.value } : x)) })} />
-                          </div>
-                        ))}
-                        {sec.type === 'banner' && <>
-                          <Field label="Title" hint="The banner shows once it has a title"><Input value={theme.banner.title} onChange={(e) => setTheme({ banner: { ...theme.banner, title: e.target.value } })} placeholder="Eid collection is here" /></Field>
-                          <Field label="Text"><Input value={theme.banner.text} onChange={(e) => setTheme({ banner: { ...theme.banner, text: e.target.value } })} /></Field>
-                          <Field label="Image URL"><Input value={theme.banner.image_url} onChange={(e) => setTheme({ banner: { ...theme.banner, image_url: e.target.value } })} placeholder="https://…" /></Field>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Field label="Button"><Input value={theme.banner.label} onChange={(e) => setTheme({ banner: { ...theme.banner, label: e.target.value } })} /></Field>
-                            <Field label="Link"><Input value={theme.banner.link} onChange={(e) => setTheme({ banner: { ...theme.banner, link: e.target.value } })} /></Field>
-                          </div>
-                        </>}
-                        {(sec.type === 'categories' || sec.type === 'featured' || sec.type === 'new') && (
-                          <p className="text-xs text-muted-foreground">
-                            {sec.type === 'categories' ? 'Shows up to three categories with products.' : sec.type === 'featured' ? 'Products marked Featured.' : 'Your newest products.'}{' '}
-                            <Link to="/admin/products" className="underline">Manage products</Link>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Group>
-
-            <Group title="Footer">
-              <Field label="Footer text"><Input {...text('footer_text')} placeholder={`© ${new Date().getFullYear()} Your store`} /></Field>
-              <label className="flex items-center justify-between gap-2 text-sm">Payment methods in the footer
-                <Switch checked={theme.payment_badges} onCheckedChange={(v) => setTheme({ payment_badges: v })} />
-              </label>
-              <Field label="WhatsApp chat button" hint="A number shows a chat button on every page">
-                <Input inputMode="tel" value={theme.whatsapp} onChange={(e) => setTheme({ whatsapp: e.target.value })} placeholder="01XXXXXXXXX" />
-              </Field>
-            </Group>
+      <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Left panel */}
+        <aside className="max-h-[42vh] shrink-0 overflow-y-auto border-b border-zinc-200 bg-white lg:max-h-none lg:w-[300px] lg:border-r lg:border-b-0 dark:border-zinc-800 dark:bg-zinc-900">
+          <fieldset disabled={!s.canEdit} className="contents">
+            {tab === 'sections' && (
+              <SectionTree page={page} theme={theme} selected={selected} onSelect={setSelected} onSections={setSections}
+                pickerOpen={pickerOpen} setPickerOpen={setPickerOpen} onAdd={addSection} />
+            )}
+            {tab === 'settings' && <ThemeSettings theme={theme} setTheme={setTheme} />}
+            {tab === 'apps' && <AppEmbeds theme={theme} setTheme={setTheme} />}
           </fieldset>
         </aside>
 
-        <div className="grid min-h-[32rem] flex-1 place-items-center overflow-auto bg-muted/40 p-4">
-          <iframe ref={frame} title="Store preview" src="/?theme_preview=1"
-            className={cn('h-full min-h-[32rem] rounded-xl border bg-background shadow-sm transition-[width] duration-300', device === 'mobile' ? 'w-[390px]' : 'w-full')}
-            onLoad={() => frame.current?.contentWindow?.postMessage({ type: 'theme-preview', storefront: draft }, window.location.origin)} />
+        {/* Preview */}
+        <div className="min-h-[50vh] min-w-0 flex-1 overflow-auto p-2 lg:p-3">
+          <div className={cn('mx-auto h-full overflow-hidden rounded-lg bg-white shadow-[0_0_0_1px_rgb(0_0_0/.08),0_4px_16px_rgb(0_0_0/.06)] transition-[width] duration-300',
+            device === 'mobile' ? 'w-[390px]' : device === 'full' ? 'w-full' : 'w-full max-w-[1400px]')}>
+            <iframe ref={frame} key={path} title="Store preview" src={`${path}${path.includes('?') ? '&' : '?'}theme_preview=1`} className="size-full min-h-[50vh]"
+              onLoad={() => post({ type: 'theme-preview', storefront: draft, selected, inspect })} />
+          </div>
         </div>
+
+        {/* Right panel: the selected item's settings */}
+        {selected && (
+          <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[320px] flex-col border-l border-zinc-200 bg-white shadow-xl lg:static lg:w-[300px] lg:shadow-none dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
+              <span className="text-zinc-500">{current ? SECTION_ICON[current.type] : <PanelBottom className="size-4" />}</span>
+              <p className="min-w-0 flex-1 truncate font-semibold">{current ? SECTIONS[current.type].label : FIXED[selected] ?? 'Settings'}</p>
+              {current && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild><button type="button" aria-label="Section actions" className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="z-[70]">
+                    <DropdownMenuItem onClick={() => duplicate(current.id)}><Copy /> Duplicate</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSections(theme.sections.map((x) => (x.id === current.id ? { ...x, enabled: !x.enabled } : x)))}>{current.enabled ? <EyeOff /> : <Eye />} {current.enabled ? 'Hide' : 'Show'}</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <button type="button" aria-label="Close" onClick={() => setSelected(null)} className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"><X className="size-4" /></button>
+            </div>
+            <fieldset disabled={!s.canEdit} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+              {current
+                ? <>
+                    {SECTIONS[current.type].fields.map((f) => <SchemaField key={f.key} field={f} settings={current.settings} onChange={(k, v) => setSectionSettings(current.id, k, v)} />)}
+                    <button type="button" onClick={() => removeSection(current.id)} className="mx-auto flex items-center gap-1.5 pt-2 text-[13px] font-medium text-red-600 hover:underline"><Trash2 className="size-4" /> Remove section</button>
+                  </>
+                : <FixedSettings id={selected} theme={theme} setTheme={setTheme} draft={draft} setSf={(k, v) => commit({ ...draft, [k]: v })} />}
+            </fieldset>
+          </aside>
+        )}
       </div>
     </div>
   )
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+function IconButton({ label, active, disabled, onClick, children }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <section className="space-y-2.5">
-      <h2 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{title}</h2>
+    <button type="button" aria-label={label} title={label} aria-pressed={active} disabled={disabled} onClick={onClick}
+      className={cn('grid size-8 place-items-center rounded-lg text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-35 disabled:hover:bg-transparent dark:text-zinc-300 dark:hover:bg-zinc-800 [&_svg]:size-4',
+        active && 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-white')}>
       {children}
-    </section>
+    </button>
   )
 }
 
-function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function TreeGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={active}
-      className={cn('flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-colors', active ? 'border-foreground bg-muted' : 'hover:bg-muted/50')}>
+    <div className="border-b border-zinc-200 px-2 py-2.5 last:border-0 dark:border-zinc-800">
+      <p className="px-2 pb-1 text-xs font-semibold">{title}</p>
       {children}
-    </button>
+    </div>
+  )
+}
+
+function TreeItem({ icon, label, sub, active, hidden, onClick, actions, drag }: {
+  icon: ReactNode; label: string; sub?: string; active: boolean; hidden?: boolean; onClick: () => void; actions?: ReactNode
+  drag?: { onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDrop: () => void; over: boolean }
+}) {
+  return (
+    <div draggable={!!drag} onDragStart={drag?.onDragStart} onDragOver={drag?.onDragOver} onDrop={drag?.onDrop}
+      className={cn('group/item relative flex h-8 items-center gap-1.5 rounded-lg pr-1 pl-1.5 transition-colors',
+        active ? 'bg-[#2c6ecb] text-white' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800', drag?.over && 'before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:bg-[#2c6ecb]')}>
+      <span className={cn('grid w-4 place-items-center opacity-0 group-hover/item:opacity-60', !drag && 'invisible')}><GripVertical className="size-3.5 cursor-grab" /></span>
+      <button type="button" onClick={onClick} className={cn('flex min-w-0 flex-1 items-center gap-2 text-left', hidden && 'opacity-50')}>
+        <span className={cn('shrink-0', active ? 'text-white' : 'text-zinc-500')}>{icon}</span>
+        <span className="min-w-0 truncate">{label}{sub && <span className={cn('ml-1', active ? 'text-white/75' : 'text-zinc-500')}>{sub}</span>}</span>
+      </button>
+      {actions && <span className={cn('flex items-center opacity-0 group-hover/item:opacity-100', active && 'opacity-100')}>{actions}</span>}
+    </div>
+  )
+}
+
+function SectionTree({ page, theme, selected, onSelect, onSections, pickerOpen, setPickerOpen, onAdd }: {
+  page: Page; theme: StoreTheme; selected: string | null; onSelect: (id: string) => void; onSections: (s: ThemeSection[]) => void
+  pickerOpen: boolean; setPickerOpen: (v: boolean) => void; onAdd: (t: SectionType) => void
+}) {
+  const [dragging, setDragging] = useState<number | null>(null)
+  const [over, setOver] = useState<number | null>(null)
+  const move = (from: number, to: number) => {
+    const next = [...theme.sections]
+    const [item] = next.splice(from, 1)
+    next.splice(to > from ? to - 1 : to, 0, item)
+    onSections(next)
+  }
+  const headerItems = (
+    <TreeGroup title="Header">
+      <TreeItem icon={<PanelTop className="size-4" />} label="Announcement bar" active={selected === 'announcement'} hidden={!theme.announcement.enabled} onClick={() => onSelect('announcement')} />
+      <TreeItem icon={<PanelTop className="size-4" />} label="Header" active={selected === 'header'} onClick={() => onSelect('header')} />
+    </TreeGroup>
+  )
+  const footerItems = (
+    <TreeGroup title="Footer">
+      <TreeItem icon={<PanelBottom className="size-4" />} label="Footer" active={selected === 'footer'} onClick={() => onSelect('footer')} />
+    </TreeGroup>
+  )
+  return (
+    <div>
+      <p className="px-4 pt-3 pb-1 text-sm font-semibold">{PAGES.find((p) => p.value === page)?.label}</p>
+      {headerItems}
+      <TreeGroup title="Template">
+        {page === 'home' ? (
+          <>
+            {theme.sections.map((sec, i) => {
+              const sub = typeof sec.settings.heading === 'string' && sec.settings.heading && sec.type !== 'hero' ? `: ${sec.settings.heading}` : undefined
+              return (
+                <TreeItem key={sec.id} icon={SECTION_ICON[sec.type]} label={SECTIONS[sec.type].label} sub={sub} active={selected === sec.id} hidden={!sec.enabled}
+                  onClick={() => onSelect(sec.id)}
+                  drag={{ onDragStart: () => setDragging(i), onDragOver: (e) => { e.preventDefault(); setOver(i) }, onDrop: () => { if (dragging !== null && dragging !== i) move(dragging, i); setDragging(null); setOver(null) }, over: over === i && dragging !== null && dragging !== i }}
+                  actions={
+                    <button type="button" aria-label={sec.enabled ? 'Hide section' : 'Show section'} className="grid size-6 place-items-center rounded hover:bg-black/10"
+                      onClick={() => onSections(theme.sections.map((x) => (x.id === sec.id ? { ...x, enabled: !x.enabled } : x)))}>
+                      {sec.enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+                    </button>
+                  } />
+              )
+            })}
+            <div onDragOver={(e) => { e.preventDefault(); setOver(theme.sections.length) }} onDrop={() => { if (dragging !== null) move(dragging, theme.sections.length); setDragging(null); setOver(null) }}
+              className={cn('h-1 rounded', over === theme.sections.length && dragging !== null && 'bg-[#2c6ecb]')} />
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                  <span className="grid size-4 place-items-center rounded-full border border-current"><Plus className="size-3" /></span> Add section
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="right" align="start" sideOffset={8} className="z-[70] w-auto border-0 bg-transparent p-0 shadow-none">
+                <SectionPicker onPick={onAdd} />
+              </PopoverContent>
+            </Popover>
+          </>
+        ) : page === 'collection' ? (
+          <>
+            <TreeItem icon={<PanelTop className="size-4" />} label="Collection banner" active={selected === 'collection-banner'} hidden={!theme.collection.banner} onClick={() => onSelect('collection-banner')} />
+            <TreeItem icon={<LayoutTemplate className="size-4" />} label="Product grid" active={selected === 'collection-grid'} onClick={() => onSelect('collection-grid')} />
+          </>
+        ) : (
+          <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">
+            {page === 'product' ? 'Product pages show each product’s photos, options and description. Edit them on the product, and the card style in Theme settings.' : 'The cart uses your theme colours and font.'}
+          </p>
+        )}
+      </TreeGroup>
+      {footerItems}
+    </div>
+  )
+}
+
+function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; theme: StoreTheme; setTheme: (p: Partial<StoreTheme>) => void; draft: Storefront; setSf: (k: string, v: unknown) => void }) {
+  const toLinks = (v: Array<Record<string, string>>): MenuLink[] => v.map((x) => ({ label: x.label ?? '', link: x.link ?? '' }))
+  if (id === 'announcement') {
+    const a = theme.announcement
+    return (
+      <>
+        <FieldRow label="Show announcement bar" inline><Switch checked={a.enabled} onCheckedChange={(v) => setTheme({ announcement: { ...a, enabled: v } })} /></FieldRow>
+        <FieldRow label="Scrolling (marquee)" inline><Switch checked={a.marquee} onCheckedChange={(v) => setTheme({ announcement: { ...a, marquee: v } })} /></FieldRow>
+        <ListField label="Messages" item={[{ key: 'text', label: 'Message' }]} max={6} value={a.items.map((text) => ({ text }))}
+          onChange={(v) => setTheme({ announcement: { ...a, items: v.map((x) => x.text ?? '') } })} />
+        <FieldRow label="Background"><ColorInput value={theme.colors.announcement_bg} onChange={(v) => setTheme({ colors: { ...theme.colors, announcement_bg: v } })} /></FieldRow>
+        <FieldRow label="Text"><ColorInput value={theme.colors.announcement_text} onChange={(v) => setTheme({ colors: { ...theme.colors, announcement_text: v } })} /></FieldRow>
+      </>
+    )
+  }
+  if (id === 'header') {
+    const h = theme.header
+    return (
+      <>
+        <FieldRow label="Logo position">
+          <SelectInput value={theme.logo_position} onChange={(v) => setTheme({ logo_position: v as StoreTheme['logo_position'] })} options={[{ value: 'center', label: 'Center, menu on the left' }, { value: 'left', label: 'Left, menu beside it' }]} />
+        </FieldRow>
+        <FieldRow label="Sticky header" inline><Switch checked={h.sticky} onCheckedChange={(v) => setTheme({ header: { ...h, sticky: v } })} /></FieldRow>
+        <FieldRow label="Uppercase menu" inline><Switch checked={h.uppercase} onCheckedChange={(v) => setTheme({ header: { ...h, uppercase: v } })} /></FieldRow>
+        <FieldRow label="See-through over the hero" inline><Switch checked={h.transparent} onCheckedChange={(v) => setTheme({ header: { ...h, transparent: v } })} /></FieldRow>
+        <ListField label="Menu" item={[{ key: 'label', label: 'Label' }, { key: 'link', label: 'Link, e.g. /collection/belts' }]} max={10}
+          value={h.menu.map((m) => ({ label: m.label, link: m.link }))} onChange={(v) => setTheme({ header: { ...h, menu: toLinks(v) } })} />
+        <p className="text-[11px] leading-snug text-zinc-500">Leave the menu empty to list your categories automatically, with sub-categories in a drop-down. The logo is set in Settings → Business profile.</p>
+      </>
+    )
+  }
+  if (id === 'footer') {
+    const f = theme.footer
+    return (
+      <>
+        <FieldRow label="Contact heading"><input className={inputClass} value={f.contact_title} onChange={(e) => setTheme({ footer: { ...f, contact_title: e.target.value } })} /></FieldRow>
+        <FieldRow label="Contact details" hint="Empty uses your store e-mail, phone and address"><textarea rows={3} className={cn(inputClass, 'h-auto py-1.5')} value={f.contact_text} onChange={(e) => setTheme({ footer: { ...f, contact_text: e.target.value } })} /></FieldRow>
+        <ListField label="Links" item={[{ key: 'label', label: 'Label' }, { key: 'link', label: 'Link' }]} max={10} value={f.links.map((m) => ({ label: m.label, link: m.link }))}
+          onChange={(v) => setTheme({ footer: { ...f, links: toLinks(v) } })} />
+        <FieldRow label="Show country and currency" inline><Switch checked={f.show_currency} onCheckedChange={(v) => setTheme({ footer: { ...f, show_currency: v } })} /></FieldRow>
+        <FieldRow label="Payment methods" inline><Switch checked={theme.payment_badges} onCheckedChange={(v) => setTheme({ payment_badges: v })} /></FieldRow>
+        <FieldRow label="Copyright text"><input className={inputClass} value={String(draft.footer_text ?? '')} placeholder={`© ${new Date().getFullYear()} Your store`} onChange={(e) => setSf('footer_text', e.target.value)} /></FieldRow>
+        <FieldRow label="Background"><ColorInput value={theme.colors.footer_bg} onChange={(v) => setTheme({ colors: { ...theme.colors, footer_bg: v } })} /></FieldRow>
+        <FieldRow label="Text"><ColorInput value={theme.colors.footer_text} onChange={(v) => setTheme({ colors: { ...theme.colors, footer_text: v } })} /></FieldRow>
+      </>
+    )
+  }
+  if (id === 'collection-banner' || id === 'collection-grid') {
+    const c = theme.collection
+    return (
+      <>
+        <FieldRow label="Show the collection banner" inline><Switch checked={c.banner} onCheckedChange={(v) => setTheme({ collection: { ...c, banner: v } })} /></FieldRow>
+        <p className="text-[11px] leading-snug text-zinc-500">The banner uses the category's image, set on the category.</p>
+        <FieldRow label="Products per row on desktop"><RangeInput value={c.columns} min={2} max={5} onChange={(v) => setTheme({ collection: { ...c, columns: v as 2 | 3 | 4 | 5 } })} /></FieldRow>
+      </>
+    )
+  }
+  return null
+}
+
+function Accordion({ title, children, defaultOpen }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(!!defaultOpen)
+  return (
+    <div className="border-b border-zinc-200 dark:border-zinc-800">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex h-11 w-full items-center justify-between px-4 font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+        {title}<ChevronDown className={cn('size-4 text-zinc-500 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && <div className="space-y-4 px-4 pb-4">{children}</div>}
+    </div>
+  )
+}
+
+function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: Partial<StoreTheme>) => void }) {
+  const c = theme.colors
+  const pc = theme.product_card
+  return (
+    <div>
+      <p className="px-4 pt-3 pb-2 text-sm font-semibold">Theme settings</p>
+      <Accordion title="Logo" >
+        <FieldRow label="Logo position"><SelectInput value={theme.logo_position} onChange={(v) => setTheme({ logo_position: v as StoreTheme['logo_position'] })} options={[{ value: 'center', label: 'Center' }, { value: 'left', label: 'Left' }]} /></FieldRow>
+        <p className="text-[11px] text-zinc-500">Upload the logo in Settings → Business profile.</p>
+      </Accordion>
+      <Accordion title="Colors" defaultOpen>
+        <FieldRow label="Buttons and accents">
+          <div className="flex flex-wrap gap-1.5">
+            {ACCENTS.map((a) => (
+              <button key={a} type="button" aria-label={`Colour ${a}`} aria-pressed={theme.accent === a} onClick={() => setTheme({ accent: a })}
+                className={cn('size-6 rounded-full ring-offset-2 transition-transform hover:scale-110', theme.accent === a && 'ring-2 ring-zinc-900')} style={{ background: a }} />
+            ))}
+          </div>
+          <ColorInput value={theme.accent} onChange={(v) => setTheme({ accent: v })} />
+        </FieldRow>
+        <FieldRow label="Background"><ColorInput value={c.background} onChange={(v) => setTheme({ colors: { ...c, background: v } })} /></FieldRow>
+        <FieldRow label="Text"><ColorInput value={c.text} onChange={(v) => setTheme({ colors: { ...c, text: v } })} /></FieldRow>
+        <FieldRow label="Footer background"><ColorInput value={c.footer_bg} onChange={(v) => setTheme({ colors: { ...c, footer_bg: v } })} /></FieldRow>
+      </Accordion>
+      <Accordion title="Typography">
+        <div className="grid grid-cols-3 gap-2">
+          {Object.entries(FONTS).map(([k, f]) => (
+            <button key={k} type="button" aria-pressed={theme.font === k} onClick={() => setTheme({ font: k as StoreTheme['font'] })}
+              className={cn('grid justify-items-center gap-1 rounded-lg border px-2 py-2.5', theme.font === k ? 'border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
+              <span className="text-xl" style={{ fontFamily: f.family }}>{f.sample}</span><span className="text-[11px] text-zinc-500">{f.label}</span>
+            </button>
+          ))}
+        </div>
+      </Accordion>
+      <Accordion title="Buttons and corners">
+        <div className="grid grid-cols-3 gap-2">
+          {Object.entries(RADII).map(([k, r]) => (
+            <button key={k} type="button" aria-pressed={theme.radius === k} onClick={() => setTheme({ radius: k as StoreTheme['radius'] })}
+              className={cn('grid justify-items-center gap-1.5 rounded-lg border px-2 py-2.5', theme.radius === k ? 'border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
+              <span className="h-5 w-10 border-2 border-current" style={{ borderRadius: r.value }} /><span className="text-[11px] text-zinc-500">{r.label}</span>
+            </button>
+          ))}
+        </div>
+      </Accordion>
+      <Accordion title="Product cards">
+        <FieldRow label="Image shape"><SelectInput value={pc.aspect} onChange={(v) => setTheme({ product_card: { ...pc, aspect: v as typeof pc.aspect } })} options={[{ value: 'portrait', label: 'Portrait (4:5)' }, { value: 'square', label: 'Square' }]} /></FieldRow>
+        <FieldRow label="Spacing"><SelectInput value={pc.gap} onChange={(v) => setTheme({ product_card: { ...pc, gap: v as typeof pc.gap } })} options={[{ value: 'none', label: 'Edge to edge' }, { value: 'small', label: 'Hairline' }, { value: 'large', label: 'Roomy' }]} /></FieldRow>
+        <FieldRow label="Image background"><ColorInput value={pc.image_bg} onChange={(v) => setTheme({ product_card: { ...pc, image_bg: v } })} /></FieldRow>
+        <FieldRow label="Uppercase names" inline><Switch checked={pc.uppercase} onCheckedChange={(v) => setTheme({ product_card: { ...pc, uppercase: v } })} /></FieldRow>
+        <FieldRow label="“Sale” badge" inline><Switch checked={pc.sale_badge} onCheckedChange={(v) => setTheme({ product_card: { ...pc, sale_badge: v } })} /></FieldRow>
+      </Accordion>
+      <Accordion title="Collection page">
+        <FieldRow label="Banner with the category image" inline><Switch checked={theme.collection.banner} onCheckedChange={(v) => setTheme({ collection: { ...theme.collection, banner: v } })} /></FieldRow>
+        <FieldRow label="Products per row"><RangeInput value={theme.collection.columns} min={2} max={5} onChange={(v) => setTheme({ collection: { ...theme.collection, columns: v as 2 | 3 | 4 | 5 } })} /></FieldRow>
+      </Accordion>
+    </div>
+  )
+}
+
+function AppEmbeds({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: Partial<StoreTheme>) => void }) {
+  return (
+    <div>
+      <p className="px-4 pt-3 pb-2 text-sm font-semibold">App embeds</p>
+      <div className="space-y-3 px-4 pb-4">
+        <div className="space-y-2.5 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+          <div className="flex items-center justify-between"><p className="font-medium">WhatsApp chat button</p><Switch checked={!!theme.whatsapp} onCheckedChange={(v) => setTheme({ whatsapp: v ? '01' : '' })} /></div>
+          {!!theme.whatsapp && <input className={inputClass} inputMode="tel" value={theme.whatsapp} onChange={(e) => setTheme({ whatsapp: e.target.value })} placeholder="01XXXXXXXXX" />}
+          <p className="text-[11px] text-zinc-500">A “Chat” button on every page opens WhatsApp with your number.</p>
+        </div>
+        <div className="flex items-center justify-between rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+          <div><p className="font-medium">Payment badges</p><p className="text-[11px] text-zinc-500">Your payment methods in the footer.</p></div>
+          <Switch checked={theme.payment_badges} onCheckedChange={(v) => setTheme({ payment_badges: v })} />
+        </div>
+      </div>
+    </div>
   )
 }

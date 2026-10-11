@@ -164,6 +164,17 @@ export async function uploadProductImage(productId: string, file: File, position
   }
 }
 
+/** Uploads an image for the store theme (hero, banners) and returns its public address. */
+export async function uploadThemeImage(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('VALIDATION: please choose an image file')
+  if (file.size > 8 * 1024 * 1024) throw new Error('VALIDATION: images must be smaller than 8 MB')
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+  const path = `${merchantFolder()}/theme/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { cacheControl: '31536000', contentType: file.type })
+  if (error) throw error
+  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+}
+
 /** Adds an image by address (no upload). */
 export async function addProductImageUrl(productId: string, url: string, position: number, primary: boolean) {
   const clean = url.trim()
