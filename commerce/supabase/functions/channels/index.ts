@@ -546,7 +546,15 @@ async function wooOrderSeen(admin: SupabaseClient, c: Channel, o: WooOrder): Pro
 
 const PLUGIN_DEFAULTS = { order_events: true, capture_leads: true, attribution: true, custom_statuses: true, shield: false, shield_fail_open: true, shield_timeout: 4 }
 type PluginConfig = typeof PLUGIN_DEFAULTS
-const pluginConfigOf = (c: Channel): PluginConfig => ({ ...PLUGIN_DEFAULTS, ...((c.settings?.plugin_config ?? {}) as Partial<PluginConfig>) })
+const pluginConfigOf = (c: Channel): PluginConfig & { stock_sync: boolean } => ({
+  ...PLUGIN_DEFAULTS, ...((c.settings?.plugin_config ?? {}) as Partial<PluginConfig>), stock_sync: c.settings?.inventory_sync === true,
+})
+
+/** The store logo (Settings → Store), shown on the plugin's page. HTTPS only. */
+async function appLogo(admin: SupabaseClient): Promise<string | undefined> {
+  const url = (await getSettings<{ logo_url?: string | null }>(admin, 'store')).logo_url?.trim()
+  return url && /^https:\/\//i.test(url) ? url : undefined
+}
 
 /** Where staff land from the plugin's "open" link. */
 async function appUrl(admin: SupabaseClient, c: Channel) {
@@ -566,7 +574,7 @@ async function pairPlugin(admin: SupabaseClient, c: Channel, s0: Secret): Promis
   const label = 'Fullfilio Connect plugin'
   try {
     const { s, secret } = await pluginSecret(admin, c, s0)
-    const r = await wooClient(c, s).pluginPair({ endpoint: fnBase(), channel_id: c.id, secret, app_name: appName(), app_url: await appUrl(admin, c), config: pluginConfigOf(c) })
+    const r = await wooClient(c, s).pluginPair({ endpoint: fnBase(), channel_id: c.id, secret, app_name: appName(), app_url: await appUrl(admin, c), app_logo: await appLogo(admin), config: pluginConfigOf(c) })
     await rpc(admin, 'channel_plugin_paired', { p_channel_id: c.id, p_ok: true, p_detail: `v${r.version}`, p_report: r.report ?? null })
     return { key: 'plugin', label, status: 'ok', detail: `Version ${r.version} connected: unfinished checkouts, attribution and instant orders` }
   } catch (error) {

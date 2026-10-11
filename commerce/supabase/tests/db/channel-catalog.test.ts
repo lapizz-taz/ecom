@@ -117,7 +117,7 @@ describe('Store catalog import', () => {
 })
 
 describe('WooCommerce fulfilment', () => {
-  it('is off unless turned on for the store; Shopify stays on by default', () =>
+  it('a shipped store order queues the store job (WooCommerce: for its status, unless status sync is off); Shopify fulfils by default', () =>
     inTx(async (db) => {
       const sfx = String(Math.floor(Math.random() * 1e5))
       await createProduct(db, { price: 500, stock: 10, variants: [{ sku: `WTOTE-${sfx}`, title: 'Default', stock: 10 }] })
@@ -134,7 +134,10 @@ describe('WooCommerce fulfilment', () => {
         await asSystem(db)
         return value<number>(db, `select count(*)::int from public.channel_sync_jobs where kind = 'FULFILL' and ref_id = $1`, [r.order_id])
       }
-      expect(await ship(await store(db, 'WOOCOMMERCE'), `${sfx}1`)).toBe(0)
+      // WooCommerce: the store job runs for the status (Shipped) even with completing switched off;
+      // with status sync off as well, nothing is sent.
+      expect(await ship(await store(db, 'WOOCOMMERCE', { status_sync: false }), `${sfx}1`)).toBe(0)
+      expect(await ship(await store(db, 'WOOCOMMERCE'), `${sfx}4`)).toBe(1)
       expect(await ship(await store(db, 'WOOCOMMERCE', { fulfill_on_ship: true }), `${sfx}2`)).toBe(1)
       expect(await ship(await store(db, 'SHOPIFY'), `${sfx}3`)).toBe(1)
     }))

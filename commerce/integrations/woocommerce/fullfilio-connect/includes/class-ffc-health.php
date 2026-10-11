@@ -108,6 +108,7 @@ class FFC_Health {
 			'wp_cron'        => ! ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ),
 			'action_scheduler' => function_exists( 'as_enqueue_async_action' ),
 			'features'       => FFC_Settings::config(),
+			'stock_keeper'   => FFC_Stock::managed_by_fullfilio() ? 'fullfilio' : 'woocommerce',
 			'outbox'         => FFC_Outbox::stats(),
 			'webhooks'       => self::webhooks(),
 			'state'          => array_intersect_key( FFC_Settings::state(), array_flip( array( 'last_ok_at', 'last_error', 'last_error_at', 'last_heartbeat_at' ) ) ),

@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,13 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.1.0 =
+* Order statuses follow Fullfilio: Confirmed, Shipped, Delivered, Partially delivered, Return in transit, Returned, Cancelled.
+* Stock: items that come back (return, partial delivery) are put back in stock once; no double restock when Fullfilio keeps the stock.
+* Stock section on the plugin page: who keeps the count, low and out-of-stock items, what was put back.
+* Your logo from Fullfilio on the plugin page.
+* Fix: unfinished checkouts without ad tags were refused.
 
 = 1.0.0 =
 * First release.

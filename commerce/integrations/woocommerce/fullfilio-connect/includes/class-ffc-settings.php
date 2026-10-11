@@ -25,6 +25,7 @@ class FFC_Settings {
 			'shield_fail_open' => true,
 			'shield_timeout'   => 4,
 			'custom_statuses'  => true,
+			'stock_sync'       => false,
 		);
 	}
 
@@ -72,6 +73,7 @@ class FFC_Settings {
 				'secret'     => $secret,
 				'app_name'   => isset( $input['app_name'] ) ? sanitize_text_field( $input['app_name'] ) : 'Fullfilio',
 				'app_url'    => isset( $input['app_url'] ) ? esc_url_raw( $input['app_url'] ) : '',
+				'app_logo'   => isset( $input['app_logo'] ) && preg_match( '#^https://#i', (string) $input['app_logo'] ) ? esc_url_raw( $input['app_logo'] ) : '',
 				'paired_at'  => gmdate( 'c' ),
 			),
 			false

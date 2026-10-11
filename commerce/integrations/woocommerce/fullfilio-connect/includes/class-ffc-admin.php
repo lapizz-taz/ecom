@@ -128,11 +128,13 @@ class FFC_Admin {
 		$notice = isset( $_GET['ffc_notice'] ) ? sanitize_text_field( wp_unslash( $_GET['ffc_notice'] ) ) : '';
 		$type   = isset( $_GET['ffc_type'] ) ? sanitize_key( wp_unslash( $_GET['ffc_type'] ) ) : 'success';
 		// phpcs:enable
-		echo '<div class="wrap"><h1>Fullfilio Connect</h1>';
+		$logo = $c && ! empty( $c['app_logo'] ) ? $c['app_logo'] : '';
+		$name = $c && ! empty( $c['app_name'] ) ? $c['app_name'] : 'Fullfilio';
+		echo '<div class="wrap"><h1 class="ffc-title">' . ( $logo ? '<img src="' . esc_url( $logo ) . '" alt="" class="ffc-logo">' : '<span class="ffc-mark">' . esc_html( strtoupper( substr( $name, 0, 1 ) ) ) . '</span>' ) . esc_html( $name ) . ' Connect</h1>';
 		if ( $notice ) {
 			echo '<div class="notice notice-' . esc_attr( in_array( $type, array( 'success', 'error', 'warning' ), true ) ? $type : 'info' ) . '"><p>' . esc_html( $notice ) . '</p></div>';
 		}
-		echo '<style>.ffc-card{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px 20px;margin:16px 0;max-width:980px}.ffc-card h2{margin-top:0;font-size:15px}.ffc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px}.ffc-muted{color:#646970}.ffc-table td,.ffc-table th{padding:6px 8px}</style>';
+		echo '<style>.ffc-card{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:16px 20px;margin:16px 0;max-width:980px}.ffc-card h2{margin-top:0;font-size:15px}.ffc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 16px}.ffc-muted{color:#646970}.ffc-table td,.ffc-table th{padding:6px 8px}.ffc-title{display:flex;align-items:center;gap:10px}.ffc-logo{height:32px;width:auto;max-width:160px;object-fit:contain}.ffc-mark{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#111;color:#fff;font-size:16px;font-weight:700}.ffc-stats{display:flex;gap:24px;flex-wrap:wrap;margin:8px 0}.ffc-stats b{display:block;font-size:20px}</style>';
 
 		// Connection.
 		echo '<div class="ffc-card"><h2>Connection</h2>';
@@ -155,13 +157,42 @@ class FFC_Admin {
 			'capture_leads' => array( 'Unfinished checkouts', 'Phone, name, address and cart from checkouts that were not completed.' ),
 			'attribution'   => array( 'Ad attribution', 'UTM tags, click ids and Meta cookies saved on each order.' ),
 			'shield'        => array( 'Order shield', 'Block-listed numbers are stopped; low delivery success asks for an advance (no cash on delivery).' ),
-			'custom_statuses' => array( 'Delivered / Returned statuses', 'Two order statuses Fullfilio sets when the courier reports it.' ),
+			'custom_statuses' => array( 'Order statuses', 'Confirmed, Shipped, Delivered, Partially delivered, Return in transit and Returned follow the order in Fullfilio.' ),
+			'stock_sync'      => array( 'Fullfilio keeps the stock', 'Fullfilio sends the stock count; WooCommerce does not put stock back on a cancel (no double count).' ),
 		);
 		echo '<div class="ffc-card"><h2>What is switched on</h2><p class="ffc-muted">Change these in Fullfilio (the store\'s page). They arrive here with the next contact.</p><div class="ffc-grid">';
 		foreach ( $labels as $key => $l ) {
 			echo '<div>' . self::pill( ! empty( $cfg[ $key ] ) ? 'ok' : 'warn' ) . ' <strong>' . esc_html( $l[0] ) . '</strong><br><span class="ffc-muted">' . esc_html( ! empty( $cfg[ $key ] ) ? $l[1] : 'Off' ) . '</span></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pill() escapes.
 		}
 		echo '</div></div>';
+
+		// Stock.
+		$st = FFC_Stock::summary();
+		echo '<div class="ffc-card"><h2>Stock</h2>';
+		echo '<p>' . ( FFC_Stock::managed_by_fullfilio()
+			? '<strong>Fullfilio keeps the count.</strong> <span class="ffc-muted">It sends each product\'s stock here. Orders still take stock off at checkout; cancels and returns are counted in Fullfilio, so they are not put back here twice.</span>'
+			: '<strong>WooCommerce keeps the count.</strong> <span class="ffc-muted">A cancel puts items back the WooCommerce way. Items that come back to Fullfilio (a return, or the undelivered part of a partial delivery) are put back here automatically, once. Turn on stock sync in Fullfilio to let Fullfilio keep the count.</span>' ) . '</p>';
+		echo '<div class="ffc-stats"><div><b>' . esc_html( (string) $st['tracked'] ) . '</b><span class="ffc-muted">tracked products</span></div><div><b>' . esc_html( (string) $st['low'] ) . '</b><span class="ffc-muted">low (≤ ' . esc_html( (string) $st['threshold'] ) . ')</span></div><div><b>' . esc_html( (string) $st['out'] ) . '</b><span class="ffc-muted">out of stock</span></div></div>';
+		if ( $st['low_items'] ) {
+			echo '<table class="widefat striped ffc-table"><thead><tr><th>Low or out of stock</th><th>SKU</th><th>Stock</th></tr></thead><tbody>';
+			foreach ( $st['low_items'] as $it ) {
+				echo '<tr><td>' . ( $it['edit'] ? '<a href="' . esc_url( $it['edit'] ) . '">' . esc_html( $it['name'] ) . '</a>' : esc_html( $it['name'] ) ) . '</td><td>' . esc_html( (string) $it['sku'] ) . '</td><td>' . esc_html( (string) $it['stock'] ) . '</td></tr>';
+			}
+			echo '</tbody></table>';
+		}
+		$moves = FFC_Stock::recent( 15 );
+		echo '<h3 style="margin:14px 0 6px;font-size:13px">Put back by Fullfilio</h3>';
+		if ( ! $moves ) {
+			echo '<p class="ffc-muted">Nothing yet. Returned items show here when they are put back.</p>';
+		} else {
+			echo '<table class="widefat striped ffc-table"><thead><tr><th>When (UTC)</th><th>Order</th><th>Product</th><th>Added</th><th>Stock after</th><th>Why</th></tr></thead><tbody>';
+			foreach ( $moves as $m ) {
+				$link = ! empty( $m['order_id'] ) && function_exists( 'wc_get_order' ) && wc_get_order( $m['order_id'] ) ? wc_get_order( $m['order_id'] )->get_edit_order_url() : '';
+				echo '<tr><td>' . esc_html( $m['at'] ) . '</td><td>' . ( $link ? '<a href="' . esc_url( $link ) . '">#' . esc_html( (string) $m['order'] ) . '</a>' : '#' . esc_html( (string) $m['order'] ) ) . '</td><td>' . esc_html( $m['product'] ) . '</td><td>+' . esc_html( (string) $m['added'] ) . '</td><td>' . esc_html( null === $m['stock'] ? '?' : (string) $m['stock'] ) . '</td><td class="ffc-muted">' . esc_html( $m['reason'] ) . '</td></tr>';
+			}
+			echo '</tbody></table>';
+		}
+		echo '</div>';
 
 		// Troubleshooting.
 		echo '<div class="ffc-card"><h2>Troubleshooting</h2><table class="ffc-table">';
@@ -200,6 +231,6 @@ class FFC_Admin {
 			self::button( 'clear_log', 'Clear log' );
 			echo '</p>';
 		}
-		echo '</div><p class="ffc-muted">Fullfilio Connect ' . esc_html( FFC_VERSION ) . '</p></div>';
+		echo '</div><p class="ffc-muted">' . esc_html( $name ) . ' Connect ' . esc_html( FFC_VERSION ) . '</p></div>';
 	}
 }

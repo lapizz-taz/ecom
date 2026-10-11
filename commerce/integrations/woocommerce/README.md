@@ -4,8 +4,8 @@ Two parts work together:
 
 | Part | Where | What it does |
 | --- | --- | --- |
-| **Fullfilio Connect** (WordPress plugin) | `fullfilio-connect/` | Installed on the store. Sends orders and status changes the moment they happen, captures unfinished checkouts, saves ad attribution on each order, runs the order shield at checkout, adds the Delivered / Returned order statuses and reports its health every 15 minutes. |
-| SaaS module | `supabase/functions/channels`, `supabase/migrations/20261031000100_woo_plugin.sql`, `src/features/channels/woo-plugin-panel.tsx` | Connects the store (WooCommerce's own key approval screen), registers the WooCommerce webhooks, imports orders and products through the official REST API (`wc/v3`), receives the plugin's signed events and pushes Delivered / Returned back. |
+| **Fullfilio Connect** (WordPress plugin) | `fullfilio-connect/` | Installed on the store. Sends orders and status changes the moment they happen, captures unfinished checkouts, saves ad attribution on each order, runs the order shield at checkout, adds the Confirmed / Shipped / Delivered / Partially delivered / Return in transit / Returned order statuses, puts returned items back in WooCommerce stock (once, never more than WooCommerce took off) and reports its health every 15 minutes. |
+| SaaS module | `supabase/functions/channels`, `supabase/migrations/20261031000100_woo_plugin.sql`, `src/features/channels/woo-plugin-panel.tsx` | Connects the store (WooCommerce's own key approval screen), registers the WooCommerce webhooks, imports orders and products through the official REST API (`wc/v3`), receives the plugin's signed events and sets the WooCommerce order's status as the order moves on here (`supabase/migrations/20261102000100_woo_order_sync.sql`, `wooStatusStep` in `_shared/channels/sync.ts`). |
 
 The plugin is optional: without it the store still connects with REST keys and webhooks. With it,
 orders arrive even when WooCommerce pauses a webhook, unfinished checkouts and attribution are
@@ -57,5 +57,15 @@ CHROMIUM_PATH=… FUNCTIONS_ENV_FILE=supabase/functions/.env node integrations/w
 The edge functions must allow the plain-http test store: `CHANNELS_ALLOW_HTTP_HOSTS=172.18.0.1:8090`.
 The test covers install, connect and approval, automatic pairing, heartbeat, unfinished checkout,
 order import (once, with attribution), duplicate / forged / stale events, a re-delivered webhook,
-Fullfilio being unreachable (queued and retried), a paused webhook switched back on, Delivered
-pushed to the store once, a cancel on the store, the order shield and disconnect / reconnect.
+Fullfilio being unreachable (queued and retried), a paused webhook switched back on, Confirmed →
+Shipped → Delivered → Return in transit → Returned set on the store once each (not sent back), returned
+items put back in WooCommerce stock once, a partial delivery returned in two steps, a cancel here
+(WooCommerce restores its own stock once; with stock sync on it does not), a cancel on the store,
+the order shield and disconnect / reconnect.
+
+Stock, never counted twice:
+
+| Fullfilio "Keep stock in step" | Order placed | Cancelled | Returned / partly delivered |
+| --- | --- | --- | --- |
+| Off (WooCommerce keeps its count) | WooCommerce takes it off | WooCommerce puts back what it took off | The plugin puts back the items received as good (damaged ones are not), tracked per order line |
+| On (Fullfilio keeps the count) | WooCommerce takes it off | Not put back by WooCommerce; Fullfilio sends the count | Counted in Fullfilio, which sends the count |

@@ -4,6 +4,7 @@
 // the database; nothing is reported as done until Shopify confirmed it.
 import { ChannelError, type SeenFulfillment } from './common.ts'
 import { type FulfillmentGroup, type FulfillmentState, planFulfillment } from './shopify.ts'
+import type { PluginOrderStatusInput, PluginOrderStatusResult } from './woocommerce.ts'
 
 export interface Job { id: string; channel_id: string; kind: 'FULFILL' | 'INVENTORY'; ref_id: string; attempts: number; payload: Record<string, unknown> }
 export type Outcome = { outcome: 'DONE' | 'RETRY' | 'FAILED'; error?: string; result?: Record<string, unknown>; delay?: number }
@@ -28,17 +29,23 @@ export interface WooPort {
   orderState(orderId: string): Promise<{ status: string; email: string | null; notes: Array<{ id: number; note: string }> }>
   addNote(orderId: string, note: string, customer: boolean): Promise<number>
   setStatus(orderId: string, status: string): Promise<string>
+  /** The Fullfilio Connect plugin's order update (ChannelError NO_PLUGIN when it is not installed). */
+  pluginOrderStatus(body: PluginOrderStatusInput): Promise<PluginOrderStatusResult>
 }
 export type Rpc = <T>(fn: string, args: Record<string, unknown>) => Promise<T>
 
 interface SyncState {
   cancel_status: string | null; paid_status: string | null; status_tag: string | null; events: Record<string, string>
+  store_status?: string | null; store_restock?: RestockLine[] | null
 }
+interface RestockLine { external_variant_id: string | null; sku: string | null; name: string; quantity: number }
 interface FulfillContext {
   order: { id: string; order_number: string; status: string; external_order_id: string; customer_email: string | null; delivered_at?: string | null
     own_status?: string; merged_into?: string | null; payment_method?: string | null; was_delivered?: boolean }
   sync?: SyncState | null
-  settings?: { inventory_sync: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean }
+  settings?: { inventory_sync: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; status_sync?: boolean; fulfill_on_ship?: boolean }
+  /** Items received back as good, per line (totals so far). */
+  restock_lines?: RestockLine[]
   status_tag?: string | null
   merged_tag?: string | null
   fulfillment: { status: string; tracking_number: string | null; fulfillment_id?: string | null; delivered_status?: string | null } | null
@@ -290,6 +297,110 @@ export const GRACE_SECONDS = 60
  */
 export async function wooFulfillJob(job: Job, rpc: Rpc, woo: () => WooPort, opts: ChannelOpts): Promise<Outcome> {
   const ctx = await rpc<FulfillContext>('channel_fulfillment_context', { p_order_id: job.ref_id })
+  const outs = [await wooFulfilStep(job, ctx, rpc, woo, opts)]
+  if (ctx.sync) outs.push(await wooStatusStep(job, ctx, rpc, woo))
+  return worst(outs)
+}
+
+/** The WooCommerce status for our order status (null: leave the store's status as it is). */
+export const WOO_STATUS: Record<string, string> = {
+  CONFIRMED: 'confirmed', PRE_ORDER: 'confirmed', PROCESSING: 'confirmed', PRODUCTION: 'confirmed', QUALITY_CHECK: 'confirmed',
+  PACKING: 'confirmed', READY_TO_SHIP: 'confirmed', SHIPPED: 'shipped', DELIVERED: 'delivered', PARTIALLY_DELIVERED: 'partial-delivered',
+  RETURN_REQUESTED: 'returning', RETURNING: 'returning', FAILED_DELIVERY: 'returning', RETURNED: 'returned',
+  CANCELLED: 'cancelled', REJECTED_FRAUD: 'cancelled',
+}
+/** Without the plugin only WooCommerce's own statuses exist. */
+const WOO_NATIVE: Record<string, string | null> = {
+  confirmed: 'processing', shipped: 'completed', delivered: 'completed', 'partial-delivered': 'completed', completed: 'completed',
+  returning: null, returned: null, cancelled: 'cancelled',
+}
+const WOO_FINAL = ['cancelled', 'refunded', 'failed', 'trash']
+
+export function wooTargetStatus(ctx: Pick<FulfillContext, 'order' | 'settings'>): string | null {
+  const status = ctx.order.status
+  // With "fulfil on ship" the shipped order is marked Completed (with the tracking note) instead.
+  if (status === 'SHIPPED' && ctx.settings?.fulfill_on_ship) return 'completed'
+  return WOO_STATUS[status] ?? null
+}
+
+/** What goes back into the store's stock: only when the store keeps its own count. */
+export function wooRestockLines(ctx: Pick<FulfillContext, 'settings' | 'restock_lines'>, target: string): RestockLine[] {
+  if (ctx.settings?.inventory_sync || !['returned', 'partial-delivered', 'delivered', 'returning'].includes(target)) return []
+  return (ctx.restock_lines ?? []).filter((l) => l.quantity > 0)
+}
+const sameRestock = (a: RestockLine[] | null | undefined, b: RestockLine[]) =>
+  JSON.stringify((a ?? []).map((l) => [l.external_variant_id, l.sku, l.quantity])) === JSON.stringify(b.map((l) => [l.external_variant_id, l.sku, l.quantity]))
+
+/**
+ * Sets the WooCommerce order to our status through the plugin (which adds the statuses
+ * WooCommerce lacks and puts returned items back in stock, once per line). Without the
+ * plugin, WooCommerce's nearest own status is used and the rest is written as an order note.
+ * Nothing is sent when the store already shows it; a cancelled store order is not reopened.
+ */
+async function wooStatusStep(job: Job, ctx: FulfillContext, rpc: Rpc, woo: () => WooPort): Promise<Outcome> {
+  const save = (p: Record<string, unknown>) => rpc('channel_order_sync_update', { p_order_id: job.ref_id, p })
+  const target = wooTargetStatus(ctx)
+  if (!target || ctx.settings?.status_sync === false) return { outcome: 'DONE', result: { store_status: 'unchanged' } }
+  const restock = wooRestockLines(ctx, target)
+  if (ctx.sync?.store_status === target && sameRestock(ctx.sync.store_restock, restock)) {
+    return { outcome: 'DONE', result: { store_status: target, already: true } }
+  }
+  const label = target.replace(/-/g, ' ')
+  const note = ctx.order.merged_into ? `${label} (merged into ${ctx.order.merged_into})` : label
+  try {
+    const r = await woo().pluginOrderStatus({ order_id: ctx.order.external_order_id, status: target, note, stock_sync: !!ctx.settings?.inventory_sync, restock })
+    await save({ store_status: r.status, store_status_error: '', store_restock: restock, restocked: r.restocked ?? [] })
+    return { outcome: 'DONE', result: { store_status: r.status, changed: r.changed, restocked: (r.restocked ?? []).reduce((n, x) => n + (x.added ?? 0), 0) } }
+  } catch (error) {
+    const e = error as ChannelError
+    if (e instanceof ChannelError && e.code === 'NO_PLUGIN') return wooStatusWithoutPlugin(job, ctx, target, rpc, woo)
+    const message = e.message
+    // The store refused for good (a cancelled order is not reopened, an unknown status): say so, do not retry.
+    if (e instanceof ChannelError && (e.status === 409 || e.status === 422 || e.status === 404)) {
+      await save({ store_status_error: message })
+      return { outcome: 'DONE', result: { store_status: 'refused', error: message } }
+    }
+    if (retryable(error)) {
+      await save({ store_status_error: `${message} — will try again` })
+      return { outcome: 'RETRY', error: message }
+    }
+    await save({ store_status_error: message })
+    return { outcome: 'FAILED', error: message }
+  }
+}
+
+async function wooStatusWithoutPlugin(job: Job, ctx: FulfillContext, target: string, rpc: Rpc, woo: () => WooPort): Promise<Outcome> {
+  const save = (p: Record<string, unknown>) => rpc('channel_order_sync_update', { p_order_id: job.ref_id, p })
+  const native = WOO_NATIVE[target] ?? null
+  try {
+    const client = woo()
+    const state = await client.orderState(ctx.order.external_order_id)
+    const text = `Fullfilio: ${target.replace(/-/g, ' ')}`
+    if (WOO_FINAL.includes(state.status) && native !== 'cancelled') {
+      await save({ store_status_error: `The order is ${state.status} in WooCommerce, so it was not changed` })
+      return { outcome: 'DONE', result: { store_status: state.status } }
+    }
+    if (native && state.status !== native) await client.setStatus(ctx.order.external_order_id, native)
+    if (!state.notes.some((n) => n.note === text)) await client.addNote(ctx.order.external_order_id, text, false)
+    await save({ store_status: native ?? state.status, store_status_error: native === null || native !== target
+      ? 'Install or update the Fullfilio Connect plugin (1.1 or later) for the exact status and returned stock put back' : '', store_restock: [] })
+    return { outcome: 'DONE', result: { store_status: native ?? state.status, plugin: false } }
+  } catch (error) {
+    const message = (error as Error).message
+    if (retryable(error)) {
+      await save({ store_status_error: `${message} — will try again` })
+      return { outcome: 'RETRY', error: message }
+    }
+    await save({ store_status_error: message })
+    return { outcome: 'FAILED', error: message }
+  }
+}
+
+/**
+ * WooCommerce has no fulfilments: the order is marked Completed and the courier,
+ * tracking number and (real) tracking link go in an order note (see wooFulfillJob).
+ */
+async function wooFulfilStep(job: Job, ctx: FulfillContext, rpc: Rpc, woo: () => WooPort, opts: ChannelOpts): Promise<Outcome> {
   const f = ctx.fulfillment
   const save = (p: Record<string, unknown>) => rpc('channel_fulfillment_update', { p_order_id: job.ref_id, p })
   if (!f || f.status === 'FULFILLED' || f.status === 'SKIPPED') return { outcome: 'DONE', result: { skipped: f?.status ?? 'none' } }

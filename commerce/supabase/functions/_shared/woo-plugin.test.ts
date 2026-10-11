@@ -77,6 +77,10 @@ describe('unfinished checkouts', () => {
       completed_at: null,
     })
   })
+  it('accepts a checkout from plugin 1.0.0 that sent empty ad tags as [] (seen on a real store)', () => {
+    const raw = { ...lead, attribution: { first_touch: { at: '2026-10-11T01:11:00Z', landing: '/checkout/', referrer: null, params: [] }, last_touch: null } }
+    expect(pluginEventSchema.safeParse({ type: 'lead', data: raw }).success).toBe(true)
+  })
   it('event schema rejects unknown types and bad ids', () => {
     expect(pluginEventSchema.safeParse({ type: 'lead', data: { ...lead, id: 'x' } }).success).toBe(false)
     expect(pluginEventSchema.safeParse({ type: 'delete_everything', data: {} }).success).toBe(false)

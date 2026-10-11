@@ -246,6 +246,232 @@ function wc_get_order_statuses() {
 	return apply_filters( 'wc_order_statuses', array( 'wc-pending' => 'Pending payment', 'wc-processing' => 'Processing', 'wc-on-hold' => 'On hold', 'wc-completed' => 'Completed', 'wc-cancelled' => 'Cancelled', 'wc-refunded' => 'Refunded', 'wc-failed' => 'Failed' ) );
 }
 
+function wc_get_order_status_name( $status ) {
+	$all = wc_get_order_statuses();
+	$key = 'wc-' . preg_replace( '/^wc-/', '', $status );
+	return isset( $all[ $key ] ) ? $all[ $key ] : $status;
+}
+
+// ---------------------------------------------------------------- products + stock --------------
+/** A product or one variation, with the stock calls WooCommerce has. */
+class WC_Product_Standin {
+	public $product_id;
+	public $variation_id;
+	public function __construct( $product_id, $variation_id = 0 ) {
+		$this->product_id   = (int) $product_id;
+		$this->variation_id = (int) $variation_id;
+	}
+	private function row() {
+		$p = standin_get( 'products', $this->product_id );
+		if ( $p && $this->variation_id ) {
+			foreach ( $p['variations'] as $v ) {
+				if ( (int) $v['id'] === $this->variation_id ) {
+					return array_merge( $v, array( 'name' => $p['name'] . ' - ' . $v['attributes'][0]['option'], 'type' => 'variation' ) );
+				}
+			}
+			return null;
+		}
+		return $p;
+	}
+	public function exists() {
+		return null !== $this->row();
+	}
+	public function get_id() {
+		return $this->variation_id ? $this->variation_id : $this->product_id;
+	}
+	public function get_parent_id() {
+		return $this->variation_id ? $this->product_id : 0;
+	}
+	public function get_name() {
+		$r = $this->row();
+		return $r ? $r['name'] : '';
+	}
+	public function get_sku() {
+		$r = $this->row();
+		return $r ? (string) $r['sku'] : '';
+	}
+	public function is_type( $type ) {
+		$r = $this->row();
+		return $r && $r['type'] === $type;
+	}
+	public function get_children() {
+		$r = $this->row();
+		return $r && 'variable' === $r['type'] ? wp_list_pluck( $r['variations'], 'id' ) : array();
+	}
+	public function managing_stock() {
+		$r = $this->row();
+		return $r && ! empty( $r['manage_stock'] );
+	}
+	public function get_stock_quantity() {
+		$r = $this->row();
+		return $r && null !== $r['stock_quantity'] ? (int) $r['stock_quantity'] : null;
+	}
+	/** Adds $by (negative takes off) and saves; fires product.updated like WooCommerce. */
+	public function change_stock( $by ) {
+		$p = standin_get( 'products', $this->product_id );
+		if ( $this->variation_id ) {
+			foreach ( $p['variations'] as $i => $v ) {
+				if ( (int) $v['id'] === $this->variation_id ) {
+					$p['variations'][ $i ]['stock_quantity'] = (int) $v['stock_quantity'] + $by;
+					standin_put( 'products', $p['id'], $p );
+					standin_fire_webhooks( 'product.updated', array_merge( standin_product_rest( $p, $p['variations'][ $i ] ), array( 'parent_id' => $p['id'] ) ) );
+					return $p['variations'][ $i ]['stock_quantity'];
+				}
+			}
+			return null;
+		}
+		$p['stock_quantity'] = (int) $p['stock_quantity'] + $by;
+		standin_put( 'products', $p['id'], $p );
+		standin_fire_webhooks( 'product.updated', standin_product_rest( $p ) );
+		return $p['stock_quantity'];
+	}
+}
+
+function wc_get_product( $id ) {
+	$id = (int) $id;
+	if ( standin_get( 'products', $id ) ) {
+		return new WC_Product_Standin( $id );
+	}
+	foreach ( standin_all( 'products' ) as $p ) {
+		foreach ( $p['variations'] as $v ) {
+			if ( (int) $v['id'] === $id ) {
+				return new WC_Product_Standin( $p['id'], $id );
+			}
+		}
+	}
+	return false;
+}
+
+function wc_get_products( $args = array() ) {
+	return array_map( static function ( $p ) { return new WC_Product_Standin( $p['id'] ); }, array_reverse( standin_all( 'products' ) ) );
+}
+
+/** Like wc_update_product_stock( $product, $n, 'increase' | 'decrease' ): returns the new count. */
+function wc_update_product_stock( $product, $n, $operation = 'set' ) {
+	if ( ! $product || ! $product->managing_stock() ) {
+		return null;
+	}
+	$now = (int) $product->get_stock_quantity();
+	$by  = 'increase' === $operation ? (int) $n : ( 'decrease' === $operation ? -(int) $n : (int) $n - $now );
+	return $product->change_stock( $by );
+}
+
+/** An order line, stored inside the order (line_items[i]); item meta like WooCommerce's. */
+class WC_Order_Item_Product {
+	private $order_id;
+	private $index;
+	private $line;
+	public function __construct( $order_id, $index, $line ) {
+		$this->order_id = (int) $order_id;
+		$this->index    = (int) $index;
+		$this->line     = $line;
+	}
+	public function get_id() {
+		return (int) $this->line['id'];
+	}
+	public function get_product_id() {
+		return (int) $this->line['product_id'];
+	}
+	public function get_variation_id() {
+		return (int) $this->line['variation_id'];
+	}
+	public function get_name() {
+		return $this->line['name'];
+	}
+	public function get_quantity() {
+		return (int) $this->line['quantity'];
+	}
+	public function get_product() {
+		$p = new WC_Product_Standin( $this->line['product_id'], $this->line['variation_id'] );
+		return $p->exists() ? $p : false;
+	}
+	public function get_meta( $key, $single = true ) {
+		foreach ( $this->line['meta_data'] as $m ) {
+			if ( $m['key'] === $key ) {
+				return $m['value'];
+			}
+		}
+		return '';
+	}
+	public function update_meta_data( $key, $value ) {
+		foreach ( $this->line['meta_data'] as $i => $m ) {
+			if ( $m['key'] === $key ) {
+				$this->line['meta_data'][ $i ]['value'] = $value;
+				return;
+			}
+		}
+		$this->line['meta_data'][] = array( 'id' => count( $this->line['meta_data'] ) + 1, 'key' => $key, 'value' => $value );
+	}
+	public function delete_meta_data( $key ) {
+		$this->line['meta_data'] = array_values( array_filter( $this->line['meta_data'], static function ( $m ) use ( $key ) { return $m['key'] !== $key; } ) );
+	}
+	public function save() {
+		$o = standin_get( 'orders', $this->order_id );
+		$o['line_items'][ $this->index ] = $this->line;
+		standin_put( 'orders', $this->order_id, $o );
+	}
+}
+
+/** Like wc_maybe_reduce_stock_levels: once per order, on processing / on-hold / completed. */
+function standin_reduce_stock( $order_id ) {
+	$order = wc_get_order( $order_id );
+	if ( ! $order || $order->get_meta( '_order_stock_reduced' ) ) {
+		return;
+	}
+	$changes = array();
+	foreach ( $order->get_items() as $item ) {
+		$product = $item->get_product();
+		if ( ! $product || ! $product->managing_stock() || $item->get_meta( '_reduced_stock' ) ) {
+			continue;
+		}
+		$from = $product->get_stock_quantity();
+		$to   = wc_update_product_stock( $product, $item->get_quantity(), 'decrease' );
+		$item->update_meta_data( '_reduced_stock', $item->get_quantity() );
+		$item->save();
+		$changes[] = $item->get_name() . ' ' . $from . '→' . $to;
+	}
+	$order = wc_get_order( $order_id );
+	$order->update_meta_data( '_order_stock_reduced', 'yes' );
+	$order->save();
+	if ( $changes ) {
+		$order->add_order_note( 'Stock levels reduced: ' . implode( ', ', $changes ) );
+	}
+}
+
+/** Like wc_maybe_increase_stock_levels: on cancelled, only what was taken off, unless a plugin says no. */
+function standin_restore_stock( $order_id ) {
+	$order = wc_get_order( $order_id );
+	if ( ! $order || ! $order->get_meta( '_order_stock_reduced' ) ) {
+		return;
+	}
+	if ( ! apply_filters( 'woocommerce_can_restore_order_stock', true, $order ) ) {
+		return;
+	}
+	$changes = array();
+	foreach ( wc_get_order( $order_id )->get_items() as $item ) {
+		$product = $item->get_product();
+		$reduced = (int) $item->get_meta( '_reduced_stock' );
+		if ( ! $product || ! $product->managing_stock() || $reduced <= 0 ) {
+			continue;
+		}
+		$from = $product->get_stock_quantity();
+		$to   = wc_update_product_stock( $product, $reduced, 'increase' );
+		$item->delete_meta_data( '_reduced_stock' );
+		$item->save();
+		$changes[] = $item->get_name() . ' ' . $from . '→' . $to;
+	}
+	$order = wc_get_order( $order_id );
+	$order->update_meta_data( '_order_stock_reduced', '' );
+	$order->save();
+	if ( $changes ) {
+		$order->add_order_note( 'Stock levels increased: ' . implode( ', ', $changes ) );
+	}
+}
+foreach ( array( 'processing', 'on-hold', 'completed' ) as $standin_st ) {
+	add_action( 'woocommerce_order_status_' . $standin_st, 'standin_reduce_stock' );
+}
+add_action( 'woocommerce_order_status_cancelled', 'standin_restore_stock' );
+
 // ---------------------------------------------------------------- orders ------------------------
 class WC_Order {
 	public $data;
@@ -305,6 +531,29 @@ class WC_Order {
 	public function save() {
 		standin_put( 'orders', $this->get_id(), $this->data );
 	}
+	public function get_edit_order_url() {
+		return admin_url( 'post.php?post=' . $this->get_id() . '&action=edit' );
+	}
+	public function get_items() {
+		$out = array();
+		foreach ( $this->data['line_items'] as $i => $line ) {
+			$out[ (int) $line['id'] ] = new WC_Order_Item_Product( $this->get_id(), $i, $line );
+		}
+		return $out;
+	}
+	public function add_order_note( $note, $is_customer_note = 0 ) {
+		return standin_put( 'notes', null, array( 'order_id' => $this->get_id(), 'note' => (string) $note, 'customer_note' => (bool) $is_customer_note ) );
+	}
+	/** Like WC_Order::update_status( $to, $note ): note first, then the status with its hooks. */
+	public function update_status( $to, $note = '' ) {
+		$fresh      = wc_get_order( $this->get_id() );
+		$this->data = $fresh->data;
+		$from       = $this->data['status'];
+		$to         = preg_replace( '/^wc-/', '', $to );
+		$this->add_order_note( trim( $note . ' ' . sprintf( 'Order status changed from %s to %s.', wc_get_order_status_name( $from ), wc_get_order_status_name( $to ) ) ) );
+		$this->set_status_and_save( $to );
+		return true;
+	}
 	/** Like WC_Order::set_status + save: fires the status hooks and the order.updated webhook. */
 	public function set_status_and_save( $to ) {
 		$from = $this->data['status'];
@@ -327,13 +576,17 @@ function wc_get_order( $id ) {
 
 function standin_order_rest( WC_Order $o ) {
 	$d = $o->data;
+	// Like the REST API: hidden line item meta (keys starting with "_") is left out.
+	foreach ( $d['line_items'] as $i => $line ) {
+		$d['line_items'][ $i ]['meta_data'] = array_values( array_filter( $line['meta_data'], static function ( $m ) { return '_' !== substr( $m['key'], 0, 1 ); } ) );
+	}
 	return array_merge( $d, array( 'id' => $o->get_id(), 'number' => (string) $o->get_id() ) );
 }
 
 function standin_create_order( $data, $cart ) {
 	$lines = array();
 	foreach ( $cart->get_cart() as $line ) {
-		$lines[] = array( 'product_id' => $line['product_id'], 'variation_id' => $line['variation_id'], 'name' => $line['data']->get_name(), 'quantity' => $line['quantity'],
+		$lines[] = array( 'id' => 0, 'product_id' => $line['product_id'], 'variation_id' => $line['variation_id'], 'name' => $line['data']->get_name(), 'quantity' => $line['quantity'],
 			'subtotal' => wc_format_decimal( $line['line_total'] ), 'total' => wc_format_decimal( $line['line_total'] ), 'sku' => $line['data']->get_sku(), 'meta_data' => array(), 'image' => null );
 	}
 	$order = array(
@@ -349,6 +602,13 @@ function standin_create_order( $data, $cart ) {
 		'line_items' => $lines, 'meta_data' => array(),
 	);
 	$id    = standin_put( 'orders', null, $order );
+	// Line ids are unique store-wide in WooCommerce.
+	foreach ( $order['line_items'] as $i => $line ) {
+		$order['line_items'][ $i ]['id'] = $id * 100 + $i + 1;
+	}
+	standin_put( 'orders', $id, $order );
+	// The payment step puts a COD order in processing (bKash: on-hold), which takes the stock off.
+	standin_reduce_stock( $id );
 	$order = wc_get_order( $id );
 	do_action( 'woocommerce_checkout_order_created', $order );
 	do_action( 'woocommerce_new_order', $id, $order );

@@ -241,9 +241,13 @@ export default function OrderDetailPage() {
               <Copy className="mt-0.5 size-5 text-amber-600" />
               <div>
                 <p className="font-medium">
-                  {o.duplicate_reason === 'APPROVED' ? 'Maybe duplicate — this customer already has ' : 'Possible duplicate of '}
+                  {DUPLICATE_DONE.includes(related.data.status)
+                    ? 'This customer ordered before — '
+                    : o.duplicate_reason === 'APPROVED' ? 'Maybe duplicate — this customer already has ' : 'Possible duplicate of '}
                   <Link to={`/admin/orders/${related.data.id}`} className="font-mono underline">{related.data.order_number}</Link>
-                  {o.duplicate_reason === 'APPROVED' && ' in Approved Orders'}
+                  {DUPLICATE_DONE.includes(related.data.status)
+                    ? ` is already ${ORDER_STATUS[related.data.status as OrderStatus].label.toLowerCase()}, so this is most likely a new order`
+                    : o.duplicate_reason === 'APPROVED' && ' in Approved Orders'}
                 </p>
                 <p className="text-muted-foreground">
                   {related.data.customer_name} · <Money value={related.data.total_amount} /> · {formatDateTime(related.data.created_at)} · {ORDER_STATUS[related.data.status as OrderStatus].label}
@@ -925,19 +929,30 @@ const NOTIFY_LABEL: Record<string, string> = { REQUESTED: 'Shopify asked to e-ma
 const CANCEL_LABEL: Record<string, string> = { PENDING: 'Sending…', REQUESTED: 'Sent — waiting for Shopify', CONFIRMED: 'Cancelled on Shopify', FAILED: 'Failed', SKIPPED: 'Not sent' }
 const SHOPIFY_EVENT_LABEL: Record<string, string> = { ATTEMPTED_DELIVERY: 'Delivery attempted', FAILURE: 'Returned / failed', DELIVERED: 'Delivered' }
 
-/** What this app has told Shopify about the order (besides the fulfilment). */
-function ShopifySyncRows({ s, canRetry, onRetry, busy }: { s: NonNullable<OrderChannelInfo['sync']>; canRetry: boolean; onRetry: () => void; busy: boolean }) {
-  const failed = s.cancel_status === 'FAILED' || s.paid_status === 'FAILED' || !!s.tag_error || !!s.event_error
-  const errors = [s.cancel_status === 'FAILED' && s.cancel_error, s.paid_status === 'FAILED' && s.paid_error, s.tag_error, s.event_error].filter(Boolean) as string[]
-  if (!s.cancel_status && !s.paid_status && !s.status_tag && !Object.keys(s.events ?? {}).length) return null
+/** An earlier order that already reached the customer (or came back) is a repeat order, not a duplicate. */
+const DUPLICATE_DONE = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURN_REQUESTED', 'RETURNING', 'RETURNED', 'FAILED_DELIVERY', 'LOST', 'CANCELLED', 'REJECTED_FRAUD']
+
+const STORE_STATUS_LABEL: Record<string, string> = {
+  confirmed: 'Confirmed', shipped: 'Shipped', delivered: 'Delivered', 'partial-delivered': 'Partially delivered', returning: 'Return in transit',
+  returned: 'Returned', cancelled: 'Cancelled', processing: 'Processing', completed: 'Completed', 'on-hold': 'On hold',
+}
+
+/** What this app has told the store about the order (besides the fulfilment). */
+function ShopifySyncRows({ s, store, canRetry, onRetry, busy }: { s: NonNullable<OrderChannelInfo['sync']>; store: string; canRetry: boolean; onRetry: () => void; busy: boolean }) {
+  const failed = s.cancel_status === 'FAILED' || s.paid_status === 'FAILED' || !!s.tag_error || !!s.event_error || !!s.store_status_error
+  const errors = [s.cancel_status === 'FAILED' && s.cancel_error, s.paid_status === 'FAILED' && s.paid_error, s.tag_error, s.event_error, s.store_status_error].filter(Boolean) as string[]
+  const restocked = (s.store_restock ?? []).filter((l) => l.quantity > 0)
+  if (!s.cancel_status && !s.paid_status && !s.status_tag && !Object.keys(s.events ?? {}).length && !s.store_status && !s.store_status_error) return null
   return (
     <div className="space-y-1.5 border-t pt-2">
+      {s.store_status && <Row label={`${store} status`} value={<span title={s.store_status_at ? formatDateTime(s.store_status_at) : undefined}>{STORE_STATUS_LABEL[s.store_status] ?? titleCase(s.store_status)}</span>} />}
+      {restocked.length > 0 && <Row label={`Back in ${store} stock`} value={<span className="text-xs">{restocked.map((l) => `${l.quantity} × ${l.name ?? l.sku ?? 'item'}`).join(', ')}</span>} />}
       {s.status_tag && <Row label="Shopify tag" value={<span className="text-xs">{s.status_tag}</span>} />}
       {s.cancel_status && <Row label="Cancel" value={<span title={s.cancel_error ?? undefined}>{CANCEL_LABEL[s.cancel_status] ?? s.cancel_status}{s.cancel_status !== 'FAILED' && s.restocked_in_store === false ? ' · stock handled here' : ''}</span>} />}
       {s.paid_status && <Row label="Paid on Shopify" value={s.paid_status === 'MARKED' ? <span className="inline-flex items-center gap-1"><Check className="size-3.5" /> {s.paid_at ? formatDateTime(s.paid_at) : 'Yes'}</span> : DELIVERED_LABEL[s.paid_status] ?? s.paid_status} />}
       {Object.keys(s.events ?? {}).length > 0 && <Row label="Courier updates" value={Object.keys(s.events).map((k) => SHOPIFY_EVENT_LABEL[k] ?? k).join(', ')} />}
       {errors.map((e) => <p key={e} className="rounded-md bg-muted/60 p-2 text-xs">{e}</p>)}
-      {failed && canRetry && <Button size="sm" variant="outline" onClick={onRetry} disabled={busy}>{busy ? <Spinner /> : <RefreshCw />} Send to Shopify again</Button>}
+      {failed && canRetry && <Button size="sm" variant="outline" onClick={onRetry} disabled={busy}>{busy ? <Spinner /> : <RefreshCw />} Send to {store} again</Button>}
     </div>
   )
 }
@@ -964,7 +979,7 @@ function ChannelOrderCard({ orderId, status }: { orderId: string; status?: strin
   })
   const syncRetry = useMutation({
     mutationFn: () => retryOrderSync(orderId),
-    onSuccess: () => { toast.success('Sending to Shopify again'); qc.invalidateQueries({ queryKey: ['order-channel-info', orderId] }) },
+    onSuccess: () => { toast.success('Sending again'); qc.invalidateQueries({ queryKey: ['order-channel-info', orderId] }) },
     onError: (e: Error) => toast.error(e.message),
   })
   const c = info.data
@@ -981,10 +996,13 @@ function ChannelOrderCard({ orderId, status }: { orderId: string; status?: strin
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        {!mine && !others.length && (
+        {!mine && !others.length && c.channel.platform === 'SHOPIFY' && (
           <p className="text-muted-foreground">
             {c.channel.fulfill_on_ship ? 'Fulfilled on Shopify automatically when this order is marked Shipped.' : 'Automatic fulfilment is turned off for this store.'}
           </p>
+        )}
+        {!mine && !others.length && c.channel.platform !== 'SHOPIFY' && !c.sync?.store_status && !c.sync?.store_status_error && (
+          <p className="text-muted-foreground">The WooCommerce order follows this order from Confirmed on (Shipped, Delivered, Returned, Cancelled…).</p>
         )}
         {mine && (
           <div className="space-y-1.5">
@@ -1018,7 +1036,7 @@ function ChannelOrderCard({ orderId, status }: { orderId: string; status?: strin
           </div>
         )}
         {c.merged_into && <p className="text-xs text-muted-foreground">Merged into {c.merged_into}: this Shopify order is updated together with it (shipped, delivered, cancelled).</p>}
-        {c.sync && <ShopifySyncRows s={c.sync} canRetry={can('orders.update')} onRetry={() => syncRetry.mutate()} busy={syncRetry.isPending} />}
+        {c.sync && <ShopifySyncRows s={c.sync} store={c.channel.platform === 'SHOPIFY' ? 'Shopify' : 'WooCommerce'} canRetry={can('orders.update')} onRetry={() => syncRetry.mutate()} busy={syncRetry.isPending} />}
         {others.length > 0 && (
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Fulfilled in Shopify directly</p>

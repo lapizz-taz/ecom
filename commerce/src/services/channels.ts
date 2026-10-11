@@ -136,7 +136,7 @@ export interface SyncOverview {
     first_sync_at: string | null; catalog_items: number; shop_domain?: string; last_error?: string | null
     scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS' | 'TWO_WAY'; fulfill_on_ship: boolean; notify_customer: boolean
       fulfill_without_tracking: boolean; auto_import_products: boolean; mark_delivered: boolean
-      cancel_on_shopify: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; update_products: boolean } }
+      cancel_on_shopify: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; update_products: boolean; status_sync?: boolean } }
   items: SyncItem[]
   unmapped: Array<{ external_variant_id: string; sku: string | null; title: string; status: string | null; available: number | null
     reason: 'NO_SKU' | 'DUPLICATE_SKU_SHOPIFY' | 'DUPLICATE_SKU_HERE' | 'NO_MATCH' }>
@@ -146,7 +146,7 @@ export interface SyncOverview {
   fulfillments: Array<{ order_id: string; order_number: string; status: string; source: string; courier: string | null; tracking_number: string | null
     tracking_url: string | null; notification_status: string | null; last_error: string | null; created_at: string; fulfilled_at: string | null
     delivered_status: DeliveredStatus | null; delivered_at: string | null; delivered_error: string | null
-    cancel_status?: string | null; paid_status?: string | null; status_tag?: string | null }>
+    cancel_status?: string | null; paid_status?: string | null; status_tag?: string | null; store_status?: string | null }>
 }
 export type DeliveredStatus = 'PENDING' | 'MARKED' | 'FAILED' | 'SKIPPED'
 
@@ -201,7 +201,10 @@ export interface OrderChannelInfo {
   merged_into?: string | null
   sync?: { cancel_status: string | null; cancel_error: string | null; cancel_requested_at: string | null; cancel_confirmed_at: string | null; restocked_in_store: boolean | null
     paid_status: string | null; paid_error: string | null; paid_at: string | null; status_tag: string | null; tag_error: string | null
-    events: Record<string, string>; event_error: string | null; updated_at: string } | null
+    events: Record<string, string>; event_error: string | null; updated_at: string
+    /** WooCommerce: the status last set on the store order, and items put back in its stock (per line, cumulative). */
+    store_status?: string | null; store_status_error?: string | null; store_status_at?: string | null
+    store_restock?: Array<{ external_variant_id: string | null; sku: string | null; name: string | null; quantity: number }> | null } | null
   job: { status: string; attempts: number; next_attempt_at: string; last_error: string | null } | null
 }
 export async function retryOrderSync(orderId: string) {

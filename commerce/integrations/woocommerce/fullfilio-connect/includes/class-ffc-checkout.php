@@ -147,7 +147,8 @@ class FFC_Checkout {
 				'at'       => isset( $touch['at'] ) ? substr( sanitize_text_field( (string) $touch['at'] ), 0, 40 ) : gmdate( 'c' ),
 				'landing'  => isset( $touch['landing'] ) ? substr( esc_url_raw( (string) $touch['landing'] ), 0, 300 ) : '',
 				'referrer' => isset( $touch['referrer'] ) ? substr( esc_url_raw( (string) $touch['referrer'] ), 0, 300 ) : null,
-				'params'   => $params,
+				// An object even when empty: an empty PHP array would be sent as a JSON list.
+				'params'   => (object) $params,
 			);
 		};
 		$cookie = static function ( $name ) {

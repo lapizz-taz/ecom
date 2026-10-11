@@ -361,11 +361,11 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
   })
   const edit = can('settings.manage')
   type Key = 'fulfill_on_ship' | 'notify_customer' | 'fulfill_without_tracking' | 'inventory_sync' | 'auto_import_products' | 'mark_delivered'
-    | 'cancel_on_shopify' | 'mark_paid_on_delivery' | 'status_tags' | 'courier_events' | 'update_products'
+    | 'cancel_on_shopify' | 'mark_paid_on_delivery' | 'status_tags' | 'courier_events' | 'update_products' | 'status_sync'
   const row = (label: string, hint: string, key: Key) => (
     <label className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
       <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{hint}</span></span>
-      <Switch checked={s[key]} disabled={!edit} onCheckedChange={(v) => setS((x) => ({ ...x, [key]: v }))} />
+      <Switch checked={!!s[key]} disabled={!edit} onCheckedChange={(v) => setS((x) => ({ ...x, [key]: v }))} />
     </label>
   )
   return (
@@ -391,6 +391,15 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
             {row('Mark paid when delivered', 'Cash-on-delivery orders show Paid on Shopify once the courier delivers', 'mark_paid_on_delivery')}
             {row('Show our status as a tag', 'Adds "Fullfilio: Confirmed / Shipped / Delivered / Returned …" to the Shopify order once everything is in step ("Fullfilio: needs attention" if something failed)', 'status_tags')}
             {row('Send courier updates', 'Failed delivery and returned parcels show on the Shopify fulfilment', 'courier_events')}
+          </>}
+          {o.channel.platform === 'WOOCOMMERCE' && <>
+            <p className="pt-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Order status on WooCommerce</p>
+            {row('Order status follows this app', 'Confirmed, Shipped, Delivered, Partially delivered, Return in transit, Returned and Cancelled are set on the WooCommerce order (needs the Fullfilio Connect plugin 1.1 or later for the exact statuses)', 'status_sync')}
+            <p className="px-1 text-xs text-muted-foreground">
+              {s.inventory_sync
+                ? 'Stock: this app keeps the count and sets it on WooCommerce, so WooCommerce does not put items back on its own when an order is cancelled.'
+                : 'Stock: WooCommerce keeps its own count. A cancel puts items back the WooCommerce way; returned items and the undelivered part of a partial delivery are put back by the plugin, once.'}
+            </p>
           </>}
         </div>
         <div className="grid content-start gap-2">

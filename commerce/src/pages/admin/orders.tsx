@@ -825,14 +825,28 @@ function IncompleteCheckouts({ q }: { q: string }) {
   )
 }
 
-/** "Maybe duplicate", or "Already approved #…" when the customer has an order in Approved Orders. */
+const DUPLICATE_DONE = ['DELIVERED', 'PARTIALLY_DELIVERED', 'RETURN_REQUESTED', 'RETURNING', 'RETURNED', 'FAILED_DELIVERY', 'LOST', 'CANCELLED', 'REJECTED_FRAUD']
+
+/**
+ * "Maybe duplicate #… · status", or "Already approved #…" when the customer has an order in Approved Orders.
+ * When that other order is already delivered, returned or cancelled, it is a repeat order: shown as "Ordered before".
+ */
 function DuplicateBadge({ o }: { o: OrderListItem }) {
   if (o.duplicate_status !== 'SUSPECTED') return null
   const approved = o.duplicate_reason === 'APPROVED'
+  const st = o.duplicate_of_status ? (ORDER_STATUS[o.duplicate_of_status as OrderStatus]?.label ?? titleCase(o.duplicate_of_status.toLowerCase().replace(/_/g, ' '))) : null
+  const num = o.duplicate_of_number ?? ''
+  if (o.duplicate_of_status && DUPLICATE_DONE.includes(o.duplicate_of_status)) {
+    return (
+      <Badge variant="outline" className="gap-0.5 text-[10px]" title={`This customer ordered before: ${num} is ${st?.toLowerCase()}. Most likely a new order.`}>
+        <Copy className="size-3" /> Ordered before {num} · {st}
+      </Badge>
+    )
+  }
   return (
     <Badge variant="warning" className="gap-0.5 text-[10px]"
-      title={approved ? `This customer already has ${o.duplicate_of_number} in Approved Orders${o.duplicate_of_status ? ` (${o.duplicate_of_status.toLowerCase().replace(/_/g, ' ')})` : ''}` : `Possible duplicate of ${o.duplicate_of_number ?? 'another order'}`}>
-      <Copy className="size-3" /> {approved ? `Already approved ${o.duplicate_of_number ?? ''}` : `Maybe duplicate${o.duplicate_of_number ? ` ${o.duplicate_of_number}` : ''}`}
+      title={approved ? `This customer already has ${num} in Approved Orders${st ? ` (${st.toLowerCase()})` : ''}` : `Possible duplicate of ${num || 'another order'}${st ? ` (${st.toLowerCase()})` : ''}`}>
+      <Copy className="size-3" /> {approved ? `Already approved ${num}` : `Maybe duplicate${num ? ` ${num}` : ''}`}{st ? ` · ${st}` : ''}
     </Badge>
   )
 }

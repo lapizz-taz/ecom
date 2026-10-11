@@ -7,18 +7,36 @@
  *   through the WooCommerce REST API, so it always takes WooCommerce's own
  *   copy; WooCommerce webhooks keep running as a second path. Both carry the
  *   same order id, and Fullfilio imports an order only once.
- * - Two statuses courier work needs and WooCommerce lacks: Delivered and
- *   Returned. Fullfilio sets them when the courier reports it.
+ * - Fullfilio sets the order's status here as the order moves on there:
+ *   Confirmed, Shipped, Delivered, Partially delivered, Return in transit,
+ *   Returned, Cancelled. WooCommerce has no such statuses, so this plugin adds
+ *   them. A status Fullfilio sets is not sent back to it.
+ * - Stock that comes back (a return, the undelivered part of a partial
+ *   delivery) is handled by FFC_Stock.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 class FFC_Orders {
+	/** True while Fullfilio's own status is being written, so it is not sent back. */
+	private static $applying = false;
+
 	public static function statuses() {
 		return array(
-			'wc-delivered' => _x( 'Delivered', 'Order status', 'fullfilio-connect' ),
-			'wc-returned'  => _x( 'Returned', 'Order status', 'fullfilio-connect' ),
+			'wc-confirmed'         => _x( 'Confirmed', 'Order status', 'fullfilio-connect' ),
+			'wc-shipped'           => _x( 'Shipped', 'Order status', 'fullfilio-connect' ),
+			'wc-delivered'         => _x( 'Delivered', 'Order status', 'fullfilio-connect' ),
+			'wc-partial-delivered' => _x( 'Partially delivered', 'Order status', 'fullfilio-connect' ),
+			'wc-returning'         => _x( 'Return in transit', 'Order status', 'fullfilio-connect' ),
+			'wc-returned'          => _x( 'Returned', 'Order status', 'fullfilio-connect' ),
 		);
+	}
+
+	/** Statuses Fullfilio may set: ours plus WooCommerce's own. */
+	public static function settable() {
+		return array_merge( array( 'processing', 'on-hold', 'completed', 'cancelled' ), array_map( static function ( $k ) {
+			return substr( $k, 3 );
+		}, array_keys( self::statuses() ) ) );
 	}
 
 	public static function init() {
@@ -28,6 +46,7 @@ class FFC_Orders {
 			add_action( 'init', array( __CLASS__, 'register_statuses' ) );
 			add_filter( 'wc_order_statuses', array( __CLASS__, 'add_statuses' ) );
 			add_filter( 'woocommerce_reports_order_statuses', array( __CLASS__, 'report_statuses' ) );
+			add_filter( 'woocommerce_order_is_paid_statuses', array( __CLASS__, 'paid_statuses' ) );
 		}
 	}
 
@@ -48,24 +67,34 @@ class FFC_Orders {
 		}
 	}
 
-	/** Shown after Completed in the status list. */
+	/** Confirmed and Shipped after Processing, the rest after Completed. */
 	public static function add_statuses( $statuses ) {
-		$out = array();
+		$ours  = self::statuses();
+		$early = array_intersect_key( $ours, array_flip( array( 'wc-confirmed', 'wc-shipped' ) ) );
+		$late  = array_diff_key( $ours, $early );
+		$out   = array();
 		foreach ( $statuses as $key => $label ) {
 			$out[ $key ] = $label;
+			if ( 'wc-processing' === $key ) {
+				$out = array_merge( $out, $early );
+			}
 			if ( 'wc-completed' === $key ) {
-				$out = array_merge( $out, self::statuses() );
+				$out = array_merge( $out, $late );
 			}
 		}
-		return array_merge( $out, self::statuses() );
+		return array_merge( $out, $ours );
 	}
 
-	/** Delivered orders count as sales in WooCommerce's own reports. */
+	/** Orders on their way or delivered count as sales in WooCommerce's own reports. */
 	public static function report_statuses( $statuses ) {
 		if ( is_array( $statuses ) && in_array( 'completed', $statuses, true ) ) {
-			$statuses[] = 'delivered';
+			$statuses = array_merge( $statuses, array( 'confirmed', 'shipped', 'delivered', 'partial-delivered' ) );
 		}
-		return $statuses;
+		return array_values( array_unique( (array) $statuses ) );
+	}
+
+	public static function paid_statuses( $statuses ) {
+		return array_values( array_unique( array_merge( (array) $statuses, array( 'delivered', 'partial-delivered' ) ) ) );
 	}
 
 	public static function created( $order_id, $order = null ) {
@@ -80,9 +109,62 @@ class FFC_Orders {
 	}
 
 	public static function status_changed( $order_id, $from, $to, $order = null ) {
-		if ( ! FFC_Settings::enabled( 'order_events' ) || $from === $to ) {
+		if ( self::$applying || ! FFC_Settings::enabled( 'order_events' ) || $from === $to ) {
 			return;
 		}
 		FFC_Outbox::push( 'order', array( 'order_id' => (int) $order_id, 'event' => 'status', 'from' => $from, 'status' => $to ) );
+	}
+
+	/**
+	 * Fullfilio's update for one order: its status here, and the items that came
+	 * back to put in stock (cumulative per line; see FFC_Stock::restock()).
+	 *
+	 * @param array $input order_id, status, note?, restock?, stock_sync?
+	 * @return array|WP_Error
+	 */
+	public static function apply_from_fullfilio( $input ) {
+		$order_id = isset( $input['order_id'] ) ? absint( $input['order_id'] ) : 0;
+		$status   = isset( $input['status'] ) ? sanitize_key( (string) $input['status'] ) : '';
+		$order    = $order_id ? wc_get_order( $order_id ) : false;
+		if ( ! $order || 'shop_order_refund' === $order->get_type() ) {
+			return new WP_Error( 'ffc_no_order', 'Order not found.', array( 'status' => 404 ) );
+		}
+		if ( ! in_array( $status, self::settable(), true ) || ! array_key_exists( 'wc-' . $status, wc_get_order_statuses() ) ) {
+			return new WP_Error( 'ffc_status', sprintf( 'Unknown order status "%s". Turn on "Order statuses" in Fullfilio.', $status ), array( 'status' => 422 ) );
+		}
+		if ( isset( $input['stock_sync'] ) ) {
+			FFC_Settings::save_config( array( 'stock_sync' => (bool) $input['stock_sync'] ) );
+		}
+
+		$from    = $order->get_status();
+		$changed = false;
+		if ( $from !== $status ) {
+			// A cancelled, refunded or failed order is not brought back by an update.
+			if ( in_array( $from, array( 'cancelled', 'refunded', 'failed', 'trash' ), true ) && 'cancelled' !== $status ) {
+				return new WP_Error( 'ffc_final', sprintf( 'The order is %s in WooCommerce, so it was not changed to %s.', $from, $status ), array( 'status' => 409 ) );
+			}
+			$note = isset( $input['note'] ) ? sanitize_text_field( (string) $input['note'] ) : '';
+			$app  = FFC_Settings::connection();
+			$who  = $app ? $app['app_name'] : 'Fullfilio';
+			self::$applying = true;
+			try {
+				$order->update_status( $status, trim( sprintf( '%s: %s', $who, $note ? $note : wc_get_order_status_name( $status ) ) ) );
+			} finally {
+				self::$applying = false;
+			}
+			$changed = true;
+		}
+
+		$restocked = array();
+		if ( ! empty( $input['restock'] ) && is_array( $input['restock'] ) ) {
+			$restocked = FFC_Stock::restock( wc_get_order( $order_id ), $input['restock'], 'returned' === $status ? 'return' : 'partial delivery' );
+		}
+		return array(
+			'ok'        => true,
+			'status'    => wc_get_order( $order_id )->get_status(),
+			'from'      => $from,
+			'changed'   => $changed,
+			'restocked' => $restocked,
+		);
 	}
 }

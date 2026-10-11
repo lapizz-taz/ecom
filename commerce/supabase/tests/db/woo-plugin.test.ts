@@ -25,63 +25,110 @@ async function storeOrder(db: Db, channelId: string, external: string) {
   return order.id
 }
 
-const pushes = (db: Db, orderId: string) =>
-  value<number>(db, `select count(*)::int from public.channel_status_pushes where order_id = $1`, [orderId])
+const jobs = (db: Db, orderId: string) =>
+  value<number>(db, `select count(*)::int from public.channel_sync_jobs where kind = 'FULFILL' and ref_id = $1 and status = 'PENDING'`, [orderId])
 
-describe('WooCommerce plugin: delivered / returned pushed to the store', () => {
-  it('queues one push when a store order is delivered, and none for other stores or with the switch off', () =>
+/** A store order before approval (as the importer leaves it). */
+async function newStoreOrder(db: Db, channelId: string, external: string, quantity = 2) {
+  const p = await createProduct(db, { price: 650, cost: 300, stock: 10 })
+  const order = await createOrder(db, { items: [{ variantId: p.variantIds[0], quantity }] })
+  await asSystem(db)
+  await db.query(`update public.orders set sales_channel_id = $2, external_order_id = $3 where id = $1`, [order.id, channelId, external])
+  await db.query(`delete from public.channel_sync_jobs where ref_id = $1`, [order.id])
+  return order.id
+}
+
+describe('WooCommerce orders follow ours (status and returned stock)', () => {
+  it('every status change of a store order queues the store update, unless status sync is off', () =>
     inTx(async (db) => {
       const woo = await store(db)
-      const o = await storeOrder(db, woo, '501')
-      await advanceOrder(db, o, ['DELIVERED'])
+      const o = await newStoreOrder(db, woo, '501')
+      await advanceOrder(db, o, ['FRAUD_CHECK', 'CONFIRMED'])
       await asSystem(db)
-      expect(await pushes(db, o)).toBe(1)
-      // Setting the status again (e.g. a correction) never queues a second push.
-      await db.query(`update public.orders set status = 'SHIPPED' where id = $1`, [o])
-      await db.query(`update public.orders set status = 'DELIVERED' where id = $1`, [o])
-      expect(await pushes(db, o)).toBe(1)
+      expect(await jobs(db, o)).toBe(1)
+      const ctx = await value<Record<string, any>>(db, `select public.channel_fulfillment_context($1)`, [o])
+      expect(ctx.order).toMatchObject({ status: 'CONFIRMED', external_order_id: '501' })
+      expect(ctx.settings).toMatchObject({ status_sync: true, fulfill_on_ship: false, inventory_sync: false })
+      expect(ctx.restock_lines).toEqual([])
 
-      const shop = await store(db, 'SHOPIFY')
-      const s = await storeOrder(db, shop, '601')
-      await advanceOrder(db, s, ['DELIVERED'])
+      const off = await store(db, 'WOOCOMMERCE', { status_sync: false })
+      const f = await newStoreOrder(db, off, '502')
+      await advanceOrder(db, f, ['FRAUD_CHECK', 'CONFIRMED'])
       await asSystem(db)
-      expect(await pushes(db, s)).toBe(0)
-
-      const off = await store(db, 'WOOCOMMERCE', { plugin_config: { custom_statuses: false } })
-      const f = await storeOrder(db, off, '701')
-      await advanceOrder(db, f, ['DELIVERED'])
-      await asSystem(db)
-      expect(await pushes(db, f)).toBe(0)
+      expect(await jobs(db, f)).toBe(0)
     }))
 
-  it('a failed push is retried later, then given up after a permanent error, with the order log telling why', () =>
+  it('items received back as good are queued for the store with their quantity, damaged ones are not', () =>
     inTx(async (db) => {
       const woo = await store(db)
-      const o = await storeOrder(db, woo, '502')
-      await advanceOrder(db, o, ['DELIVERED'])
+      const o = await newStoreOrder(db, woo, '503', 3)
+      await advanceOrder(db, o, TO_SHIPPED)
       await asSystem(db)
-      const due = await value<Array<Record<string, any>>>(db, `select public.channel_status_push_due(10)`)
-      const mine = due.find((d) => d.order_id === o)!
-      expect(mine).toMatchObject({ external_order_id: '502', target: 'delivered', attempts: 0 })
-
-      await db.query(`select public.channel_status_push_result($1, false, 'HTTP 503', true)`, [mine.id])
-      const after = await value<Record<string, any>>(db, `select to_jsonb(p) from public.channel_status_pushes p where id = $1`, [mine.id])
-      expect(after).toMatchObject({ status: 'PENDING', attempts: 1, last_error: 'HTTP 503' })
-      expect(new Date(after.next_at).getTime()).toBeGreaterThan(Date.now())
-      // Not due again straight away.
-      const again = await value<Array<Record<string, any>>>(db, `select public.channel_status_push_due(10)`)
-      expect(again.some((d) => d.id === mine.id)).toBe(false)
-
-      await db.query(`select public.channel_status_push_result($1, false, 'Order not found on the store', false)`, [mine.id])
-      expect(await value(db, `select status from public.channel_status_pushes where id = $1`, [mine.id])).toBe('FAILED')
-      expect(await value<number>(db, `select count(*)::int from public.order_status_history where order_id = $1 and message like 'Could not mark Delivered%'`, [o])).toBe(1)
+      await db.query(`delete from public.channel_sync_jobs where ref_id = $1`, [o])
+      const item = await value<string>(db, `select id from public.order_items where order_id = $1`, [o])
+      await db.query(`select public._return_order_stock($1, $2::jsonb, 'test')`, [o, JSON.stringify([
+        { order_item_id: item, quantity: 2, condition: 'RESTOCK' }, { order_item_id: item, quantity: 1, condition: 'DAMAGED' }])])
+      expect(await jobs(db, o)).toBe(1)
+      const ctx = await value<Record<string, any>>(db, `select public.channel_fulfillment_context($1)`, [o])
+      expect(ctx.restock_lines).toHaveLength(1)
+      expect(ctx.restock_lines[0]).toMatchObject({ quantity: 2 })
+      expect(ctx.restock_lines[0].sku).toBeTruthy()
     }))
 
-  it('only the system can read or settle the queue', () =>
+  it('the worker records the store status and what was put back, and the order history says so once', () =>
     inTx(async (db) => {
+      const woo = await store(db)
+      const o = await newStoreOrder(db, woo, '504')
+      await advanceOrder(db, o, ['FRAUD_CHECK', 'CONFIRMED'])
+      await asSystem(db)
+      const log = (like: string) => value<number>(db, `select count(*)::int from public.order_status_history where order_id = $1 and message like $2`, [o, like])
+      await db.query(`select public.channel_order_sync_update($1, $2::jsonb)`, [o, JSON.stringify({ store_status: 'confirmed', store_status_error: '' })])
+      await db.query(`select public.channel_order_sync_update($1, $2::jsonb)`, [o, JSON.stringify({ store_status: 'confirmed', store_status_error: '' })])
+      expect(await log('Set to Confirmed on WooCommerce')).toBe(1)
+
+      await db.query(`select public.channel_order_sync_update($1, $2::jsonb)`, [o, JSON.stringify({ store_status_error: 'The order is cancelled in WooCommerce' })])
+      expect(await log('WooCommerce status not updated: The order is cancelled%')).toBe(1)
+      await db.query(`select public.channel_order_sync_retry($1)`, [o]).catch(() => undefined)
+
+      const back = [{ external_variant_id: '101', sku: 'LS-M', name: 'Linen Shirt', quantity: 2 }]
+      await db.query(`select public.channel_order_sync_update($1, $2::jsonb)`, [o, JSON.stringify({ store_status: 'returned', store_status_error: '', store_restock: back, restocked: [{ name: 'Linen Shirt - M', added: 2, stock: 12 }] })])
+      // The same update again (a retried job): nothing new to tell.
+      await db.query(`select public.channel_order_sync_update($1, $2::jsonb)`, [o, JSON.stringify({ store_status: 'returned', store_status_error: '', store_restock: back, restocked: [{ name: 'Linen Shirt - M', added: 0, stock: 12 }] })])
+      expect(await log('2 item(s) put back in WooCommerce stock (2 × Linen Shirt - M)')).toBe(1)
+      const row = await value<Record<string, any>>(db, `select to_jsonb(s) from public.channel_order_sync s where order_id = $1`, [o])
+      expect(row).toMatchObject({ store_status: 'returned', store_status_error: null, store_restock: back })
+    }))
+
+  it('only the system can read the context or record updates', () =>
+    inTx(async (db) => {
+      const woo = await store(db)
+      const o = await newStoreOrder(db, woo, '505')
       const owner = await createStaff(db, 'OWNER')
       await asUser(db, owner)
-      await expectError(db, `select public.channel_status_push_due(10)`, [], /permission denied|SYSTEM|not allowed/i)
+      await expectError(db, `select public.channel_fulfillment_context($1)`, [o], /permission denied|SYSTEM|not allowed/i)
+      await expectError(db, `select public.channel_order_sync_update($1, '{}'::jsonb)`, [o], /permission denied|SYSTEM|not allowed/i)
+    }))
+})
+
+describe('Possible duplicates', () => {
+  it('an earlier order that was already delivered or returned is a past order, not a duplicate', () =>
+    inTx(async (db) => {
+      const phone = '01770494953'
+      const p = await createProduct(db, { price: 650, cost: 300, stock: 10 })
+      const first = await createOrder(db, { phone, items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      await advanceOrder(db, first.id, [...TO_SHIPPED, 'DELIVERED'])
+      const again = await createOrder(db, { phone, items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      await asSystem(db)
+      await db.query(`update public.orders set duplicate_status = null, duplicate_of = null where id = $1`, [again.id])
+      expect(await value(db, `select public._flag_possible_duplicate($1)`, [again.id])).toBeNull()
+      expect(await value(db, `select duplicate_status from public.orders where id = $1`, [again.id])).toBeNull()
+
+      // Still open (not approved yet): flagged as before (same phone, or the same address as the open order above).
+      const open = await createOrder(db, { phone: '01770494954', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      const open2 = await createOrder(db, { phone: '01770494954', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      await asSystem(db)
+      await db.query(`update public.orders set duplicate_status = null, duplicate_of = null where id = $1`, [open2.id])
+      expect([open.id, again.id]).toContain(await value(db, `select public._flag_possible_duplicate($1)`, [open2.id]))
     }))
 })
 

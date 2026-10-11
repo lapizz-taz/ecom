@@ -5,6 +5,8 @@
  *   POST pair    {endpoint, channel_id, secret, app_name, app_url, config}
  *   GET  status  health report (versions, queue, checks)
  *   POST unpair  forget the connection (store disconnected in Fullfilio)
+ *   POST order-status  {order_id, status, note?, restock?, stock_sync?} set an order's
+ *                status as it moved on in Fullfilio, and put returned items back in stock
  *
  * They are authenticated exactly like WooCommerce's own REST API: with the
  * Read/Write API keys the owner approved for Fullfilio (WooCommerce checks
@@ -38,6 +40,7 @@ class FFC_Rest {
 		register_rest_route( self::NS, '/pair', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'pair' ), 'permission_callback' => $admin ) );
 		register_rest_route( self::NS, '/status', array( 'methods' => 'GET', 'callback' => array( __CLASS__, 'status' ), 'permission_callback' => $admin ) );
 		register_rest_route( self::NS, '/unpair', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'unpair' ), 'permission_callback' => $admin ) );
+		register_rest_route( self::NS, '/order-status', array( 'methods' => 'POST', 'callback' => array( __CLASS__, 'order_status' ), 'permission_callback' => $admin ) );
 	}
 
 	public static function can_manage() {
@@ -62,6 +65,15 @@ class FFC_Rest {
 
 	public static function status() {
 		return rest_ensure_response( array( 'ok' => true, 'connected' => FFC_Settings::connected(), 'report' => FFC_Health::report( true ) ) );
+	}
+
+	public static function order_status( WP_REST_Request $request ) {
+		$result = FFC_Orders::apply_from_fullfilio( (array) $request->get_json_params() );
+		if ( is_wp_error( $result ) ) {
+			FFC_Log::warning( 'Order update from Fullfilio not applied: ' . $result->get_error_message() );
+			return $result;
+		}
+		return rest_ensure_response( $result );
 	}
 
 	public static function unpair() {

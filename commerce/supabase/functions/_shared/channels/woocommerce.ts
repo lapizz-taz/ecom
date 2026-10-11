@@ -64,6 +64,18 @@ export async function verifyWooWebhook(rawBody: string, header: string | null, s
   return !!header && safeEqual(await hmacBase64(secret, rawBody), header)
 }
 
+export interface PluginOrderStatusInput {
+  order_id: number | string
+  status: string
+  note?: string
+  stock_sync?: boolean
+  restock?: Array<{ external_variant_id: string | null; sku: string | null; name: string; quantity: number }>
+}
+export interface PluginOrderStatusResult {
+  ok: boolean; status: string; from: string; changed: boolean
+  restocked: Array<{ name: string; added: number; stock: number | null; skipped?: string }>
+}
+
 export class WooClient {
   private useQueryAuth = false
   constructor(readonly site: string, private readonly key: string, private readonly secret: string, private readonly fetchFn: FetchFn = fetch) {}
@@ -98,7 +110,11 @@ export class WooClient {
     if (!res.ok) {
       const msg = (json as { message?: string; code?: string } | null)
       if (res.status === 401 || res.status === 403) throw new ChannelError(`WooCommerce rejected the API keys${msg?.message ? `: ${msg.message}` : ''}`, res.status, msg?.code ?? 'UNAUTHORIZED')
-      if (base !== 'wc/v3' && res.status === 404) throw new ChannelError(`The ${PLUGIN_SLUG} plugin is not installed or not active on this site`, 404, 'NO_PLUGIN')
+      // No such route: the plugin is missing, inactive or older than this call. A 404 from the
+      // plugin itself (e.g. the order is not there) carries the plugin's own error code.
+      if (base !== 'wc/v3' && res.status === 404 && (!msg?.code || msg.code === 'rest_no_route')) {
+        throw new ChannelError(`The ${PLUGIN_SLUG} plugin is not installed, not active or too old on this site`, 404, 'NO_PLUGIN')
+      }
       if (res.status === 404 && !msg?.code) throw new ChannelError('The WooCommerce REST API was not found. In WordPress → Settings → Permalinks choose any option except "Plain".', 404, 'NO_API')
       throw new ChannelError(`WooCommerce: ${msg?.message ?? `HTTP ${res.status}`}`, res.status, msg?.code)
     }
@@ -109,12 +125,20 @@ export class WooClient {
   // --- the Fullfilio Connect plugin (same API keys; the plugin only accepts store managers) ---
 
   /** Hands the plugin its endpoint and signing secret. ChannelError NO_PLUGIN when it is not installed. */
-  async pluginPair(body: { endpoint: string; channel_id: string; secret: string; app_name: string; app_url: string; config: Record<string, unknown> }) {
+  async pluginPair(body: { endpoint: string; channel_id: string; secret: string; app_name: string; app_url: string; app_logo?: string; config: Record<string, unknown> }) {
     return this.call<{ ok: boolean; version: string; report: Record<string, unknown> }>('POST', 'pair', body, {}, 'fullfilio/v1')
   }
 
   async pluginStatus() {
     return this.call<{ ok: boolean; connected: boolean; report: Record<string, unknown> }>('GET', 'status', undefined, {}, 'fullfilio/v1')
+  }
+
+  /**
+   * Sets an order's status on the store and puts items that came back in its stock (the plugin
+   * adds the statuses WooCommerce lacks). restock quantities are totals per line so far.
+   */
+  async pluginOrderStatus(body: PluginOrderStatusInput): Promise<PluginOrderStatusResult> {
+    return this.call<PluginOrderStatusResult>('POST', 'order-status', body, {}, 'fullfilio/v1')
   }
 
   async pluginUnpair() {

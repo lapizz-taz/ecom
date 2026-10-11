@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ChannelError, type SeenFulfillment } from './channels/common.ts'
 import { type FulfillmentState, planFulfillment, seenFromWebhook } from './channels/shopify.ts'
-import { fulfillJob, GRACE_SECONDS, inventoryJob, type Job, type ShopifyPort, wooFulfillJob, type WooPort } from './channels/sync.ts'
+import { fulfillJob, GRACE_SECONDS, inventoryJob, type Job, type ShopifyPort, wooFulfillJob, type WooPort, wooTargetStatus } from './channels/sync.ts'
 import { WooClient, wooCatalogItem, wooStockFromWebhook } from './channels/woocommerce.ts'
 
 const job = (kind: Job['kind'], payload: Record<string, unknown> = {}): Job => ({ id: 'j1', channel_id: 'c0000000-0000-0000-0000-000000000000', kind, ref_id: 'o1', attempts: 1, payload })
@@ -170,6 +170,7 @@ describe('WooCommerce fulfilment job', () => {
     orderState: vi.fn(async () => ({ status: 'processing', email: 'rina@example.com', notes: [] as Array<{ id: number; note: string }> })),
     addNote: vi.fn(async () => 55),
     setStatus: vi.fn(async () => 'completed'),
+    pluginOrderStatus: vi.fn(async (b: { status: string }) => ({ ok: true, status: b.status, from: 'processing', changed: true, restocked: [] })),
     ...over,
   })
 
@@ -437,5 +438,87 @@ describe('Order without a fulfilment', () => {
     expect(out.outcome).toBe('DONE')
     expect(saves).not.toContain('channel_fulfillment_update')
     expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], [])
+  })
+})
+
+describe('WooCommerce order status follows ours', () => {
+  const woo = (over: Partial<WooPort> = {}) => ({
+    orderState: vi.fn(async () => ({ status: 'processing', email: null, notes: [] as Array<{ id: number; note: string }> })),
+    addNote: vi.fn(async () => 1),
+    setStatus: vi.fn(async (_id: string, st: string) => st),
+    pluginOrderStatus: vi.fn(async (b: { status: string }) => ({ ok: true, status: b.status, from: 'processing', changed: true,
+      restocked: [{ name: 'Linen Shirt - M', added: 1, stock: 20 }] })),
+    ...over,
+  })
+  const ctx = (status: string, over: Record<string, unknown> = {}) => ({
+    order: { id: 'o1', order_number: '38', status, external_order_id: '38', customer_email: null },
+    fulfillment: null, shipment: null, lines: [],
+    sync: { cancel_status: null, paid_status: null, status_tag: null, events: {}, store_status: null, store_restock: null },
+    settings: { inventory_sync: false, mark_paid_on_delivery: true, status_tags: true, courier_events: true, status_sync: true, fulfill_on_ship: false },
+    restock_lines: [{ external_variant_id: '101', sku: 'LS-M', name: 'Linen Shirt - M', quantity: 1 }],
+    ...over,
+  })
+  function rig(c: unknown) {
+    const saves: Array<Record<string, unknown>> = []
+    const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'channel_fulfillment_context') return c
+      if (fn === 'channel_order_sync_update') saves.push(args.p as Record<string, unknown>)
+      return null
+    }) as never
+    return { rpc, saves }
+  }
+
+  it('maps every order status to the store status (shipped is Completed when fulfil on ship is on)', () => {
+    const t = (status: string, fulfil = false) => wooTargetStatus({ order: { status } as never, settings: { fulfill_on_ship: fulfil } as never })
+    expect([t('CONFIRMED'), t('PACKING'), t('SHIPPED'), t('SHIPPED', true), t('DELIVERED'), t('PARTIALLY_DELIVERED'), t('RETURNING'), t('RETURNED'), t('CANCELLED'), t('PENDING')])
+      .toEqual(['confirmed', 'confirmed', 'shipped', 'completed', 'delivered', 'partial-delivered', 'returning', 'returned', 'cancelled', null])
+  })
+
+  it('confirms and cancels on the store through the plugin, without restocking (nothing came back)', async () => {
+    for (const [status, want] of [['CONFIRMED', 'confirmed'], ['CANCELLED', 'cancelled']]) {
+      const w = woo(); const r = rig(ctx(status))
+      expect((await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)).outcome).toBe('DONE')
+      expect(w.pluginOrderStatus).toHaveBeenCalledWith(expect.objectContaining({ order_id: '38', status: want, restock: [], stock_sync: false }))
+      expect(r.saves.at(-1)).toMatchObject({ store_status: want, store_status_error: '' })
+    }
+  })
+
+  it('a return sends the items that came back; nothing is sent again once the store shows it', async () => {
+    const w = woo(); const r = rig(ctx('RETURNED'))
+    await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)
+    expect(w.pluginOrderStatus).toHaveBeenCalledWith(expect.objectContaining({ status: 'returned', restock: [{ external_variant_id: '101', sku: 'LS-M', name: 'Linen Shirt - M', quantity: 1 }] }))
+    expect(r.saves.at(-1)).toMatchObject({ store_status: 'returned', store_restock: [{ quantity: 1 }], restocked: [{ added: 1 }] })
+
+    const again = woo(); const r2 = rig(ctx('RETURNED', { sync: { cancel_status: null, paid_status: null, status_tag: null, events: {}, store_status: 'returned', store_restock: [{ external_variant_id: '101', sku: 'LS-M', name: 'Linen Shirt - M', quantity: 1 }] } }))
+    await wooFulfillJob(job('FULFILL'), r2.rpc, () => again, opts)
+    expect(again.pluginOrderStatus).not.toHaveBeenCalled()
+  })
+
+  it('does not restock in the store when this app keeps the store\'s stock (no double count)', async () => {
+    const w = woo(); const r = rig(ctx('PARTIALLY_DELIVERED', { settings: { inventory_sync: true, status_sync: true } }))
+    await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)
+    expect(w.pluginOrderStatus).toHaveBeenCalledWith(expect.objectContaining({ status: 'partial-delivered', restock: [], stock_sync: true }))
+  })
+
+  it('without the plugin: WooCommerce\'s own status where one exists, a note otherwise, and a hint to install it', async () => {
+    const missing = vi.fn(async () => { throw new ChannelError('not installed', 404, 'NO_PLUGIN') })
+    const w = woo({ pluginOrderStatus: missing }); const r = rig(ctx('CANCELLED'))
+    await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)
+    expect(w.setStatus).toHaveBeenCalledWith('38', 'cancelled')
+    const w2 = woo({ pluginOrderStatus: missing }); const r2 = rig(ctx('RETURNED'))
+    await wooFulfillJob(job('FULFILL'), r2.rpc, () => w2, opts)
+    expect(w2.setStatus).not.toHaveBeenCalled()
+    expect(w2.addNote).toHaveBeenCalledWith('38', 'Fullfilio: returned', false)
+    expect(r2.saves.at(-1)).toMatchObject({ store_status_error: expect.stringContaining('plugin') })
+  })
+
+  it('a store that refuses (cancelled there) is recorded, not retried; a network error is retried', async () => {
+    const w = woo({ pluginOrderStatus: vi.fn(async () => { throw new ChannelError('The order is cancelled in WooCommerce', 409, 'ffc_final') }) })
+    const r = rig(ctx('SHIPPED'))
+    expect((await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)).outcome).toBe('DONE')
+    expect(r.saves.at(-1)).toMatchObject({ store_status_error: 'The order is cancelled in WooCommerce' })
+    const w2 = woo({ pluginOrderStatus: vi.fn(async () => { throw new ChannelError('Could not reach the store') }) })
+    const r2 = rig(ctx('SHIPPED'))
+    expect((await wooFulfillJob(job('FULFILL'), r2.rpc, () => w2, opts)).outcome).toBe('RETRY')
   })
 })

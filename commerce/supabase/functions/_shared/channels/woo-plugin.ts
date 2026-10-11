@@ -44,7 +44,8 @@ const touchSchema = z.object({
   at: z.string().max(40).nullable().optional(),
   landing: z.string().max(400).nullable().optional(),
   referrer: z.string().max(400).nullable().optional(),
-  params: z.record(z.string().max(40), z.string().max(300)).optional(),
+  // PHP sends an empty map as [] (plugin 1.0.0 did); read that as no parameters.
+  params: z.preprocess((v) => (Array.isArray(v) && v.length === 0 ? {} : v), z.record(z.string().max(40), z.string().max(300))).optional(),
 }).nullable().optional()
 
 export const pluginAttributionSchema = z.object({

@@ -12,6 +12,8 @@ const APP = process.env.APP_URL || 'http://localhost:5173'
 const ZIP = path.resolve(__dirname, '../../../public/downloads/fullfilio-connect.zip')
 const sql = (q) => execSync(`PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres -tAc "${q.replace(/"/g, '\\"')}"`).toString().trim()
 const wpsql = (q) => execSync('docker exec -i woo-db mariadb -uwordpress -pwp-pass wordpress -N', { input: q }).toString().trim()
+// Raw output (no escaping) for JSON columns.
+const wpjson = (q) => execSync('docker exec -i woo-db mariadb -uwordpress -pwp-pass wordpress -N -r', { input: q }).toString().trim()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // WordPress holds a 60 s lock while a page-load spawned cron runs; drop it so the test's run is not skipped.
 const cron = async () => { wpsql(`delete from wp_options where option_name = '_transient_doing_cron'`); await fetch(`${STORE}/wp-cron.php`).catch(() => null); await sleep(1500) }
@@ -19,6 +21,11 @@ let failures = 0
 const assert = (c, m) => { if (!c) { failures++; console.error('FAIL:', m) } else console.log('ok -', m) }
 const shot = (p, n) => p.screenshot({ path: `${SP}/shots/woo-${n}.png` })
 const waitFor = async (fn, ms, what) => { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(500) } throw new Error(`timeout: ${what}`) }
+
+const linen = () => JSON.parse(wpjson(`select data from wp_standin_products where data like '%Linen Shirt%'`))
+const stockOf = (vid) => linen().variations.find((v) => v.id === vid).stock_quantity
+const wooOrderOf = (id) => JSON.parse(wpjson(`select data from wp_standin_orders where id = ${id}`))
+const wooNotes = (id) => wpjson(`select data from wp_standin_notes where data like '%"order_id":${id},%'`).split('\n').filter(Boolean).map((l) => JSON.parse(l).note)
 
 async function wpLogin(p) {
   await p.goto(`${STORE}/wp-login.php`)
@@ -31,6 +38,7 @@ async function wpLogin(p) {
   const errors = []
   try {
     // ------------------------------------------------------------------ 0. clean slate
+    const t0 = sql('select now()')
     sql(`update sales_channels set status = 'DISCONNECTED' where platform = 'WOOCOMMERCE' and status <> 'DISCONNECTED'`)
     sql(`update sales_channels set settings = settings - 'plugin_config' where platform = 'WOOCOMMERCE'`)
     execSync('docker exec woo-wp rm -rf /var/www/html/wp-content/plugins/fullfilio-connect')
@@ -89,14 +97,15 @@ async function wpLogin(p) {
     const hooks = JSON.parse(sql(`select webhooks from sales_channels where id = '${channelId}'`))
     assert(hooks.length >= 2, `WooCommerce webhooks registered (${hooks.map((h) => h.topic).join(', ')})`)
     await cron()
-    await waitFor(() => sql(`select settings #>> '{plugin,plugin_version}' from sales_channels where id = '${channelId}'`) === '1.0.0', 15000, 'heartbeat')
-    assert(true, 'heartbeat arrived: plugin 1.0.0 reported its health')
+    await waitFor(() => sql(`select settings #>> '{plugin,plugin_version}' from sales_channels where id = '${channelId}'`) === '1.1.0', 15000, 'heartbeat')
+    assert(true, 'heartbeat arrived: plugin 1.1.0 reported its health')
     await app.goto(`${APP}/admin/channels`); await app.waitForTimeout(2500)
     await shot(app, 'channel-card')
-    assert((await app.textContent('body')).includes('Plugin 1.0.0'), 'channel card shows the plugin version')
+    assert((await app.textContent('body')).includes('Plugin 1.1.0'), 'channel card shows the plugin version')
 
     // ------------------------------------------------------------------ 3. unfinished checkout (lead) with attribution
     const shirt = wpsql(`select id from wp_standin_products where data like '%Linen Shirt%'`)
+    const stockStart = stockOf(101)
     const customer = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage()
     await customer.goto(`${STORE}/?utm_source=facebook&utm_medium=paid&utm_campaign=eid-sale&fbclid=AbC123`)
     await customer.goto(`${STORE}/?add-to-cart=${shirt}&variation_id=101&quantity=2`)
@@ -127,6 +136,9 @@ async function wpLogin(p) {
     const pluginOrderEvents = sql(`select count(*) from channel_plugin_events where channel_id = '${channelId}' and type = 'order' and status = 'OK'`)
     const imports = sql(`select count(*) from channel_order_imports where channel_id = '${channelId}' and external_id = '${wooOrder}'`)
     assert(Number(pluginOrderEvents) >= 1 && imports === '1', `plugin order event handled (${pluginOrderEvents}) and the webhook too, still one import row`)
+    assert(stockOf(101) === stockStart - 2, `WooCommerce took the 2 shirts off its stock at checkout (${stockStart} → ${stockOf(101)})`)
+    const rejected = sql(`select coalesce(string_agg(type || ': ' || coalesce(detail ->> 'error', ''), '; '), '') from channel_plugin_events where channel_id = '${channelId}' and status = 'REJECTED' and created_at >= '${t0}'`)
+    assert(rejected === '', `no plugin event refused (leads without page details included) ${rejected}`)
 
     // ------------------------------------------------------------------ 5. signatures, replays, duplicates
     const endpoint = `http://127.0.0.1:54321/functions/v1/channels/plugin/${channelId}`
@@ -186,16 +198,87 @@ async function wpLogin(p) {
     assert(true, 'a webhook WooCommerce paused was switched back on from the heartbeat')
     await shot(owner, 'plugin-page')
 
-    // ------------------------------------------------------------------ 8. Delivered / Returned pushed to WooCommerce (once)
-    sql(`update orders set status = 'DELIVERED', delivered_at = now() where id = '${ord.id}'`)
+    // ------------------------------------------------------------------ 8. the WooCommerce order follows ours (like Shopify)
     const cronSecret = (await import('fs')).readFileSync(process.env.FUNCTIONS_ENV_FILE || 'supabase/functions/.env', 'utf8').match(/CRON_SECRET=(.+)/)?.[1]?.trim()
     const run = () => fetch('http://127.0.0.1:54321/functions/v1/channels', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret }, body: JSON.stringify({ action: 'process_jobs' }) }).then((r) => r.json())
-    const r1 = await run()
-    assert(r1.statuses?.done >= 1, `status push ran (${JSON.stringify(r1.statuses)})`)
-    assert(wpsql(`select data from wp_standin_orders where id = ${wooOrder}`).includes('"status":"delivered"'), 'WooCommerce order is now "delivered" (status added by the plugin)')
-    sql(`update orders set status = 'SHIPPED' where id = '${ord.id}'`); sql(`update orders set status = 'DELIVERED' where id = '${ord.id}'`)
-    await run()
-    assert(sql(`select count(*) from channel_status_pushes where order_id = '${ord.id}' and target = 'delivered'`) === '1', 'delivered is pushed only once even if the status is set again')
+    const syncOf = (id) => JSON.parse(sql(`select coalesce((select json_build_object('status', store_status, 'error', store_status_error, 'restock', store_restock) from channel_order_sync where order_id = '${id}'), '{}'::json)`))
+    // Sets our status (the triggers queue the store update) and runs the jobs.
+    const move = async (id, status, extra = '') => { sql(`update orders set status = '${status}'${extra} where id = '${id}'`); await run(); await run() }
+    const outboxBefore = wpsql(`select count(*) from wp_ffc_outbox where type = 'order'`)
+    await move(ord.id, 'CONFIRMED')
+    assert(wooOrderOf(wooOrder).status === 'confirmed' && syncOf(ord.id).status === 'confirmed', `confirmed here → "Confirmed" in WooCommerce (${wooOrderOf(wooOrder).status}, ${JSON.stringify(syncOf(ord.id))})`)
+    assert(wooNotes(wooOrder).some((n) => /Fullfilio|Confirmed/.test(n)), 'WooCommerce order note says who changed it')
+    await move(ord.id, 'SHIPPED', ', shipped_at = now()')
+    assert(wooOrderOf(wooOrder).status === 'shipped', `shipped here → "Shipped" in WooCommerce (${wooOrderOf(wooOrder).status})`)
+    await move(ord.id, 'DELIVERED', ', delivered_at = now()')
+    assert(wooOrderOf(wooOrder).status === 'delivered', `delivered here → "Delivered" in WooCommerce (${wooOrderOf(wooOrder).status})`)
+    sql(`update orders set updated_at = now() where id = '${ord.id}'`); await run()
+    assert(wooNotes(wooOrder).filter((n) => /to Delivered/.test(n)).length === 1, 'set once: running the jobs again changes nothing')
+    await sleep(1500); await cron()
+    assert(wpsql(`select count(*) from wp_ffc_outbox where type = 'order'`) === outboxBefore, 'statuses set by Fullfilio are not sent back to Fullfilio')
+    assert(sql(`select status from orders where id = '${ord.id}'`) === 'DELIVERED', 'the WooCommerce webhooks for these changes leave our order as it is')
+
+    // A return: the 2 shirts come back in good condition → back in WooCommerce stock, once.
+    await move(ord.id, 'RETURNING')
+    assert(wooOrderOf(wooOrder).status === 'returning', `return in transit → "Return in transit" in WooCommerce (${wooOrderOf(wooOrder).status})`)
+    const beforeReturn = stockOf(101)
+    sql(`update order_items set returned_quantity = quantity where order_id = '${ord.id}'`)
+    await move(ord.id, 'RETURNED')
+    assert(wooOrderOf(wooOrder).status === 'returned', `returned → "Returned" in WooCommerce (${wooOrderOf(wooOrder).status})`)
+    assert(stockOf(101) === beforeReturn + 2, `the 2 returned shirts are back in WooCommerce stock (${beforeReturn} → ${stockOf(101)})`)
+    sql(`update orders set updated_at = now() where id = '${ord.id}'`); await run(); await run()
+    assert(stockOf(101) === beforeReturn + 2, 'running the jobs again does not add them twice')
+    assert(wooNotes(wooOrder).some((n) => /2 × .*put back in stock/.test(n)), 'WooCommerce order note lists what was put back')
+    assert(sql(`select count(*) from order_status_history where order_id = '${ord.id}' and message like '%put back in WooCommerce stock%'`) === '1', 'our order history shows it once')
+
+    // A partial delivery: 3 sent, 1 came back, later 1 more → 1 then 1 more put back, never more.
+    const place = async (variation, qty, name) => {
+      await customer.goto(`${STORE}/?add-to-cart=${shirt}&variation_id=${variation}&quantity=${qty}`)
+      const ph = `013${String(Date.now()).slice(-8)}`
+      await customer.fill('#billing_first_name', name); await customer.fill('#billing_phone', ph); await customer.fill('#billing_address_1', 'Road 3, Dhanmondi'); await customer.fill('#billing_city', 'Dhaka')
+      await customer.click('#place_order'); await customer.getByText(/Your order has been received/).waitFor({ timeout: 30000 })
+      const w = /Order #(\d+)/.exec(await customer.textContent('body'))[1]
+      await cron()
+      const id = await waitFor(() => sql(`select id from orders where sales_channel_id = '${channelId}' and external_order_id = '${w}'`), 20000, `order ${w}`)
+      return { woo: w, id }
+    }
+    const before3 = stockOf(102)
+    const o3 = await place(102, 3, 'Partial')
+    const qty3 = Number(sql(`select sum(quantity) from order_items where order_id = '${o3.id}'`))
+    const after3 = stockOf(102)
+    assert(qty3 >= 3 && after3 === before3 - qty3, `${qty3} taken off at checkout (${before3} → ${after3})`)
+    await move(o3.id, 'SHIPPED', ', shipped_at = now()')
+    sql(`update order_items set returned_quantity = 1 where order_id = '${o3.id}'`)
+    await move(o3.id, 'PARTIALLY_DELIVERED', ', delivered_at = now()')
+    assert(wooOrderOf(o3.woo).status === 'partial-delivered', `partly delivered → "Partially delivered" in WooCommerce (${wooOrderOf(o3.woo).status})`)
+    assert(stockOf(102) === after3 + 1, `the 1 that came back is in WooCommerce stock (${after3} → ${stockOf(102)})`)
+    sql(`update order_items set returned_quantity = 2 where order_id = '${o3.id}'`); await run(); await run()
+    assert(stockOf(102) === after3 + 2, `a second one back adds only that one (${stockOf(102)})`)
+
+    // Cancelled here → cancelled in WooCommerce; WooCommerce puts its own stock back once.
+    const before4 = stockOf(101)
+    const o4 = await place(101, 1, 'Cancel')
+    await move(o4.id, 'CANCELLED')
+    assert(wooOrderOf(o4.woo).status === 'cancelled', `cancelled here → "Cancelled" in WooCommerce (${wooOrderOf(o4.woo).status})`)
+    assert(stockOf(101) === before4, `WooCommerce put the cancelled item back once (${before4} → ${stockOf(101)})`)
+    await move(o4.id, 'CONFIRMED')
+    assert(wooOrderOf(o4.woo).status === 'cancelled' && /cancelled in WooCommerce/i.test(syncOf(o4.id).error ?? ''), `a cancelled WooCommerce order is not brought back (${syncOf(o4.id).error})`)
+    sql(`update orders set status = 'CANCELLED' where id = '${o4.id}'`)
+
+    // Fullfilio keeps the stock (stock sync on): WooCommerce must not put it back as well.
+    sql(`update sales_channels set settings = settings || '{"inventory_sync": true}' where id = '${channelId}'`)
+    const before5 = stockOf(101)
+    const o5 = await place(101, 1, 'Synced')
+    await move(o5.id, 'CANCELLED')
+    assert(wooOrderOf(o5.woo).status === 'cancelled', 'cancelled in WooCommerce (stock sync on)')
+    assert(stockOf(101) === before5 - 1, `WooCommerce did not put it back itself — Fullfilio sends the count (${before5} → ${stockOf(101)})`)
+    assert(wooNotes(o5.woo).some((n) => /Fullfilio keeps this store/.test(n)), 'the WooCommerce order says why')
+    sql(`update sales_channels set settings = settings || '{"inventory_sync": false}' where id = '${channelId}'`)
+    await owner.goto(`${STORE}/wp-admin/admin.php?page=fullfilio-connect`)
+    await owner.getByText('Put back by').first().waitFor({ timeout: 15000 })
+    const stockPage = await owner.textContent('body')
+    assert(stockPage.includes('Put back by') && /Linen Shirt - M/.test(stockPage) && !/critical error/i.test(stockPage), 'plugin page lists the stock put back by Fullfilio')
+    await shot(owner, 'plugin-stock')
 
     // ------------------------------------------------------------------ 9. store owner cancels in WooCommerce → cancelled here
     const keys = JSON.parse(wpsql(`select data from wp_standin_keys order by id desc limit 1`))
