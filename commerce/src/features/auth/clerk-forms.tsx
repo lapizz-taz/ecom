@@ -31,7 +31,8 @@ export function CodeField({ value, onChange, label = 'Code' }: { value: string; 
 
 /** Finishes a Clerk sign-in: makes it the active session and opens the account here. */
 async function finish(res: SignInResource, setActive: SetActive, syncClerk: () => Promise<void>) {
-  await setActive({ session: res.createdSessionId })
+  // Our own navigate: Clerk must not send people to its hosted pages for extra steps.
+  await setActive({ session: res.createdSessionId, navigate: async () => {} })
   await syncClerk()
 }
 
@@ -47,6 +48,7 @@ async function startSecondStep(res: SignInResource): Promise<'email_code' | 'pho
 
 export function ClerkSignInForm({ onDone, forgotPath }: { onDone: () => void; forgotPath: string }) {
   const { isLoaded, signIn, setActive } = useSignIn()
+  const clerk = useClerk()
   const { syncClerk } = useAuth()
   const [mode, setMode] = useState<'password' | 'email-code'>('password')
   const [email, setEmail] = useState('')
@@ -58,6 +60,8 @@ export function ClerkSignInForm({ onDone, forgotPath }: { onDone: () => void; fo
     meta: { silent: true },
     mutationFn: async () => {
       if (!isLoaded || !signIn || !setActive) throw new Error('Sign-in is still loading. Try again in a moment.')
+      // Already signed in with Clerk in this browser: just open the account.
+      if (clerk.user) { await syncClerk(); return true }
       // Second screen: the code.
       if (step) {
         const res = step.kind === 'second'
@@ -79,6 +83,7 @@ export function ClerkSignInForm({ onDone, forgotPath }: { onDone: () => void; fo
       try {
         res = await signIn.create({ identifier: email.trim(), password })
       } catch (error) {
+        if (clerkErrorCode(error) === 'session_exists') { await syncClerk(); return true }
         // Accounts from before Clerk: check the password against the old account and move it over.
         if (clerkErrorCode(error) !== 'form_identifier_not_found') throw error
         const moved = await moveAccountToClerk(email, password)
@@ -229,7 +234,7 @@ export function useClerkOwnerSignUp(): OwnerSignUp {
         ? await signUp.attemptEmailAddressVerification({ code })
         : await signUp.attemptPhoneNumberVerification({ code })
       if (res.status === 'complete') {
-        await setActive({ session: res.createdSessionId })
+        await setActive({ session: res.createdSessionId, navigate: async () => {} })
         await syncClerk()
         return 'done'
       }

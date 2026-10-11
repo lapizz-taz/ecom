@@ -10,18 +10,20 @@ declare
   v_def text := replace(pg_get_functiondef('public.platform_store_reset(uuid, text, text, text)'::regprocedure), E'\r', '');
   v_new text;
 begin
-  v_new := replace(v_def,
-    $o$    update public.sales_channels set first_sync_at = null, catalog_imported_at = null,
-      settings = settings || '{"inventory_sync": false}'::jsonb
-    where merchant_id = p_merchant;$o$,
-    $n$    -- Store connections go too, with their saved keys.
+  if position('store_connections' in v_def) > 0 then
+    return; -- already applied
+  end if;
+  -- Matched loosely (any spacing or line endings), so a copy-paste cannot break it.
+  v_new := regexp_replace(v_def,
+    'update public\.sales_channels set first_sync_at = null,\s*catalog_imported_at = null,\s*settings = settings \|\| ''\{"inventory_sync": false\}''::jsonb\s*where merchant_id = p_merchant;',
+    replace($n$-- Store connections go too, with their saved keys.
     delete from public.channel_oauth_states where merchant_id = p_merchant;
     delete from vault.secrets where id in (
       select secret_id from public.integration_credentials
       where merchant_id = p_merchant and key like 'channels.%' and secret_id is not null);
     delete from public.integration_credentials where merchant_id = p_merchant and key like 'channels.%';
     delete from public.sales_channels where merchant_id = p_merchant;
-    get diagnostics n = row_count; v := v || jsonb_build_object('store_connections', n);$n$);
+    get diagnostics n = row_count; v := v || jsonb_build_object('store_connections', n);$n$, E'\r', ''));
   if v_new = v_def then
     raise exception 'store reset connections: platform_store_reset() has changed; update this migration';
   end if;
@@ -39,7 +41,7 @@ begin
   if position(v_anchor in v_def) = 0 then
     raise exception 'platform_store_reset: expected the store connections step; apply 20261108000100 first';
   end if;
-  v_def := replace(v_def, v_anchor, v_anchor || $b$
+  v_def := replace(v_def, v_anchor, v_anchor || replace($b$
     -- Every other connection, with its saved keys and history.
     delete from public.api_request_logs where merchant_id = p_merchant;
     delete from public.api_keys where merchant_id = p_merchant;
@@ -66,7 +68,7 @@ begin
     -- A store that sent visitors to a removed Shopify/WooCommerce shop is closed instead.
     update public.settings set value = (value - 'redirect_url') || '{"mode": "OFF"}'::jsonb
     where merchant_id = p_merchant and key = 'storefront' and upper(coalesce(value ->> 'mode', '')) in ('SHOPIFY', 'WOOCOMMERCE');
-    v := v || jsonb_build_object('every_connection', true);$b$);
+    v := v || jsonb_build_object('every_connection', true);$b$, E'\r', ''));
   execute v_def;
 end $$;
 

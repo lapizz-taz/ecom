@@ -40,7 +40,9 @@ export interface ClerkLink {
  * from Clerk (e.g. a shopper's store account) is left alone.
  */
 export function ClerkSessionSync({ session, onChange }: { session: Session | null; onChange: (link: ClerkLink) => void }) {
-  const { isLoaded, isSignedIn, userId, getToken } = useClerkAuth()
+  // A Clerk session waiting on a Clerk-side step (e.g. "choose an organization") still
+  // belongs to a signed-in person; Fullfilio has its own businesses, so it counts as signed in.
+  const { isLoaded, isSignedIn, userId, getToken } = useClerkAuth({ treatPendingAsSignedOut: false })
   const clerk = useClerk()
   const [error, setError] = useState<Error | null>(null)
   // If Clerk cannot load (network, blocker), stop waiting: pages open and say so.
@@ -69,10 +71,12 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
     if (!isLoaded) return
     if (isSignedIn && userId && linkedTo !== userId) {
       sync().catch((e: Error) => { setError(e); reportError(e, { where: 'clerk-session-sync' }) })
-    } else if (!isSignedIn && linkedTo) {
+    } else if (!isSignedIn && linkedTo && !inflight.current && !clerk.user) {
+      // Signed out of Clerk (here or in another tab): close the account here too. The live
+      // check on clerk.user avoids reacting to a render that has not caught up with a sign-in.
       void endSupabaseSession()
     }
-  }, [isLoaded, isSignedIn, userId, linkedTo, sync])
+  }, [isLoaded, isSignedIn, userId, linkedTo, sync, clerk])
 
   const ready = (isLoaded && (!isSignedIn || linkedTo === userId || error !== null)) || (!isLoaded && gaveUp)
   const shownError = error ?? (!isLoaded && gaveUp ? new Error('Could not reach the sign-in service. Check your connection and reload the page.') : null)
