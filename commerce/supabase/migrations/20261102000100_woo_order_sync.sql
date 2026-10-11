@@ -19,7 +19,17 @@ alter table public.channel_order_sync add column if not exists store_status_erro
 alter table public.channel_order_sync add column if not exists store_status_at timestamptz;
 alter table public.channel_order_sync add column if not exists store_restock jsonb;
 
-drop trigger if exists orders_woo_status_push on public.orders;
+-- The old Delivered / Returned-only queue no longer gets new rows (its trigger stays, doing nothing).
+create or replace function public._queue_woo_status_push()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  return new;
+end;
+$$;
 
 -- Plugin switches: tell it whether this app keeps the store's stock.
 create or replace function public._plugin_config(p_settings jsonb)
@@ -83,8 +93,7 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists order_items_channel_restock on public.order_items;
-create trigger order_items_channel_restock after update of returned_quantity on public.order_items
+create or replace trigger order_items_channel_restock after update of returned_quantity on public.order_items
   for each row when (new.returned_quantity is distinct from old.returned_quantity)
   execute function public._order_items_channel_restock_trigger();
 
