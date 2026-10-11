@@ -17,6 +17,14 @@
 -- Merchant credentials stay with the merchant; only their state is shown.
 -- =============================================================================
 
+-- Patches below compare and rewrite existing function text. Line endings are
+-- normalized first, so they also apply when this file is pasted into an editor
+-- that sends Windows line endings.
+create or replace function pg_temp.lf(p text) returns text
+language sql immutable as $$ select replace(p, E'\r', '') $$;
+create or replace function pg_temp.lf_replace(p text, p_from text, p_to text) returns text
+language sql immutable as $$ select replace(pg_temp.lf(p), pg_temp.lf(p_from), pg_temp.lf(p_to)) $$;
+
 -- -----------------------------------------------------------------------------
 -- 1. VoiceDrive settings are the platform's
 -- -----------------------------------------------------------------------------
@@ -90,11 +98,11 @@ begin
     'public.pbx_list_ring_groups(uuid)', 'public.pbx_save_ring_group(jsonb)', 'public.pbx_set_business_settings(jsonb)',
     'public.pbx_billing_history(uuid, int)', 'public.pbx_reports(date, date, uuid)']
   loop
-    v_old := pg_get_functiondef(f::regprocedure);
-    if position(v_check in v_old) = 0 then
+    v_old := pg_temp.lf(pg_get_functiondef(f::regprocedure));
+    if position(pg_temp.lf(v_check) in v_old) = 0 then
       raise exception 'pbx platform: % has changed; update this migration', f;
     end if;
-    execute replace(v_old, v_check, 'if not public._vd_is_super() then
+    execute pg_temp.lf_replace(v_old, v_check, 'if not public._vd_is_super() then
     perform public.require_permission(''pbx.manage'');
   end if;');
   end loop;

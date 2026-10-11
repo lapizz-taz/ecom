@@ -17,6 +17,14 @@
 -- platform permissions itself; merchant staff can call none of it.
 -- =============================================================================
 
+-- Patches below compare and rewrite existing function text. Line endings are
+-- normalized first, so they also apply when this file is pasted into an editor
+-- that sends Windows line endings.
+create or replace function pg_temp.lf(p text) returns text
+language sql immutable as $$ select replace(p, E'\r', '') $$;
+create or replace function pg_temp.lf_replace(p text, p_from text, p_to text) returns text
+language sql immutable as $$ select replace(pg_temp.lf(p), pg_temp.lf(p_from), pg_temp.lf(p_to)) $$;
+
 -- -----------------------------------------------------------------------------
 -- 1. Notifications for platform staff
 -- -----------------------------------------------------------------------------
@@ -989,15 +997,15 @@ $$;
 -- merchant as a read-only viewer (every *.view permission, nothing else).
 do $$
 declare
-  v_old text := pg_get_functiondef('public.get_my_access()'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.get_my_access()'::regprocedure));
   v_new text;
 begin
   if position('v_device public.staff_devices;' in v_old) = 0 or position('select * into v_p from public.profiles where id = auth.uid() and is_active;' in v_old) = 0 then
     raise exception 'support center: get_my_access() has changed; update this migration';
   end if;
-  v_new := replace(v_old, 'v_device public.staff_devices;', 'v_device public.staff_devices;
+  v_new := pg_temp.lf_replace(v_old, 'v_device public.staff_devices;', 'v_device public.staff_devices;
   v_support jsonb := public._platform_support_session_info();');
-  v_new := replace(v_new, 'select * into v_p from public.profiles where id = auth.uid() and is_active;', $r$if v_support is not null then
+  v_new := pg_temp.lf_replace(v_new, 'select * into v_p from public.profiles where id = auth.uid() and is_active;', $r$if v_support is not null then
     return jsonb_build_object(
       'user_id', auth.uid(),
       'merchant_id', (v_support ->> 'merchant_id')::uuid,
@@ -1022,14 +1030,14 @@ end $$;
 -- A support viewer's browser is not one of the merchant's devices.
 do $$
 declare
-  v_old text := pg_get_functiondef('public.device_register(text,text)'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.device_register(text,text)'::regprocedure));
   v_check text := $c$raise exception 'PERMISSION_DENIED: staff only' using errcode = '42501';
   end if;$c$;
 begin
-  if position(v_check in v_old) = 0 then
+  if position(pg_temp.lf(v_check) in v_old) = 0 then
     raise exception 'support center: device_register() has changed; update this migration';
   end if;
-  execute replace(v_old, v_check, v_check || $a$
+  execute pg_temp.lf_replace(v_old, v_check, v_check || $a$
   if public._support_session_id() is not null then
     return null;
   end if;$a$);

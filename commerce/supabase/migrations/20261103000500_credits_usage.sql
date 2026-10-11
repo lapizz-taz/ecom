@@ -30,6 +30,14 @@
 -- counted. Lookups that fail (error, timeout) are refunded.
 -- =============================================================================
 
+-- Patches below compare and rewrite existing function text. Line endings are
+-- normalized first, so they also apply when this file is pasted into an editor
+-- that sends Windows line endings.
+create or replace function pg_temp.lf(p text) returns text
+language sql immutable as $$ select replace(p, E'\r', '') $$;
+create or replace function pg_temp.lf_replace(p text, p_from text, p_to text) returns text
+language sql immutable as $$ select replace(pg_temp.lf(p), pg_temp.lf(p_from), pg_temp.lf(p_to)) $$;
+
 -- -----------------------------------------------------------------------------
 -- 1. Credit types, balances, lots and the ledger
 -- -----------------------------------------------------------------------------
@@ -1030,11 +1038,11 @@ $$;
 -- Queueing: the platform provider's name, and nothing queued while SMS is off for the account.
 do $$
 declare
-  v_old text := pg_get_functiondef('public._enqueue_order_notification(uuid,public.notification_event,text,jsonb)'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public._enqueue_order_notification(uuid,public.notification_event,text,jsonb)'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old, $o$public.setting_text('sms', array['provider'], null)$o$, $n$public._platform_sms_provider()$n$);
-  v_new := replace(v_new, $o$        if not public.setting_bool('sms', array['enabled'], false) then$o$,
+  v_new := pg_temp.lf_replace(v_old, $o$public.setting_text('sms', array['provider'], null)$o$, $n$public._platform_sms_provider()$n$);
+  v_new := pg_temp.lf_replace(v_new, $o$        if not public.setting_bool('sms', array['enabled'], false) then$o$,
                           $n$        if not public.setting_bool('sms', array['enabled'], false) or not public.feature_enabled('sms') then$n$);
   if v_new = v_old or position('_platform_sms_provider' in v_new) = 0 or position($p$feature_enabled('sms')$p$ in v_new) = 0 then
     raise exception 'credits: _enqueue_order_notification has changed';
@@ -1045,10 +1053,10 @@ end $$;
 -- A free SMS is not an expense.
 do $$
 declare
-  v_old text := pg_get_functiondef('public._post_sms_finance(uuid)'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public._post_sms_finance(uuid)'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old, $o$v_log.status <> 'SENT' or v_log.cost is null then$o$, $n$v_log.status <> 'SENT' or v_log.cost is null or v_log.cost <= 0 then$n$);
+  v_new := pg_temp.lf_replace(v_old, $o$v_log.status <> 'SENT' or v_log.cost is null then$o$, $n$v_log.status <> 'SENT' or v_log.cost is null or v_log.cost <= 0 then$n$);
   if v_new = v_old then
     raise exception 'credits: _post_sms_finance has changed';
   end if;
@@ -1058,10 +1066,10 @@ end $$;
 -- Integrations page: SMS is provided by the platform.
 do $$
 declare
-  v_old text := pg_get_functiondef('public.integrations_overview()'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.integrations_overview()'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old,
+  v_new := pg_temp.lf_replace(v_old,
     $o$'sms', (select jsonb_build_object('provider', value ->> 'provider', 'enabled', value -> 'enabled') from public.settings where key = 'sms'),$o$,
     $n$'sms', (select jsonb_build_object('provided_by_platform', true, 'connected', public._platform_sms_provider() is not null, 'enabled', value -> 'enabled')
              from public.settings where key = 'sms'),
@@ -1335,10 +1343,10 @@ $$;
 -- Hourly billing also writes off expired credits.
 do $$
 declare
-  v_old text := pg_get_functiondef('public.billing_run()'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.billing_run()'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old, E'  end loop;\n  return v;', E'  end loop;\n  v := v || jsonb_build_object(''credits_expired'', public.credits_expire_all());\n  return v;');
+  v_new := pg_temp.lf_replace(v_old, E'  end loop;\n  return v;', E'  end loop;\n  v := v || jsonb_build_object(''credits_expired'', public.credits_expire_all());\n  return v;');
   if v_new = v_old then
     raise exception 'credits: billing_run has changed';
   end if;

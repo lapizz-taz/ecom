@@ -18,6 +18,14 @@
 --   settings, with rollback for those only (never money or orders).
 -- =============================================================================
 
+-- Patches below compare and rewrite existing function text. Line endings are
+-- normalized first, so they also apply when this file is pasted into an editor
+-- that sends Windows line endings.
+create or replace function pg_temp.lf(p text) returns text
+language sql immutable as $$ select replace(p, E'\r', '') $$;
+create or replace function pg_temp.lf_replace(p text, p_from text, p_to text) returns text
+language sql immutable as $$ select replace(pg_temp.lf(p), pg_temp.lf(p_from), pg_temp.lf(p_to)) $$;
+
 -- -----------------------------------------------------------------------------
 -- 1. Configuration history
 -- -----------------------------------------------------------------------------
@@ -544,13 +552,13 @@ returns void
 language plpgsql
 as $$
 declare
-  v_old text := pg_get_functiondef(p_fn);
+  v_old text := pg_temp.lf(pg_get_functiondef(p_fn));
   v_pos int := position(E'\nbegin\n' in v_old);
 begin
   if v_pos = 0 then
     raise exception 'features: % has no begin', p_fn;
   end if;
-  execute overlay(v_old placing E'\nbegin\n' || p_guard || E'\n' from v_pos for 7);
+  execute overlay(v_old placing E'\nbegin\n' || pg_temp.lf(p_guard) || E'\n' from v_pos for 7);
 end;
 $$;
 
@@ -581,10 +589,10 @@ select pg_temp.guard('public.site_api_key_check(text)', $g$  if not public.featu
 select pg_temp.guard('public.pbx_issue_my_credential(text,text)', $g$  perform public.require_feature('pbx');$g$);
 do $$
 declare
-  v_old text := pg_get_functiondef('public.admin_save_product(jsonb)'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.admin_save_product(jsonb)'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old, $o$  perform public.require_permission('products.manage');
+  v_new := pg_temp.lf_replace(v_old, $o$  perform public.require_permission('products.manage');
 $o$, $n$  perform public.require_permission('products.manage');
   if v_id is null then
     perform public.require_limit('products');
@@ -619,11 +627,11 @@ select pg_temp.guard('public.finance_overview(date,date)', $g$  perform set_conf
 -- New active staff count against the plan's staff limit.
 do $$
 declare
-  v_old text := pg_get_functiondef('public.admin_set_user_role(uuid,text,boolean)'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.admin_set_user_role(uuid,text,boolean)'::regprocedure));
   v_new text;
 begin
   -- (PERFORM resets FOUND, so the check reads the profile id instead.)
-  v_new := replace(v_old, $o$  select * into v_profile from public.profiles where id = p_user_id for update;
+  v_new := pg_temp.lf_replace(v_old, $o$  select * into v_profile from public.profiles where id = p_user_id for update;
   if not found then$o$, $n$  select * into v_profile from public.profiles where id = p_user_id for update;
   if (v_profile.id is null or not v_profile.is_active) and p_is_active then
     perform public.require_limit('staff');
@@ -1422,10 +1430,10 @@ grant execute on function public.my_plan() to authenticated;
 -- get_my_access tells the app what the account allows right now.
 do $$
 declare
-  v_old text := pg_get_functiondef('public.get_my_access()'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.get_my_access()'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old, $o$    'merchant_id', v_p.merchant_id,$o$, $n$    'merchant_id', v_p.merchant_id,
+  v_new := pg_temp.lf_replace(v_old, $o$    'merchant_id', v_p.merchant_id,$o$, $n$    'merchant_id', v_p.merchant_id,
     'access_mode', public.merchant_access_mode(v_p.merchant_id),$n$);
   if v_new = v_old then
     raise exception 'features: get_my_access() has changed';
@@ -1438,10 +1446,10 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_old text := pg_get_functiondef('public.platform_merchant_create(jsonb)'::regprocedure);
+  v_old text := pg_temp.lf(pg_get_functiondef('public.platform_merchant_create(jsonb)'::regprocedure));
   v_new text;
 begin
-  v_new := replace(v_old, $o$  perform set_config('app.merchant_id', '', true);
+  v_new := pg_temp.lf_replace(v_old, $o$  perform set_config('app.merchant_id', '', true);
   perform public._platform_log('merchant.created',$o$, $n$  perform set_config('app.merchant_id', '', true);
   -- The chosen plan (or the default), as a trial when the plan has one. Choosing
   -- a plan other than the default is a subscription decision.
