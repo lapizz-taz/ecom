@@ -19,7 +19,8 @@ export async function loginById(admin: Admin, id: string): Promise<User | null> 
 
 /** The login of a Clerk account: the one linked to it, else the one with its verified e-mail. */
 export async function findLogin(admin: Admin, clerkUser: ClerkUser): Promise<User | null> {
-  const linked = await rpc<string | null>(admin, 'find_auth_user_by_clerk', { p_clerk_id: clerkUser.id })
+  // (Before the database has the lookup, the e-mail alone finds the login.)
+  const linked = await rpc<string | null>(admin, 'find_auth_user_by_clerk', { p_clerk_id: clerkUser.id }).catch(() => null)
   if (linked) return loginById(admin, linked)
   const email = verifiedPrimaryEmail(clerkUser)
   if (!email) return null
