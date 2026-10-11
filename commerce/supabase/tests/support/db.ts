@@ -76,29 +76,47 @@ export async function inTx<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   }
 }
 
-/** Database owner with no JWT: migrations, SQL editor, pg_cron. */
-export async function asSystem(db: Db): Promise<void> {
-  await db.query(`reset role; select set_config('request.jwt.claims', '', true)`)
+/** Merchant #1: the business whose data existed before multi-tenancy. */
+export const MERCHANT_1 = '00000000-0000-4000-8000-000000000001'
+
+/** PostgREST request headers; edge functions and the storefront name the merchant here. */
+async function setHeaders(db: Db, merchantId: string | null): Promise<void> {
+  await db.query(`select set_config('request.headers', $1, true)`, [
+    JSON.stringify(merchantId ? { 'x-merchant-id': merchantId } : {}),
+  ])
 }
 
-/** Edge functions using the service-role key. */
-export async function asService(db: Db): Promise<void> {
+/** Database owner with no JWT: migrations, SQL editor, pg_cron (acting for one merchant). */
+export async function asSystem(db: Db, merchantId: string | null = MERCHANT_1): Promise<void> {
+  await db.query(`reset role; select set_config('request.jwt.claims', '', true)`)
+  await db.query(`select set_config('app.merchant_id', $1, true)`, [merchantId ?? ''])
+  await setHeaders(db, null)
+}
+
+/** Edge functions using the service-role key (they send x-merchant-id). */
+export async function asService(db: Db, merchantId: string | null = MERCHANT_1): Promise<void> {
   await db.query('set local role service_role')
   await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'service_role' })])
+  await db.query(`select set_config('app.merchant_id', '', true)`)
+  await setHeaders(db, merchantId)
 }
 
-/** A signed-in user (staff or customer) calling through PostgREST. */
-export async function asUser(db: Db, userId: string, email = 'user@example.com'): Promise<void> {
+/** A signed-in user (staff or customer) calling through PostgREST. Customers' storefront sends x-merchant-id. */
+export async function asUser(db: Db, userId: string, email = 'user@example.com', merchantId: string | null = MERCHANT_1): Promise<void> {
   await db.query('set local role authenticated')
   await db.query(`select set_config('request.jwt.claims', $1, true)`, [
     JSON.stringify({ sub: userId, role: 'authenticated', email }),
   ])
+  await db.query(`select set_config('app.merchant_id', '', true)`)
+  await setHeaders(db, merchantId)
 }
 
-/** An anonymous storefront visitor. */
-export async function asAnon(db: Db): Promise<void> {
+/** An anonymous storefront visitor on a merchant's store. */
+export async function asAnon(db: Db, merchantId: string | null = MERCHANT_1): Promise<void> {
   await db.query('set local role anon')
   await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'anon' })])
+  await db.query(`select set_config('app.merchant_id', '', true)`)
+  await setHeaders(db, merchantId)
 }
 
 export async function one<T = Record<string, unknown>>(db: Db, sql: string, params: unknown[] = []): Promise<T> {

@@ -1,6 +1,6 @@
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestDatabase } from '../support/db'
+import { MERCHANT_1, createTestDatabase } from '../support/db'
 
 // The development seed is built through the real business functions, so
 // loading it is itself an end-to-end check of the order lifecycle.
@@ -11,6 +11,8 @@ describe('development seed', () => {
     const url = await createTestDatabase('commerce_seed_test', true)
     client = new pg.Client({ connectionString: url })
     await client.connect()
+    // Reports run inside a merchant's context; the seed is Merchant #1.
+    await client.query(`select set_config('app.merchant_id', $1, false)`, [MERCHANT_1])
   }, 120_000)
 
   afterAll(async () => {

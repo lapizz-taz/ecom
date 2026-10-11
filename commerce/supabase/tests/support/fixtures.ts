@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { asService, asSystem, one, value, type Db } from './db'
+import { MERCHANT_1, asService, asSystem, one, value, type Db } from './db'
 
-export async function createStaff(db: Db, roleCode: string, email = `${roleCode.toLowerCase()}-${randomUUID().slice(0, 8)}@example.com`): Promise<string> {
-  await asSystem(db)
+export async function createStaff(db: Db, roleCode: string, email = `${roleCode.toLowerCase()}-${randomUUID().slice(0, 8)}@example.com`, merchantId = MERCHANT_1): Promise<string> {
+  await asSystem(db, merchantId)
   const id = randomUUID()
   await db.query(`insert into auth.users(id, email, raw_user_meta_data) values ($1, $2, $3)`, [
     id,
@@ -28,6 +28,7 @@ export interface ProductInput {
   trackInventory?: boolean
   requiresProduction?: boolean
   variants?: Array<{ sku: string; title: string; price?: number; cost?: number; stock?: number }>
+  merchantId?: string
 }
 
 export interface ProductFixture {
@@ -36,7 +37,7 @@ export interface ProductFixture {
 }
 
 export async function createProduct(db: Db, input: ProductInput): Promise<ProductFixture> {
-  await asSystem(db)
+  await asSystem(db, input.merchantId ?? MERCHANT_1)
   const name = input.name ?? `Product ${randomUUID().slice(0, 6)}`
   const suffix = randomUUID().slice(0, 6).toUpperCase()
   const variants = input.variants ?? [{ sku: `SKU-${suffix}`, title: 'Default', stock: input.stock ?? 10 }]
@@ -75,6 +76,7 @@ export interface OrderInput {
   coupon?: string
   deliveryMethod?: string
   idempotencyKey?: string
+  merchantId?: string
 }
 
 export function orderPayload(input: OrderInput): Record<string, unknown> {
@@ -109,7 +111,7 @@ export interface OrderRow {
 
 /** Creates an order exactly like the storefront does (no risk check). */
 export async function createOrder(db: Db, input: OrderInput): Promise<OrderRow> {
-  await asSystem(db)
+  await asSystem(db, input.merchantId ?? MERCHANT_1)
   return one<OrderRow>(db, `select * from public._create_order($1, 'STOREFRONT')`, [JSON.stringify(orderPayload(input))])
 }
 

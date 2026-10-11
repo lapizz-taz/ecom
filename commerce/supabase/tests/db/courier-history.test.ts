@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { asService, asSystem, asUser, closePool, expectError, inTx, one, value, type Db } from '../support/db'
+import { MERCHANT_1, asService, asSystem, asUser, closePool, expectError, inTx, one, value, type Db } from '../support/db'
 import { createStaff } from '../support/fixtures'
 
 afterAll(closePool)
@@ -31,7 +31,7 @@ describe('courier-history API key', () => {
       await asSystem(db)
       const row = await one<{ hint: string; secret_id: string }>(db, `select hint, secret_id from public.integration_credentials where key = $1`, [KEY])
       expect(row.hint).toBe('••••1234')
-      expect(await value(db, `select count(*)::int from vault.secrets where name = $1`, [`integration:${KEY}`])).toBe(1)
+      expect(await value(db, `select count(*)::int from vault.secrets where name = $1`, [`integration:${MERCHANT_1}:${KEY}`])).toBe(1)
       expect(await value(db, `select count(*)::int from public.audit_logs where action = 'integration.connected'`)).toBe(1)
       expect(JSON.stringify(await value(db, `select jsonb_agg(metadata) from public.audit_logs where action = 'integration.connected'`))).not.toContain('llcg-secret')
 
@@ -48,7 +48,7 @@ describe('courier-history API key', () => {
       await asService(db)
       await db.query(`select public.integration_secret_store($1, '{"api_key":"other-9999"}', '••••9999', $2)`, [KEY, owner])
       await asSystem(db)
-      expect(await value(db, `select count(*)::int from vault.secrets where name = $1`, [`integration:${KEY}`])).toBe(1)
+      expect(await value(db, `select count(*)::int from vault.secrets where name = $1`, [`integration:${MERCHANT_1}:${KEY}`])).toBe(1)
       await asService(db)
       await db.query(`select public.integration_secret_clear($1, $2)`, [KEY, owner])
       expect(await value(db, `select public.integration_secret_get($1)`, [KEY])).toBeNull()

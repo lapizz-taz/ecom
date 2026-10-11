@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { asAnon, asService, asSystem, asUser, closePool, expectError, inTx, num, one, value, type Db } from '../support/db'
+import { MERCHANT_1, asAnon, asService, asSystem, asUser, closePool, expectError, inTx, num, one, value, type Db } from '../support/db'
 import { createOrder, createProduct, createStaff, setSetting, transition } from '../support/fixtures'
 
 afterAll(closePool)
@@ -107,7 +107,7 @@ describe('gateway payments', () => {
       await db.query(`select public.gateway_token_put('bkash', '{"id":"abc","token":"tok-2","expiresAt":2}')`)
       expect(await value(db, `select public.gateway_token_get('bkash')`)).toEqual({ id: 'abc', token: 'tok-2', expiresAt: 2 })
       await asSystem(db)
-      expect(await value(db, `select count(*)::int from vault.secrets where name = 'gateway-token:bkash'`)).toBe(1)
+      expect(await value(db, `select count(*)::int from vault.secrets where name = $1`, [`gateway-token:${MERCHANT_1}:bkash`])).toBe(1)
       expect(await value(db, `select count(*)::int from public.integration_credentials where key like '%token%'`)).toBe(0)
       await asService(db)
       await expectError(db, `select public.gateway_token_put('../x', '{}')`, [], /bad gateway token/)

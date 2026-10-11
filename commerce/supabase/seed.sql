@@ -16,6 +16,9 @@
 -- orders are spread over the last 30 days for realistic charts.
 -- =============================================================================
 
+-- Everything below belongs to Merchant #1 (see the tenancy migration).
+select set_config('app.merchant_id', '00000000-0000-4000-8000-000000000001', false);
+
 -- Staff and customer accounts -------------------------------------------------
 create or replace function pg_temp.seed_user(p_email text, p_name text, p_role text)
 returns uuid
@@ -73,7 +76,7 @@ insert into public.categories(name, slug, description, sort_order) values
   ('Hoodies', 'hoodies', 'Warm fleece and zip hoodies', 3),
   ('Bags', 'bags', 'Totes and everyday carry', 4),
   ('Accessories', 'accessories', 'Small leather goods, caps and socks', 5)
-on conflict (slug) do nothing;
+on conflict (merchant_id, slug) do nothing;
 
 create or replace function pg_temp.seed_product(
   p_name text, p_slug text, p_category text, p_price numeric, p_compare numeric, p_cost numeric,
@@ -189,7 +192,7 @@ values
   ('WELCOME10', '10% off your first order', 'PERCENTAGE', 10, 0, 300, 1, null),
   ('FREESHIP', 'Free delivery over ৳1,500', 'FREE_DELIVERY', 0, 1500, null, null, null),
   ('EID200', '৳200 off orders over ৳2,000', 'FIXED', 200, 2000, null, 2, 500)
-on conflict (code) do nothing;
+on conflict (merchant_id, code) do nothing;
 
 -- Orders through every stage ---------------------------------------------------
 create temporary table seed_orders(order_id uuid, offset_days int);

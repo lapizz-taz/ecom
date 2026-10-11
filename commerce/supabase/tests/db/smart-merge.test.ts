@@ -43,7 +43,7 @@ describe('smart automatic merging', () => {
 
       expect(b.merged).toBe(true)
       expect(b.id).toBe(a.id) // the customer is shown the first order
-      const items = await db.query<{ variant_id: string; quantity: number }>(`select variant_id, quantity from public.order_items where order_id = $1 order by created_at`, [a.id])
+      const items = await db.query<{ variant_id: string; quantity: number }>(`select variant_id, quantity from public.order_items where order_id = $1 order by quantity desc`, [a.id])
       expect(items.rows).toEqual([{ variant_id: v.belt, quantity: 3 }, { variant_id: v.cap, quantity: 1 }])
       // Stock: the second order's 2 belts are reserved once (not twice, not lost).
       const after = await inventory(db, v.belt)
