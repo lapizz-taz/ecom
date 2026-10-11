@@ -103,7 +103,7 @@ export default function OrderEditPage() {
   const shipment = record.data?.shipment
   const subtotal = lines.reduce((a, l) => a + l.quantity * l.unit_price, 0)
   const total = itemsChanged && quote.data
-    ? toNumber(quote.data.subtotal) - toNumber(o.discount_total) + toNumber(o.delivery_charge) - toNumber(o.delivery_discount)
+    ? toNumber(quote.data.subtotal) - toNumber(o.discount_total) + toNumber(o.delivery_charge) - toNumber(o.delivery_discount) + toNumber(o.tax_amount)
     : toNumber(o.total_amount)
   const wa = waNumber(o.customer_phone)
   const addLine = (v: VariantSearchRow) => setLines((ls) => ls.some((l) => l.variant_id === v.variant_id)
@@ -197,6 +197,7 @@ export default function OrderEditPage() {
                 <div className="flex justify-between"><dt className="text-muted-foreground">Products</dt><dd><Money value={itemsChanged && quote.data ? quote.data.subtotal : subtotal} /></dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Delivery</dt><dd><Money value={toNumber(o.delivery_charge) - toNumber(o.delivery_discount)} /></dd></div>
                 {toNumber(o.discount_total) > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Discount</dt><dd><Money value={-toNumber(o.discount_total)} /></dd></div>}
+                {toNumber(o.tax_amount) > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Tax &amp; fees</dt><dd><Money value={toNumber(o.tax_amount)} /></dd></div>}
                 {toNumber(o.amount_paid) > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">Paid</dt><dd><Money value={-toNumber(o.amount_paid)} /></dd></div>}
                 <div className="flex justify-between border-t pt-1.5 font-semibold"><dt>To collect</dt><dd><Money value={Math.max(total - toNumber(o.amount_paid), 0)} /></dd></div>
               </dl>

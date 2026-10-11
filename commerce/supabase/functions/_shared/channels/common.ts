@@ -33,6 +33,10 @@ export interface NormalizedOrder {
   attribution: { first_touch: Touch | null; last_touch: Touch | null } | null
   /** Fulfilments the store already made (Shopify), to record ones made by hand. */
   fulfillments?: SeenFulfillment[]
+  /** The store's fulfilment state: an order already FULFILLED / PARTIALLY_FULFILLED / RESTOCKED is not imported. */
+  fulfillment_status?: string | null
+  /** Taxes and fees on top of the prices (0 when prices already include them). */
+  tax_total?: number
 }
 
 /** A fulfilment as the store reports it (webhook or API). */

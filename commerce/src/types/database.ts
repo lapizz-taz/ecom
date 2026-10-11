@@ -5504,6 +5504,7 @@ export type Database = {
           manual_discount: number
           discount_total: number
           delivery_charge: number
+          tax_amount: number
           delivery_discount: number
           return_charge: number
           total_amount: number
@@ -5588,6 +5589,7 @@ export type Database = {
           manual_discount?: number
           discount_total?: number
           delivery_charge?: number
+          tax_amount?: number
           delivery_discount?: number
           return_charge?: number
           total_amount?: number
@@ -5672,6 +5674,7 @@ export type Database = {
           manual_discount?: number
           discount_total?: number
           delivery_charge?: number
+          tax_amount?: number
           delivery_discount?: number
           return_charge?: number
           total_amount?: number

@@ -86,6 +86,13 @@ describe('Shopify', () => {
     expect(paid.attribution).toBeNull()
   })
 
+  it('passes the fulfilment state and the tax on top of the prices (none when prices include it)', () => {
+    const base = shopifyOrder({ displayFulfillmentStatus: 'FULFILLED', currentTotalTaxSet: { shopMoney: { amount: '104.85' } }, taxesIncluded: false })
+    expect(normalizeShopifyOrder(base)).toMatchObject({ fulfillment_status: 'FULFILLED', tax_total: 104.85 })
+    expect(normalizeShopifyOrder(shopifyOrder({ displayFulfillmentStatus: 'UNFULFILLED', currentTotalTaxSet: { shopMoney: { amount: '90' } }, taxesIncluded: true })))
+      .toMatchObject({ fulfillment_status: 'UNFULFILLED', tax_total: 0 })
+  })
+
   it('reports a failed check when Shopify hides customer data from the app', async () => {
     const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
       const q = String(JSON.parse(String(init!.body)).query)
@@ -152,6 +159,11 @@ describe('WooCommerce', () => {
     expect(o.attribution?.last_touch?.params).toMatchObject({ utm_source: 'facebook', fbclid: 'x1' })
     expect(normalizeWooOrder(wooOrder({ payment_method: 'bkash', date_paid_gmt: '2026-10-08T10:01:00' })).paid_amount).toBe(1310)
     expect(normalizeWooOrder(wooOrder({ status: 'cancelled' })).cancelled).toBe(true)
+  })
+
+  it('marks a completed WooCommerce order as already sent and keeps its tax', () => {
+    expect(normalizeWooOrder(wooOrder({ status: 'completed', total_tax: '65.50' }))).toMatchObject({ fulfillment_status: 'FULFILLED', tax_total: 65.5 })
+    expect(normalizeWooOrder(wooOrder())).toMatchObject({ fulfillment_status: 'UNFULFILLED', tax_total: 0 })
   })
 
   it('falls back to keys in the query when the host drops the Authorization header', async () => {

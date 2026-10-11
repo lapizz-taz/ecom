@@ -34,7 +34,10 @@ import { formatMoney } from '@/lib/format'
 const status = (store: string): Record<string, { label: string; tone: 'ok' | 'warn' | 'muted' }> => ({
   OK: { label: 'In step', tone: 'ok' }, PENDING: { label: 'Updating', tone: 'muted' }, MISMATCH: { label: `Changed in ${store}`, tone: 'warn' },
   FAILED: { label: 'Failed', tone: 'warn' }, NEW: { label: 'Not synced yet', tone: 'muted' }, UNTRACKED: { label: `Stock not counted in ${store}`, tone: 'muted' },
+  QUEUED: { label: `Sending to ${store}`, tone: 'muted' },
 })
+/** "In step" only when the numbers agree; a difference not yet sent is on its way (the queue sends it within about a minute). */
+const rowStatus = (r: Pick<SyncItem, 'status' | 'difference'>) => (r.status === 'OK' && r.difference ? 'QUEUED' : r.status)
 const F_STATUS: Record<string, string> = {
   PENDING: 'Queued', NEEDS_TRACKING: 'Needs tracking', PROCESSING: 'Sending', FULFILLED: 'Fulfilled', FAILED: 'Failed', SKIPPED: 'Skipped',
 }
@@ -490,7 +493,7 @@ function StockTab({ o, channelId, onDone, store }: { o: SyncOverview; channelId:
                 <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.reserved}</td>
                 <td className="px-3 py-2 text-right font-medium tabular-nums">{r.available}</td>
                 <td className={cn('px-3 py-2 text-right tabular-nums', r.difference ? 'font-semibold underline decoration-foreground/40' : '')}>{r.shopify ?? '—'}</td>
-                <td className="px-3 py-2"><Pill tone={STATUS[r.status]?.tone ?? 'muted'}>{STATUS[r.status]?.label ?? r.status}</Pill>
+                <td className="px-3 py-2"><Pill tone={STATUS[rowStatus(r)]?.tone ?? 'muted'}>{STATUS[rowStatus(r)]?.label ?? r.status}</Pill>
                   {r.error && <span className="block max-w-64 truncate text-[11px] text-muted-foreground" title={r.error}>{r.error}</span>}</td>
               </tr>
             ))}

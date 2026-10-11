@@ -363,6 +363,7 @@ export default function OrderDetailPage() {
                   {toNumber(o.manual_discount) > 0 && <Row label="Discount" value={`−${formatMoney(o.manual_discount)}`} />}
                   <Row label={`Delivery${o.delivery_zone ? ` (${o.delivery_zone.name})` : ''}`} value={formatMoney(o.delivery_charge)} />
                   {toNumber(o.delivery_discount) > 0 && <Row label="Free delivery" value={`−${formatMoney(o.delivery_discount)}`} />}
+                  {toNumber(o.tax_amount) > 0 && <Row label="Tax &amp; fees" value={formatMoney(o.tax_amount)} />}
                   <Row label="Order total" value={formatMoney(o.total_amount)} strong className="border-t pt-1.5" />
                   {partialBack > 0 && <Row label="Sent back (partial delivery)" value={`−${formatMoney(partialBack)}`} />}
                   {toNumber(o.advance_required) > 0 && <Row label={`Advance required (${ADVANCE_TYPE[o.advance_type]})`} value={formatMoney(o.advance_required)} muted />}

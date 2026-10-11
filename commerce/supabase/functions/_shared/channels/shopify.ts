@@ -117,6 +117,7 @@ interface GqlError { message: string; path?: Array<string | number>; extensions?
 const ORDER_FIELDS = `
   id legacyResourceId name createdAt cancelledAt test email phone note displayFinancialStatus paymentGatewayNames
   currentTotalPriceSet { shopMoney { amount currencyCode } }
+  currentTotalTaxSet { shopMoney { amount } } taxesIncluded
   totalShippingPriceSet { shopMoney { amount } }
   totalDiscountsSet { shopMoney { amount } }
   totalOutstandingSet { shopMoney { amount } }
@@ -629,6 +630,7 @@ export interface ShopifyOrder {
   id: string; legacyResourceId: string; name: string; createdAt: string; cancelledAt: string | null; test: boolean
   email: string | null; phone: string | null; note: string | null; displayFinancialStatus: string | null; paymentGatewayNames: string[] | null
   currentTotalPriceSet: Money | null; totalShippingPriceSet: Money | null; totalDiscountsSet: Money | null; totalOutstandingSet: Money | null
+  currentTotalTaxSet?: Money | null; taxesIncluded?: boolean | null
   shippingAddress: Address | null; billingAddress: Address | null
   customer?: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null } | null
   lineItems: { nodes: Array<{
@@ -854,6 +856,9 @@ export function normalizeShopifyOrder(o: ShopifyOrder): NormalizedOrder {
     note: clean(o.note),
     attribution: first || last ? { first_touch: first ?? last, last_touch: last ?? first } : null,
     fulfillments: (o.fulfillments ?? []).map((f) => seenFulfillment(f, o.displayFulfillmentStatus === 'FULFILLED')),
+    fulfillment_status: o.displayFulfillmentStatus ?? null,
+    // Prices that already include tax: the total has nothing on top.
+    tax_total: o.taxesIncluded ? 0 : money(o.currentTotalTaxSet?.shopMoney.amount),
   }
 }
 

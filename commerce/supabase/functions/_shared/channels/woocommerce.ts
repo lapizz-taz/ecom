@@ -375,7 +375,7 @@ export function wooStockFromWebhook(body: { id?: number; parent_id?: number; typ
 interface WooAddress { first_name?: string; last_name?: string; address_1?: string; address_2?: string; city?: string; state?: string; postcode?: string; country?: string; phone?: string; email?: string }
 export interface WooOrder {
   id: number; number: string; status: string; currency: string; date_created_gmt?: string; date_paid_gmt?: string | null
-  total: string; shipping_total: string; discount_total: string; payment_method?: string; payment_method_title?: string
+  total: string; shipping_total: string; discount_total: string; total_tax?: string; payment_method?: string; payment_method_title?: string
   customer_note?: string; billing?: WooAddress; shipping?: WooAddress
   line_items: Array<{ product_id: number; variation_id: number; name: string; quantity: number; subtotal: string; sku?: string; image?: { src?: string } | null; meta_data?: Array<{ display_key?: string; display_value?: string }> }>
   meta_data?: Array<{ key: string; value: unknown }>
@@ -428,5 +428,9 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
     gateway: clean(o.payment_method_title),
     note: clean(o.customer_note),
     attribution: fromPlugin ?? (touch ? { first_touch: touch, last_touch: touch } : null),
+    // Completed in WooCommerce: already sent, so not imported.
+    fulfillment_status: o.status === 'completed' ? 'FULFILLED' : 'UNFULFILLED',
+    // Line subtotals and shipping are always without tax in WooCommerce.
+    tax_total: money(o.total_tax ?? 0),
   }
 }

@@ -81,6 +81,7 @@ export default function OrderPrintPage() {
             <div className="flex justify-between"><dt>Subtotal</dt><dd>{formatMoney(o.subtotal)}</dd></div>
             {toNumber(o.discount_total) > 0 && <div className="flex justify-between"><dt>Discount</dt><dd>-{formatMoney(o.discount_total)}</dd></div>}
             <div className="flex justify-between"><dt>Delivery</dt><dd>{formatMoney(toNumber(o.delivery_charge) - toNumber(o.delivery_discount))}</dd></div>
+            {toNumber(o.tax_amount) > 0 && <div className="flex justify-between"><dt>Tax &amp; fees</dt><dd>{formatMoney(o.tax_amount)}</dd></div>}
             <div className="flex justify-between border-t pt-1 font-semibold"><dt>Total</dt><dd>{formatMoney(o.total_amount)}</dd></div>
             {toNumber(o.amount_paid) > 0 && <div className="flex justify-between"><dt>Paid</dt><dd>-{formatMoney(o.amount_paid)}</dd></div>}
             <div className="flex justify-between font-semibold"><dt>Due on delivery</dt><dd>{formatMoney(Math.max(toNumber(o.total_amount) - toNumber(o.amount_paid), 0))}</dd></div>

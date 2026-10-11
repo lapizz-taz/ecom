@@ -114,12 +114,14 @@ describe('sales channels: importing orders', () => {
       expect((await ingest(db, c, order({ external_id: '5004', cancelled: true }))).status).toBe('SKIPPED')
     }))
 
-  it('flags store totals that include taxes we did not import', () =>
+  it('keeps taxes and fees in a store total as the order\'s tax, so the cash to collect matches the store', () =>
     inTx(async (db) => {
       const c = await channel(db)
       const r = await ingest(db, c, order({ external_id: '5005', discount_total: 0, total: 1700 }))
       await asSystem(db)
-      expect(await value(db, `select array_to_string(warnings, ' ') from public.channel_order_imports where id = $1`, [r.import_id])).toContain('taxes or fees')
+      expect(await value(db, `select array_to_string(warnings, ' ') from public.channel_order_imports where id = $1`, [r.import_id])).toBe('')
+      const o = await value<Record<string, unknown>>(db, `select to_jsonb(o) from public.orders o where id = $1`, [r.order_id])
+      expect([num(o.subtotal), num(o.delivery_charge), num(o.tax_amount), num(o.total_amount)]).toEqual([1500, 120, 80, 1700])
     }))
 
   it('imports a store order even when stock here is short, warns about it, and keeps the rule for other orders', () =>
