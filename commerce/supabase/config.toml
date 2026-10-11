@@ -34,8 +34,10 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
+# Local development only. Production uses the Supabase dashboard:
+# Authentication -> URL Configuration (Site URL + Redirect URLs), see README.
 site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://localhost:5173/reset-password", "http://localhost:5173/admin/reset-password"]
+additional_redirect_urls = ["http://localhost:5173/**", "http://127.0.0.1:5173/**"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 enable_signup = true
@@ -43,7 +45,7 @@ enable_signup = true
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
+enable_confirmations = true
 
 [edge_runtime]
 enabled = true

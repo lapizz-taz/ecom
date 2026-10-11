@@ -2,6 +2,7 @@
 // packages) go to the platform's own gateway accounts, saved from the Super
 // Admin panel. They never use a merchant's gateway account.
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { appBase } from './storefront.ts'
 import { env, requireEnv } from './env.ts'
 import { HttpError } from './http.ts'
 import { type Gateway, gatewayFromCredentials } from './payments/registry.ts'
@@ -35,7 +36,7 @@ export async function platformGateway(code: Gateway, opts: { allowDisabled?: boo
 
 /** Where the admin app lives, for returning merchants after a payment. */
 export function panelBase(req?: Request): string {
-  return (env('PLATFORM_URL') ?? env('STOREFRONT_URL') ?? req?.headers.get('origin') ?? 'http://localhost:5173').replace(/\/+$/, '')
+  return appBase(req)
 }
 
 /** The billing function's own address (gateway returns and IPNs). */

@@ -19,7 +19,7 @@ export default function AccountPage() {
   const { user, loading, isStaff, signOut } = useAuth()
   const orders = useQuery({ queryKey: ['my-orders'], enabled: Boolean(user), queryFn: () => myOrders(50, 0) })
   if (loading) return <LoadingState />
-  if (!user) return <Navigate to="/login?next=/account" replace />
+  if (!user) return <Navigate to={`/login?next=/account${window.location.hash.includes('error') ? `&${window.location.hash.slice(1)}` : ''}`} replace />
   const meta = user.user_metadata as { full_name?: string; phone?: string }
 
   return (

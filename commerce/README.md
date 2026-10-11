@@ -112,8 +112,20 @@ Seeded logins (password `Password123!` for all):
    supabase secrets set --env-file supabase/functions/.env
    supabase functions deploy        # deploys every function; verify_jwt settings come from config.toml
    ```
-3. **Auth** — in the dashboard set the Site URL to the storefront origin and add
-   `https://<your-domain>/reset-password` and `https://<your-domain>/admin/reset-password` as redirect URLs.
+3. **Auth URLs** — **Authentication → URL Configuration** in the Supabase dashboard. Sign-up confirmation and
+   password-reset links return to the address the person used (`/start/finish`, `/account`, `/reset-password`,
+   `/admin/reset-password`), but Supabase only honours addresses on the *Redirect URLs* list; anything else is sent to
+   the *Site URL*. A Site URL left at `http://localhost:3000` is why links open localhost.
+   - **Site URL:** the live app, e.g. `https://commerce-sage-eight-89.vercel.app` (or your own domain).
+   - **Redirect URLs:** `https://<app-domain>/**`, plus `https://<store-domain>/**` for each merchant domain that has
+     customer accounts. Optionally `https://<project>-<team>.vercel.app/**` for preview deployments. Never add a bare
+     `**` or `https://*/**` — that lets anyone receive sign-in tokens.
+   - **Email templates** (Confirm sign up, Reset password, Invite) must use `{{ .ConfirmationURL }}`, not `{{ .SiteURL }}`.
+   - Set the `PLATFORM_URL` edge secret to the same app address (staff invitations, billing returns). Edge functions
+     refuse to build links when no address is configured in production instead of falling back to localhost.
+
+   Locally, `supabase/config.toml` allows `http://localhost:5173/**` and turns e-mail confirmation on, like production;
+   the e-mails appear in Mailpit at http://127.0.0.1:54324.
 4. **First owner** — sign up (or invite yourself), then in the SQL editor:
    ```sql
    select public.grant_owner('you@example.com');
@@ -284,7 +296,7 @@ Seeded logins (password `Password123!` for all):
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email notifications |
-| `PLATFORM_URL` | The admin app's address: links in staff invitations, and where merchants return after paying the platform |
+| `PLATFORM_URL` | The app's address (e.g. `https://commerce-sage-eight-89.vercel.app`): links in staff invitations, where merchants return after paying the platform, and the storefront fallback when no store domain or `STOREFRONT_URL` is set |
 | `MANAGEMENT_API_TOKEN`, `PROJECT_REF` (optional) | A Supabase personal access token (and the project ref, when it is not the one in the URL) so **Super Admin → Data Management** can show backup status. Without it the panel says it cannot see backups. Edge function secrets cannot start with `SUPABASE_`, hence the names |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected by Supabase. Which provider is *used* is

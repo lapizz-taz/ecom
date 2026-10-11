@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AuthFrame } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
+import { LinkErrorNotice, NewResetLink, useAuthLinkError } from '@/features/auth/link-problem'
 import { toUserMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 
@@ -15,6 +16,7 @@ import { supabase } from '@/lib/supabase'
 // from the link before this page renders.
 export default function ResetPasswordPage() {
   const { session, loading } = useAuth()
+  const linkError = useAuthLinkError()
   const isAdmin = useLocation().pathname.startsWith('/admin')
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
@@ -35,7 +37,7 @@ export default function ResetPasswordPage() {
   return (
     <AuthFrame admin={isAdmin} title="Choose a new password" description={session?.user.email}>
           {!loading && !session ? (
-            <p className="text-sm text-muted-foreground">This link has expired or was already used. Request a new one.</p>
+            <LinkErrorNotice error={linkError ?? { code: 'no_session', expired: true, message: 'This link has expired or was already used.' }} action={<NewResetLink admin={isAdmin} />} />
           ) : (
             <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); update.mutate() }}>
               <Field label="New password" htmlFor="password"><Input id="password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>

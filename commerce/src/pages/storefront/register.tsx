@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { toUserMessage } from '@/lib/errors'
 import { normalizePhone } from '@/lib/phone'
+import { authRedirect } from '@/lib/auth-links'
 import { supabase } from '@/lib/supabase'
 
 const schema = z.object({
@@ -30,7 +31,7 @@ export default function RegisterPage() {
       const { data, error } = await supabase.auth.signUp({
         email: v.email.trim(),
         password: v.password,
-        options: { data: { full_name: v.full_name, phone: normalizePhone(v.phone) }, emailRedirectTo: `${window.location.origin}/account` },
+        options: { data: { full_name: v.full_name, phone: normalizePhone(v.phone) }, emailRedirectTo: authRedirect('/account') },
       })
       if (error) throw error
       return data

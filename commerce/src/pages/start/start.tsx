@@ -7,6 +7,7 @@ import { ErrorState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { ResendConfirmation } from '@/features/auth/link-problem'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { BusinessFields, businessErrors, PlanPicker, Steps } from '@/features/onboarding/signup-parts'
@@ -83,7 +84,8 @@ export default function StartPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           We sent a confirmation link to <span className="font-medium text-foreground">{sentTo}</span>. Open it on this device and {business.business_name.trim() || 'your business'} opens straight away, with everything you entered.
         </p>
-        <div className="mt-6 rounded-2xl border bg-muted/40 p-4 text-[13px] text-muted-foreground">
+        <div className="mt-6"><ResendConfirmation email={sentTo} returnPath="/start/finish" compact /></div>
+        <div className="mt-4 rounded-2xl border bg-muted/40 p-4 text-[13px] text-muted-foreground">
           No e-mail after a few minutes? Check spam, or <button type="button" className="font-medium text-foreground underline-offset-4 hover:underline" onClick={() => { setSentTo(null); setStep(2) }}>use a different address</button>.
         </div>
         <p className="mt-6 text-sm text-muted-foreground">Already confirmed? <Link to="/start/finish" className="font-medium text-brand hover:underline">Continue</Link></p>

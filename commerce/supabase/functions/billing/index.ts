@@ -57,9 +57,20 @@ Deno.serve(
       const found = session && (PLATFORM_GATEWAYS as readonly string[]).includes(provider)
         ? await rpc<Found | null>(adminClient(), 'billing_gateway_lookup', { p_provider: provider, p_session: session }).catch(() => null)
         : null
-      const back = (outcome: string, invoice?: string) => new Response(null, {
-        status: 303, headers: { Location: `${panelBase()}/admin/settings/billing?${new URLSearchParams({ payment: outcome, ...(invoice ? { invoice } : {}) })}` },
-      })
+      const back = (outcome: string, invoice?: string) => {
+        let base: string
+        try { base = panelBase() } catch {
+          // No PLATFORM_URL: show the result here instead of guessing an address.
+          void logEvent({ level: 'ERROR', category: 'PAYMENT', source: 'billing', message: 'No app address to return the merchant to (set PLATFORM_URL)' })
+          return new Response(
+            '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Payment</title>' +
+            `<p style="font-family:system-ui;max-width:30rem;margin:4rem auto">Payment ${outcome === 'success' ? 'confirmed' : outcome === 'pending' || outcome === 'review' ? 'being checked' : 'not completed'}. Return to Fullfilio → Settings → Billing to see your invoice.</p>`,
+            { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+        }
+        return new Response(null, {
+          status: 303, headers: { Location: `${base}/admin/settings/billing?${new URLSearchParams({ payment: outcome, ...(invoice ? { invoice } : {}) })}` },
+        })
+      }
       if (!found) {
         void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'billing', message: `${provider || 'Gateway'} return for a billing payment we do not know`,
           context: { session: session ?? null } })

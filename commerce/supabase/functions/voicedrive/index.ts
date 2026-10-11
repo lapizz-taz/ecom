@@ -24,7 +24,7 @@ import { logEvent } from '../_shared/monitoring.ts'
 import type { PaymentProvider, VerifiedPayment } from '../_shared/payments/types.ts'
 import { platformGateway } from '../_shared/platform-billing.ts'
 import { parse } from '../_shared/schemas.ts'
-import { storefrontBase } from '../_shared/storefront.ts'
+import { appBase, storefrontBase } from '../_shared/storefront.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminClient, forEachMerchant, merchantFor, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 import { constantTimeEqual, iceServers, randomPassword, sha256Hex, type VoiceDriveSettings } from '../_shared/voicedrive.ts'
@@ -123,7 +123,15 @@ async function bkashReturn(req: Request): Promise<Response> {
     outcome = 'review'
     void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'voicedrive', message: 'Could not confirm a VoiceDrive bKash payment', error, context: { reference }, merchantId })
   }
-  const base = merchantId ? await storefrontBase(admin) : (env('STOREFRONT_URL') ?? '').replace(/\/+$/, '')
+  // Merchants return to the admin app; never to a guessed address.
+  const base = await Promise.resolve().then(() => appBase()).catch(() => (merchantId ? storefrontBase(admin) : null)).catch(() => null)
+  if (!base) {
+    const said = outcome === 'success' ? 'Payment confirmed.' : outcome === 'review' ? 'Payment is being checked.' : 'Payment not completed.'
+    return new Response(
+      '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Payment</title>' +
+      `<p style="font-family:system-ui;max-width:30rem;margin:4rem auto">${said} Return to Fullfilio → Settings → Phone to continue.</p>`,
+      { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+  }
   const target = `${base}/admin/settings/voicedrive-pbx?${new URLSearchParams({ tab: 'package', payment: outcome, type })}`
   return new Response(null, { status: 303, headers: { Location: target, 'Cache-Control': 'no-store' } })
 }

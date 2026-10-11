@@ -39,7 +39,7 @@ import { FraudDetectionService, type FraudSettings, loadFraudProviders } from '.
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { storefrontBase } from '../_shared/storefront.ts'
+import { appBase, storefrontBase } from '../_shared/storefront.ts'
 import { adminClient, forEachMerchant, getSettings, merchantFor, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
@@ -566,7 +566,9 @@ async function appLogo(admin: SupabaseClient): Promise<string | undefined> {
 
 /** Where staff land from the plugin's "open" link. */
 async function appUrl(admin: SupabaseClient, c: Channel) {
-  return `${(env('APP_URL') ?? await storefrontBase(admin)).replace(/\/+$/, '')}/admin/store/sync?channel=${c.id}&tab=plugin`
+  // The link is optional in the plugin: leave it out rather than fail pairing when no address is set.
+  const base = await Promise.resolve().then(() => appBase()).catch(() => storefrontBase(admin)).catch(() => null)
+  return base ? `${base}/admin/store/sync?channel=${c.id}&tab=plugin` : ''
 }
 
 /** A secret for the plugin's signatures (made once per store). */

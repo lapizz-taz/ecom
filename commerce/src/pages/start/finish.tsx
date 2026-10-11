@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { ErrorState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
+import { LinkErrorNotice, ResendConfirmation, useAuthLinkError } from '@/features/auth/link-problem'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { BusinessFields, businessErrors, PlanPicker } from '@/features/onboarding/signup-parts'
@@ -19,6 +20,7 @@ import { clearSignupDraft, readSignupDraft, selfOnboard, signupOptions, type Sig
  */
 export default function StartFinishPage() {
   useAdminTheme()
+  const linkError = useAuthLinkError()
   const { session, user, access, loading, accessLoading } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -58,8 +60,14 @@ export default function StartFinishPage() {
   if (!session) {
     return (
       <AuthShell>
-        <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.025em]">Sign in to finish</h1>
+        <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.025em]">{linkError ? 'Confirm your e-mail' : 'Sign in to finish'}</h1>
         <p className="mt-2 text-sm text-muted-foreground">Sign in with the account you created and your business opens right after.</p>
+        {linkError && (
+          <div className="mt-6 space-y-3">
+            <LinkErrorNotice error={linkError} />
+            <ResendConfirmation returnPath="/start/finish" />
+          </div>
+        )}
         <div className="mt-8"><SignInForm onDone={() => undefined} forgotPath="/admin/forgot-password" /></div>
       </AuthShell>
     )

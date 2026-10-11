@@ -1,3 +1,4 @@
+import { authRedirect } from '@/lib/auth-links'
 import { supabase } from '@/lib/supabase'
 
 // Public sign-up: a new business opens its account and starts a plan.
@@ -84,7 +85,7 @@ export async function signUpOwner(email: string, password: string, business: Sig
     password,
     options: {
       data: { full_name: business.full_name, phone: business.phone, signup: business },
-      emailRedirectTo: `${window.location.origin}/start/finish`,
+      emailRedirectTo: authRedirect('/start/finish'),
     },
   })
   if (error) throw error

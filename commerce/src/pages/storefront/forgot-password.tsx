@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AuthFrame } from '@/features/auth/auth-shell'
 import { toUserMessage } from '@/lib/errors'
+import { authRedirect } from '@/lib/auth-links'
 import { supabase } from '@/lib/supabase'
 
 export default function ForgotPasswordPage() {
@@ -15,7 +16,7 @@ export default function ForgotPasswordPage() {
   const send = useMutation({
     meta: { silent: true },
     mutationFn: async () => {
-      const redirectTo = `${window.location.origin}${isAdmin ? '/admin' : ''}/reset-password`
+      const redirectTo = authRedirect(`${isAdmin ? '/admin' : ''}/reset-password`)
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
       if (error) throw error
     },

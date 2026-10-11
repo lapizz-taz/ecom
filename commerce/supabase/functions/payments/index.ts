@@ -99,9 +99,18 @@ Deno.serve(
           context: { order_number: orderNumber } })
         outcome = 'review'
       }
-      const target = `${await storefrontBase(admin)}/order-success?${
-        new URLSearchParams({ order: orderNumber ?? params.value_a ?? '', payment: outcome })}`
-      return new Response(null, { status: 303, headers: { Location: target } })
+      const query = new URLSearchParams({ order: orderNumber ?? params.value_a ?? '', payment: outcome })
+      const base = await storefrontBase(admin).catch((error) => {
+        void logEvent({ level: 'ERROR', category: 'PAYMENT', source: 'payments', message: 'No store address to return the customer to (set PLATFORM_URL)', error })
+        return null
+      })
+      if (base) return new Response(null, { status: 303, headers: { Location: `${base}/order-success?${query}` } })
+      // No address configured: tell the customer the result here rather than sending them to a wrong site.
+      const said = outcome === 'success' ? 'Your payment is confirmed.' : outcome === 'pending' || outcome === 'review' ? 'We are checking your payment.' : 'The payment did not go through.'
+      return new Response(
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Payment</title>' +
+        `<p style="font-family:system-ui;max-width:30rem;margin:4rem auto">${said} Order ${(orderNumber ?? '').replace(/[^\w-]/g, '')}. You can close this page.</p>`,
+        { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
     }
 
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
