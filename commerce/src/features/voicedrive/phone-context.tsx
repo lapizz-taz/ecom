@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { useAuth } from '@/features/auth/auth-context'
+import { useMerchantFeatures } from '@/features/billing/use-features'
 import { pbx, pbxCallState, type CallRequest } from '@/services/voicedrive'
 import { shouldResume, softphone, type PhoneState, type Softphone } from './softphone'
 
@@ -39,7 +40,9 @@ function waitReady(engine: Softphone, ms = 12_000): Promise<void> {
 
 export function PhoneProvider({ children }: { children: ReactNode }) {
   const { access, can } = useAuth()
-  const enabled = Boolean(access && can('pbx.call'))
+  const { isOn } = useMerchantFeatures()
+  // The browser phone exists only while the PBX feature is on for this business.
+  const enabled = Boolean(access && can('pbx.call') && isOn('pbx'))
   const engine = useMemo(() => (enabled ? softphone() : null), [enabled])
   const state = useSyncExternalStore(engine?.subscribe ?? noop, engine?.getState ?? (() => OFF))
   const availability = useQuery({
@@ -72,8 +75,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     return req
   }, [engine])
 
-  const value = useMemo<PhoneApi>(() => ({ engine, state: engine ? state : null, canCall: Boolean(availability.data?.canCall), dial }),
-    [engine, state, availability.data?.canCall, dial])
+  const value = useMemo<PhoneApi>(() => ({ engine, state: engine ? state : null, canCall: enabled && Boolean(availability.data?.canCall), dial }),
+    [engine, state, enabled, availability.data?.canCall, dial])
   return <PhoneContext.Provider value={value}>{children}</PhoneContext.Provider>
 }
 

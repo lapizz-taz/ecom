@@ -3,6 +3,7 @@ import { Fragment, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/features/auth/auth-context'
+import { useMerchantFeatures } from '@/features/billing/use-features'
 import { cn } from '@/lib/utils'
 import { linkMatches, MORE_PAGES, NAV, type NavCounts, type NavItem } from './nav-config'
 
@@ -48,6 +49,7 @@ interface SidebarProps {
 
 export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, onAction }: SidebarProps) {
   const { can } = useAuth()
+  const { isOff } = useMerchantFeatures()
   const current = useCurrentLink()
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [filter, setFilter] = useState('')
@@ -162,7 +164,9 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
                                 expanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0',
                                 child.to === current && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border')}>
                               <span className="min-w-0 flex-1 truncate">{child.label}</span>
-                              <Badge value={child.badge?.(counts)} className="bg-sidebar-accent text-sidebar-muted" />
+                              {child.feature && isOff(child.feature)
+                                ? <span className="ml-auto rounded-full bg-sidebar-accent px-1.5 text-[10px] leading-[18px] font-medium text-sidebar-muted">Soon</span>
+                                : <Badge value={child.badge?.(counts)} className="bg-sidebar-accent text-sidebar-muted" />}
                             </Link>
                           </Fragment>
                         ))}

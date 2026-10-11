@@ -5,6 +5,7 @@ import { toast } from '@/lib/toast'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
+import { useMerchantFeatures } from '@/features/billing/use-features'
 import { usePhone } from '@/features/voicedrive/phone-context'
 import { pbxCall } from '@/services/support'
 
@@ -15,6 +16,7 @@ import { pbxCall } from '@/services/support'
  */
 export function CallButton({ phone, orderId, kind, children, ...props }: { phone: string; orderId?: string; kind?: 'APPROVED_ORDER' | 'WEB_ORDER'; children?: ReactNode } & Omit<ComponentProps<typeof Button>, 'onClick' | 'asChild'>) {
   const { access } = useAuth()
+  const { isOn } = useMerchantFeatures()
   const vd = usePhone()
   const vdCall = useMutation({
     mutationFn: () => vd.dial({ phone, orderId, kind: kind ?? 'APPROVED_ORDER' }),
@@ -26,6 +28,6 @@ export function CallButton({ phone, orderId, kind, children, ...props }: { phone
   })
   const label = children ?? <><Phone /> Call {phone}</>
   if (vd.canCall) return <Button {...props} disabled={vdCall.isPending || props.disabled} onClick={() => vdCall.mutate()}>{vdCall.isPending ? <Spinner /> : null}{label}</Button>
-  if (!access?.pbx_click_to_call) return <Button {...props} asChild><a href={`tel:${phone}`}>{label}</a></Button>
+  if (!access?.pbx_click_to_call || !isOn('pbx')) return <Button {...props} asChild><a href={`tel:${phone}`}>{label}</a></Button>
   return <Button {...props} disabled={call.isPending || props.disabled} onClick={() => call.mutate()}>{call.isPending ? <Spinner /> : null}{label}</Button>
 }

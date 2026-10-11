@@ -15,6 +15,8 @@ export interface NavChild {
   label: string
   to: string
   permission?: string
+  /** Shown as "Soon" while this platform feature is off for the business. */
+  feature?: string
   badge?: (c: NavCounts) => number | undefined
 }
 
@@ -60,7 +62,7 @@ export const NAV: NavSection[] = [
           { label: 'Abandoned Carts', to: '/admin/orders/abandoned' },
           { label: 'Auto Pick Orders', to: '/admin/orders/auto-pick' },
           { label: 'Auto Call Center', to: '/admin/orders/call-center', badge: (c) => c.queue?.follow_up_due },
-          { label: 'Phone & Missed Calls', to: '/admin/settings/voicedrive-pbx?tab=missed', permission: 'pbx.call' },
+          { label: 'Phone & Missed Calls', to: '/admin/settings/voicedrive-pbx?tab=missed', permission: 'pbx.call', feature: 'pbx' },
           { label: 'Order Block List', to: '/admin/orders/block-list' },
         ],
       },
@@ -195,7 +197,7 @@ export const NAV: NavSection[] = [
           { label: 'Courier Integration', to: '/admin/couriers', permission: 'couriers.view' },
           { label: 'App Integration', to: '/admin/settings/apps' },
           { label: 'Messaging Channels', to: '/admin/sms', permission: 'sms.view' },
-          { label: 'VoiceDrive PBX', to: '/admin/settings/voicedrive-pbx' },
+          { label: 'VoiceDrive PBX', to: '/admin/settings/voicedrive-pbx', feature: 'pbx' },
           { label: 'Templates', to: '/admin/settings?tab=notifications' },
           { label: 'Order Sources', to: '/admin/settings?tab=sources' },
           { label: 'Deletion Logs', to: '/admin/audit-logs?view=deletions', permission: 'audit.view' },

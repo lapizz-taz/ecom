@@ -17,6 +17,8 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { useMerchantFeatures } from '@/features/billing/use-features'
+import { ComingSoon } from '@/components/common/coming-soon'
 import { useStaffDirectory } from '@/hooks/use-staff-directory'
 import { formatDateTime, timeAgo } from '@/lib/format'
 import { listPbxCalls, type PbxCall, type PbxSettings, pbxSettings, pbxStatus, pbxWebhookUrl, savePbxSecret, savePbxSettings } from '@/services/support'
@@ -27,7 +29,7 @@ const STATUS: Record<string, { label: string; variant: 'success' | 'warning' | '
 }
 const duration = (s: number | null) => (s === null ? '—' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`)
 
-export default function PbxPage() {
+function PbxPageContent() {
   const { can } = useAuth()
   return (
     <div className="space-y-4">
@@ -224,4 +226,11 @@ function CallLog() {
       </CardContent>
     </Card>
   )
+}
+
+/** While the PBX feature is off for this business, the page says it is coming. */
+export default function PbxPage() {
+  const { isOff } = useMerchantFeatures()
+  if (isOff('pbx')) return <ComingSoon icon={<PhoneCall />} title="Phone & PBX" description="Click-to-call with your office PBX. It will appear here when it opens for your business." />
+  return <PbxPageContent />
 }

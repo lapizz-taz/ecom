@@ -426,6 +426,7 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
 /** Features to choose when connecting; each asks only for the Shopify permissions it needs. */
 const SHOPIFY_FEATURES: Array<{ id: string; label: string; scopes: string[]; why: string; required?: boolean; off?: Record<string, boolean> }> = [
   { id: 'orders', label: 'Import and manage orders', scopes: ['read_orders'], why: 'Read new orders, cancellations and where each order came from (ad, post, Google …).', required: true },
+  { id: 'abandoned', label: 'Abandoned checkouts', scopes: ['read_orders'], why: 'Shopify gives abandoned checkouts only with read_orders: the phone, name and cart of customers who did not finish appear in Web Orders → Abandoned Carts, so you can call them back.', required: true },
   { id: 'products', label: 'Import products and variants', scopes: ['read_products'], why: 'Bring products here with SKU, prices, images and options, and new ones as they are added.', off: { auto_import_products: false, update_products: false } },
   { id: 'stock', label: 'Sync stock both ways', scopes: ['read_inventory', 'write_inventory', 'read_locations'], why: 'Read and set the available quantity at your Shopify location.' },
   { id: 'cost', label: 'Import cost prices', scopes: ['read_inventory'], why: "Read each item's cost, so profit is right." },
@@ -456,7 +457,7 @@ function FeaturePicker({ features, onChange }: { features: string[]; onChange: (
           </label>
         ))}
         <div className="bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          <b className="text-foreground">Customer details</b> are not a permission: request <b className="text-foreground">Name, Email, Phone, Address</b> under Protected customer data (step 3), or orders arrive without the customer.
+          <b className="text-foreground">Customer details</b> are not a permission: request <b className="text-foreground">Name, Email, Phone, Address</b> under Protected customer data (step 3), or orders and abandoned checkouts arrive without the customer.
         </div>
       </div>
       <p className="text-xs">Permissions to add in Shopify ({scopes.length}) — copy all of them into the app version:</p>
@@ -487,7 +488,10 @@ function ShopifySteps({ mode, features, onFeatures }: { mode: 'client' | 'oauth'
           <FeaturePicker features={features} onChange={onFeatures} />
           <p>Embed app in Shopify admin: <b className="text-foreground">off</b> · Webhooks API version: <b className="text-foreground">2026-07</b> · then <b className="text-foreground">Release</b>.</p>
         </>)}
-        {step(3, 'Allow customer details', <p>API access → Protected customer data → request <b className="text-foreground">Name, Email, Phone, Address</b> (reason: order fulfilment).</p>)}
+        {step(3, 'Allow customer details', <>
+          <p>API access → Protected customer data → request <b className="text-foreground">Name, Email, Phone, Address</b> (reason: order fulfilment).</p>
+          <p>Make sure <code className="rounded bg-muted px-1 py-0.5 text-[11px]">read_orders</code> is in the version: without it Shopify does not share abandoned checkouts, and without customer data they arrive with no phone to call.</p>
+        </>)}
         {step(4, mode === 'client' ? 'Install it on your store' : 'Copy the keys', mode === 'client'
           ? <p>In the app's overview click <b className="text-foreground">Install app</b> and choose your store.</p>
           : <p>Settings → copy the <b className="text-foreground">Client ID</b> and <b className="text-foreground">Client secret</b>.</p>)}

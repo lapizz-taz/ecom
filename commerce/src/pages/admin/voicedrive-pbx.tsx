@@ -27,12 +27,14 @@ import {
   batch, CALL_STATUS, durationLabel, LINE_PROBLEM, OUTCOMES, pbx, REJECT_REASON,
   type Agent, type CallRecord, type Overview, type Package, type PackageList, type RingGroup,
 } from '@/services/voicedrive'
+import { useMerchantFeatures } from '@/features/billing/use-features'
+import { ComingSoon } from '@/components/common/coming-soon'
 
 const tk = (n: number | null | undefined, d = 2) => `${formatNumber(Number(n ?? 0), d)} tk`
 const TABS = ['package', 'agents', 'groups', 'setup', 'missed', 'reports', 'admin'] as const
 type Tab = (typeof TABS)[number]
 
-export default function VoiceDrivePbxPage() {
+function VoiceDrivePbxPageContent() {
   const [params, setParams] = useSearchParams()
   const queryClient = useQueryClient()
   const tab = (TABS as readonly string[]).includes(params.get('tab') ?? '') ? (params.get('tab') as Tab) : 'package'
@@ -76,7 +78,7 @@ export default function VoiceDrivePbxPage() {
       )}
       {ov.lineStatus !== 'ACTIVE' && <SetupSteps ov={ov} />}
       {ov.isSuperAdmin && (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-3.5" /> The number, trunk, packages and gateway are set up in <a className="underline" href="/super-admin/pbx">Super Admin → PBX Setup</a>.</p>
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-3.5" /> The number, trunk, packages and gateway are set up for you by the Fullfilio team.</p>
       )}
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -126,7 +128,7 @@ function StatusStrip({ ov }: { ov: Overview }) {
 /** Shown only until the line works: what is still missing, in order. */
 function SetupSteps({ ov }: { ov: Overview }) {
   const steps = [
-    { done: ov.business.pbxEnabled && ov.business.bridgeReady && !!ov.business.did, title: 'Number connected', who: 'Super Admin' },
+    { done: ov.business.pbxEnabled && ov.business.bridgeReady && !!ov.business.did, title: 'Number connected', who: 'Fullfilio team' },
     { done: ov.limits.active, title: 'Package active', who: 'Manager' },
     { done: !!ov.me?.seated, title: 'You have an extension', who: 'Manager' },
   ]
@@ -639,4 +641,11 @@ function ReportsTab() {
       )}
     </div>
   )
+}
+
+/** While the PBX feature is off for this business, the page says it is coming. */
+export default function VoiceDrivePbxPage() {
+  const { isOff } = useMerchantFeatures()
+  if (isOff('pbx')) return <ComingSoon icon={<PhoneCall />} title="Phone & PBX" description="Call customers from the browser, answer incoming calls and keep every call with its order. We are finishing it now; it will appear here when it opens for your business." />
+  return <VoiceDrivePbxPageContent />
 }

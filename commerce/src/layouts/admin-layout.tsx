@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, ShieldCheck, Sun,
+  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, Sun,
   UserCog,
 } from 'lucide-react'
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
@@ -344,7 +344,6 @@ export default function AdminLayout() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link to="/admin/account"><UserCog /> My account</Link></DropdownMenuItem>
-                {platformMember.data && <DropdownMenuItem asChild><Link to="/super-admin"><ShieldCheck /> Super Admin</Link></DropdownMenuItem>}
                 <DropdownMenuItem asChild><a href="/" target="_blank" rel="noreferrer"><BadgePercent /> View store</a></DropdownMenuItem>
                 {can('inventory.view') && <DropdownMenuItem asChild><Link to="/admin/inventory?view=alerts"><Boxes /> Low stock</Link></DropdownMenuItem>}
                 <DropdownMenuSeparator />

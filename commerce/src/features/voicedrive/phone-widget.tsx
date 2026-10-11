@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
-  Delete, Grip, GripVertical, History, Mic, MicOff, Minus, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Power, RotateCcw, SlidersHorizontal, UserRound,
+  Delete, Grip, History, Mic, MicOff, Minus, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Power, RotateCcw, SlidersHorizontal, UserRound,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
@@ -119,8 +119,8 @@ export function PhoneWidget() {
     return (
       <div ref={bar} style={{ right: at.right, bottom: at.bottom }} className="no-print fixed z-40">
         <button type="button" onClick={() => setPhoneSettings({ minimized: false })} aria-label="Open the phone"
-          className="relative flex size-12 items-center justify-center rounded-full border bg-popover text-popover-foreground shadow-lg hover:bg-accent">
-          <Phone className="size-5" />
+          className="relative flex size-11 items-center justify-center rounded-full border bg-popover text-popover-foreground shadow-lg transition-colors hover:bg-accent">
+          <Phone className="size-[18px]" />
           <span className={cn('absolute top-1 right-1 size-2.5 rounded-full ring-2 ring-popover', dot(state))} aria-hidden />
           {missed > 0 && <span className="absolute -top-1 -left-1 rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">{missed}</span>}
         </button>
@@ -129,9 +129,9 @@ export function PhoneWidget() {
   }
 
   return (
-    <div ref={bar} style={{ right: at.right, bottom: at.bottom }} className="no-print fixed z-40 flex w-[min(380px,calc(100vw-1rem))] flex-col items-stretch gap-2">
+    <div ref={bar} style={{ right: at.right, bottom: at.bottom }} className="no-print fixed z-40 flex w-[min(380px,calc(100vw-1rem))] flex-col items-end gap-2">
       {showPanel && (
-        <div className="max-h-[min(70dvh,560px)] overflow-y-auto rounded-xl border bg-popover p-3 text-popover-foreground shadow-xl" role="dialog" aria-label="VoiceDrive phone">
+        <div className="max-h-[min(70dvh,560px)] w-full overflow-y-auto rounded-2xl border bg-popover p-3 text-popover-foreground shadow-xl duration-200 animate-in fade-in-0 slide-in-from-bottom-1" role="dialog" aria-label="VoiceDrive phone">
           {call ? <CallView key={call.callId ?? call.startedAt} state={state} autoShow={settings.autoShowCustomer} />
             : state.status !== 'ready' ? <PhoneOffPanel state={state} onStart={() => void engine.start()} />
               : panel === 'recent' ? <RecentCalls items={recent.data?.items ?? []} loading={recent.isLoading} combine={settings.combineRepeated} onDialed={() => setPanel(null)} />
@@ -140,16 +140,15 @@ export function PhoneWidget() {
       )}
 
       <div onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-        className={cn('flex touch-none items-center gap-1.5 rounded-xl border bg-popover px-2 py-1.5 text-popover-foreground shadow-lg select-none',
+        className={cn('flex max-w-full cursor-grab touch-none items-center gap-0.5 rounded-full border bg-popover/95 p-1 text-popover-foreground shadow-lg backdrop-blur-md select-none',
           ringing && 'ring-2 ring-emerald-500', dragPos && 'cursor-grabbing')}>
-        <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden />
-        <span className={cn('relative flex size-8 shrink-0 items-center justify-center rounded-lg', live ? 'bg-emerald-600 text-white' : 'bg-muted')}>
+        <span className={cn('relative flex size-9 shrink-0 items-center justify-center rounded-full', live ? 'bg-emerald-600 text-white' : 'bg-muted')}>
           {ringing ? <PhoneIncoming className="size-4 animate-pulse" /> : <Phone className="size-4" />}
-          <span className={cn('absolute -top-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-popover', dot(state))} aria-hidden />
+          <span className={cn('absolute top-0 right-0 size-2.5 rounded-full ring-2 ring-popover', dot(state))} aria-hidden />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-sm leading-tight font-semibold whitespace-nowrap">
-            PBX Phone
+        <div className="max-w-44 min-w-0 px-1.5">
+          <p className="flex items-center gap-1.5 text-[13px] leading-tight font-medium whitespace-nowrap">
+            Phone
             {state.extension && <span className="text-xs font-normal text-muted-foreground tabular-nums">{state.extension}</span>}
             {missed > 0 && (
               <button type="button" onClick={() => setPanel('recent')} className="shrink-0 rounded-full bg-red-600 px-1.5 py-px text-[10px] font-semibold whitespace-nowrap text-white">{missed} Missed</button>
@@ -171,7 +170,7 @@ export function PhoneWidget() {
 function BarButton({ label, active, disabled, onClick, children }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
-      className={cn('rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40', active && 'bg-accent text-foreground')}>
+      className={cn('flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40', active && 'bg-accent text-foreground')}>
       {children}
     </button>
   )
@@ -202,7 +201,7 @@ function SettingsButton() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="Phone settings" title="Phone settings" className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+        <button type="button" aria-label="Phone settings" title="Phone settings" className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
           <SlidersHorizontal className="size-4" />
         </button>
       </PopoverTrigger>
