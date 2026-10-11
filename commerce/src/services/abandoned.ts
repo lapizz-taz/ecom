@@ -47,7 +47,7 @@ export interface ShopifyAbandoned {
 export interface ShopifyAbandonedPage {
   total: number; items: ShopifyAbandoned[]
   stats: { open: number; open_value: number; recovered_30d: number; recovered_value_30d: number; with_contact: number; all_30d: number }
-  channels: Array<{ id: string; name: string; shop_domain: string; status: string; synced_at: string | null; error: string | null }>
+  channels: Array<{ id: string; name: string; shop_domain: string; status: string; platform?: 'SHOPIFY' | 'WOOCOMMERCE'; synced_at: string | null; error: string | null }>
 }
 export type ShopifyView = 'open' | 'recovered' | 'dismissed' | 'all'
 

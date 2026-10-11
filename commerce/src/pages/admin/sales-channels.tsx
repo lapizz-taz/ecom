@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, ExternalLink, Palette, Plug, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Palette, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -21,7 +21,7 @@ import type { StoreMode } from '@/types/domain'
 import {
   type ChannelCheck, type ChannelImport, type ChannelPlatform, disconnectChannel, fixWebhooks, listChannelImports, listChannels,
   reconnectChannel, retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, saveSyncSettings, syncChannel,
-  testChannel, wooConnect, wooKeys,
+  testChannel, WOO_PLUGIN_DOWNLOAD, wooConnect, wooKeys,
 } from '@/services/channels'
 
 const PLATFORM: Record<ChannelPlatform, { name: string; mark: string }> = {
@@ -81,8 +81,12 @@ export default function SalesChannelsPage() {
             <SourceCard key={p} mark={PLATFORM[p].mark} title={PLATFORM[p].name}
               subtitle={mine.length ? `${mine.length} store${mine.length === 1 ? '' : 's'} connected` : 'Not connected'}
               status={mine.length ? <Pill className={STATUS[mine.some((c) => c.status !== 'CONNECTED') ? 'ERROR' : 'CONNECTED'].className}>{mine.some((c) => c.status !== 'CONNECTED') ? 'Check' : 'Connected'}</Pill> : null}
-              actions={manage && <Button size="sm" variant={mine.length ? 'outline' : 'default'} onClick={() => setDialog(p)}><Plug /> {mine.length ? 'Add store' : 'Connect'}</Button>}>
-              {p === 'SHOPIFY' ? 'Orders from your Shopify store arrive here within seconds, with the ad they came from.' : 'Connect a WordPress store with WooCommerce. One click on your own site approves it.'}
+              actions={<>
+                {manage && <Button size="sm" variant={mine.length ? 'outline' : 'default'} onClick={() => setDialog(p)}><Plug /> {mine.length ? 'Add store' : 'Connect'}</Button>}
+                {p === 'WOOCOMMERCE' && <Button size="sm" variant="outline" asChild><a href={WOO_PLUGIN_DOWNLOAD} download><Download /> Plugin</a></Button>}
+              </>}>
+              {p === 'SHOPIFY' ? 'Orders from your Shopify store arrive here within seconds, with the ad they came from.'
+                : 'Connect a WordPress store with WooCommerce. Install our plugin, then approve on your own site — nothing to copy.'}
             </SourceCard>
           )
         })}
@@ -254,6 +258,7 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-2 font-semibold">{c.name} <Pill className={STATUS[c.status].className}>{STATUS[c.status].label}</Pill></p>
             <p className="truncate text-xs text-muted-foreground">{PLATFORM[c.platform].name} · {c.shop_domain}{c.currency ? ` · ${c.currency}` : ''}</p>
+            {c.platform === 'WOOCOMMERCE' && <PluginLine c={c} />}
           </div>
           {manage && (
             <label className="flex items-center gap-2 text-sm">Import orders
@@ -280,6 +285,7 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
             <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={busy || c.status === 'PENDING'}>{sync.isPending ? <Spinner /> : <RefreshCw />} Fetch last 7 days</Button>
             {hookFailed && <Button size="sm" onClick={() => hooks.mutate()} disabled={busy}>{hooks.isPending ? <Spinner /> : <Webhook />} Fix webhooks</Button>}
             {c.status === 'CONNECTED' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/sync?channel=${c.id}`}><ArrowLeftRight /> Stock & products</Link></Button>}
+            {c.platform === 'WOOCOMMERCE' && c.status !== 'PENDING' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/sync?channel=${c.id}&tab=plugin`}><PlugZap /> Plugin</Link></Button>}
             <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}><Unplug /> Disconnect</Button>
           </div>
         )}
@@ -315,6 +321,22 @@ function DisconnectedRow({ c, manage }: { c: SalesChannel; manage: boolean }) {
         <Button size="sm" variant="outline" onClick={() => again.mutate()} disabled={again.isPending}>{again.isPending ? <Spinner /> : <RefreshCw />} Reconnect</Button>
       )}
     </div>
+  )
+}
+
+/** The WooCommerce plugin's state, from its last heartbeat. */
+function PluginLine({ c }: { c: SalesChannel }) {
+  const p = c.settings.plugin
+  const seen = p?.last_seen_at ? Date.now() - Date.parse(p.last_seen_at) < 40 * 60_000 : false
+  if (!p?.plugin_version) {
+    return <p className="mt-0.5 text-xs text-muted-foreground">Plugin not installed · <a href={WOO_PLUGIN_DOWNLOAD} download className="underline underline-offset-2">download</a> for unfinished checkouts, attribution and the order shield</p>
+  }
+  return (
+    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={cn('size-1.5 rounded-full', seen ? 'bg-emerald-500' : 'bg-amber-500')} />
+      Plugin {p.plugin_version} · {seen ? 'online' : 'offline'}{p.last_seen_at ? ` · last contact ${timeAgo(p.last_seen_at)}` : ''}
+      {(p.outbox?.failed ?? 0) > 0 && <span className="text-red-600"> · {p.outbox!.failed} undelivered</span>}
+    </p>
   )
 }
 
@@ -500,6 +522,23 @@ function WooDialog({ onClose }: { onClose: () => void }) {
     <FormDialog open onOpenChange={(o) => !o && onClose()} wide title="Connect WooCommerce" busy={run.isPending}
       submitLabel={mode === 'click' ? 'Continue to my site' : 'Connect and test'} onSubmit={() => run.mutate()}
       disabled={!f.url || (mode === 'keys' && (!f.consumer_key || !f.consumer_secret))}>
+      <ol className="space-y-3 text-sm">
+        <li className="flex gap-3 rounded-lg border p-3">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-foreground text-xs font-semibold text-background">1</span>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="font-medium">Install the Fullfilio Connect plugin <span className="font-normal text-muted-foreground">(recommended)</span></p>
+            <p className="text-muted-foreground">WordPress → Plugins → Add New → <b className="text-foreground">Upload Plugin</b> → choose the file → Install → <b className="text-foreground">Activate</b>. It adds unfinished checkouts, the order shield, ad attribution and instant order updates.</p>
+            <Button size="sm" variant="outline" asChild><a href={WOO_PLUGIN_DOWNLOAD} download><Download /> Download plugin (.zip)</a></Button>
+          </div>
+        </li>
+        <li className="flex gap-3 rounded-lg border p-3">
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-foreground text-xs font-semibold text-background">2</span>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="font-medium">Connect and approve</p>
+            <p className="text-muted-foreground">Enter the store address. WordPress asks you to approve; then the plugin is connected by itself.</p>
+          </div>
+        </li>
+      </ol>
       <Tabs value={mode} onChange={setMode} options={[['click', 'One click (recommended)'], ['keys', 'API keys']]} />
       <Field label="Store address" htmlFor="wc-url" hint="Must start with https://"><Input id="wc-url" value={f.url} onChange={set('url')} placeholder="https://mystore.com" autoComplete="off" /></Field>
       {mode === 'click'

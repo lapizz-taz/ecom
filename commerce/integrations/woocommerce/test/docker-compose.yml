@@ -1,0 +1,39 @@
+# Offline test store: real WordPress + MariaDB, with the WooCommerce stand-in
+# (woo-standin.php) as a must-use plugin. Fullfilio Connect itself is installed
+# through WordPress's own "Upload Plugin" screen by the e2e test.
+#   docker compose -f integrations/woocommerce/test/docker-compose.yml up -d
+# Store: http://172.18.0.1:8090 (admin / admin-pass-123), on the local Supabase network.
+services:
+  woo-db:
+    image: mirror.gcr.io/library/mariadb:11.4
+    container_name: woo-db
+    environment:
+      MARIADB_ROOT_PASSWORD: root-pass
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wp-pass
+    networks: [supabase]
+  woo-wp:
+    image: mirror.gcr.io/library/wordpress:php8.3-apache
+    container_name: woo-wp
+    depends_on: [woo-db]
+    ports: ["8090:80"]
+    environment:
+      WORDPRESS_DB_HOST: woo-db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wp-pass
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME', 'http://172.18.0.1:8090');
+        define('WP_SITEURL', 'http://172.18.0.1:8090');
+        define('FS_METHOD', 'direct');
+        define('FFC_ALLOW_HTTP', true);
+    volumes:
+      - ./woo-standin.php:/var/www/html/wp-content/mu-plugins/woo-standin.php:ro
+      - ./test-network.php:/var/www/html/wp-content/mu-plugins/test-network.php:ro
+      - ./htaccess:/var/www/html/.htaccess:ro
+    networks: [supabase]
+networks:
+  supabase:
+    name: supabase_network_commerce-platform
+    external: true

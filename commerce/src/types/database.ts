@@ -669,6 +669,101 @@ export type Database = {
           },
         ]
       }
+      channel_plugin_events: {
+        Row: {
+          id: number
+          channel_id: string
+          event_id: string | null
+          type: string
+          status: string
+          detail: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          channel_id: string
+          event_id?: string | null
+          type: string
+          status: string
+          detail?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          channel_id?: string
+          event_id?: string | null
+          type?: string
+          status?: string
+          detail?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_plugin_events_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_status_pushes: {
+        Row: {
+          id: string
+          channel_id: string
+          order_id: string
+          external_order_id: string
+          target: string
+          status: string
+          attempts: number
+          next_at: string
+          last_error: string | null
+          created_at: string
+          done_at: string | null
+        }
+        Insert: {
+          id?: string
+          channel_id: string
+          order_id: string
+          external_order_id: string
+          target: string
+          status?: string
+          attempts?: number
+          next_at?: string
+          last_error?: string | null
+          created_at?: string
+          done_at?: string | null
+        }
+        Update: {
+          id?: string
+          channel_id?: string
+          order_id?: string
+          external_order_id?: string
+          target?: string
+          status?: string
+          attempts?: number
+          next_at?: string
+          last_error?: string | null
+          created_at?: string
+          done_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_status_pushes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "sales_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_status_pushes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_sync_jobs: {
         Row: {
           id: string
@@ -4268,6 +4363,428 @@ export type Database = {
           },
         ]
       }
+      pbx_agents: {
+        Row: {
+          id: string
+          business_id: string
+          profile_id: string
+          extension: string
+          sip_username: string
+          ring_group_id: string | null
+          inbound_enabled: boolean
+          active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          profile_id: string
+          extension: string
+          sip_username: string
+          ring_group_id?: string | null
+          inbound_enabled?: boolean
+          active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          profile_id?: string
+          extension?: string
+          sip_username?: string
+          ring_group_id?: string | null
+          inbound_enabled?: boolean
+          active?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_agents_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_agents_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_agents_ring_group_id_fkey"
+            columns: ["ring_group_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_ring_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_bkash_transactions: {
+        Row: {
+          id: string
+          business_id: string
+          type: string
+          amount_tk: number
+          reference: string
+          status: string
+          payment_id: string | null
+          trx_id: string | null
+          package_id: string | null
+          extra_agents: number
+          extra_channels: number
+          months: number
+          failure_reason: string | null
+          raw: Json | null
+          created_by: string | null
+          created_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          type: string
+          amount_tk: number
+          reference: string
+          status?: string
+          payment_id?: string | null
+          trx_id?: string | null
+          package_id?: string | null
+          extra_agents?: number
+          extra_channels?: number
+          months?: number
+          failure_reason?: string | null
+          raw?: Json | null
+          created_by?: string | null
+          created_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          type?: string
+          amount_tk?: number
+          reference?: string
+          status?: string
+          payment_id?: string | null
+          trx_id?: string | null
+          package_id?: string | null
+          extra_agents?: number
+          extra_channels?: number
+          months?: number
+          failure_reason?: string | null
+          raw?: Json | null
+          created_by?: string | null
+          created_at?: string
+          completed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_bkash_transactions_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_bkash_transactions_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_businesses: {
+        Row: {
+          id: string
+          code: number
+          name: string
+          is_primary: boolean
+          did: string | null
+          caller_id: string | null
+          trunk_host: string | null
+          trunk_port: number
+          trunk_transport: string
+          trunk_user: string | null
+          trunk_register: boolean
+          trunk_secret_set: boolean
+          dial_format: string
+          max_call_minutes: number
+          pbx_enabled: boolean
+          bridge_ready: boolean
+          bridge_ready_at: string | null
+          bridge_ready_by: string | null
+          provisioned_at: string | null
+          provisioned_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          code?: number
+          name: string
+          is_primary?: boolean
+          did?: string | null
+          caller_id?: string | null
+          trunk_host?: string | null
+          trunk_port?: number
+          trunk_transport?: string
+          trunk_user?: string | null
+          trunk_register?: boolean
+          trunk_secret_set?: boolean
+          dial_format?: string
+          max_call_minutes?: number
+          pbx_enabled?: boolean
+          bridge_ready?: boolean
+          bridge_ready_at?: string | null
+          bridge_ready_by?: string | null
+          provisioned_at?: string | null
+          provisioned_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          code?: number
+          name?: string
+          is_primary?: boolean
+          did?: string | null
+          caller_id?: string | null
+          trunk_host?: string | null
+          trunk_port?: number
+          trunk_transport?: string
+          trunk_user?: string | null
+          trunk_register?: boolean
+          trunk_secret_set?: boolean
+          dial_format?: string
+          max_call_minutes?: number
+          pbx_enabled?: boolean
+          bridge_ready?: boolean
+          bridge_ready_at?: string | null
+          bridge_ready_by?: string | null
+          provisioned_at?: string | null
+          provisioned_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_businesses_bridge_ready_by_fkey"
+            columns: ["bridge_ready_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_businesses_provisioned_by_fkey"
+            columns: ["provisioned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_call_records: {
+        Row: {
+          id: string
+          business_id: string
+          agent_id: string | null
+          direction: string
+          kind: string
+          order_id: string | null
+          customer_id: string | null
+          callback_of: string | null
+          customer_phone: string | null
+          normalized_customer_phone: string | null
+          caller_id: string | null
+          did: string | null
+          agent_extension: string | null
+          status: string
+          outcome: string | null
+          outcome_note: string | null
+          reject_reason: string | null
+          hangup_cause: string | null
+          gateway_call_id: string | null
+          offered_agents: string[]
+          max_seconds: number | null
+          requested_at: string
+          started_at: string | null
+          answered_at: string | null
+          ended_at: string | null
+          billed_seconds: number | null
+          rate_tk_per_min: number | null
+          cost_tk: number | null
+          vat_tk: number | null
+          charged_tk: number | null
+          recording_url: string | null
+          created_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          agent_id?: string | null
+          direction: string
+          kind: string
+          order_id?: string | null
+          customer_id?: string | null
+          callback_of?: string | null
+          customer_phone?: string | null
+          normalized_customer_phone?: string | null
+          caller_id?: string | null
+          did?: string | null
+          agent_extension?: string | null
+          status: string
+          outcome?: string | null
+          outcome_note?: string | null
+          reject_reason?: string | null
+          hangup_cause?: string | null
+          gateway_call_id?: string | null
+          offered_agents?: string[]
+          max_seconds?: number | null
+          requested_at?: string
+          started_at?: string | null
+          answered_at?: string | null
+          ended_at?: string | null
+          billed_seconds?: number | null
+          rate_tk_per_min?: number | null
+          cost_tk?: number | null
+          vat_tk?: number | null
+          charged_tk?: number | null
+          recording_url?: string | null
+          created_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          agent_id?: string | null
+          direction?: string
+          kind?: string
+          order_id?: string | null
+          customer_id?: string | null
+          callback_of?: string | null
+          customer_phone?: string | null
+          normalized_customer_phone?: string | null
+          caller_id?: string | null
+          did?: string | null
+          agent_extension?: string | null
+          status?: string
+          outcome?: string | null
+          outcome_note?: string | null
+          reject_reason?: string | null
+          hangup_cause?: string | null
+          gateway_call_id?: string | null
+          offered_agents?: string[]
+          max_seconds?: number | null
+          requested_at?: string
+          started_at?: string | null
+          answered_at?: string | null
+          ended_at?: string | null
+          billed_seconds?: number | null
+          rate_tk_per_min?: number | null
+          cost_tk?: number | null
+          vat_tk?: number | null
+          charged_tk?: number | null
+          recording_url?: string | null
+          created_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_call_records_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_call_records_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_call_records_callback_of_fkey"
+            columns: ["callback_of"]
+            isOneToOne: false
+            referencedRelation: "pbx_call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_call_records_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_call_records_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_call_telemetry: {
+        Row: {
+          id: number
+          business_id: string
+          agent_id: string | null
+          call_id: string | null
+          kind: string
+          event: string
+          detail: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          business_id: string
+          agent_id?: string | null
+          call_id?: string | null
+          kind: string
+          event: string
+          detail?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          business_id?: string
+          agent_id?: string | null
+          call_id?: string | null
+          kind?: string
+          event?: string
+          detail?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_call_telemetry_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_call_telemetry_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_call_telemetry_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_call_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pbx_calls: {
         Row: {
           id: string
@@ -4352,6 +4869,404 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_channel_holds: {
+        Row: {
+          call_id: string
+          business_id: string
+          hold_tk: number
+          created_at: string
+        }
+        Insert: {
+          call_id: string
+          business_id: string
+          hold_tk?: number
+          created_at?: string
+        }
+        Update: {
+          call_id?: string
+          business_id?: string
+          hold_tk?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_channel_holds_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_channel_holds_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "pbx_call_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_gateway_status: {
+        Row: {
+          id: boolean
+          last_seen_at: string | null
+          version: string | null
+          detail: Json
+        }
+        Insert: {
+          id?: boolean
+          last_seen_at?: string | null
+          version?: string | null
+          detail?: Json
+        }
+        Update: {
+          id?: boolean
+          last_seen_at?: string | null
+          version?: string | null
+          detail?: Json
+        }
+        Relationships: []
+      }
+      pbx_ledger: {
+        Row: {
+          id: string
+          business_id: string
+          kind: string
+          amount_tk: number
+          balance_after_tk: number
+          call_id: string | null
+          bkash_transaction_id: string | null
+          note: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          kind: string
+          amount_tk: number
+          balance_after_tk: number
+          call_id?: string | null
+          bkash_transaction_id?: string | null
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          kind?: string
+          amount_tk?: number
+          balance_after_tk?: number
+          call_id?: string | null
+          bkash_transaction_id?: string | null
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_ledger_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_members: {
+        Row: {
+          profile_id: string
+          business_id: string
+          created_at: string
+        }
+        Insert: {
+          profile_id: string
+          business_id: string
+          created_at?: string
+        }
+        Update: {
+          profile_id?: string
+          business_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_members_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_outgoing_balances: {
+        Row: {
+          business_id: string
+          balance_tk: number
+          updated_at: string
+        }
+        Insert: {
+          business_id: string
+          balance_tk?: number
+          updated_at?: string
+        }
+        Update: {
+          business_id?: string
+          balance_tk?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_outgoing_balances_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: true
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_packages: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          monthly_price_tk: number | null
+          agent_limit: number | null
+          concurrent_channels: number | null
+          is_custom: boolean
+          active: boolean
+          sort: number
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          monthly_price_tk?: number | null
+          agent_limit?: number | null
+          concurrent_channels?: number | null
+          is_custom?: boolean
+          active?: boolean
+          sort?: number
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          monthly_price_tk?: number | null
+          agent_limit?: number | null
+          concurrent_channels?: number | null
+          is_custom?: boolean
+          active?: boolean
+          sort?: number
+        }
+        Relationships: []
+      }
+      pbx_presence: {
+        Row: {
+          agent_id: string
+          business_id: string
+          status: string
+          registered: boolean
+          registration_state: string | null
+          last_heartbeat_at: string | null
+          last_registered_at: string | null
+          last_call_ended_at: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          agent_id: string
+          business_id: string
+          status?: string
+          registered?: boolean
+          registration_state?: string | null
+          last_heartbeat_at?: string | null
+          last_registered_at?: string | null
+          last_call_ended_at?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          agent_id?: string
+          business_id?: string
+          status?: string
+          registered?: boolean
+          registration_state?: string | null
+          last_heartbeat_at?: string | null
+          last_registered_at?: string | null
+          last_call_ended_at?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_presence_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: true
+            referencedRelation: "pbx_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_presence_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_ring_groups: {
+        Row: {
+          id: string
+          business_id: string
+          name: string
+          strategy: string
+          ring_seconds: number
+          is_default: boolean
+          active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          name: string
+          strategy?: string
+          ring_seconds?: number
+          is_default?: boolean
+          active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          name?: string
+          strategy?: string
+          ring_seconds?: number
+          is_default?: boolean
+          active?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_ring_groups_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_sip_credentials: {
+        Row: {
+          agent_id: string
+          password_digest: string
+          issued_at: string
+          expires_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          agent_id: string
+          password_digest: string
+          issued_at?: string
+          expires_at: string
+          user_agent?: string | null
+        }
+        Update: {
+          agent_id?: string
+          password_digest?: string
+          issued_at?: string
+          expires_at?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_sip_credentials_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: true
+            referencedRelation: "pbx_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbx_subscriptions: {
+        Row: {
+          id: string
+          business_id: string
+          package_id: string
+          agents: number
+          channels: number
+          extra_agents: number
+          extra_channels: number
+          months: number
+          amount_tk: number
+          starts_at: string
+          expires_at: string
+          status: string
+          source: string
+          bkash_transaction_id: string | null
+          note: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          package_id: string
+          agents: number
+          channels: number
+          extra_agents?: number
+          extra_channels?: number
+          months?: number
+          amount_tk: number
+          starts_at: string
+          expires_at: string
+          status?: string
+          source: string
+          bkash_transaction_id?: string | null
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          business_id?: string
+          package_id?: string
+          agents?: number
+          channels?: number
+          extra_agents?: number
+          extra_channels?: number
+          months?: number
+          amount_tk?: number
+          starts_at?: string
+          expires_at?: string
+          status?: string
+          source?: string
+          bkash_transaction_id?: string | null
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbx_subscriptions_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbx_subscriptions_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "pbx_packages"
             referencedColumns: ["id"]
           },
         ]
@@ -5457,6 +6372,8 @@ export type Database = {
           notes: string | null
           synced_at: string
           created_at: string
+          province: string | null
+          country: string | null
         }
         Insert: {
           id?: string
@@ -5485,6 +6402,8 @@ export type Database = {
           notes?: string | null
           synced_at?: string
           created_at?: string
+          province?: string | null
+          country?: string | null
         }
         Update: {
           id?: string
@@ -5513,6 +6432,8 @@ export type Database = {
           notes?: string | null
           synced_at?: string
           created_at?: string
+          province?: string | null
+          country?: string | null
         }
         Relationships: [
           {
@@ -6319,6 +7240,12 @@ export type Database = {
         }
         Returns: string
       }
+      _plugin_config: {
+        Args: {
+          p_settings: Json
+        }
+        Returns: Json
+      }
       _tracking_url: {
         Args: {
           p_provider: string
@@ -6477,6 +7404,13 @@ export type Database = {
           p_offset?: number
         }
         Returns: Json
+      }
+      admin_bulk_shopify_abandoned: {
+        Args: {
+          p_ids: string[]
+          p_status: string
+        }
+        Returns: number
       }
       admin_cod_receivable: {
         Args: {
@@ -7615,6 +8549,8 @@ export type Database = {
           notes: string | null
           synced_at: string
           created_at: string
+          province: string | null
+          country: string | null
         }
       }
       admin_update_store_cart: {
@@ -7929,6 +8865,19 @@ export type Database = {
           p_order_id: string
         }
         Returns: undefined
+      }
+      channel_plugin_config_save: {
+        Args: {
+          p_channel_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      channel_plugin_overview: {
+        Args: {
+          p_channel_id: string
+        }
+        Returns: Json
       }
       channel_sync_settings_save: {
         Args: {
@@ -8629,9 +9578,266 @@ export type Database = {
         }
         Returns: Json
       }
+      pbx_admin_adjust_balance: {
+        Args: {
+          p_business_id: string
+          p_amount: number
+          p_note: string
+        }
+        Returns: Json
+      }
+      pbx_admin_grant_package: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_admin_list_businesses: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_admin_save_business: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_admin_save_settings: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_admin_set_member: {
+        Args: {
+          p_profile_id: string
+          p_business_id: string
+        }
+        Returns: undefined
+      }
+      pbx_batch: {
+        Args: {
+          p_calls: Json
+        }
+        Returns: Json
+      }
+      pbx_billing_history: {
+        Args: {
+          p_business_id?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      pbx_bkash_start: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_cancel_call: {
+        Args: {
+          p_call_id: string
+        }
+        Returns: Json
+      }
+      pbx_clear_inbound_phone_presence: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      pbx_end_call: {
+        Args: {
+          p_call_id: string
+          p_outcome?: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      pbx_get_call_state: {
+        Args: {
+          p_call_id: string
+        }
+        Returns: Json
+      }
+      pbx_get_inbound_caller_order_detail: {
+        Args: {
+          p_phone: string
+        }
+        Returns: Json
+      }
+      pbx_get_inbound_phone_eligibility: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_get_my_active_inbound_call: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_get_my_browser_phone_registration: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_get_my_outgoing_call_request_state: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_get_my_recent_calls: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      pbx_get_order_call_state_availability: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_get_order_call_states: {
+        Args: {
+          p_order_ids: string[]
+        }
+        Returns: Json
+      }
+      pbx_get_recent_missed_inbound_calls: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      pbx_issue_my_credential: {
+        Args: {
+          p_password: string
+          p_user_agent?: string
+        }
+        Returns: Json
+      }
+      pbx_list_agents: {
+        Args: {
+          p_business_id?: string
+        }
+        Returns: Json
+      }
+      pbx_list_ring_groups: {
+        Args: {
+          p_business_id?: string
+        }
+        Returns: Json
+      }
+      pbx_maintenance_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_overview: {
+        Args: {
+          p_business_id?: string
+        }
+        Returns: Json
+      }
+      pbx_packages_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      pbx_provision_business_did: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_record_call_attempt_trace: {
+        Args: {
+          p_call_id: string
+          p_event: string
+          p_detail?: Json
+        }
+        Returns: undefined
+      }
+      pbx_remove_agent: {
+        Args: {
+          p_agent_id: string
+        }
+        Returns: undefined
+      }
+      pbx_report_call_quality: {
+        Args: {
+          p_call_id: string
+          p_stats: Json
+        }
+        Returns: undefined
+      }
+      pbx_reports: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_business_id?: string
+        }
+        Returns: Json
+      }
+      pbx_resolve_inbound_caller_context: {
+        Args: {
+          p_phone: string
+        }
+        Returns: Json
+      }
+      pbx_resolve_inbound_caller_courier_rating: {
+        Args: {
+          p_phone: string
+        }
+        Returns: Json
+      }
+      pbx_save_agent: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_save_ring_group: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_set_business_settings: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      pbx_set_inbound_phone_presence: {
+        Args: {
+          p_status?: string
+          p_registered?: boolean
+          p_registration_state?: string
+          p_user_agent?: string
+        }
+        Returns: Json
+      }
+      pbx_set_pbx_bridge_ready: {
+        Args: {
+          p_business_id: string
+          p_ready: boolean
+        }
+        Returns: Json
+      }
       pbx_settings_save: {
         Args: {
           p: Json
+        }
+        Returns: Json
+      }
+      pbx_start_approved_order_call: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
+      }
+      pbx_start_manual_call: {
+        Args: {
+          p_phone: string
+          p_callback_of?: string
+        }
+        Returns: Json
+      }
+      pbx_start_web_order_call: {
+        Args: {
+          p_order_id: string
         }
         Returns: Json
       }

@@ -10,7 +10,7 @@ export interface ChannelCheck { key: string; label: string; status: 'ok' | 'warn
 export interface SalesChannel {
   id: string; platform: ChannelPlatform; name: string; shop_domain: string; status: ChannelStatus
   auth_mode: 'OAUTH' | 'TOKEN' | 'KEYS' | null; scopes: string[]; currency: string | null
-  settings: { import_orders?: boolean }; webhooks: Array<{ id: string | number; topic: string }>
+  settings: { import_orders?: boolean; plugin?: PluginReport & { last_seen_at?: string }; plugin_pair?: { ok: boolean; at: string; detail: string | null } }; webhooks: Array<{ id: string | number; topic: string }>
   last_test: { checks: ChannelCheck[]; at: string } | null; last_tested_at: string | null; last_sync_at: string | null
   last_order_at: string | null; last_error: string | null; orders_imported: number; failed: number; today: number
   connected_at: string | null; created_at: string
@@ -26,6 +26,42 @@ export interface ChannelImport {
 }
 
 export interface SetupResult { channel: SalesChannel; checks: ChannelCheck[]; ok: boolean }
+
+// --- WooCommerce plugin (Fullfilio Connect) ------------------------------------------------
+
+/** The plugin file staff download and upload to WordPress. */
+export const WOO_PLUGIN_DOWNLOAD = '/downloads/fullfilio-connect.zip'
+
+export interface PluginConfig {
+  order_events: boolean; capture_leads: boolean; attribution: boolean; custom_statuses: boolean
+  shield: boolean; shield_fail_open: boolean; shield_timeout: number
+}
+export interface PluginReport {
+  plugin_version?: string; wordpress?: string; woocommerce?: string | null; php?: string; site_url?: string; currency?: string | null
+  hpos?: boolean; checkout?: 'classic' | 'blocks' | 'other' | 'missing' | 'unknown'; permalinks?: 'pretty' | 'plain'; https?: boolean
+  wp_cron?: boolean; action_scheduler?: boolean
+  outbox?: { pending: number; sending: number; failed: number; sent: number; oldest_pending: string | null }
+  webhooks?: Array<{ id?: number; topic?: string; status?: string; failures?: number; error?: string }>
+  state?: { last_ok_at?: string; last_error?: string; last_error_at?: string; last_heartbeat_at?: string }
+  log?: Array<{ at: string; level: string; message: string; context: Record<string, unknown> }>
+}
+export interface PluginEvent { id: number; event_id: string | null; type: string; status: 'OK' | 'DUPLICATE' | 'FAILED' | 'REJECTED'; detail: Record<string, unknown>; created_at: string }
+export interface PluginOverview {
+  channel: { id: string; name: string; shop_domain: string; status: ChannelStatus; last_sync_at: string | null; last_error: string | null
+    webhooks: Array<{ id: string | number; topic: string }>; last_test: { checks: ChannelCheck[]; at: string } | null }
+  plugin: (PluginReport & { last_seen_at?: string }) | null
+  pair: { ok: boolean; at: string; detail: string | null } | null
+  online: boolean
+  config: PluginConfig
+  events: PluginEvent[]
+  counts: { events_24h: number; failed_24h: number; leads_7d: number; leads_recovered_7d: number; orders_7d: number }
+}
+
+export async function pluginOverview(channelId: string): Promise<PluginOverview> {
+  const { data, error } = await supabase.rpc('channel_plugin_overview', { p_channel_id: channelId })
+  if (error) throw error
+  return fromJson<PluginOverview>(data)
+}
 
 export async function listChannels(): Promise<SalesChannel[]> {
   const { data, error } = await supabase.rpc('sales_channels_list')
@@ -62,6 +98,12 @@ export const fixWebhooks = (id: string) => call<SetupResult>({ action: 'webhooks
 export const disconnectChannel = (id: string) => call<{ ok: boolean }>({ action: 'disconnect', channel_id: id })
 export const syncChannel = (id: string, days = 7) =>
   call<{ ok: boolean; channels: Array<{ found: number; imported: number; duplicate: number; failed: number; skipped: number }> }>({ action: 'sync', channel_id: id, days })
+export const pluginPair = (id: string) => call<{ check: ChannelCheck }>({ action: 'plugin_pair', channel_id: id })
+export const pluginStatus = (id: string) =>
+  call<{ reachable: boolean; installed?: boolean; connected?: boolean; ms: number; report?: PluginReport; error?: string }>({ action: 'plugin_status', channel_id: id })
+export const pluginCode = (id: string) => call<{ code: string }>({ action: 'plugin_code', channel_id: id })
+export const savePluginConfig = (id: string, config: Partial<PluginConfig>) =>
+  call<{ config: PluginConfig; delivered: boolean; detail: string }>({ action: 'plugin_config', channel_id: id, config })
 export const retryImport = (importId: string, overrides: { phone?: string; name?: string; address?: string; district?: string }) =>
   call<{ status: string; order_id?: string; order_number?: string; error?: string }>({ action: 'retry_import', import_id: importId, overrides })
 

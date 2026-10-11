@@ -52,7 +52,7 @@ export default function AbandonedCartsPage() {
       <Tabs value={state.src} onValueChange={(v) => update({ src: v })}>
         <TabsList>
           <TabsTrigger value="store"><Store /> Our store{counts.data?.store ? <Badge variant="warning" className="ml-1">{counts.data.store}</Badge> : null}</TabsTrigger>
-          <TabsTrigger value="shopify"><ShoppingBag /> Shopify{counts.data?.shopify ? <Badge variant="warning" className="ml-1">{counts.data.shopify}</Badge> : null}</TabsTrigger>
+          <TabsTrigger value="shopify"><ShoppingBag /> Shopify &amp; WooCommerce{counts.data?.shopify ? <Badge variant="warning" className="ml-1">{counts.data.shopify}</Badge> : null}</TabsTrigger>
         </TabsList>
       </Tabs>
       {state.src === 'shopify' ? <ShopifySection /> : <StoreSection />}
@@ -274,7 +274,8 @@ function ShopifySection() {
     stop.current = false
     let total = 0
     const failures: string[] = []
-    for (const c of channels.filter((x) => x.status !== 'DISCONNECTED')) {
+    // WooCommerce checkouts arrive live from the plugin; only Shopify is fetched.
+    for (const c of channels.filter((x) => x.status !== 'DISCONNECTED' && (x.platform ?? 'SHOPIFY') === 'SHOPIFY')) {
       let cursor: string | null = null
       do {
         setImporting({ done: total, store: c.name || c.shop_domain })
@@ -299,9 +300,9 @@ function ShopifySection() {
 
   if (q.data && !channels.length) {
     return (
-      <EmptyState icon={<ShoppingBag />} title="No Shopify store connected"
-        description="Connect your Shopify store to see the checkouts customers started there but didn't finish."
-        action={can('settings.view') ? <Button asChild><Link to="/admin/channels">Connect Shopify</Link></Button> : undefined} />
+      <EmptyState icon={<ShoppingBag />} title="No Shopify or WooCommerce store connected"
+        description="Connect your store to see the checkouts customers started there but didn't finish. WooCommerce stores need the Fullfilio Connect plugin."
+        action={can('settings.view') ? <Button asChild><Link to="/admin/channels">Connect a store</Link></Button> : undefined} />
     )
   }
 
@@ -432,7 +433,7 @@ function ShopifySection() {
         <DataTable columns={columns} rows={rows} rowKey={(a) => a.id} loading={q.isFetching} error={q.error} onRetry={() => q.refetch()}
           selected={selected} onSelectedChange={setSelected} className="rounded-none border-0"
           empty={<EmptyState icon={<ShoppingBag />} title={view === 'all' || view === 'open' ? 'No abandoned checkouts yet' : 'Nothing here'}
-            description={view === 'all' || view === 'open' ? 'Shopify counts a checkout as abandoned when the customer gave their contact details but didn\'t pay. Press Import full history to bring them in.' : undefined} />}
+            description={view === 'all' || view === 'open' ? 'A checkout counts as abandoned when the customer gave their contact details but didn\'t order. Shopify: press Import full history. WooCommerce: they arrive live from the plugin.' : undefined} />}
           footer={<Pagination page={page} pageSize={SHOPIFY_PAGE} total={q.data?.total ?? 0} onPage={(p) => { setPage(p); setSelected(new Set()) }} />} />
       </Card>
 

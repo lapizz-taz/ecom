@@ -14,6 +14,9 @@
 //   POST import_catalog    {channel_id} the store's locations + variants + quantities (to link, compare and import products)
 //   POST order_action      {order_id, op: mark_paid | cancel}  staff click only: mark paid / cancel the order on Shopify
 //   POST reconnect         {channel_id}  connect again with the saved app keys (after the app was reinstalled)
+//   POST /channels/plugin/<channel_id>       events from the WooCommerce plugin (Fullfilio Connect), signed
+//   POST plugin_pair | plugin_status | plugin_code {channel_id}   connect / check the plugin, or show its connection code
+//   POST plugin_config     {channel_id, config}  the plugin's feature switches (sent to the store at once)
 // Every connection ends with a test, so staff see straight away whether orders
 // will come through. Tokens and keys never reach a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -24,6 +27,7 @@ import {
   visitExtras,
 } from '../_shared/channels/shopify.ts'
 import { touchFrom } from '../_shared/channels/common.ts'
+import { connectionCode, leadToAbandoned, PLUGIN_SLUG, pluginEventSchema, verifyPluginRequest } from '../_shared/channels/woo-plugin.ts'
 import { fulfillJob, inventoryJob, type Job, type Outcome, wooFulfillJob } from '../_shared/channels/sync.ts'
 import {
   normalizeWooOrder, siteUrl, verifyWooWebhook, WOO_CANCEL_STATUSES, WOO_IMPORT_STATUSES, WOO_LOCATION, WooClient, wooAuthUrl, type WooOrder, wooStockFromWebhook,
@@ -35,6 +39,7 @@ import { FraudDetectionService, type FraudSettings, loadFraudProviders } from '.
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
+import { storefrontBase } from '../_shared/storefront.ts'
 import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
@@ -50,6 +55,8 @@ interface Secret {
   /** Client-credentials tokens last 24 hours. */
   expires_at?: string
   consumer_key?: string; consumer_secret?: string; webhook_secret?: string
+  /** Signs events from the WooCommerce plugin (Fullfilio Connect). */
+  plugin_secret?: string
 }
 interface IngestResult { status: 'IMPORTED' | 'DUPLICATE' | 'FAILED' | 'SKIPPED'; order_id?: string; order_number?: string; phone?: string; total?: number; error?: string; import_id?: string }
 
@@ -71,6 +78,13 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('import_catalog'), channel_id: channelId }),
   z.object({ action: z.literal('order_action'), order_id: z.string().uuid(), op: z.enum(['mark_paid', 'cancel']), note: z.string().trim().max(255).optional() }),
   z.object({ action: z.literal('reconnect'), channel_id: channelId }),
+  z.object({ action: z.literal('plugin_pair'), channel_id: channelId }),
+  z.object({ action: z.literal('plugin_status'), channel_id: channelId }),
+  z.object({ action: z.literal('plugin_code'), channel_id: channelId }),
+  z.object({ action: z.literal('plugin_config'), channel_id: channelId, config: z.object({
+    order_events: z.boolean(), capture_leads: z.boolean(), attribution: z.boolean(), custom_statuses: z.boolean(),
+    shield: z.boolean(), shield_fail_open: z.boolean(), shield_timeout: z.number().int().min(2).max(10),
+  }).partial() }),
   z.object({ action: z.literal('retry_import'), import_id: z.string().uuid(), overrides: z.object({
     phone: z.string().trim().max(20).optional(), name: z.string().trim().max(120).optional(),
     address: z.string().trim().max(300).optional(), district: z.string().trim().max(60).optional(),
@@ -172,6 +186,8 @@ async function finishSetup(admin: SupabaseClient, c: Channel, actor: string | nu
   if (hookError && !checks.some((x) => x.key === 'webhooks' && x.status === 'fail')) {
     checks.push({ key: 'webhooks', label: 'Instant order updates', status: 'fail', detail: hookError })
   }
+  // The plugin is optional: without it orders still arrive; the check is a warning, never a failure.
+  if (c.platform === 'WOOCOMMERCE' && checks.some((x) => x.key === 'api' && x.status === 'ok')) checks.push(await pairPlugin(admin, c, s))
   const failed = checks.find((x) => x.status === 'fail')
   const channel = await rpc<Channel>(admin, 'channel_update', {
     p_id: c.id, p_actor: actor,
@@ -413,7 +429,7 @@ async function wooCallback(req: Request): Promise<Response> {
   if (!body.consumer_key || !body.consumer_secret) throw new HttpError(400, 'Keys missing', 'VALIDATION')
   const c = await channelOf(admin, taken.channel_id)
   const old = await secretOf(admin, c.id)
-  await storeSecret(admin, c.id, { mode: 'KEYS', consumer_key: body.consumer_key, consumer_secret: body.consumer_secret, webhook_secret: old.webhook_secret ?? randomHex() }, taken.created_by, `Woo ${hint(body.consumer_key)}`)
+  await storeSecret(admin, c.id, { mode: 'KEYS', consumer_key: body.consumer_key, consumer_secret: body.consumer_secret, webhook_secret: old.webhook_secret ?? randomHex(), plugin_secret: old.plugin_secret ?? randomHex() }, taken.created_by, `Woo ${hint(body.consumer_key)}`)
   const done = await finishSetup(admin, c, taken.created_by)
   if (body.key_permissions && body.key_permissions !== 'read_write') {
     await rpc(admin, 'channel_update', { p_id: c.id, p: { status: 'ERROR', last_error: `The keys are ${body.key_permissions}; Read/Write is needed for webhooks` } })
@@ -512,15 +528,195 @@ async function webhook(req: Request, id: string): Promise<Response> {
       result = { stock: result, product: await productChanged(admin, c, await credsOf(admin, c), String(pid), topic === 'product.deleted' && !body.parent_id) }
     }
   } else if (topic === 'order.created' || topic === 'order.updated') {
-    const raw0 = JSON.parse(raw || '{}') as WooOrder
-    if (raw0.id && WOO_CANCEL_STATUSES.includes(raw0.status)) {
-      result = await rpc(admin, 'channel_order_cancelled', { p_channel_id: c.id, p_external_id: String(raw0.id), p_reason: raw0.status })
-    } else if (raw0.id && WOO_IMPORT_STATUSES.includes(raw0.status)) {
-      result = await ingest(admin, c, normalizeWooOrder(raw0), 'WEBHOOK')
-    }
+    result = await wooOrderSeen(admin, c, JSON.parse(raw || '{}') as WooOrder)
   }
   await rpc(admin, 'channel_delivery_first', { p_channel_id: c.id, p_delivery_id: delivery, p_topic: topic })
   return json(req, { ok: true, result })
+}
+
+/** A WooCommerce order as the store has it now (webhook body or read back for a plugin event): cancel, import or ignore. */
+async function wooOrderSeen(admin: SupabaseClient, c: Channel, o: WooOrder): Promise<unknown> {
+  if (!o?.id) return { status: 'IGNORED' }
+  if (WOO_CANCEL_STATUSES.includes(o.status)) return rpc(admin, 'channel_order_cancelled', { p_channel_id: c.id, p_external_id: String(o.id), p_reason: o.status })
+  if (WOO_IMPORT_STATUSES.includes(o.status)) return ingest(admin, c, normalizeWooOrder(o), 'WEBHOOK')
+  return { status: 'IGNORED', woo_status: o.status }
+}
+
+// --- the WooCommerce plugin (Fullfilio Connect) ------------------------------------------------
+
+const PLUGIN_DEFAULTS = { order_events: true, capture_leads: true, attribution: true, custom_statuses: true, shield: false, shield_fail_open: true, shield_timeout: 4 }
+type PluginConfig = typeof PLUGIN_DEFAULTS
+const pluginConfigOf = (c: Channel): PluginConfig => ({ ...PLUGIN_DEFAULTS, ...((c.settings?.plugin_config ?? {}) as Partial<PluginConfig>) })
+
+/** Where staff land from the plugin's "open" link. */
+async function appUrl(admin: SupabaseClient, c: Channel) {
+  return `${(env('APP_URL') ?? await storefrontBase(admin)).replace(/\/+$/, '')}/admin/store/sync?channel=${c.id}&tab=plugin`
+}
+
+/** A secret for the plugin's signatures (made once per store). */
+async function pluginSecret(admin: SupabaseClient, c: Channel, s: Secret): Promise<{ s: Secret; secret: string }> {
+  if (s.plugin_secret) return { s, secret: s.plugin_secret }
+  const next = { ...s, plugin_secret: randomHex() }
+  await storeSecret(admin, c.id, next, null, s.consumer_key ? `Woo ${hint(s.consumer_key)}` : 'Woo plugin')
+  return { s: next, secret: next.plugin_secret! }
+}
+
+/** Gives the store's plugin our address, its secret and its switches (with the store's API keys). */
+async function pairPlugin(admin: SupabaseClient, c: Channel, s0: Secret): Promise<Check> {
+  const label = 'Fullfilio Connect plugin'
+  try {
+    const { s, secret } = await pluginSecret(admin, c, s0)
+    const r = await wooClient(c, s).pluginPair({ endpoint: fnBase(), channel_id: c.id, secret, app_name: appName(), app_url: await appUrl(admin, c), config: pluginConfigOf(c) })
+    await rpc(admin, 'channel_plugin_paired', { p_channel_id: c.id, p_ok: true, p_detail: `v${r.version}`, p_report: r.report ?? null })
+    return { key: 'plugin', label, status: 'ok', detail: `Version ${r.version} connected: unfinished checkouts, attribution and instant orders` }
+  } catch (error) {
+    const e = error as ChannelError
+    const missing = e.code === 'NO_PLUGIN'
+    await rpc(admin, 'channel_plugin_paired', { p_channel_id: c.id, p_ok: false, p_detail: missing ? 'not installed' : e.message }).catch(() => undefined)
+    return { key: 'plugin', label, status: 'warn', detail: missing
+      ? 'Not installed (optional). Install it for unfinished checkouts, the order shield and ad attribution — download it on the WooCommerce card.'
+      : `Installed, but it could not be connected: ${e.message}` }
+  }
+}
+
+async function pluginLog(admin: SupabaseClient, c: Channel, eventId: string | null, type: string, status: 'OK' | 'DUPLICATE' | 'FAILED' | 'REJECTED', detail: Record<string, unknown> = {}) {
+  await rpc(admin, 'channel_plugin_log', { p_channel_id: c.id, p_event_id: eventId, p_type: type, p_status: status, p_detail: detail })
+    .catch((e) => logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'channels', message: 'Could not record a plugin event', error: e }))
+}
+
+/** The order shield: block list first, then the courier record (within the plugin's time budget). */
+async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: string; total: number; address: string; ip: string }, budgetMs: number) {
+  const args = { p_channel_id: c.id, p_phone: d.phone, p_ip: d.ip || null, p_address: d.address || null }
+  const first = await rpc<{ decision: string; message?: string; reason: string }>(admin, 'channel_checkout_decision', { ...args, p_check_id: null })
+  if (first.decision === 'block') return first
+  const check = fraudCheckFor(admin, d.phone, d.total).catch((error) => {
+    void logEvent({ level: 'WARN', category: 'FRAUD', source: 'channels', message: `${c.name}: courier check at checkout failed`, error })
+    return null
+  })
+  const id = await Promise.race([check, new Promise<null>((r) => setTimeout(() => r(null), budgetMs))])
+  if (!id) {
+    background(check) // the check finishes and is reused when the order arrives
+    return { decision: 'allow', reason: 'CHECK_PENDING' }
+  }
+  return rpc<{ decision: string; message?: string; reason: string }>(admin, 'channel_checkout_decision', { ...args, p_check_id: id })
+}
+
+/** POST /channels/plugin/<channel_id>: a signed event from the store's plugin. */
+async function pluginEvent(req: Request, id: string): Promise<Response> {
+  const raw = await req.text()
+  if (raw.length > 512_000) throw new HttpError(413, 'Too large', 'PAYLOAD_TOO_LARGE')
+  const admin = adminClient()
+  const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
+  if (!c?.id || c.platform !== 'WOOCOMMERCE') throw new HttpError(404, 'Unknown store', 'NOT_FOUND')
+  if (c.status === 'DISCONNECTED') throw new HttpError(410, 'This store is disconnected in Fullfilio. Connect it again there.', 'DISCONNECTED')
+  const s = await secretOf(admin, c.id)
+  const type = (req.headers.get('x-ffc-event') ?? '').slice(0, 40)
+  const eventId = (req.headers.get('x-ffc-event-id') ?? '').slice(0, 80) || null
+  const verified = s.plugin_secret ? await verifyPluginRequest(raw, req.headers, s.plugin_secret) : { ok: false as const, reason: 'SIGNATURE' as const }
+  if (!verified.ok) {
+    await pluginLog(admin, c, eventId, type || 'unknown', 'REJECTED', { reason: verified.reason })
+    void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'channels', message: `${c.name}: plugin request rejected (${verified.reason})`, context: { channel: c.id } })
+    throw new HttpError(401, verified.reason === 'STALE' ? 'The request is too old — check the clock of the web server' : 'Invalid signature', 'INVALID_SIGNATURE')
+  }
+  let body: unknown
+  try { body = JSON.parse(raw) } catch { throw new HttpError(400, 'Invalid JSON', 'INVALID_JSON') }
+  const parsed = pluginEventSchema.safeParse(body)
+  if (!parsed.success) {
+    await pluginLog(admin, c, eventId, type || 'unknown', 'REJECTED', { error: parsed.error.issues[0]?.message ?? 'invalid' })
+    throw new HttpError(422, `Invalid ${type || 'event'}: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}`, 'VALIDATION')
+  }
+  const ev = parsed.data
+  const config = pluginConfigOf(c)
+
+  // Synchronous answers, never stored as deliveries.
+  if (ev.type === 'heartbeat') {
+    const cfg = await rpc<PluginConfig>(admin, 'channel_plugin_seen', { p_channel_id: c.id, p_report: ev.data })
+    // WooCommerce pauses a webhook after repeated failed deliveries: switch ours back on.
+    const hooks = Array.isArray(ev.data.webhooks) ? ev.data.webhooks as Array<{ status?: string }> : []
+    if (hooks.some((h) => h.status && h.status !== 'active') && s.webhook_secret) {
+      background(wooClient(c, s).ensureWebhooks(webhookUrl(c.id), s.webhook_secret)
+        .then(() => pluginLog(admin, c, null, 'webhooks', 'OK', { action: 'paused webhooks switched back on' }))
+        .catch((e) => pluginLog(admin, c, null, 'webhooks', 'FAILED', { error: (e as Error).message })))
+    }
+    return json(req, { ok: true, config: cfg })
+  }
+  if (ev.type === 'checkout_check') {
+    if (!config.shield) return json(req, { ok: true, decision: 'allow', reason: 'OFF' })
+    const d = await checkoutDecision(admin, c, ev.data, Math.max(1000, config.shield_timeout * 1000 - 1500))
+    if (d.decision !== 'allow') await pluginLog(admin, c, eventId, 'checkout_check', 'OK', { decision: d.decision, reason: d.reason, phone_end: ev.data.phone.slice(-3) })
+    return json(req, { ok: true, decision: d.decision, message: d.message ?? '', reason: d.reason })
+  }
+
+  // Queued events: one id per event, the same on every retry.
+  const delivery = eventId ? `ffc:${eventId}` : ''
+  if (delivery && await rpc<boolean>(admin, 'channel_delivery_seen', { p_channel_id: c.id, p_delivery_id: delivery })) {
+    await pluginLog(admin, c, eventId, ev.type, 'DUPLICATE')
+    return json(req, { ok: true, duplicate: true })
+  }
+  let result: unknown
+  try {
+    if (ev.type === 'lead') {
+      result = config.capture_leads
+        ? { stored: await rpc<number>(admin, 'channel_abandoned_upsert', { p_channel_id: c.id, p_rows: [leadToAbandoned(ev.data)] }) }
+        : { ignored: 'capture off' }
+    } else if (ev.type === 'lead_completed') {
+      result = { recovered: await rpc<boolean>(admin, 'channel_abandoned_complete', { p_channel_id: c.id, p_external_id: ev.data.id, p_completed_at: ev.data.completed_at ?? new Date().toISOString() }) }
+    } else if (ev.type === 'order') {
+      if (!config.order_events) {
+        result = { ignored: 'order events off' }
+      } else {
+        // Always WooCommerce's own copy of the order, read with the store's keys.
+        let order: WooOrder | null = null
+        try {
+          order = await wooClient(c, await credsOf(admin, c)).order(ev.data.order_id)
+        } catch (error) {
+          if (error instanceof ChannelError && error.status === 404) order = null
+          else throw error
+        }
+        result = order ? await wooOrderSeen(admin, c, order) : { status: 'NOT_FOUND' }
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await pluginLog(admin, c, eventId, ev.type, 'FAILED', { error: message.slice(0, 300) })
+    // Not recorded as delivered: the plugin sends it again later.
+    throw error instanceof ChannelError ? new HttpError(502, message, error.code ?? 'CHANNEL_ERROR') : error
+  }
+  await rpc(admin, 'channel_delivery_first', { p_channel_id: c.id, p_delivery_id: delivery, p_topic: `plugin.${ev.type}` })
+  await pluginLog(admin, c, eventId, ev.type, 'OK', (result ?? {}) as Record<string, unknown>)
+  return json(req, { ok: true, result })
+}
+
+/** Delivered / Returned on WooCommerce orders (queued by the database when the courier reports it). */
+async function processStatusPushes(admin: SupabaseClient, limit = 20) {
+  const due = await rpc<Array<{ id: string; channel_id: string; external_order_id: string; target: 'delivered' | 'returned' }>>(admin, 'channel_status_push_due', { p_limit: limit })
+  const out = { done: 0, failed: 0, waiting: 0 }
+  const channels = new Map<string, Channel>()
+  for (const p of due) {
+    try {
+      const c = channels.get(p.channel_id) ?? await channelOf(admin, p.channel_id)
+      channels.set(c.id, c)
+      if (c.status === 'DISCONNECTED') {
+        await rpc(admin, 'channel_status_push_result', { p_id: p.id, p_ok: false, p_error: 'The store is disconnected', p_retry: false })
+        out.failed++
+        continue
+      }
+      const status = await wooClient(c, await credsOf(admin, c)).setStatus(p.external_order_id, p.target)
+      if (status !== p.target) throw new ChannelError(`WooCommerce kept the order ${status}`, 422, 'USER_ERROR')
+      await rpc(admin, 'channel_status_push_result', { p_id: p.id, p_ok: true })
+      out.done++
+    } catch (error) {
+      const e = error as ChannelError
+      // An unknown status means the plugin (which adds Delivered and Returned) is not installed.
+      const invalid = e.status === 400 || /invalid|status/i.test(e.code ?? '')
+      const message = invalid ? `WooCommerce has no "${p.target}" status — install the ${PLUGIN_SLUG} plugin (${e.message})` : e.message
+      const retry = !invalid && !(e.status && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429)
+      await rpc(admin, 'channel_status_push_result', { p_id: p.id, p_ok: false, p_error: message, p_retry: retry })
+      if (retry) out.waiting++
+      else out.failed++
+    }
+  }
+  return out
 }
 
 // --- entry ------------------------------------------------------------------------------
@@ -532,6 +728,8 @@ Deno.serve(
     if (req.method === 'POST' && /\/callback\/woocommerce\/?$/.test(path)) return wooCallback(req)
     const hook = /\/webhook\/([0-9a-f-]{36})\/?$/.exec(path)
     if (req.method === 'POST' && hook) return webhook(req, hook[1])
+    const plugin = /\/plugin\/([0-9a-f-]{36})\/?$/.exec(path)
+    if (req.method === 'POST' && plugin) return pluginEvent(req, plugin[1])
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
 
     const input = parse(actions, await readJson(req))
@@ -598,7 +796,7 @@ Deno.serve(
           if (!site) throw new HttpError(422, 'Enter the store address starting with https:// (WooCommerce needs a secure site)', 'VALIDATION')
           const c = await rpc<Channel>(admin, 'channel_upsert', { p: { platform: 'WOOCOMMERCE', shop_domain: site, auth_mode: 'KEYS' }, p_actor: actor })
           const old = await secretOf(admin, c.id)
-          await storeSecret(admin, c.id, { mode: 'KEYS', consumer_key: input.consumer_key, consumer_secret: input.consumer_secret, webhook_secret: old.webhook_secret ?? randomHex() }, actor, `Woo ${hint(input.consumer_key)}`)
+          await storeSecret(admin, c.id, { mode: 'KEYS', consumer_key: input.consumer_key, consumer_secret: input.consumer_secret, webhook_secret: old.webhook_secret ?? randomHex(), plugin_secret: old.plugin_secret ?? randomHex() }, actor, `Woo ${hint(input.consumer_key)}`)
           const done = await finishSetup(admin, c, actor)
           if (done.ok) background(syncChannel(admin, done.channel, 7))
           return json(req, done)
@@ -612,7 +810,10 @@ Deno.serve(
           const s = await credsOf(admin, c).catch(() => secretOf(admin, c.id))
           try {
             if (c.platform === 'SHOPIFY' && s.access_token) await shopifyClient(c, s).removeWebhooks(c.webhooks.map((w) => String(w.id)))
-            if (c.platform === 'WOOCOMMERCE' && s.consumer_key) await wooClient(c, s).removeWebhooks(c.webhooks.map((w) => Number(w.id)))
+            if (c.platform === 'WOOCOMMERCE' && s.consumer_key) {
+              await wooClient(c, s).removeWebhooks(c.webhooks.map((w) => Number(w.id)))
+              await wooClient(c, s).pluginUnpair().catch(() => undefined)
+            }
           } catch { /* the store may already be gone; our side is cleared regardless */ }
           await rpc(admin, 'integration_secret_clear', { p_key: secretKey(c.id), p_actor: actor })
           await rpc(admin, 'channel_update', { p_id: c.id, p_actor: actor, p: { status: 'DISCONNECTED', webhooks: [], last_error: '' } })
@@ -629,8 +830,11 @@ Deno.serve(
           if (input.channel_id && !results[0].ok) throw new HttpError(502, results[0].error ?? 'Sync failed', 'SYNC_FAILED')
           return json(req, { ok: results.every((r) => r.ok), channels: results })
         }
-        case 'process_jobs':
-          return json(req, await processJobs(admin, input.limit))
+        case 'process_jobs': {
+          const jobs = await processJobs(admin, input.limit)
+          const statuses = await processStatusPushes(admin).catch((e) => ({ error: (e as Error).message }))
+          return json(req, { ...jobs, statuses })
+        }
         case 'abandoned_sync': {
           const list = (input.channel_id ? [await channelOf(admin, input.channel_id)] : await rpc<Channel[]>(admin, 'sales_channels_list'))
             .filter((c) => c.platform === 'SHOPIFY' && c.status !== 'DISCONNECTED')
@@ -671,6 +875,37 @@ Deno.serve(
           const done = await finishSetup(admin, c, actor)
           if (done.ok) background(syncChannel(admin, done.channel, 7))
           return json(req, done)
+        }
+        case 'plugin_pair': {
+          const c = await channelOf(admin, input.channel_id)
+          if (c.platform !== 'WOOCOMMERCE') throw new HttpError(422, 'Only WooCommerce stores use the plugin', 'VALIDATION')
+          return json(req, { check: await pairPlugin(admin, c, await credsOf(admin, c)) })
+        }
+        case 'plugin_status': {
+          const c = await channelOf(admin, input.channel_id)
+          if (c.platform !== 'WOOCOMMERCE') throw new HttpError(422, 'Only WooCommerce stores use the plugin', 'VALIDATION')
+          const started = Date.now()
+          try {
+            const r = await wooClient(c, await credsOf(admin, c)).pluginStatus()
+            if (r.report) await rpc(admin, 'channel_plugin_seen', { p_channel_id: c.id, p_report: r.report })
+            return json(req, { reachable: true, connected: r.connected, ms: Date.now() - started, report: r.report })
+          } catch (error) {
+            const e = error as ChannelError
+            return json(req, { reachable: false, installed: e.code !== 'NO_PLUGIN', ms: Date.now() - started, error: e.message })
+          }
+        }
+        case 'plugin_code': {
+          const c = await channelOf(admin, input.channel_id)
+          if (c.platform !== 'WOOCOMMERCE') throw new HttpError(422, 'Only WooCommerce stores use the plugin', 'VALIDATION')
+          const { secret } = await pluginSecret(admin, c, await secretOf(admin, c.id))
+          return json(req, { code: connectionCode(fnBase(), c.id, secret, appName()) }, 200, { 'Cache-Control': 'no-store' })
+        }
+        case 'plugin_config': {
+          const c = await channelOf(admin, input.channel_id)
+          const cfg = await rpc<PluginConfig>(staff!.client, 'channel_plugin_config_save', { p_channel_id: c.id, p: input.config })
+          // Sent to the store at once; otherwise it arrives with the next heartbeat.
+          const check = await pairPlugin(admin, { ...c, settings: { ...c.settings, plugin_config: cfg } }, await credsOf(admin, c))
+          return json(req, { config: cfg, delivered: check.status === 'ok', detail: check.detail })
         }
         case 'retry_import': {
           const row = await rpc<{ channel_id: string; payload: NormalizedOrder }>(admin, 'channel_import_for_retry', { p_import_id: input.import_id, p_overrides: input.overrides, p_actor: actor })

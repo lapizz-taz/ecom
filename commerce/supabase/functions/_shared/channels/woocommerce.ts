@@ -6,6 +6,8 @@
 // carry X-WC-Webhook-Signature (HMAC of the body with a secret we choose).
 import { type Check, ChannelError, clean, hmacBase64, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
 import type { CatalogItem } from './shopify.ts'
+import { pluginAttribution, PLUGIN_SLUG } from './woo-plugin.ts'
+import { env } from '../env.ts'
 
 type FetchFn = typeof fetch
 
@@ -33,12 +35,19 @@ const BD_STATES: Record<string, string> = {
   'BD-61': 'Sunamganj', 'BD-62': 'Shariatpur', 'BD-63': 'Tangail', 'BD-64': 'Thakurgaon',
 }
 
+/**
+ * Plain-HTTP store addresses allowed for local testing only (CHANNELS_ALLOW_HTTP_HOSTS="host:port,…").
+ * Never set in production: keys must not travel in clear text.
+ */
+const httpAllowed = (host: string) => (env('CHANNELS_ALLOW_HTTP_HOSTS') ?? '').split(',').map((h) => h.trim()).filter(Boolean).includes(host)
+
 /** "shop.com", "https://shop.com/" → "https://shop.com" (null when not a usable HTTPS address). */
 export function siteUrl(input: string): string | null {
   let v = input.trim()
   if (!/^[a-z]+:\/\//i.test(v)) v = `https://${v}`
   try {
     const u = new URL(v)
+    if (u.protocol === 'http:' && httpAllowed(u.host)) return `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}`
     if (u.protocol !== 'https:' || !u.hostname.includes('.') || u.username || u.password) return null
     return `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}`
   } catch {
@@ -59,9 +68,9 @@ export class WooClient {
   private useQueryAuth = false
   constructor(readonly site: string, private readonly key: string, private readonly secret: string, private readonly fetchFn: FetchFn = fetch) {}
 
-  private async call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, query: Record<string, string> = {}): Promise<T> {
+  private async call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, query: Record<string, string> = {}, base = 'wc/v3'): Promise<T> {
     const send = async (queryAuth: boolean) => {
-      const url = new URL(`${this.site}/wp-json/wc/v3/${path.replace(/^\/+/, '')}`)
+      const url = new URL(`${this.site}/wp-json/${base}/${path.replace(/^\/+/, '')}`)
       for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v)
       const headers: Record<string, string> = { Accept: 'application/json' }
       if (queryAuth) {
@@ -89,11 +98,27 @@ export class WooClient {
     if (!res.ok) {
       const msg = (json as { message?: string; code?: string } | null)
       if (res.status === 401 || res.status === 403) throw new ChannelError(`WooCommerce rejected the API keys${msg?.message ? `: ${msg.message}` : ''}`, res.status, msg?.code ?? 'UNAUTHORIZED')
+      if (base !== 'wc/v3' && res.status === 404) throw new ChannelError(`The ${PLUGIN_SLUG} plugin is not installed or not active on this site`, 404, 'NO_PLUGIN')
       if (res.status === 404 && !msg?.code) throw new ChannelError('The WooCommerce REST API was not found. In WordPress → Settings → Permalinks choose any option except "Plain".', 404, 'NO_API')
       throw new ChannelError(`WooCommerce: ${msg?.message ?? `HTTP ${res.status}`}`, res.status, msg?.code)
     }
     if (json === null && text) throw new ChannelError('The site answered with a web page instead of the API — a security plugin or firewall may be blocking it', res.status, 'NOT_JSON')
     return json as T
+  }
+
+  // --- the Fullfilio Connect plugin (same API keys; the plugin only accepts store managers) ---
+
+  /** Hands the plugin its endpoint and signing secret. ChannelError NO_PLUGIN when it is not installed. */
+  async pluginPair(body: { endpoint: string; channel_id: string; secret: string; app_name: string; app_url: string; config: Record<string, unknown> }) {
+    return this.call<{ ok: boolean; version: string; report: Record<string, unknown> }>('POST', 'pair', body, {}, 'fullfilio/v1')
+  }
+
+  async pluginStatus() {
+    return this.call<{ ok: boolean; connected: boolean; report: Record<string, unknown> }>('GET', 'status', undefined, {}, 'fullfilio/v1')
+  }
+
+  async pluginUnpair() {
+    return this.call<{ ok: boolean }>('POST', 'unpair', {}, {}, 'fullfilio/v1')
   }
 
   async order(id: string | number): Promise<WooOrder> {
@@ -340,6 +365,8 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
   const utm: Record<string, string> = {}
   for (const k of ['source', 'medium', 'campaign', 'content', 'term']) if (meta[`_wc_order_attribution_utm_${k}`]) utm[`utm_${k}`] = meta[`_wc_order_attribution_utm_${k}`]
   const touch = touchFrom(meta._wc_order_attribution_session_entry, meta._wc_order_attribution_referrer, meta._wc_order_attribution_session_start_time ?? o.date_created_gmt ?? null, utm)
+  // The Fullfilio Connect plugin keeps the first and the latest visit (and click ids WooCommerce drops): it wins when present.
+  const fromPlugin = pluginAttribution(meta._ffc_attribution)
   const total = money(o.total)
   const paid = o.date_paid_gmt && o.payment_method !== 'cod' && WOO_IMPORT_STATUSES.includes(o.status) ? total : 0
   const state = clean(a.state)
@@ -376,6 +403,6 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
     currency: o.currency ?? null,
     gateway: clean(o.payment_method_title),
     note: clean(o.customer_note),
-    attribution: touch ? { first_touch: touch, last_touch: touch } : null,
+    attribution: fromPlugin ?? (touch ? { first_touch: touch, last_touch: touch } : null),
   }
 }

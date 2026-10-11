@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/features/auth/auth-context'
+import { WooPluginPanel } from '@/features/channels/woo-plugin-panel'
 import { useUrlState } from '@/hooks/use-url-state'
 import { toUserMessage } from '@/lib/errors'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
@@ -129,6 +130,7 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="unmapped">Not linked{o.unmapped.length ? ` · ${o.unmapped.length}` : ''}</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
+            {o.channel.platform === 'WOOCOMMERCE' && can('settings.manage') && <TabsTrigger value="plugin">Plugin</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="activity" className="animate-in fade-in-0"><JobsTab o={o} onDone={refresh} /></TabsContent>
@@ -136,6 +138,9 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
         <TabsContent value="fulfilments" className="animate-in fade-in-0"><FulfilmentsTab o={o} store={store} /></TabsContent>
         <TabsContent value="products" className="animate-in fade-in-0"><ProductsTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
         <TabsContent value="unmapped" className="animate-in fade-in-0"><UnmappedTab o={o} channelId={channelId} onDone={refresh} store={store} /></TabsContent>
+        {o.channel.platform === 'WOOCOMMERCE' && can('settings.manage') && (
+          <TabsContent value="plugin" className="animate-in fade-in-0"><WooPluginPanel channelId={channelId} /></TabsContent>
+        )}
         <TabsContent value="settings" className="animate-in fade-in-0 space-y-3">
           <SettingsCard o={o} channelId={channelId} onSaved={refresh} store={store} />
           {can('inventory.view') && (
