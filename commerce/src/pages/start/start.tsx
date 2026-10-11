@@ -15,12 +15,11 @@ import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
 import { normalizePhone } from '@/lib/phone'
 import {
-  checkStoreSlug, clearSignupDraft, readSignupDraft, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
+  clearSignupDraft, readSignupDraft, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
 } from '@/services/onboarding'
 
 const EMPTY: SignupBusiness = {
   business_name: '', full_name: '', phone: '', business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '',
-  online_store: true, store_slug: '',
 }
 
 /**
@@ -41,7 +40,6 @@ export default function StartPage() {
   const [password, setPassword] = useState('')
   const [agree, setAgree] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
-  const [slugError, setSlugError] = useState<string | null>(null)
 
   // Start on the default plan once the plans are known.
   useEffect(() => {
@@ -74,7 +72,7 @@ export default function StartPage() {
   if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
   if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
-  const errors = { ...businessErrors(business), ...(slugError && business.online_store ? { store_slug: slugError } : {}) }
+  const errors = businessErrors(business)
   const stepsLabels = ['Plan', 'Business', session ? 'Confirm' : 'Account']
   const accountError = !session && (!/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter your e-mail address' : password.length < 8 ? 'Use at least 8 characters for the password' : !agree ? 'Accept the terms to continue' : null)
 
@@ -112,12 +110,6 @@ export default function StartPage() {
           if (step === 1) {
             setTouched(true)
             if (Object.keys(errors).length) return
-            // A taken store address would only fail after the e-mail is confirmed: check it now.
-            if (business.online_store && business.store_slug) {
-              void checkStoreSlug(business.store_slug).then((c) => { if (c.available) setStep(2); else setSlugError(c.reason ?? 'This store address cannot be used') })
-                .catch(() => setStep(2))
-              return
-            }
             setStep(2); return
           }
           setTouched(true)
@@ -135,7 +127,7 @@ export default function StartPage() {
 
           <div className="mt-7">
             {step === 0 && <PlanPicker options={options.data} value={business.plan_code} onChange={(plan_code) => setBusiness((b) => ({ ...b, plan_code }))} />}
-            {step === 1 && <BusinessFields value={business} onChange={(b) => { if (b.store_slug !== business.store_slug || b.online_store !== business.online_store) setSlugError(null); setBusiness(b) }} errors={errors} showErrors={touched} />}
+            {step === 1 && <BusinessFields value={business} onChange={setBusiness} errors={errors} showErrors={touched} />}
             {step === 2 && !session && (
               <div className="grid gap-4">
                 <Field label="Work e-mail" required>

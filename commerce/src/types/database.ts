@@ -15535,6 +15535,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      admin_online_store_answer: {
+        Args: {
+          p_open: boolean
+          p_slug?: string
+        }
+        Returns: Json
+      }
       admin_set_store_slug: {
         Args: {
           p_slug: string

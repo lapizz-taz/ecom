@@ -33,10 +33,6 @@ export interface SignupBusiness {
   sells_on: string[]
   orders_per_month: string
   plan_code: string
-  /** Open a Fullfilio online store (gets a store address); false = sells elsewhere only. */
-  online_store: boolean
-  /** The store address asked for (empty: made from the business name). */
-  store_slug: string
 }
 
 export interface SelfOnboardResult {
@@ -54,7 +50,9 @@ export async function signupOptions(): Promise<SignupOptions> {
 }
 
 export async function selfOnboard(business: SignupBusiness): Promise<SelfOnboardResult> {
-  const { data, error } = await supabase.rpc('merchant_self_onboard' as never, { p: business } as never)
+  // The online store starts off: the owner chooses it on the dashboard, so no
+  // store address exists until they do.
+  const { data, error } = await supabase.rpc('merchant_self_onboard' as never, { p: { ...business, online_store: false } } as never)
   if (error) throw error
   return data as unknown as SelfOnboardResult
 }

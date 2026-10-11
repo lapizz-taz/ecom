@@ -43,7 +43,7 @@ export default function StartFinishPage() {
   useEffect(() => {
     if (!user || access || accessLoading || tried.current) return
     const draft = readSignupDraft(user.user_metadata)
-    const fallback = { business_name: '', full_name: String(user.user_metadata?.full_name ?? ''), phone: String(user.user_metadata?.phone ?? ''), business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '', online_store: true, store_slug: '' }
+    const fallback = { business_name: '', full_name: String(user.user_metadata?.full_name ?? ''), phone: String(user.user_metadata?.phone ?? ''), business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '' }
     setBusiness(draft ?? fallback)
     tried.current = true
     if (draft) open.mutate(draft)

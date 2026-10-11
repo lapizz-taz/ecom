@@ -96,6 +96,36 @@ describe('store addresses', () => {
       expect(await value<Record<string, any>>(db, `select public.storefront_resolve('isolation.fullfilio.com')`)).toMatchObject({ kind: 'store' })
     }))
 
+  it('a new business answers the online-store question on the dashboard', () =>
+    inTx(async (db) => {
+      const a = await founder(db)
+      await asUser(db, a.id, a.email, null)
+      const shop = await value<Record<string, any>>(db, `select public.merchant_self_onboard($1)`, [signUp({ online_store: false })])
+      await asUser(db, a.id, a.email, shop.merchant_id)
+      expect(await value(db, `select public.merchant_store_address()`)).toMatchObject({ mode: 'OFF', slug: null, asked: false })
+
+      // Yes, under a chosen name.
+      expect(await value(db, `select public.admin_online_store_answer(true, 'Nadia-Shop')`)).toMatchObject({ mode: 'OWN', slug: 'nadia-shop', asked: true })
+      await asAnon(db, null)
+      expect(await value<Record<string, any>>(db, `select public.storefront_resolve_slug('nadia-shop')`)).toMatchObject({ kind: 'store', merchant_id: shop.merchant_id })
+
+      // A taken name changes nothing: the store stays off and the question stays open.
+      const b = await founder(db)
+      await asUser(db, b.id, b.email, null)
+      const other = await value<Record<string, any>>(db, `select public.merchant_self_onboard($1)`, [signUp({ business_name: 'Other Shop', online_store: false })])
+      await asUser(db, b.id, b.email, other.merchant_id)
+      await expectError(db, `select public.admin_online_store_answer(true, 'nadia-shop')`, [], /taken/)
+      expect(await value(db, `select public.merchant_store_address()`)).toMatchObject({ mode: 'OFF', slug: null, asked: false })
+
+      // No: nothing is published, and the question is not asked again.
+      expect(await value(db, `select public.admin_online_store_answer(false)`)).toMatchObject({ mode: 'OFF', slug: null, asked: true })
+
+      // Staff without settings.manage cannot answer.
+      const clerk = await createStaff(db, 'ORDER_MANAGER')
+      await asUser(db, clerk)
+      await expectError(db, `select public.admin_online_store_answer(true, 'clerk-shop')`, [], /settings\.manage/)
+    }))
+
   it('only platform staff who edit settings change the platform domain; owners rename their own store', () =>
     inTx(async (db) => {
       const viewer = await createPlatformStaff(db, 'VIEWER')

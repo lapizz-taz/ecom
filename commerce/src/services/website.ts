@@ -56,6 +56,8 @@ export interface StoreAddress {
   root_domain: string | null
   subdomain: string | null
   custom_domain: string | null
+  /** The owner answered "Do you want a Fullfilio online store?" (or already sells somewhere). */
+  asked: boolean
 }
 
 export async function getStoreAddress(): Promise<StoreAddress> {
@@ -66,6 +68,13 @@ export async function getStoreAddress(): Promise<StoreAddress> {
 
 export async function setStoreSlug(slug: string): Promise<StoreAddress> {
   const { data, error } = await supabase.rpc('admin_set_store_slug', { p_slug: slug })
+  if (error) throw error
+  return data as unknown as StoreAddress
+}
+
+/** The dashboard question: open the online store under `slug`, or not. */
+export async function answerOnlineStore(open: boolean, slug?: string): Promise<StoreAddress> {
+  const { data, error } = await supabase.rpc('admin_online_store_answer', { p_open: open, p_slug: slug })
   if (error) throw error
   return data as unknown as StoreAddress
 }

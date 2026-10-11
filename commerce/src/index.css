@@ -482,6 +482,10 @@
 @keyframes road {
   to { background-position: -48px 0; }
 }
+@keyframes dg-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-14px); }
+}
 @keyframes van-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-1.5px); }

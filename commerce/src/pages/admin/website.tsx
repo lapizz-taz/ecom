@@ -116,7 +116,7 @@ function DomainsTab() {
     </div>
 
     <Dialog open={!!open} onOpenChange={(v) => !v && close()}>
-      <DialogContent className="max-h-[92dvh] gap-0 overflow-y-auto p-0 duration-300 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:zoom-in-90 sm:max-w-2xl">
+      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="max-h-[92dvh] gap-0 overflow-y-auto p-0 duration-300 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:zoom-in-90 sm:max-w-2xl">
         <DialogTitle className="sr-only">{open?.domain ?? 'Domain'}</DialogTitle>
         <DialogDescription className="sr-only">Connection status of the domain</DialogDescription>
         {open && (

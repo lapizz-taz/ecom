@@ -1,14 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
-import { Check, Loader2, Store, Unplug } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Check } from 'lucide-react'
 import { Field } from '@/components/common/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatMoney, formatNumber } from '@/lib/format'
 import { normalizePhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { useDebounce } from '@/hooks/use-debounce'
-import { BUSINESS_TYPES, checkStoreSlug, ORDER_VOLUMES, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan, suggestStoreSlug } from '@/services/onboarding'
+import { BUSINESS_TYPES, ORDER_VOLUMES, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
 
 const BD_MOBILE = /^01[3-9][0-9]{8}$/
 
@@ -20,7 +17,6 @@ export function businessErrors(b: SignupBusiness): Partial<Record<keyof SignupBu
   if (b.full_name.trim().length < 2) e.full_name = 'Enter your name'
   if (!BD_MOBILE.test(normalizePhone(b.phone))) e.phone = 'Enter a Bangladesh mobile number (01XXXXXXXXX)'
   if (b.website.trim() && !/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(b.website.trim())) e.website = 'This address does not look right'
-  if (b.online_store && b.store_slug && !/^[a-z0-9]([a-z0-9]|-(?!-)){1,40}$/.test(b.store_slug)) e.store_slug = 'Use lower-case letters, numbers and single dashes'
   return e
 }
 
@@ -124,7 +120,6 @@ export function BusinessFields({ value, onChange, errors, showErrors }: {
           <Input value={value.website} onChange={(e) => set('website', e.target.value)} placeholder="yourshop.com" inputMode="url" autoComplete="url" className="h-10" />
         </Field>
       </div>
-      <StoreChoice value={value} onChange={onChange} error={err('store_slug')} />
       <fieldset className="grid gap-2">
         <legend className="mb-2 text-sm font-medium">Where do you sell now?</legend>
         <div className="flex flex-wrap gap-2">
@@ -159,62 +154,5 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
         </li>
       ))}
     </ol>
-  )
-}
-
-/**
- * "Do you want a Fullfilio online store?" Yes reserves a store address
- * (<name>.<root domain>, or /s/<name> until the platform has a root domain);
- * no publishes nothing.
- */
-function StoreChoice({ value, onChange, error }: { value: SignupBusiness; onChange: (next: SignupBusiness) => void; error?: string }) {
-  const [edited, setEdited] = useState(Boolean(value.store_slug))
-  const name = useDebounce(value.business_name.trim(), 400)
-  // Suggest an address from the business name until the person types their own.
-  useEffect(() => {
-    if (!value.online_store || edited || name.length < 2) return
-    let live = true
-    void suggestStoreSlug(name).then((slug) => { if (live) onChange({ ...value, store_slug: slug }) }).catch(() => {})
-    return () => { live = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, value.online_store, edited])
-  const slug = useDebounce(value.store_slug, 350)
-  const check = useQuery({ queryKey: ['store-slug', slug], enabled: value.online_store && slug.length >= 2, queryFn: () => checkStoreSlug(slug), staleTime: 30_000 })
-  const root = check.data?.root_domain
-  const option = (on: boolean, icon: React.ReactNode, title: string, text: string) => (
-    <button type="button" role="radio" aria-checked={value.online_store === on} onClick={() => onChange({ ...value, online_store: on })}
-      className={cn('flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-foreground/20',
-        value.online_store === on && 'border-brand ring-1 ring-brand hover:border-brand')}>
-      <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground', value.online_store === on && 'bg-brand-soft text-brand')}>{icon}</span>
-      <span><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{text}</span></span>
-    </button>
-  )
-  return (
-    <fieldset className="grid gap-2">
-      <legend className="mb-2 text-sm font-medium">Do you want a Fullfilio online store?</legend>
-      <div className="grid gap-2 sm:grid-cols-2" role="radiogroup">
-        {option(true, <Store className="size-4" />, 'Yes, open my online store', 'A ready store with checkout, courier booking and its own address.')}
-        {option(false, <Unplug className="size-4" />, 'No, I sell elsewhere', 'Facebook, Shopify or WooCommerce only. No store address is created.')}
-      </div>
-      {value.online_store && (
-        <div className="grid gap-1.5 rounded-xl border bg-muted/30 p-3">
-          <span className="text-xs font-medium text-muted-foreground">Your store address</span>
-          <div className={cn('flex h-10 items-center overflow-hidden rounded-lg border bg-card text-sm focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15', error && 'border-destructive')}>
-            {!root && <span className="shrink-0 pl-3 text-muted-foreground">{window.location.host}/s/</span>}
-            <input value={value.store_slug} aria-label="Store address" spellCheck={false} autoCapitalize="none" maxLength={41}
-              onChange={(e) => { setEdited(true); onChange({ ...value, store_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }) }}
-              className={cn('h-full min-w-0 flex-1 bg-transparent font-medium outline-none', root ? 'pl-3' : 'pl-0.5')} placeholder="your-shop" />
-            {root && <span className="shrink-0 pr-3 text-muted-foreground">.{root}</span>}
-            <span className="grid w-9 shrink-0 place-items-center">
-              {check.isFetching ? <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                : check.data?.available && check.data.slug === value.store_slug ? <Check className="size-4 text-emerald-600" /> : null}
-            </span>
-          </div>
-          {error ? <p className="text-xs text-destructive">{error}</p>
-            : check.data && !check.data.available && check.data.slug === value.store_slug ? <p className="text-xs text-destructive">{check.data.reason}</p>
-              : <p className="text-xs text-muted-foreground">You can connect your own domain later in Store → Website.</p>}
-        </div>
-      )}
-    </fieldset>
   )
 }

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDashboardLayout } from '@/features/dashboard/use-dashboard-layout'
+import { OnlineStoreChoice } from '@/features/website/online-store-choice'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { BarsChart, ShareList, TrendChart } from '@/features/reports/charts'
 import { useRealtimeInvalidate } from '@/hooks/use-realtime'
@@ -191,6 +192,8 @@ export default function DashboardPage() {
           </>
         )} />
 
+      <OnlineStoreChoice />
+
       {params.get('welcome') === '1' && <WelcomeChecklist onClose={() => { params.delete('welcome'); setParams(params, { replace: true }) }} />}
 
       <KpiRow c={center.data} prev={before.data} series={series.data as Array<Record<string, unknown>> | undefined} finance={can('finance.view')} />
@@ -300,15 +303,15 @@ function StatusTiles() {
   if (!can('orders.view')) return null
   return (
     <section aria-label="Orders by status" className="rounded-xl border bg-card">
-      <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-1">
-        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Order pipeline</h2>
+      <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-0.5">
+        <h2 className="text-[13px] font-semibold">Order pipeline</h2>
         <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">All orders <ArrowRight className="size-3" /></Link>
       </div>
       <div className="grid grid-cols-3 gap-px overflow-hidden rounded-b-2xl sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-12">
         {tiles.map((t) => (
-          <Link key={t.label} to={t.to} className="group px-4 py-3 transition-colors hover:bg-muted/50">
-            <p className="truncate text-xs text-muted-foreground group-hover:text-foreground">{t.label}</p>
-            <p className={cn('mt-1 text-xl font-semibold tracking-[-0.02em] tabular-nums', (t.n ?? 0) > 0 && t.tone)}>{queue.data || status.data ? formatNumber(t.n ?? 0) : '—'}</p>
+          <Link key={t.label} to={t.to} className="group px-4 py-2.5 transition-colors hover:bg-muted/50">
+            <p className="truncate text-[11px] text-muted-foreground group-hover:text-foreground">{t.label}</p>
+            <p className={cn('mt-0.5 text-[15px] font-semibold tabular-nums', (t.n ?? 0) > 0 && t.tone)}>{queue.data || status.data ? formatNumber(t.n ?? 0) : '—'}</p>
           </Link>
         ))}
       </div>
