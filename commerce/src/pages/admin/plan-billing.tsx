@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { PageHeader } from '@/components/common/page-header'
 import { CreditsSection } from '@/features/billing/credits-section'
+import { DataDeletionCard } from '@/features/billing/data-deletion-card'
 import { PlanSummary } from '@/features/billing/plan-summary'
 import { useUrlState } from '@/hooks/use-url-state'
 import { toast } from '@/lib/toast'
@@ -29,6 +30,7 @@ export default function PlanBillingPage() {
         <PlanSummary />
       </div>
       <CreditsSection />
+      <DataDeletionCard />
     </div>
   )
 }

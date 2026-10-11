@@ -23,6 +23,7 @@ import { usePlatform } from '@/features/platform/platform-context'
 import { UsageReportPanel } from '@/features/platform/services/usage-report'
 import { useUrlState } from '@/hooks/use-url-state'
 import { downloadCsv } from '@/lib/csv'
+import { recordExport } from '@/services/platform-data'
 import { rangeFor } from '@/lib/dates'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { toast } from '@/lib/toast'
@@ -43,7 +44,10 @@ function UsageTab() {
   const q = useQuery({ queryKey: ['platform-usage-overview', state.from, state.to], placeholderData: keepPreviousData, queryFn: () => usageOverview(state.from, state.to) })
   const t = q.data?.totals
   const rows = (q.data?.merchants ?? []).filter((m) => !state.q || m.name.toLowerCase().includes(state.q.toLowerCase()) || String(m.number) === state.q.replace('#', ''))
-  const exportCsv = () => q.data && downloadCsv<UsageOverviewRow>(`usage-${state.from}-${state.to}.csv`, q.data.merchants, [
+  const exportCsv = async () => {
+    if (!q.data) return
+    await recordExport('USAGE', { rows: q.data.merchants.length, from: state.from, to: state.to })
+    downloadCsv<UsageOverviewRow>(`usage-${state.from}-${state.to}.csv`, q.data.merchants, [
     { header: 'Merchant', value: (m) => `#${m.number} ${m.name}` },
     { header: 'SMS attempted', value: (m) => m.sms_attempted }, { header: 'SMS sent', value: (m) => m.sms_sent },
     { header: 'SMS delivered', value: (m) => m.sms_delivered }, { header: 'SMS failed or undelivered', value: (m) => m.sms_failed },
@@ -54,7 +58,8 @@ function UsageTab() {
     { header: 'BD Courier failed', value: (m) => m.bd_failed }, { header: 'BD Courier refused by policy', value: (m) => m.bd_refused },
     { header: 'BD Courier billable', value: (m) => m.bd_billable }, { header: 'BD Courier credits used', value: (m) => m.bd_credits },
     { header: 'BD Courier free left', value: (m) => m.bd_state?.free_remaining ?? '' }, { header: 'BD Courier this month / cap', value: (m) => `${m.bd_state?.month_used ?? ''} / ${m.bd_state?.monthly_cap ?? 'none'}` },
-  ])
+    ])
+  }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">

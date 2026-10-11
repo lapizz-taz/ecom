@@ -221,7 +221,7 @@ function RunsLog({ ruleId }: { ruleId: string | null }) {
           <TableCell className="max-w-xs text-xs"><p className="truncate">{r.title ?? r.subject}</p>
             {r.merchant && <Link className="text-muted-foreground underline" to={`/super-admin/merchants/${r.merchant.id}`}>#{r.merchant.number} {r.merchant.name}</Link>}</TableCell>
           <TableCell><Badge variant={r.status === 'ACTED' ? 'success' : 'danger'}>{r.status === 'ACTED' ? 'done' : 'failed'}</Badge></TableCell>
-          <TableCell className="max-w-sm text-xs text-muted-foreground">{r.error ?? r.actions.map((a) => {
+          <TableCell className="max-w-sm text-xs whitespace-normal text-muted-foreground">{r.error ?? r.actions.map((a) => {
             const x = a as Record<string, unknown>
             return x.type === 'notify_staff' || x.type === 'notify_account_manager' ? `${x.notified} notified`
               : x.type === 'escalate_ticket' ? `escalated to level ${x.level}` : x.type === 'create_incident' ? `incident #${x.incident}`

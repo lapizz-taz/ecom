@@ -3750,6 +3750,74 @@ export type Database = {
           },
         ]
       }
+      merchant_deletion_requests: {
+        Row: {
+          id: string
+          number: number
+          merchant_id: string
+          source: string
+          reason: string
+          status: string
+          requested_by: string | null
+          requested_by_email: string | null
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          erase_after: string | null
+          completed_by: string | null
+          completed_at: string | null
+          result: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          number?: number
+          merchant_id: string
+          source: string
+          reason: string
+          status?: string
+          requested_by?: string | null
+          requested_by_email?: string | null
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          erase_after?: string | null
+          completed_by?: string | null
+          completed_at?: string | null
+          result?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          number?: number
+          merchant_id?: string
+          source?: string
+          reason?: string
+          status?: string
+          requested_by?: string | null
+          requested_by_email?: string | null
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          erase_after?: string | null
+          completed_by?: string | null
+          completed_at?: string | null
+          result?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_deletion_requests_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       merchant_features: {
         Row: {
           merchant_id: string
@@ -7416,6 +7484,47 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_data_exports: {
+        Row: {
+          id: number
+          kind: string
+          merchant_id: string | null
+          actor_id: string | null
+          actor_email: string | null
+          reason: string | null
+          detail: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          kind: string
+          merchant_id?: string | null
+          actor_id?: string | null
+          actor_email?: string | null
+          reason?: string | null
+          detail?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          kind?: string
+          merchant_id?: string | null
+          actor_id?: string | null
+          actor_email?: string | null
+          reason?: string | null
+          detail?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_data_exports_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_incident_merchants: {
         Row: {
           incident_id: string
@@ -7623,6 +7732,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      platform_restore_tests: {
+        Row: {
+          id: number
+          tested_at: string
+          backup_taken_at: string | null
+          environment: string
+          result: string
+          duration_minutes: number | null
+          checks: Json
+          notes: string | null
+          recorded_by: string | null
+          recorded_by_email: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tested_at: string
+          backup_taken_at?: string | null
+          environment: string
+          result: string
+          duration_minutes?: number | null
+          checks?: Json
+          notes?: string | null
+          recorded_by?: string | null
+          recorded_by_email?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          tested_at?: string
+          backup_taken_at?: string | null
+          environment?: string
+          result?: string
+          duration_minutes?: number | null
+          checks?: Json
+          notes?: string | null
+          recorded_by?: string | null
+          recorded_by_email?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
       platform_role_permissions: {
         Row: {
@@ -10460,6 +10611,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      _erasure_active: {
+        Args: {
+          p_merchant: string
+        }
+        Returns: boolean
+      }
       _hr_today: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -12851,6 +13008,16 @@ export type Database = {
         }
         Returns: string
       }
+      merchant_data_deletion_cancel: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      merchant_data_deletion_request: {
+        Args: {
+          p_reason: string
+        }
+        Returns: Json
+      }
       merchant_entitlements: {
         Args: {
           p_merchant?: string
@@ -12895,6 +13062,10 @@ export type Database = {
         Returns: Json
       }
       my_credits: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      my_data_deletion_request: {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
@@ -13440,6 +13611,47 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_data_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_deletion_request_cancel: {
+        Args: {
+          p_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_deletion_request_create: {
+        Args: {
+          p_merchant: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_deletion_request_decide: {
+        Args: {
+          p_id: string
+          p_approve: boolean
+          p_note: string
+        }
+        Returns: Json
+      }
+      platform_deletion_request_execute: {
+        Args: {
+          p_id: string
+          p_confirm: string
+        }
+        Returns: Json
+      }
+      platform_export_record: {
+        Args: {
+          p_kind: string
+          p_detail?: Json
+          p_merchant?: string
+        }
+        Returns: number
+      }
       platform_feature_bulk_apply: {
         Args: {
           p_merchants: string[]
@@ -13463,6 +13675,10 @@ export type Database = {
           p_code: string
           p: Json
         }
+        Returns: Json
+      }
+      platform_global_settings: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       platform_health: {
@@ -13555,6 +13771,13 @@ export type Database = {
       platform_merchant_credits: {
         Args: {
           p_merchant: string
+        }
+        Returns: Json
+      }
+      platform_merchant_export: {
+        Args: {
+          p_merchant: string
+          p_reason: string
         }
         Returns: Json
       }
@@ -13791,6 +14014,18 @@ export type Database = {
         }
         Returns: string
       }
+      platform_restore_test_record: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_retention_run_now: {
+        Args: {
+          p_reason: string
+        }
+        Returns: Json
+      }
       platform_role_delete: {
         Args: {
           p_id: string
@@ -13811,6 +14046,10 @@ export type Database = {
         Args: {
           p_q: string
         }
+        Returns: Json
+      }
+      platform_security_overview: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       platform_service_override_set: {
@@ -13873,6 +14112,13 @@ export type Database = {
           p_reason: string
         }
         Returns: undefined
+      }
+      platform_staff_sign_out: {
+        Args: {
+          p_user: string
+          p_reason: string
+        }
+        Returns: Json
       }
       platform_subscription_action: {
         Args: {

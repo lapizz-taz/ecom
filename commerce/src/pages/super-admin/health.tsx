@@ -166,7 +166,7 @@ function LogBrowser({ canManage }: { canManage: boolean }) {
               {canManage && <TableCell onClick={(e) => e.stopPropagation()}>{!r.resolved_at && <Checkbox aria-label={`Select log ${r.id}`} checked={selected.includes(r.id)}
                 onCheckedChange={(v) => setSelected(v ? [...selected, r.id] : selected.filter((x) => x !== r.id))} />}</TableCell>}
               <TableCell><Badge variant={LEVEL_VARIANT[r.level] ?? 'neutral'}>{r.level.toLowerCase()}</Badge></TableCell>
-              <TableCell className="max-w-md"><p className="line-clamp-2 text-sm">{r.message}</p><p className="text-xs text-muted-foreground">{r.category.toLowerCase()} · {r.source}{r.resolved_at && ' · resolved'}</p></TableCell>
+              <TableCell className="max-w-md whitespace-normal"><p className="line-clamp-2 text-sm">{r.message}</p><p className="text-xs text-muted-foreground">{r.category.toLowerCase()} · {r.source}{r.resolved_at && ' · resolved'}</p></TableCell>
               <TableCell className="text-xs">{r.merchant ? <Link onClick={(e) => e.stopPropagation()} className="hover:underline" to={`/super-admin/merchants/${r.merchant.id}`}>#{r.merchant.number} {r.merchant.name}</Link> : 'Platform'}</TableCell>
               <TableCell className="text-right text-xs tabular-nums">{formatNumber(r.occurrences)}</TableCell>
               <TableCell className="text-xs">{timeAgo(r.last_seen_at)}</TableCell>
@@ -242,7 +242,7 @@ export default function SystemHealthPage() {
                         <TableCell className="text-xs">{j.last_status ? <><Badge variant={j.last_status === 'succeeded' ? 'success' : j.last_status === 'failed' ? 'danger' : 'neutral'}>{j.last_status}</Badge> {j.last_end && timeAgo(j.last_end)}</> : 'never ran'}</TableCell>
                         <TableCell className="text-right text-xs tabular-nums">{formatNumber(j.runs_24h)}</TableCell>
                         <TableCell className={cn('text-right text-xs tabular-nums', j.failed_24h > 0 && 'text-red-500')}>{formatNumber(j.failed_24h)}</TableCell>
-                        <TableCell className="max-w-xs truncate text-xs text-muted-foreground">{j.last_message ?? ''}</TableCell>
+                        <TableCell className="max-w-xs truncate text-xs text-muted-foreground" title={j.last_message ?? undefined}>{j.last_message ?? ''}</TableCell>
                       </TableRow>))}</TableBody>
                   </Table></div>
                 )}

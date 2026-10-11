@@ -56,6 +56,28 @@ create table if not exists auth.identities (
   unique (provider_id, provider)
 );
 
+-- Sign-in sessions and second factors (the columns the app reads).
+create table if not exists auth.sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  not_after timestamptz,
+  aal text,
+  user_agent text,
+  ip inet
+);
+
+create table if not exists auth.mfa_factors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  friendly_name text,
+  factor_type text not null default 'totp',
+  status text not null default 'unverified',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create or replace function auth.jwt() returns jsonb
 language sql stable as $$
   select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb

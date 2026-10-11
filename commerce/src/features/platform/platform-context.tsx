@@ -30,7 +30,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       loading: Boolean(user) && query.isLoading,
       error: query.error,
       can: (module, action = 'view', merchantId) => {
-        if (!me) return false
+        if (!me || me.session_expired) return false
         if (!me.role.is_super && !me.permissions.includes(`${module}.${action}`)) return false
         if (merchantId && me.merchant_ids && !me.merchant_ids.includes(merchantId)) return false
         return true

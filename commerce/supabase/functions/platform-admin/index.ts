@@ -13,6 +13,7 @@
 //   gateway_connect / gateway_disconnect                           (payments merchants make to the platform)
 //   pbx_trunk_secret / pbx_turn_secret / pbx_gateway_token          (PBX Setup: the shared VoiceDrive gateway)
 //   health                                                          (System Health: this runtime, its database and auth access, settings present)
+//   backups                                                         (Data Management: the project's backups from the Supabase Management API)
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { env } from '../_shared/env.ts'
@@ -103,6 +104,7 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('pbx_turn_secret'), secret: z.string().min(16, 'Use at least 16 characters').max(200) }),
   z.object({ action: z.literal('pbx_gateway_token') }),
   z.object({ action: z.literal('health') }),
+  z.object({ action: z.literal('backups') }),
 ])
 
 // VoiceDrive gateway secrets are the platform's: one gateway serves every merchant.
@@ -372,6 +374,30 @@ Deno.serve(
         await rpc(admin, 'platform_secret_store', { p_key: PBX_GATEWAY_KEY, p_value: { token_sha256: await sha256Hex(token) }, p_hint: hint, p_actor: user.id })
         await rpc(admin, 'platform_record_action', { p_actor: user.id, p_action: 'pbx.gateway_token_rotated', p_entity_type: 'platform_credential', p_entity_id: PBX_GATEWAY_KEY, p_result: 'SUCCESS', p_metadata: { hint } })
         return json(req, { token, hint }, 200, { 'Cache-Control': 'no-store' })
+      }
+      case 'backups': {
+        await require(client, 'data', 'view')
+        // Backups are made by Supabase; with a Management API token the panel can read their status.
+        // (Edge function secrets cannot start with SUPABASE_, hence these names.)
+        const token = env('MANAGEMENT_API_TOKEN')
+        const ref = env('PROJECT_REF') ?? new URL(env('SUPABASE_URL') ?? 'http://localhost').hostname.split('.')[0]
+        if (!token) return json(req, { configured: false, ref })
+        const base = (env('MANAGEMENT_API_URL') ?? 'https://api.supabase.com').replace(/\/+$/, '')
+        let res: Response
+        try {
+          res = await fetch(`${base}/v1/projects/${encodeURIComponent(ref)}/database/backups`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(10_000),
+          })
+        } catch (error) {
+          return json(req, { configured: true, ref, ok: false, error: error instanceof Error ? error.message : 'Could not reach the Management API' })
+        }
+        if (!res.ok) return json(req, { configured: true, ref, ok: false, status: res.status, error: (await res.text()).slice(0, 300) })
+        const body = await res.json() as { region?: string; pitr_enabled?: boolean; walg_enabled?: boolean
+          backups?: Array<{ status?: string; inserted_at?: string; is_physical_backup?: boolean }> }
+        const backups = (body.backups ?? []).map((b) => ({ status: b.status ?? null, inserted_at: b.inserted_at ?? null, physical: Boolean(b.is_physical_backup) }))
+          .sort((a, b) => String(b.inserted_at).localeCompare(String(a.inserted_at)))
+        return json(req, { configured: true, ref, ok: true, region: body.region ?? null, pitr_enabled: Boolean(body.pitr_enabled),
+          last_completed: backups.find((b) => /complete/i.test(b.status ?? ''))?.inserted_at ?? null, backups: backups.slice(0, 30) })
       }
       case 'health': {
         await require(client, 'health', 'view')

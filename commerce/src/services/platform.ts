@@ -21,6 +21,10 @@ export interface PlatformMe {
   unread_notifications: number
   /** The employee's open customer-view session, if any. */
   support_session: import('@/services/support-center').SupportSession | null
+  /** When this sign-in started and when the panel will ask to sign in again. */
+  session?: { started_at: string | null; expires_at: string | null }
+  /** The sign-in is older than the platform's session limit (or was signed out elsewhere). */
+  session_expired?: boolean
 }
 
 export interface MerchantRef { id: string; number: number; name: string }

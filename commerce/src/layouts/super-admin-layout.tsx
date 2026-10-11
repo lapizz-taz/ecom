@@ -130,6 +130,13 @@ function Panel() {
 
   if (loading) return <LoadingState className="h-screen" />
   if (error) return <EmptyState className="h-screen" title="Could not load your access" description={(error as Error).message} />
+  if (me?.session_expired) {
+    return (
+      <EmptyState className="h-screen" icon={<ShieldAlert />} title="Your Super Admin session has ended"
+        description="For security, platform staff sign in again after a set time, or after being signed out by a security manager."
+        action={<Button onClick={() => signOut().then(() => navigate(`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`))}>Sign in again</Button>} />
+    )
+  }
   if (!me) {
     return (
       <EmptyState className="h-screen" icon={<ShieldAlert />} title="This account is not on the platform team"
