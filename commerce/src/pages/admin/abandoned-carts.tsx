@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckCircle2, Clock, Copy, Download, ExternalLink, Link2, MessageCircle, MoreHorizontal, Phone, RefreshCw, ShoppingBag, ShoppingCart, Store, TriangleAlert, UserRound,
+  CheckCircle2, Clock, Copy, Download, ExternalLink, Link2, MessageCircle, MoreHorizontal, Phone, RefreshCw, ShoppingBag, ShoppingCart, TriangleAlert, UserRound,
 } from 'lucide-react'
 import { type ReactNode, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
+import { LogoMark } from '@/components/brand/logo'
+import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Money } from '@/components/common/money'
 import { PageHeader } from '@/components/common/page-header'
@@ -51,8 +53,8 @@ export default function AbandonedCartsPage() {
         description="Customers who put products in their cart but didn't order. Call them, send a link that brings their cart back, or create the order for them." />
       <Tabs value={state.src} onValueChange={(v) => update({ src: v })}>
         <TabsList>
-          <TabsTrigger value="store"><Store /> Our store{counts.data?.store ? <Badge variant="warning" className="ml-1">{counts.data.store}</Badge> : null}</TabsTrigger>
-          <TabsTrigger value="shopify"><ShoppingBag /> Shopify &amp; WooCommerce{counts.data?.shopify ? <Badge variant="warning" className="ml-1">{counts.data.shopify}</Badge> : null}</TabsTrigger>
+          <TabsTrigger value="store"><LogoMark className="size-4 rounded-[4px]" /> Our store{counts.data?.store ? <Badge variant="warning" className="ml-1">{counts.data.store}</Badge> : null}</TabsTrigger>
+          <TabsTrigger value="shopify"><ShopifyLogo className="size-4" /><WooLogo className="h-3 w-[18px]" /> Shopify &amp; WooCommerce{counts.data?.shopify ? <Badge variant="warning" className="ml-1">{counts.data.shopify}</Badge> : null}</TabsTrigger>
         </TabsList>
       </Tabs>
       {state.src === 'shopify' ? <ShopifySection /> : <StoreSection />}

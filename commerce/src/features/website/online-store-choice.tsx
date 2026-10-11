@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Loader2, Store, Unplug } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { LogoMark } from '@/components/brand/logo'
+import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -59,7 +61,7 @@ export function OnlineStoreChoice() {
     <button type="button" role="radio" aria-checked={open === on} onClick={() => setOpen(on)}
       className={cn('flex items-start gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:border-foreground/20',
         open === on && 'border-brand ring-1 ring-brand hover:border-brand')}>
-      <span className={cn('grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground', open === on && 'bg-brand-soft text-brand')}>{icon}</span>
+      <span className="flex h-7 shrink-0 items-center gap-1">{icon}</span>
       <span><span className="block text-[13px] font-medium">{title}</span><span className="block text-xs text-muted-foreground">{text}</span></span>
     </button>
   )
@@ -70,8 +72,8 @@ export function OnlineStoreChoice() {
       <h2 className="text-[13px] font-semibold">Do you want a Fullfilio online store?</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">Choose once; you can change it later under Sales channels.</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2" role="radiogroup">
-        {option(true, <Store className="size-3.5" />, 'Yes, open my online store', 'A ready store with checkout, courier booking and its own address.')}
-        {option(false, <Unplug className="size-3.5" />, 'No, I sell elsewhere', 'Facebook, Shopify or WooCommerce only. No store address is created.')}
+        {option(true, <LogoMark className="size-7" />, 'Yes, open my online store', 'A ready store with checkout, courier booking and its own address.')}
+        {option(false, <><ShopifyLogo className="size-5" /><WooLogo className="h-4 w-6" /></>, 'No, I sell elsewhere', 'Facebook, Shopify or WooCommerce only. No store address is created.')}
       </div>
       {open === true && (
         <div className="mt-2 grid gap-1.5 rounded-lg border bg-muted/30 p-3">

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LogoMark } from '@/components/brand/logo'
 import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
-import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Palette, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { reportError } from '@/lib/monitoring'
@@ -72,7 +72,7 @@ export default function SalesChannelsPage() {
       <StoreModeCard manage={manage} channels={live} />
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SourceCard mark={<Palette className="size-4" />} title="Your store" subtitle={store.url ? store.url.replace(/^https?:\/\//, '') : 'No store address'}
+        <SourceCard mark={<LogoMark className="size-6" />} title="Your store" subtitle={store.url ? store.url.replace(/^https?:\/\//, '') : 'No store address'}
           status={storeOpen ? <Pill className="bg-foreground text-background">Online</Pill> : <Pill className="bg-muted text-muted-foreground">Off</Pill>}
           actions={<>
             {manage && <Button size="sm" asChild><Link to="/admin/store/theme">Edit theme</Link></Button>}
@@ -118,11 +118,11 @@ export default function SalesChannelsPage() {
   )
 }
 
-const MODES: Array<{ value: StoreMode; title: string; detail: string }> = [
-  { value: 'OWN', title: 'Our store', detail: 'Customers order on this website.' },
-  { value: 'SHOPIFY', title: 'Shopify', detail: 'You sell on Shopify. This website closes and sends visitors there.' },
-  { value: 'WOOCOMMERCE', title: 'WooCommerce', detail: 'You sell on your WordPress store. This website closes and sends visitors there.' },
-  { value: 'OFF', title: 'No website', detail: 'Phone, Facebook and walk-in orders only. This website is closed.' },
+const MODES: Array<{ value: StoreMode; title: string; detail: string; mark: ReactNode }> = [
+  { value: 'OWN', title: 'Our store', detail: 'Customers order on this website.', mark: <LogoMark className="size-5" /> },
+  { value: 'SHOPIFY', title: 'Shopify', detail: 'You sell on Shopify. This website closes and sends visitors there.', mark: <ShopifyLogo className="size-5" /> },
+  { value: 'WOOCOMMERCE', title: 'WooCommerce', detail: 'You sell on your WordPress store. This website closes and sends visitors there.', mark: <WooLogo className="h-4 w-6" /> },
+  { value: 'OFF', title: 'No website', detail: 'Phone, Facebook and walk-in orders only. This website is closed.', mark: <Unplug className="size-4 text-muted-foreground" /> },
 ]
 
 /** Which store customers buy from. Anything but "Our store" closes this website (and the
@@ -163,10 +163,11 @@ function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesC
               className={cn('rounded-lg border p-3 text-left transition-all duration-200 disabled:cursor-not-allowed',
                 mode === m.value ? 'border-foreground bg-foreground/[0.03] shadow-sm' : 'hover:border-foreground/40')}>
               <span className="flex items-center gap-2 text-sm font-medium">
-                <span className={cn('grid size-4 place-items-center rounded-full border transition-colors', mode === m.value && 'border-foreground bg-foreground')}>
+                <span className="grid h-5 w-6 shrink-0 place-items-center">{m.mark}</span>
+                {m.title}
+                <span className={cn('ml-auto grid size-4 place-items-center rounded-full border transition-colors', mode === m.value && 'border-foreground bg-foreground')}>
                   {mode === m.value && <Check className="size-3 text-background" />}
                 </span>
-                {m.title}
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">{m.detail}</span>
             </button>
