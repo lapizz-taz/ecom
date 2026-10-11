@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownUp, Landmark, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
@@ -181,7 +182,7 @@ function MoveDialog({ account, onClose, onSaved }: { account: FinanceAccount; on
           </Select>
         </Field>
         <Field label="Amount" htmlFor="fm-amount" required><Input id="fm-amount" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-        <Field label="Date" htmlFor="fm-date"><Input id="fm-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="Date" htmlFor="fm-date"><DatePicker id="fm-date" value={date} onChange={setDate} /></Field>
       </div>
       <Field label="What for" htmlFor="fm-desc" required><Input id="fm-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Card top-up from bKash" maxLength={300} /></Field>
       {save.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{(save.error as Error).message.replace(/^[A-Z_]+: /, '')}</p>}

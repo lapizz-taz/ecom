@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, TableSkeleton } from '@/components/common/state
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { DateRangePicker } from '@/components/ui/date-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { usePlatform } from '@/features/platform/platform-context'
@@ -74,8 +74,7 @@ export default function PlatformAuditPage() {
             {Object.keys(RESULT).map((r) => <SelectItem key={r} value={r}>{r.toLowerCase()}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Input type="date" className="h-8 w-36" value={state.from} onChange={(e) => update({ from: e.target.value, page: '1' })} aria-label="From" />
-        <Input type="date" className="h-8 w-36" value={state.to} onChange={(e) => update({ to: e.target.value, page: '1' })} aria-label="To" />
+        <DateRangePicker clearable value={{ from: state.from, to: state.to }} onChange={(r) => update({ from: r.from, to: r.to, page: '1' })} />
       </div>
       <Card className="gap-0 overflow-hidden py-0">
         {logs.error ? <ErrorState error={logs.error} onRetry={() => logs.refetch()} /> : !logs.data ? <TableSkeleton /> : logs.data.items.length === 0 ? <EmptyState title="Nothing recorded for these filters" /> : (

@@ -30,13 +30,18 @@ export function Wordmark({ className, title = BRAND_NAME }: { className?: string
   )
 }
 
-/** The app icon: the Fullfilio "F" on the brand blue (same as favicon.svg). */
+/* The app icon: two interlocking L shapes that form a cube around a square
+   hole, on the brand blue. Same geometry as public/favicon.svg. */
+const MARK_TOP = 'M8 24 24 8H56V38H40V24Z'
+const MARK_BOTTOM = 'M8 26H24V40H56L40 56H8Z'
+
+/** The app icon (same as favicon.svg). */
 export function LogoMark({ className, title }: { className?: string; title?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={cn('size-8 shrink-0 rounded-[25%] dark:ring-1 dark:ring-white/15', className)}
       role={title ? 'img' : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
       <rect width="64" height="64" rx="16" fill="#2142e7" />
-      <g fill="#fff" transform="translate(32.5 32) scale(0.36) translate(-270 -127)"><path d={F_TOP} /><path d={F_BOTTOM} /></g>
+      <g fill="#fff" stroke="#fff" strokeWidth="1" strokeLinejoin="round"><path d={MARK_TOP} /><path d={MARK_BOTTOM} /></g>
     </svg>
   )
 }

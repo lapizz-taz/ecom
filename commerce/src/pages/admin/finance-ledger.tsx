@@ -3,6 +3,7 @@ import {
   BarChart3, Megaphone, Pencil, Plus, Receipt, Search, Settings2, Trash2, TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -368,7 +369,7 @@ function EntryDialog({ type, entry, onClose }: { type: LedgerType; entry?: Ledge
           <Input id="e-amount" type="number" inputMode="decimal" min="0" step="any" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
         </Field>
         <Field label="Date" htmlFor="e-date" required>
-          <Input id="e-date" type="date" max={today()} value={form.txn_date} onChange={(e) => setForm({ ...form, txn_date: e.target.value })} />
+          <DatePicker id="e-date" max={today()} value={form.txn_date} onChange={(d) => setForm({ ...form, txn_date: d })} />
         </Field>
         <Field label="Payment account" hint={type === 'EXPENSE' ? 'Its balance goes down by this amount' : 'Its balance goes up by this amount'} className="sm:col-span-2">
           <Select value={form.account_id || 'none'} onValueChange={(v) => setForm({ ...form, account_id: v === 'none' ? '' : v })}>
@@ -436,7 +437,7 @@ function AdExpenseDialog({ entry, onClose }: { entry?: LedgerEntry; onClose: () 
         <Field label="USD to BDT rate" htmlFor="a-rate" required hint={bdt > 0 ? `= ${formatMoney(bdt)}` : 'Current conversion rate'}>
           <Input id="a-rate" type="number" inputMode="decimal" min="0" step="any" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} />
         </Field>
-        <Field label="Date" htmlFor="a-date" required><Input id="a-date" type="date" max={today()} value={form.txn_date} onChange={(e) => setForm({ ...form, txn_date: e.target.value })} /></Field>
+        <Field label="Date" htmlFor="a-date" required><DatePicker id="a-date" max={today()} value={form.txn_date} onChange={(d) => setForm({ ...form, txn_date: d })} /></Field>
         <Field label="Paid from">
           <Select value={form.account_id || 'none'} onValueChange={(v) => setForm({ ...form, account_id: v === 'none' ? '' : v })}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>

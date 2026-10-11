@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/common/states
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { useAuth } from '@/features/auth/auth-context'
 import { AttendanceBoard, MyDayCard, useMyDay } from '@/features/hr/attendance'
 import { DepartmentsSop, HrSettingsView, ShiftManagement } from '@/features/hr/setup'
@@ -143,7 +143,7 @@ function AttendanceView() {
           <Card className="gap-2 p-4">
             <p className="text-sm font-medium">Day</p>
             <div className="flex flex-wrap items-center gap-2">
-              <Input type="date" value={day} max={me.data?.date} onChange={(e) => setDate(e.target.value)} className="w-44" aria-label="Attendance date" />
+              <DatePicker value={day} max={me.data?.date} onChange={setDate} className="w-48" aria-label="Attendance date" />
               {date && <Button size="sm" variant="ghost" onClick={() => setDate('')}>Today</Button>}
             </div>
             <p className="text-xs text-muted-foreground">Times are in the store’s time zone ({me.data?.tz ?? '…'}). HR can correct any past day; changes are marked “set by HR”.</p>

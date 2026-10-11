@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { PageHeader } from '@/components/common/page-header'
@@ -9,7 +10,6 @@ import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
@@ -92,7 +92,7 @@ export default function ProductionDetailPage() {
                 <SelectContent>{['URGENT', 'HIGH', 'NORMAL', 'LOW'].map((v) => <SelectItem key={v} value={v}>{titleCase(v)}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
-            <Field label="Deadline" htmlFor="pd-deadline"><Input id="pd-deadline" type="date" value={form.deadline} disabled={!editable} onChange={(e) => setForm({ ...form, deadline: e.target.value })} /></Field>
+            <Field label="Deadline" htmlFor="pd-deadline"><DatePicker id="pd-deadline" clearable value={form.deadline} disabled={!editable} onChange={(d) => setForm({ ...form, deadline: d })} /></Field>
             <Field label="Notes" htmlFor="pd-notes"><Textarea id="pd-notes" rows={3} value={form.notes} disabled={!editable} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
             {editable && <Button className="w-full" onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending && <Spinner />} Save</Button>}
           </CardContent>

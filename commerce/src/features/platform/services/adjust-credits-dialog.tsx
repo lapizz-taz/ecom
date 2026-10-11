@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -86,7 +87,7 @@ export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, thres
         </Field>
         {mode !== 'DEDUCT' && (
           <Field label="Expires (optional)" hint="Unused credits are removed after this day">
-            <Input type="date" min={new Date().toISOString().slice(0, 10)} value={form.expires} onChange={(e) => setForm((f) => ({ ...f, expires: e.target.value }))} />
+            <DatePicker clearable placeholder="No expiry" min={new Date().toISOString().slice(0, 10)} value={form.expires} onChange={(v) => setForm((f) => ({ ...f, expires: v }))} />
           </Field>
         )}
       </div>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, PackageCheck, Plus, Printer, Sparkles, Trash2, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
@@ -151,8 +152,8 @@ export default function PurchaseEditPage() {
                 {editable && <button type="button" onClick={() => setNewSupplier(true)} className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><Plus className="size-3" /> New supplier</button>}
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Order date" htmlFor="po-date"><Input id="po-date" type="date" value={orderDate} disabled={!editable} onChange={(e) => setOrderDate(e.target.value)} /></Field>
-                <Field label="Expected" htmlFor="po-exp"><Input id="po-exp" type="date" value={expected} disabled={!editable} onChange={(e) => setExpected(e.target.value)} /></Field>
+                <Field label="Order date" htmlFor="po-date"><DatePicker id="po-date" value={orderDate} disabled={!editable} onChange={setOrderDate} /></Field>
+                <Field label="Expected" htmlFor="po-exp"><DatePicker id="po-exp" clearable value={expected} disabled={!editable} onChange={setExpected} /></Field>
               </div>
               <Field label="Shipping / landed cost" htmlFor="po-ship" hint="Spread across items when stock is received"><Input id="po-ship" type="number" min={0} value={shipping} disabled={!editable} onChange={(e) => setShipping(e.target.value)} /></Field>
               <Field label="Notes" htmlFor="po-notes"><Textarea id="po-notes" rows={2} value={notes} disabled={!editable} onChange={(e) => setNotes(e.target.value)} /></Field>

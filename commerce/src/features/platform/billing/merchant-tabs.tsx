@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -261,7 +262,7 @@ export function MerchantFeaturesTab({ detail }: { detail: MerchantDetail }) {
           }}>
           {change.to !== null && (
             <Field label="Until (optional)" hint="After this date the merchant follows the plan again">
-              <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+              <DatePicker clearable placeholder="No expiry" value={expires} onChange={setExpires} />
             </Field>
           )}
         </ConfirmDialog>

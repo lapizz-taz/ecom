@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { ExternalLink, History, Package, Phone, Printer, Settings2, Tag, Truck, UserPlus, X } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { DateRangePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { PageHeader } from '@/components/common/page-header'
 import { Pagination } from '@/components/common/pagination'
@@ -531,9 +532,7 @@ function ReturnAnalysisView() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input type="date" value={range.from} max={range.to} onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))} className="h-8 w-40" aria-label="From" />
-        <span className="text-sm text-muted-foreground">to</span>
-        <Input type="date" value={range.to} min={range.from} onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))} className="h-8 w-40" aria-label="To" />
+        <DateRangePicker value={range} onChange={setRange} />
         <span className="text-xs text-muted-foreground">Parcels booked in this period. The rate counts finished parcels only (delivered or returned).</span>
       </div>
       {a.isLoading ? <LoadingState /> : a.error ? <ErrorState error={a.error} onRetry={() => a.refetch()} /> : a.data && (

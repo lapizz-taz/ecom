@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Megaphone, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { z } from 'zod'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -243,8 +244,8 @@ function CampaignDialog({ value, onClose, onSaved }: { value: Partial<Tables<'ma
         <Input id="cmp-utm" placeholder="eid-sale-2026" {...form.register('utm_campaign')} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Start" htmlFor="cmp-start"><Input id="cmp-start" type="date" {...form.register('start_date')} /></Field>
-        <Field label="End" htmlFor="cmp-end" error={e.end_date?.message}><Input id="cmp-end" type="date" {...form.register('end_date')} /></Field>
+        <Field label="Start" htmlFor="cmp-start"><Controller control={form.control} name="start_date" render={({ field }) => <DatePicker id="cmp-start" clearable value={field.value ?? ''} onChange={field.onChange} />} /></Field>
+        <Field label="End" htmlFor="cmp-end" error={e.end_date?.message}><Controller control={form.control} name="end_date" render={({ field }) => <DatePicker id="cmp-end" clearable value={field.value ?? ''} onChange={field.onChange} min={form.watch('start_date') || undefined} />} /></Field>
         <Field label="Budget" htmlFor="cmp-budget" error={e.budget?.message}><Input id="cmp-budget" type="number" min="0" step="0.01" {...form.register('budget')} /></Field>
       </div>
       <Field label="Notes" htmlFor="cmp-notes"><Textarea id="cmp-notes" rows={2} {...form.register('notes')} /></Field>
@@ -294,7 +295,7 @@ function SpendDialog({ value, campaigns, onClose, onSaved }: { value: Partial<Sp
             </Select>
           )} />
         </Field>
-        <Field label="Date" htmlFor="sp-date" required error={e.spend_date?.message}><Input id="sp-date" type="date" max={isoDateToday()} disabled={!!value?.id} {...form.register('spend_date')} /></Field>
+        <Field label="Date" htmlFor="sp-date" required error={e.spend_date?.message}><Controller control={form.control} name="spend_date" render={({ field }) => <DatePicker id="sp-date" max={isoDateToday()} disabled={!!value?.id} value={field.value} onChange={field.onChange} />} /></Field>
         <Field label="Spend" htmlFor="sp-spend" required error={e.spend?.message}><Input id="sp-spend" type="number" min="0" step="0.01" {...form.register('spend')} /></Field>
         <Field label="Revenue reported" htmlFor="sp-rev" error={e.revenue?.message}><Input id="sp-rev" type="number" min="0" step="0.01" {...form.register('revenue')} /></Field>
         <Field label="Orders reported" htmlFor="sp-orders" error={e.orders?.message}><Input id="sp-orders" type="number" min="0" step="1" {...form.register('orders')} /></Field>

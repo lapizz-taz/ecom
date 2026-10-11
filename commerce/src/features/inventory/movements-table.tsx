@@ -7,7 +7,7 @@ import { Can } from '@/components/common/permission-gate'
 import { EmptyState } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { DateRangePicker } from '@/components/ui/date-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useStaffDirectory } from '@/hooks/use-staff-directory'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -63,8 +63,7 @@ export function MovementsTable({ types, title }: { types?: Enums<'inventory_move
             {Object.entries(MOVEMENT_TYPE).filter(([k]) => !types || types.includes(k as never)).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Input type="date" className="h-8 w-36" value={state.from} onChange={(e) => update({ from: e.target.value })} aria-label="From" />
-        <Input type="date" className="h-8 w-36" value={state.to} onChange={(e) => update({ to: e.target.value })} aria-label="To" />
+        <DateRangePicker clearable value={{ from: state.from, to: state.to }} onChange={(r) => update({ from: r.from, to: r.to })} />
         <Can permission="reports.export">
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => downloadCsv(title.toLowerCase().replace(/\s+/g, '-'), movements.data?.items ?? [], [
             { header: 'Date', value: (m) => formatDateTime(m.created_at) }, { header: 'Product', value: (m) => m.products?.name },

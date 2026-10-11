@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { AlertTriangle, CheckCircle2, FileDown, FileUp, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'
@@ -227,7 +228,7 @@ export function UploadStatementDialog({ onClose, onImported, initialFile }: { on
           )}
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="Statement / invoice no." htmlFor="st-no"><Input id="st-no" value={meta.invoice_number} onChange={(e) => setMeta((m) => ({ ...m, invoice_number: e.target.value }))} /></Field>
-            <Field label="Date" htmlFor="st-date"><Input id="st-date" type="date" value={meta.invoice_date} onChange={(e) => setMeta((m) => ({ ...m, invoice_date: e.target.value }))} /></Field>
+            <Field label="Date" htmlFor="st-date"><DatePicker id="st-date" value={meta.invoice_date} onChange={(d) => setMeta((m) => ({ ...m, invoice_date: d }))} /></Field>
             <Field label="Total payout (optional)" htmlFor="st-payout" hint="Empty: the payout column, or COD minus fees">
               <Input id="st-payout" type="number" step="0.01" value={meta.payout} onChange={(e) => setMeta((m) => ({ ...m, payout: e.target.value }))} />
             </Field>

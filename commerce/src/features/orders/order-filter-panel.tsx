@@ -2,10 +2,10 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Filter, X } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Spinner } from '@/components/common/states'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { DateRangePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { FRAUD_STATUS, PAYMENT_STATUS, RISK_LEVEL } from '@/lib/status'
@@ -58,29 +58,6 @@ export function activeFilterCount(v: FilterValues) {
 
 type View = 'web' | 'approved' | 'all'
 
-const pad = (n: number) => String(n).padStart(2, '0')
-const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-function preset(key: string): [string, string] {
-  const today = new Date()
-  const ago = (n: number) => ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() - n))
-  switch (key) {
-    case 'today': return [ago(0), ago(0)]
-    case 'yesterday': return [ago(1), ago(1)]
-    case '7d': return [ago(6), ago(0)]
-    case '30d': return [ago(29), ago(0)]
-    case 'month': return [ymd(new Date(today.getFullYear(), today.getMonth(), 1)), ago(0)]
-    default: return ['', '']
-  }
-}
-const PRESETS = [
-  { key: 'all', label: 'All dates' }, { key: 'today', label: 'Today' }, { key: 'yesterday', label: 'Yesterday' },
-  { key: '7d', label: 'Last 7 days' }, { key: '30d', label: 'Last 30 days' }, { key: 'month', label: 'This month' }, { key: 'custom', label: 'Custom' },
-]
-function presetOf(from: string, to: string) {
-  if (!from && !to) return 'all'
-  return PRESETS.find((p) => p.key !== 'all' && p.key !== 'custom' && preset(p.key).join() === [from, to].join())?.key ?? 'custom'
-}
-
 const label = (s: string) => s.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
 
 export function OrderFilterButton({ view, values, onApply, incomplete, onIncomplete, countFor }: {
@@ -94,16 +71,22 @@ export function OrderFilterButton({ view, values, onApply, incomplete, onIncompl
 }) {
   const [open, setOpen] = useState(false)
   const active = activeFilterCount(values)
+  // Opens under the button like the Actions menu, not as a full-screen dialog.
   return (
-    <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)} aria-haspopup="dialog">
-        <Filter /> Filters{active > 0 && <Badge variant="secondary">{active}</Badge>}
-      </Button>
-      {open && (
-        <OrderFilterPanel view={view} initial={values} incomplete={incomplete} onIncomplete={onIncomplete}
-          countFor={countFor} onClose={() => setOpen(false)} onApply={(v) => { onApply(v); setOpen(false) }} />
-      )}
-    </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Filter /> Filters{active > 0 && <span className="rounded-full bg-foreground px-1.5 text-[11px] text-background tabular-nums">{active}</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" collisionPadding={12} onOpenAutoFocus={(e) => e.preventDefault()}
+        className="flex max-h-[min(var(--radix-popover-content-available-height),680px)] w-[25rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0">
+        {open && (
+          <OrderFilterPanel view={view} initial={values} incomplete={incomplete} onIncomplete={onIncomplete}
+            countFor={countFor} onClose={() => setOpen(false)} onApply={(v) => { onApply(v); setOpen(false) }} />
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -118,7 +101,6 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
 }) {
   const [draft, setDraft] = useState<FilterValues>(initial)
   const [debounced, setDebounced] = useState(draft)
-  const [datePreset, setDatePreset] = useState(() => presetOf(initial.date_from, initial.date_to))
   useEffect(() => { const t = setTimeout(() => setDebounced(draft), 300); return () => clearTimeout(t) }, [draft])
   const set = (patch: Partial<FilterValues>) => setDraft((d) => ({ ...d, ...patch }))
 
@@ -136,31 +118,22 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
   const product = draft.product_code || draft.product_name
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent showCloseButton={false} className="flex max-h-[min(88dvh,760px)] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-lg">
-        <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
-          <div>
-            <DialogTitle className="text-base">Filter orders</DialogTitle>
-            <DialogDescription className="text-xs">{view === 'web' ? 'Web orders' : view === 'approved' ? 'Approved orders' : 'All orders'}</DialogDescription>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => { setDraft(EMPTY_FILTERS); setDatePreset('all') }}>Reset filters</Button>
-            <DialogClose asChild><Button variant="ghost" size="icon-sm" aria-label="Close"><X /></Button></DialogClose>
-          </div>
+    <>
+      <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Filter orders</p>
+          <p className="text-[11px] text-muted-foreground">{view === 'web' ? 'Web orders' : view === 'approved' ? 'Approved orders' : 'All orders'}</p>
         </div>
+        <div className="flex items-center gap-0.5">
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDraft(EMPTY_FILTERS)}>Reset</Button>
+          <Button variant="ghost" size="icon-sm" className="size-7" aria-label="Close" onClick={onClose}><X /></Button>
+        </div>
+      </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
           <Section title={view === 'approved' ? 'Date range' : 'Date'}>
-            <Chips value={datePreset} options={PRESETS} onChange={(k) => {
-              setDatePreset(k)
-              if (k !== 'custom') { const [from, to] = preset(k); set({ date_from: from, date_to: to }) }
-            }} />
-            {datePreset === 'custom' && (
-              <div className="grid grid-cols-2 gap-2">
-                <Input type="date" aria-label="From" value={draft.date_from} onChange={(e) => set({ date_from: e.target.value })} />
-                <Input type="date" aria-label="To" value={draft.date_to} onChange={(e) => set({ date_to: e.target.value })} />
-              </div>
-            )}
+            <DateRangePicker clearable fullWidth size="sm" placeholder="All dates"
+              value={{ from: draft.date_from, to: draft.date_to }} onChange={(r) => set({ date_from: r.from, date_to: r.to })} />
           </Section>
 
           {view === 'web' && onIncomplete && (
@@ -169,7 +142,7 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
           )}
 
           {view !== 'web' && (
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Section title="Print status">
                 <Chips value={draft.printed || 'any'} onChange={(v) => set({ printed: v === 'any' ? '' : v })}
                   options={[{ key: 'any', label: 'Any' }, { key: 'printed', label: 'Printed' }, { key: 'not_printed', label: 'Not printed' }]} />
@@ -183,7 +156,7 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
 
           {view === 'web' && (
             <Section title="Reference" hint="Campaign, referring site or landing page">
-              <Input value={draft.reference} onChange={(e) => set({ reference: e.target.value })} placeholder="e.g. eid-sale, facebook.com" />
+              <Input value={draft.reference} onChange={(e) => set({ reference: e.target.value })} placeholder="e.g. eid-sale, facebook.com" className="h-8 text-[13px]" />
             </Section>
           )}
 
@@ -221,7 +194,7 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
           {view !== 'approved' && (
             <Section title="Employee" hint="Created, called, assigned or approved by">
               <Select value={draft.employee || 'any'} onValueChange={(v) => set({ employee: v === 'any' ? '' : v })}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Anyone</SelectItem>
                   {(options.data?.employees ?? []).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
@@ -230,12 +203,12 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
             </Section>
           )}
 
-          <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Section title={view === 'web' ? 'Product code' : 'Product SKU'}>
-              <Input value={draft.product_code} onChange={(e) => set({ product_code: e.target.value })} placeholder="SKU" className="font-mono" />
+              <Input value={draft.product_code} onChange={(e) => set({ product_code: e.target.value })} placeholder="SKU" className="h-8 font-mono text-[13px]" />
             </Section>
             <Section title="Product name">
-              <Input value={draft.product_name} onChange={(e) => set({ product_name: e.target.value })} placeholder="e.g. Earring" />
+              <Input value={draft.product_name} onChange={(e) => set({ product_name: e.target.value })} placeholder="e.g. Earring" className="h-8 text-[13px]" />
             </Section>
           </div>
           <ToggleRow title="Include other products" hint={product ? 'Off: only orders with nothing but this product' : 'Applies when a product is chosen'}
@@ -256,7 +229,7 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
             </>
           )}
 
-          <details className="group rounded-xl border px-3 py-2">
+          <details className="group rounded-lg border px-2.5 py-1.5">
             <summary className="cursor-pointer text-sm font-medium">More filters</summary>
             <div className="mt-3 grid gap-4 pb-1">
               <Section title="Payment">
@@ -274,7 +247,7 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
               {view === 'approved' && (
                 <Section title="Employee">
                   <Select value={draft.employee || 'any'} onValueChange={(v) => set({ employee: v === 'any' ? '' : v })}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="any">Anyone</SelectItem>
                       {(options.data?.employees ?? []).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
@@ -283,30 +256,29 @@ function OrderFilterPanel({ view, initial, onApply, onClose, incomplete, onIncom
                 </Section>
               )}
               <Section title="District">
-                <Input value={draft.district} onChange={(e) => set({ district: e.target.value })} placeholder="e.g. Dhaka" />
+                <Input value={draft.district} onChange={(e) => set({ district: e.target.value })} placeholder="e.g. Dhaka" className="h-8 text-[13px]" />
               </Section>
             </div>
           </details>
-        </div>
+      </div>
 
-        <div className="flex items-center justify-between gap-2 border-t px-5 py-3">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => onApply(draft)} className="min-w-40">
-            {count.isFetching ? <Spinner /> : null}
-            Show {count.data ?? '…'} order{count.data === 1 ? '' : 's'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <div className="flex items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2">
+        <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+        <Button size="sm" onClick={() => onApply(draft)} className="min-w-32">
+          {count.isFetching ? <Spinner /> : null}
+          Show {count.data ?? '…'} order{count.data === 1 ? '' : 's'}
+        </Button>
+      </div>
+    </>
   )
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <section className="grid gap-2">
-      <div>
-        <h3 className="text-sm font-medium">{title}</h3>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <section className="grid gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+        {hint && <p className="truncate text-[11px] text-muted-foreground/80">{hint}</p>}
       </div>
       {children}
     </section>
@@ -316,7 +288,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 function Pill({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={on}
-      className={cn('press rounded-full border px-3 py-1 text-xs transition-colors',
+      className={cn('press rounded-full border px-2.5 py-0.5 text-xs transition-colors',
         on ? 'border-foreground bg-foreground text-background' : 'bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground')}>
       {children}
     </button>
@@ -333,7 +305,7 @@ function Chips({ value, options, onChange }: { value: string; options: Array<{ k
 
 function ToggleRow({ title, hint, checked, onChange, disabled }: { title: string; hint?: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
   return (
-    <label className={cn('flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5', disabled && 'opacity-60')}>
+    <label className={cn('flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2', disabled && 'opacity-60')}>
       <span><span className="block text-sm font-medium">{title}</span>{hint && <span className="block text-xs text-muted-foreground">{hint}</span>}</span>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={title} />
     </label>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, CalendarOff, Clock, FileText, Pencil, Plus, Save, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/common/states'
@@ -315,7 +316,7 @@ function EmployeeDialog({ row, current, departments, shifts, onClose }: {
           <Field label="Designation" htmlFor="em-des"><Input id="em-des" value={v.designation} onChange={(e) => setV({ ...v, designation: e.target.value })} placeholder="Packer, Call agent…" /></Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Employee code" htmlFor="em-code"><Input id="em-code" value={v.employee_code} onChange={(e) => setV({ ...v, employee_code: e.target.value })} /></Field>
-            <Field label="Joined on" htmlFor="em-join"><Input id="em-join" type="date" value={v.joined_on} onChange={(e) => setV({ ...v, joined_on: e.target.value })} /></Field>
+            <Field label="Joined on" htmlFor="em-join"><DatePicker id="em-join" clearable value={v.joined_on} onChange={(d) => setV({ ...v, joined_on: d })} /></Field>
           </div>
           <Field label="Emergency contact" htmlFor="em-emg"><Input id="em-emg" value={v.emergency_contact} onChange={(e) => setV({ ...v, emergency_contact: e.target.value })} placeholder="Name and phone" /></Field>
         </div>
@@ -362,7 +363,7 @@ export function HrSettingsView() {
         <p className="text-xs text-muted-foreground">Holidays are not work days, so nobody is marked absent.</p>
         {edit && (
           <form onSubmit={(e) => { e.preventDefault(); if (hDate && hName.trim().length >= 2) addHoliday.mutate() }} className="flex flex-wrap gap-2">
-            <Input type="date" value={hDate} onChange={(e) => setHDate(e.target.value)} className="w-40" aria-label="Holiday date" />
+            <DatePicker value={hDate} onChange={setHDate} className="w-44" aria-label="Holiday date" />
             <Input value={hName} onChange={(e) => setHName(e.target.value)} placeholder="Name, e.g. Eid-ul-Fitr" className="min-w-40 flex-1" aria-label="Holiday name" />
             <Button type="submit" disabled={!hDate || hName.trim().length < 2 || addHoliday.isPending}><Plus /> Add</Button>
           </form>

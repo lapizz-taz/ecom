@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { SmartPaste } from '@/features/orders/smart-paste'
 import { VariantPicker } from '@/features/products/variant-picker'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -26,6 +27,7 @@ import { variantsByIds } from '@/services/catalog'
 import { useOrderSources } from '@/hooks/use-order-sources'
 import { getStoreCart, linkStoreCart } from '@/services/abandoned'
 import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, setOrderSource } from '@/services/orders'
+import type { PastedOrder } from '@/lib/order-paste'
 import type { Enums } from '@/types/database'
 
 interface Line {
@@ -168,6 +170,13 @@ export default function NewOrderPage() {
     }))
   }
 
+  // Smart paste: what it found replaces those fields; everything else stays.
+  const fillFromPaste = (o: PastedOrder) => {
+    setCustomer((c) => ({ ...c, full_name: o.name ?? c.full_name, phone: o.phone ?? c.phone, email: o.email ?? c.email }))
+    setShipping((s) => ({ ...s, address: o.address ?? s.address, district: o.district ?? s.district, area: o.area ?? s.area }))
+    if (o.note) setCustomerNote((n) => (n.includes(o.note!) ? n : [n, o.note].filter(Boolean).join(' · ')))
+  }
+
   const q = quote.data
   const ready = customer.full_name.trim().length > 1 && phone.length >= 8 && shipping.address.trim().length > 4 && shipping.district && lines.length > 0
 
@@ -189,35 +198,9 @@ export default function NewOrderPage() {
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">Products</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <VariantPicker onPick={(v) => setLines((ls) => ls.some((l) => l.variant_id === v.variant_id)
-                ? ls.map((l) => (l.variant_id === v.variant_id ? { ...l, quantity: l.quantity + 1 } : l))
-                : [...ls, { variant_id: v.variant_id!, label: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`, sku: v.sku ?? '', quantity: 1, unit_price: toNumber(v.unit_price), available: v.track_inventory ? v.available : null }])} />
-              {lines.length === 0 ? <p className="text-sm text-muted-foreground">Search and add products.</p> : (
-                <ul className="divide-y rounded-md border">
-                  {lines.map((l, idx) => (
-                    <li key={l.variant_id} className="flex flex-wrap items-center gap-2 p-2 text-sm">
-                      <div className="min-w-40 flex-1">
-                        <p className="font-medium">{l.label}</p>
-                        <p className="text-xs text-muted-foreground">{l.sku}{l.available !== null ? ` · ${l.available} available` : ''}</p>
-                      </div>
-                      <Input type="number" min={1} className="h-8 w-20" value={l.quantity} aria-label="Quantity"
-                        onChange={(e) => setLines((ls) => ls.map((x, i) => (i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value)) } : x)))} />
-                      <Input type="number" min={0} className="h-8 w-28" value={l.unit_price} disabled={!priceOverride} aria-label="Unit price"
-                        onChange={(e) => setLines((ls) => ls.map((x, i) => (i === idx ? { ...x, unit_price: Number(e.target.value) } : x)))} />
-                      <span className="w-24 text-right tabular-nums">{formatMoney(l.quantity * l.unit_price)}</span>
-                      <Button variant="ghost" size="icon-sm" onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))} aria-label="Remove"><Trash2 /></Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
             <CardHeader><CardTitle className="text-sm">Customer & delivery</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2"><SmartPaste districts={config?.delivery.districts ?? []} onFill={fillFromPaste} /></div>
               <Field label="Phone" htmlFor="n-phone" required>
                 <Input id="n-phone" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} inputMode="tel" />
               </Field>
@@ -256,6 +239,33 @@ export default function NewOrderPage() {
               <Field label="Internal note" htmlFor="n-inote"><Input id="n-inote" value={internalNote} onChange={(e) => setInternalNote(e.target.value)} /></Field>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Products</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <VariantPicker onPick={(v) => setLines((ls) => ls.some((l) => l.variant_id === v.variant_id)
+                ? ls.map((l) => (l.variant_id === v.variant_id ? { ...l, quantity: l.quantity + 1 } : l))
+                : [...ls, { variant_id: v.variant_id!, label: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`, sku: v.sku ?? '', quantity: 1, unit_price: toNumber(v.unit_price), available: v.track_inventory ? v.available : null }])} />
+              {lines.length === 0 ? <p className="text-sm text-muted-foreground">Search and add products.</p> : (
+                <ul className="divide-y rounded-md border">
+                  {lines.map((l, idx) => (
+                    <li key={l.variant_id} className="flex flex-wrap items-center gap-2 p-2 text-sm">
+                      <div className="min-w-40 flex-1">
+                        <p className="font-medium">{l.label}</p>
+                        <p className="text-xs text-muted-foreground">{l.sku}{l.available !== null ? ` · ${l.available} available` : ''}</p>
+                      </div>
+                      <Input type="number" min={1} className="h-8 w-20" value={l.quantity} aria-label="Quantity"
+                        onChange={(e) => setLines((ls) => ls.map((x, i) => (i === idx ? { ...x, quantity: Math.max(1, Number(e.target.value)) } : x)))} />
+                      <Input type="number" min={0} className="h-8 w-28" value={l.unit_price} disabled={!priceOverride} aria-label="Unit price"
+                        onChange={(e) => setLines((ls) => ls.map((x, i) => (i === idx ? { ...x, unit_price: Number(e.target.value) } : x)))} />
+                      <span className="w-24 text-right tabular-nums">{formatMoney(l.quantity * l.unit_price)}</span>
+                      <Button variant="ghost" size="icon-sm" onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))} aria-label="Remove"><Trash2 /></Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
         </div>
 
         <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
