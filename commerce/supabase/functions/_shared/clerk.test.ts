@@ -124,7 +124,7 @@ describe('clerk frontend api proxy', () => {
     })
     const [target, init] = proxyRequest(req, 'v1/client/sign_ins', 'https://site.example/__clerk', 'sk_live_x', new TextEncoder().encode('a=1').buffer as ArrayBuffer)
     const h = init.headers as Headers
-    expect(target).toBe('https://frontend-api.clerk.services/v1/client/sign_ins?_clerk_js_version=5')
+    expect(target).toBe('https://frontend-api.clerk.dev/v1/client/sign_ins?_clerk_js_version=5')
     expect(init.method).toBe('POST')
     expect(init.redirect).toBe('manual')
     expect(h.get('cookie')).toBe('__client=abc')

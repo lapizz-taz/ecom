@@ -204,7 +204,7 @@ export async function ensureClerkAccount(
 // --- Frontend API proxy -----------------------------------------------------
 
 /** Clerk's Frontend API, reached through our own /__clerk address in production. */
-export const CLERK_FAPI = 'https://frontend-api.clerk.services'
+export const CLERK_FAPI = 'https://frontend-api.clerk.dev'
 
 const DROP_REQUEST = new Set(['host', 'connection', 'content-length', 'accept-encoding', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'x-forwarded-for', 'x-vercel-forwarded-for', 'cf-connecting-ip', 'clerk-secret-key', 'clerk-proxy-url'])
 const DROP_RESPONSE = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection'])
