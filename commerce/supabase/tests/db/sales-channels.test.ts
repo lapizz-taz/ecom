@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asAnon, asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
-import { createProduct, createStaff, inventory } from '../support/fixtures'
+import { createProduct, createStaff, inventory, orderPayload } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -120,6 +120,46 @@ describe('sales channels: importing orders', () => {
       const r = await ingest(db, c, order({ external_id: '5005', discount_total: 0, total: 1700 }))
       await asSystem(db)
       expect(await value(db, `select array_to_string(warnings, ' ') from public.channel_order_imports where id = $1`, [r.import_id])).toContain('taxes or fees')
+    }))
+
+  it('imports a store order even when stock here is short, warns about it, and keeps the rule for other orders', () =>
+    inTx(async (db) => {
+      const ours = await createProduct(db, { price: 900, stock: 1 })
+      const sku = await value<string>(db, `select sku from public.product_variants where id = $1`, [ours.variantIds[0]])
+      const c = await channel(db, 'WOOCOMMERCE', 'https://short.example.com')
+      const r = await ingest(db, c, order({ external_id: '941', number: '#41', lines: [{ external_variant_id: '20', sku, title: 'Coaster', quantity: 3, unit_price: 18 }],
+        total: 174, discount_total: 0, shipping_price: 120 }))
+      expect(r.status).toBe('IMPORTED')
+      await asSystem(db)
+      expect(await inventory(db, ours.variantIds[0])).toMatchObject({ on_hand: 1, reserved: 3, available: -2 })
+      expect(await value(db, `select array_to_string(warnings, ' ') from public.channel_order_imports where id = $1`, [r.import_id]))
+        .toMatch(/stock here is now -2/)
+      // The allowance ends with the import: an order taken here is still held to the stock.
+      expect(await value(db, `select coalesce(current_setting('app.store_order_import', true), '')`)).toBe('')
+      await expectError(db, `select public._create_order($1, 'STOREFRONT')`,
+        [JSON.stringify(orderPayload({ items: [{ variantId: ours.variantIds[0], quantity: 1 }] }))], /INSUFFICIENT_STOCK/)
+    }))
+
+  it('does not count an order twice when the store sold it before the first sync', () =>
+    inTx(async (db) => {
+      const ours = await createProduct(db, { price: 900, stock: 5 })
+      const c = await channel(db, 'WOOCOMMERCE', 'https://first.example.com')
+      await asSystem(db)
+      await db.query(`update public.sales_channels set status = 'CONNECTED', first_sync_at = now() - interval '10 minutes',
+        settings = settings || '{"inventory_sync": true}' where id = $1`, [c])
+      await db.query(`insert into public.sales_channel_variants(channel_id, external_variant_id, external_product_id, variant_id, inventory_item_id)
+        values ($1, '20', '20', $2, 'products/20')`, [c, ours.variantIds[0]])
+      // Placed an hour ago: the 5 copied at the first sync already left it out.
+      const before = await ingest(db, c, order({ external_id: '950', number: '#50', created_at: new Date(Date.now() - 3600e3).toISOString(),
+        lines: [{ external_variant_id: '20', title: 'Coaster', quantity: 2, unit_price: 18 }], total: 156, discount_total: 0, shipping_price: 120 }))
+      expect(before.status).toBe('IMPORTED')
+      expect(await inventory(db, ours.variantIds[0])).toMatchObject({ on_hand: 7, reserved: 2, available: 5 })
+      expect(await value<number>(db, `select count(*)::int from public.inventory_movements where variant_id = $1 and reference_type = 'CHANNEL'
+        and on_hand_change = 2`, [ours.variantIds[0]])).toBe(1)
+      // Placed after the first sync: reserved from the copied stock as usual.
+      await ingest(db, c, order({ external_id: '951', number: '#51', created_at: new Date().toISOString(),
+        lines: [{ external_variant_id: '20', title: 'Coaster', quantity: 1, unit_price: 18 }], total: 138, discount_total: 0, shipping_price: 120 }))
+      expect(await inventory(db, ours.variantIds[0])).toMatchObject({ on_hand: 7, reserved: 3, available: 4 })
     }))
 
   it('keeps import functions away from browsers and channel details away from non-staff', () =>

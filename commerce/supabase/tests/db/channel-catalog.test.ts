@@ -69,6 +69,9 @@ describe('Store catalog import', () => {
       expect(await value<Record<string, any>>(db, `select jsonb_build_object('status', p.status, 'sync', m.sync_status) from public.sales_channel_variants m
         join public.product_variants v on v.id = m.variant_id join public.products p on p.id = v.product_id where m.channel_id = $1 and m.external_variant_id = $2`, [c, `20${sfx}`]))
         .toEqual({ status: 'DRAFT', sync: 'UNTRACKED' })
+      // The store does not count its stock, so neither do we: its orders are never held up by a zero.
+      expect(await value<boolean>(db, `select p.track_inventory from public.sales_channel_variants m join public.product_variants v on v.id = m.variant_id
+        join public.products p on p.id = v.product_id where m.channel_id = $1 and m.external_variant_id = $2`, [c, `20${sfx}`])).toBe(false)
       expect(await value<string>(db, `select v.sku from public.sales_channel_variants m join public.product_variants v on v.id = m.variant_id where m.channel_id = $1 and m.external_variant_id = $2`, [c, `20${sfx}`]))
         .toBe(`WOO-20${sfx}`)
 
