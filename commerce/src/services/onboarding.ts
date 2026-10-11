@@ -33,6 +33,10 @@ export interface SignupBusiness {
   sells_on: string[]
   orders_per_month: string
   plan_code: string
+  /** Open a Fullfilio online store (gets a store address); false = sells elsewhere only. */
+  online_store: boolean
+  /** The store address asked for (empty: made from the business name). */
+  store_slug: string
 }
 
 export interface SelfOnboardResult {
@@ -106,3 +110,19 @@ export const SELLS_ON: Array<{ value: string; label: string }> = [
   { value: 'MARKETPLACE', label: 'Daraz / marketplace' },
 ]
 export const ORDER_VOLUMES = ['Under 100', '100–500', '500–2,000', '2,000+']
+
+export interface StoreSlugCheck { slug: string; available: boolean; reason: string | null; root_domain: string | null }
+
+/** Is this store address free? (Also says the platform's root domain for the preview.) */
+export async function checkStoreSlug(slug: string): Promise<StoreSlugCheck> {
+  const { data, error } = await supabase.rpc('store_slug_check', { p_slug: slug })
+  if (error) throw error
+  return data as unknown as StoreSlugCheck
+}
+
+/** A free store address made from the business name. */
+export async function suggestStoreSlug(name: string): Promise<string> {
+  const { data, error } = await supabase.rpc('store_slug_suggest', { p_name: name })
+  if (error) throw error
+  return data as string
+}

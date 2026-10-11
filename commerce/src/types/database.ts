@@ -15513,6 +15513,41 @@ export type Database = {
         }
         Returns: Json
       }
+      storefront_resolve_slug: {
+        Args: {
+          p_slug: string
+        }
+        Returns: Json
+      }
+      store_slug_check: {
+        Args: {
+          p_slug: string
+        }
+        Returns: Json
+      }
+      store_slug_suggest: {
+        Args: {
+          p_name: string
+        }
+        Returns: string
+      }
+      merchant_store_address: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_set_store_slug: {
+        Args: {
+          p_slug: string
+        }
+        Returns: Json
+      }
+      platform_store_domains_save: {
+        Args: {
+          p_value: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
       submit_contact_message: {
         Args: {
           p_name: string

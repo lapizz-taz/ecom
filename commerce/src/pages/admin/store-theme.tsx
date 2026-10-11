@@ -18,6 +18,7 @@ import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-pic
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { cn } from '@/lib/utils'
 import { getCategories, listProducts } from '@/services/storefront'
+import { useStoreAddress } from '@/hooks/use-store-address'
 
 type Tab = 'sections' | 'settings' | 'apps'
 type Page = 'home' | 'collection' | 'product' | 'cart'
@@ -49,6 +50,8 @@ export default function StoreThemePage() {
   const categories = useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
   const firstProduct = useQuery({ queryKey: ['products', 'editor-first'], queryFn: () => listProducts({ limit: 1, sort: 'newest' }), staleTime: 5 * 60_000 })
   const firstCategory = categories.data?.find((c) => c.product_count > 0)?.slug
+  // The preview opens the store under /s/<name> on this site (same origin, so the editor can talk to it).
+  const store = useStoreAddress()
   const path = page === 'home' ? '/' : page === 'collection' ? (firstCategory ? `/collection/${firstCategory}` : '/shop')
     : page === 'product' ? (firstProduct.data?.items[0] ? `/product/${firstProduct.data.items[0].slug}` : '/shop') : '/cart'
 
@@ -167,7 +170,7 @@ export default function StoreThemePage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild><button type="button" aria-label="More" className="grid size-8 place-items-center rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 [&_svg]:size-4"><MoreHorizontal /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="z-[70] w-52">
-            <DropdownMenuItem asChild><a href="/" target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
+            <DropdownMenuItem asChild disabled={!store.url}><a href={store.url ?? undefined} target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={!s.dirty} onClick={() => { s.reset(); history.current = { past: [], future: [], last: 0 }; bump((n) => n + 1) }}>Discard changes</DropdownMenuItem>
             <DropdownMenuItem onClick={() => { if (window.confirm('Reset the theme to the default look? You can still discard before saving.')) commit({ ...draft, theme: structuredClone(DEFAULT_THEME) as unknown as Record<string, unknown> }) }}>Reset to default theme</DropdownMenuItem>
@@ -196,7 +199,7 @@ export default function StoreThemePage() {
         <div className="min-h-[50vh] min-w-0 flex-1 overflow-auto p-2 lg:p-3">
           <div className={cn('mx-auto h-full overflow-hidden rounded-lg bg-white shadow-[0_0_0_1px_rgb(0_0_0/.08),0_4px_16px_rgb(0_0_0/.06)] transition-[width] duration-300',
             device === 'mobile' ? 'w-[390px]' : device === 'full' ? 'w-full' : 'w-full max-w-[1400px]')}>
-            <iframe ref={frame} key={path} title="Store preview" src={`${path}${path.includes('?') ? '&' : '?'}theme_preview=1`} className="size-full min-h-[50vh]"
+            <iframe ref={frame} key={path} title="Store preview" src={`${store.path ?? ''}${path}${path.includes('?') ? '&' : '?'}theme_preview=1`} className="size-full min-h-[50vh]"
               onLoad={() => post({ type: 'theme-preview', storefront: draft, selected, inspect })} />
           </div>
         </div>

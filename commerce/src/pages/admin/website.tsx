@@ -12,13 +12,14 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { useStoreAddress } from '@/hooks/use-store-address'
 import { useUrlState } from '@/hooks/use-url-state'
 import { toUserMessage } from '@/lib/errors'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import {
-  addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, makePrimaryDomain, removeDomain, revokeSiteKey, type SiteKey, siteApiBase,
+  addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, makePrimaryDomain, removeDomain, revokeSiteKey, setStoreSlug, type SiteKey, siteApiBase,
 } from '@/services/website'
 import { DomainDetail, DomainList } from '@/features/website/domain-status'
 
@@ -70,26 +71,12 @@ function DomainsTab() {
   const primary = domains.find((d) => d.is_primary)?.domain ?? null
   const open = domains.find((d) => d.domain === state.domain)
 
-  if (open) {
-    return (
-      <div className="max-w-3xl">
-        <DomainDetail d={open} primary={primary} canEdit={edit} checking={check.isPending}
-          onBack={() => update({ domain: '' }, { resetPage: false })}
-          onCheck={() => check.mutate(open.domain)} onRemove={() => setRemoving(open.domain)}
-          onMakePrimary={async () => {
-            try { await makePrimaryDomain(open.domain); toast.success(`${open.domain} is now the primary domain`); refresh() }
-            catch (e) { toast.error(toUserMessage(e)); throw e }
-          }} />
-        <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
-          description="The store stops opening on this domain. Your default address keeps working." confirmLabel="Remove" destructive
-          onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); update({ domain: '' }, { resetPage: false }); refresh() }} />
-      </div>
-    )
-  }
-
+  const close = () => update({ domain: '' }, { resetPage: false })
   return (
+    <>
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="min-w-0 space-y-4">
+        <StoreAddressCard canEdit={edit} />
         {edit && (
           <Card>
             <CardHeader>
@@ -127,6 +114,25 @@ function DomainsTab() {
         </CardContent>
       </Card>
     </div>
+
+    <Dialog open={!!open} onOpenChange={(v) => !v && close()}>
+      <DialogContent className="max-h-[92dvh] gap-0 overflow-y-auto p-0 duration-300 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:zoom-in-90 sm:max-w-2xl">
+        <DialogTitle className="sr-only">{open?.domain ?? 'Domain'}</DialogTitle>
+        <DialogDescription className="sr-only">Connection status of the domain</DialogDescription>
+        {open && (
+          <DomainDetail inDialog d={open} primary={primary} canEdit={edit} checking={check.isPending} onBack={close}
+            onCheck={() => check.mutate(open.domain)} onRemove={() => setRemoving(open.domain)}
+            onMakePrimary={async () => {
+              try { await makePrimaryDomain(open.domain); toast.success(`${open.domain} is now the primary domain`); refresh() }
+              catch (e) { toast.error(toUserMessage(e)); throw e }
+            }} />
+        )}
+      </DialogContent>
+    </Dialog>
+    <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
+      description="The store stops opening on this domain. Your default address keeps working." confirmLabel="Remove" destructive
+      onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); close(); refresh() }} />
+    </>
   )
 }
 
@@ -271,5 +277,64 @@ function NewKeyDialog({ open, onClose, onCreated }: { open: boolean; onClose: ()
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Where the online store opens: its own address on Fullfilio, which the owner can rename. */
+function StoreAddressCard({ canEdit }: { canEdit: boolean }) {
+  const queryClient = useQueryClient()
+  const store = useStoreAddress()
+  const [editing, setEditing] = useState(false)
+  const [slug, setSlug] = useState('')
+  const save = useMutation({
+    mutationFn: () => setStoreSlug(slug),
+    onSuccess: () => { setEditing(false); toast.success('Store address changed'); void queryClient.invalidateQueries({ queryKey: ['store-address'] }) },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const a = store.data
+  if (!a) return null
+  if (a.mode !== 'OWN') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Store address</CardTitle>
+          <CardDescription>The online store is off ({a.mode === 'OFF' ? 'turned off' : `you sell on ${a.mode === 'SHOPIFY' ? 'Shopify' : 'WooCommerce'}`}), so no store address is published. Turn it on in Store → Sales channels.</CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+  const path = `${window.location.origin}/s/${a.slug}`
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Store address</CardTitle>
+        <CardDescription>Your store is online at these addresses. A connected domain below becomes the main one.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {[a.custom_domain && { label: 'Your domain', url: `https://${a.custom_domain}` }, a.subdomain && { label: 'Fullfilio address', url: `https://${a.subdomain}` }, { label: a.subdomain ? 'Always works' : 'Fullfilio address', url: path }]
+          .filter(Boolean).map((x) => x && (
+            <div key={x.url} className="flex items-center gap-3 rounded-lg border px-3 py-2">
+              <Globe className="size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] text-muted-foreground">{x.label}</p>
+                <a href={x.url} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium hover:underline">{x.url.replace(/^https?:\/\//, '')}</a>
+              </div>
+              <Button size="icon-sm" variant="ghost" aria-label="Copy address" onClick={() => void navigator.clipboard.writeText(x.url).then(() => toast.success('Copied'))}><Copy /></Button>
+            </div>
+          ))}
+        {canEdit && (editing ? (
+          <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
+            <Input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} aria-label="New store name" className="sm:flex-1" maxLength={41} autoFocus />
+            <div className="flex gap-2">
+              <Button type="submit" disabled={save.isPending || slug.length < 2 || slug === a.slug}>{save.isPending && <Spinner />} Save</Button>
+              <Button type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
+          </form>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => { setSlug(a.slug ?? ''); setEditing(true) }}>Change store name</Button>
+        ))}
+        {!a.subdomain && <p className="text-xs text-muted-foreground">Store subdomains (yourshop.{'<'}platform domain{'>'}) turn on when the Fullfilio team sets the platform domain.</p>}
+      </CardContent>
+    </Card>
   )
 }

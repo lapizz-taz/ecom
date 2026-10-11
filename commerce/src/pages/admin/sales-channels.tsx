@@ -18,6 +18,7 @@ import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { StoreMode } from '@/types/domain'
+import { useStoreAddress } from '@/hooks/use-store-address'
 import {
   type ChannelCheck, type ChannelImport, type ChannelPlatform, disconnectChannel, fixWebhooks, listChannelImports, listChannels,
   reconnectChannel, retryImport, type SalesChannel, saveChannelSettings, setStoreMode, type SetupResult, shopifyAppUrl, shopifyClientConnect, shopifyConnect, shopifyRedirectUri, shopifyToken, saveSyncSettings, syncChannel,
@@ -37,6 +38,7 @@ const STATUS: Record<SalesChannel['status'], { label: string; className: string 
 }
 
 export default function SalesChannelsPage() {
+  const store = useStoreAddress()
   const { can } = useAuth()
   const manage = can('settings.manage')
   const queryClient = useQueryClient()
@@ -67,11 +69,11 @@ export default function SalesChannelsPage() {
       <StoreModeCard manage={manage} channels={live} />
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SourceCard mark={<Palette className="size-4" />} title="Your store" subtitle={window.location.host}
+        <SourceCard mark={<Palette className="size-4" />} title="Your store" subtitle={store.url ? store.url.replace(/^https?:\/\//, '') : 'No store address'}
           status={storeOpen ? <Pill className="bg-foreground text-background">Online</Pill> : <Pill className="bg-muted text-muted-foreground">Off</Pill>}
           actions={<>
             {manage && <Button size="sm" asChild><Link to="/admin/store/theme">Edit theme</Link></Button>}
-            <Button size="sm" variant="outline" asChild><a href="/" target="_blank" rel="noreferrer"><ExternalLink /> View</a></Button>
+            {store.url && <Button size="sm" variant="outline" asChild><a href={store.url} target="_blank" rel="noreferrer"><ExternalLink /> View</a></Button>}
           </>}>
           Built in. Checkout, courier booking, fraud checks and messages work out of the box.
         </SourceCard>

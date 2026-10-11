@@ -21,11 +21,11 @@ export function domainTone(d: StoreDomain): Tone {
   return 'pending'
 }
 
-const TONE: Record<Tone, { label: string; chip: string; band: string; ring: string }> = {
-  live: { label: 'Connected', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300', band: 'from-emerald-700 via-emerald-500 to-emerald-700', ring: 'text-emerald-700' },
-  warn: { label: 'Connected · issue', chip: 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300', band: 'from-emerald-700 via-emerald-500 to-emerald-700', ring: 'text-emerald-700' },
-  pending: { label: 'Pending', chip: 'bg-zinc-100 text-zinc-700 ring-zinc-500/15 dark:bg-white/10 dark:text-zinc-300', band: 'from-amber-600 via-amber-400 to-amber-600', ring: 'text-amber-600' },
-  error: { label: 'Not connected', chip: 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10 dark:text-red-300', band: 'from-red-700 via-red-500 to-red-700', ring: 'text-red-600' },
+const TONE: Record<Tone, { label: string; chip: string }> = {
+  live: { label: 'Connected', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300' },
+  warn: { label: 'Connected · issue', chip: 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300' },
+  pending: { label: 'Pending', chip: 'bg-zinc-100 text-zinc-700 ring-zinc-500/15 dark:bg-white/10 dark:text-zinc-300' },
+  error: { label: 'Not connected', chip: 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10 dark:text-red-300' },
 }
 
 export function DomainChip({ d }: { d: StoreDomain }) {
@@ -59,31 +59,33 @@ export function DomainList({ domains, onOpen }: { domains: StoreDomain[]; onOpen
   )
 }
 
-function Globe({ tone }: { tone: Tone }) {
+const HERO: Record<Tone, { bg: string; dot: string; ring: string; title: string; sub: string }> = {
+  live: { bg: 'from-emerald-50 to-card dark:from-emerald-500/10', dot: 'bg-emerald-500', ring: 'bg-emerald-400/40', title: 'Your domain is connected', sub: 'Customers can open your store on this address.' },
+  warn: { bg: 'from-amber-50 to-card dark:from-amber-500/10', dot: 'bg-amber-500', ring: 'bg-amber-400/40', title: 'Connected, with something to review', sub: 'The store opens here; fix the points below to keep it reliable.' },
+  pending: { bg: 'from-sky-50 to-card dark:from-sky-500/10', dot: 'bg-sky-500', ring: 'bg-sky-400/40', title: 'Waiting for the domain', sub: 'DNS changes can take a few minutes to a few hours.' },
+  error: { bg: 'from-red-50 to-card dark:from-red-500/10', dot: 'bg-red-500', ring: 'bg-red-400/40', title: 'Not connected yet', sub: 'Follow the steps below at your domain provider, then check again.' },
+}
+
+/** The status at a glance: a globe that pulses in the status colour. */
+function StatusHero({ tone, domain }: { tone: Tone; domain: string }) {
+  const h = HERO[tone]
   const ok = tone === 'live' || tone === 'warn'
   return (
-    <svg viewBox="0 0 220 120" className="mx-auto h-[120px] w-[220px]" aria-hidden>
-      <defs>
-        <radialGradient id="dg-glow" cx="50%" cy="60%" r="60%"><stop offset="0" stopColor="#fff" stopOpacity=".35" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
-        <clipPath id="dg-clip"><circle cx="110" cy="112" r="92" /></clipPath>
-      </defs>
-      <circle cx="110" cy="112" r="120" fill="url(#dg-glow)" />
-      <circle cx="110" cy="112" r="92" fill="rgb(0 0 0 / .28)" />
-      <g clipPath="url(#dg-clip)" fill="rgb(255 255 255 / .22)">
-        <path d="M40 60c14-10 34-14 46-6s8 20-6 26-18 18-30 16-24-8-22-18 4-12 12-18Z" />
-        <path d="M120 34c18-6 40-2 52 10s6 22-10 24-26 8-36 2-22-30-6-36Z" />
-        <path d="M150 88c12-4 30 2 34 14s-8 22-22 20-24-28-12-34Z" />
-        <path d="M86 98c10-2 20 6 18 16s-14 10-20 4-8-18 2-20Z" />
-        <circle cx="70" cy="40" r="5" /><circle cx="186" cy="64" r="4" /><circle cx="104" cy="70" r="3" />
-      </g>
-      <circle cx="110" cy="58" r="23" fill="#fff" />
-      <circle cx="110" cy="58" r="19" className={cn('fill-current', TONE[tone].ring)} />
-      {ok
-        ? <path d="M101 58.5l6 6 12-12.5" fill="none" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
-        : tone === 'pending'
-          ? <g stroke="#fff" strokeWidth="3" strokeLinecap="round" fill="none"><circle cx="110" cy="58" r="9" /><path d="M110 53v5.5l3.5 2.5" /></g>
-          : <path d="M103 51l14 14M117 51l-14 14" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" />}
-    </svg>
+    <div className={cn('relative flex flex-col items-center overflow-hidden bg-gradient-to-b px-6 pt-7 pb-5 text-center', h.bg)}>
+      <div className="relative grid size-16 place-items-center">
+        <span className={cn('absolute inset-0 animate-ping rounded-full motion-reduce:animate-none', h.ring)} style={{ animationDuration: '2.4s' }} />
+        <span className={cn('absolute inset-2 rounded-full opacity-60', h.ring)} />
+        <span className="relative grid size-12 place-items-center rounded-full border bg-card shadow-sm">
+          <Globe2 className="size-6 animate-[spin_18s_linear_infinite] text-foreground/80 motion-reduce:animate-none" />
+          <span className={cn('absolute -right-0.5 -bottom-0.5 grid size-5 place-items-center rounded-full text-white ring-2 ring-card', h.dot)}>
+            {ok ? <Check className="size-3" strokeWidth={3} /> : tone === 'pending' ? <Clock className="size-3" strokeWidth={3} /> : <X className="size-3" strokeWidth={3} />}
+          </span>
+        </span>
+      </div>
+      <p className="mt-3 text-[15px] font-semibold tracking-[-0.01em]">{h.title}</p>
+      <p className="mt-0.5 max-w-sm text-[13px] text-muted-foreground">{h.sub}</p>
+      <a href={`https://${domain}`} target="_blank" rel="noreferrer" className="mt-2 font-mono text-xs text-muted-foreground hover:text-foreground hover:underline">{domain}</a>
+    </div>
   )
 }
 
@@ -153,9 +155,11 @@ function Issues({ diag }: { diag: DomainDiagnosis }) {
 }
 
 /** The full status of one domain: DNS records, regions, HTTPS, target and type. */
-export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove, onMakePrimary, onBack }: {
+export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove, onMakePrimary, onBack, inDialog }: {
   d: StoreDomain; primary: string | null; canEdit: boolean; checking: boolean
   onCheck: () => void; onRemove: () => void; onMakePrimary: () => Promise<unknown>; onBack: () => void
+  /** Shown inside the domain popup: no back link, edge-to-edge sections. */
+  inDialog?: boolean
 }) {
   const diag = d.diagnostics
   const tone = domainTone(d)
@@ -167,20 +171,17 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const pointing = diag ? (diag.pointed ? (diag.issues.some((i) => i.severity !== 'info') ? 'warn' : 'ok') : 'bad') : 'wait'
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className={cn(inDialog ? 'space-y-5' : 'space-y-6')}>
+      {!inDialog && <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2"><ChevronRight className="rotate-180" /> Domains</Button>
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
           <a href={`https://${d.domain}`} target="_blank" rel="noreferrer" className="hover:underline">{d.domain}</a>
         </h2>
         <DomainChip d={d} />
-      </div>
+      </div>}
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <div className={cn('relative bg-gradient-to-r pt-5', TONE[tone].band)}>
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgb(255_255_255/.25),transparent_60%)]" />
-          <Globe tone={tone} />
-        </div>
+      <div className={cn('overflow-hidden bg-card', inDialog ? 'border-b' : 'rounded-xl border')}>
+        <StatusHero tone={tone} domain={d.domain} />
         <div className="divide-y">
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>
@@ -233,7 +234,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className={cn('space-y-2', inDialog && 'px-5 pb-5')}>
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">Domain target and type</h3>
         <div className="divide-y rounded-xl border bg-card">
           <div className="flex items-center gap-3 px-4 py-3">

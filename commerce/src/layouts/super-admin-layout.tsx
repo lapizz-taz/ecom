@@ -22,6 +22,8 @@ import { initials, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { platformSearch } from '@/services/platform'
 import { endSupportSession } from '@/services/support-center'
+import { superAdminUnlocked } from '@/lib/super-admin-gate'
+import MarketingNotFound from '@/pages/marketing/not-found'
 
 /** The Super Admin panel follows the same light / dark / system choice as the business admin. */
 function usePanelTheme() {
@@ -246,6 +248,8 @@ export default function SuperAdminLayout() {
   usePanelTheme()
   const { session, loading } = useAuth()
   const location = useLocation()
+  // Not entered through the secret address on this device: look like any missing page.
+  if (!superAdminUnlocked()) return <MarketingNotFound />
   if (loading) return <BrandLoader label="Loading the Super Admin…" />
   if (!session) return <Navigate to={`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   return (

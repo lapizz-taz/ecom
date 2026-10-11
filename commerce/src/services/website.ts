@@ -48,3 +48,37 @@ export async function revokeSiteKey(id: string) {
   if (error) throw error
 }
 export const siteApiBase = () => `${env.supabaseUrl.replace(/\/+$/, '')}/functions/v1/site-api/v1`
+
+/** Where the business's online store is published (see merchant_store_address). */
+export interface StoreAddress {
+  mode: 'OWN' | 'SHOPIFY' | 'WOOCOMMERCE' | 'OFF'
+  slug: string | null
+  root_domain: string | null
+  subdomain: string | null
+  custom_domain: string | null
+}
+
+export async function getStoreAddress(): Promise<StoreAddress> {
+  const { data, error } = await supabase.rpc('merchant_store_address')
+  if (error) throw error
+  return data as unknown as StoreAddress
+}
+
+export async function setStoreSlug(slug: string): Promise<StoreAddress> {
+  const { data, error } = await supabase.rpc('admin_set_store_slug', { p_slug: slug })
+  if (error) throw error
+  return data as unknown as StoreAddress
+}
+
+/** The store's public address: its domain, its subdomain, or /s/<name> on this site. Null when the store is off. */
+export function storePublicUrl(a: StoreAddress | undefined | null, origin = window.location.origin): string | null {
+  if (!a || a.mode !== 'OWN' || !a.slug) return null
+  if (a.custom_domain) return `https://${a.custom_domain}`
+  if (a.subdomain) return `https://${a.subdomain}`
+  return `${origin}/s/${a.slug}`
+}
+
+/** Same-site path to the store (for the theme preview, which must share this origin). */
+export function storeSitePath(a: StoreAddress | undefined | null): string | null {
+  return a?.slug && a.mode === 'OWN' ? `/s/${a.slug}` : null
+}

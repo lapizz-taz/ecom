@@ -18,6 +18,7 @@ import { ConfigHistory } from '@/features/platform/config-history'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
+import { supabase } from '@/lib/supabase'
 import { savePlatformSetting } from '@/services/billing'
 import { type GlobalSettings, globalSettings } from '@/services/platform-data'
 
@@ -126,6 +127,49 @@ function SignupCard({ d }: { d: GlobalSettings }) {
   )
 }
 
+/** The platform domain for store subdomains, and what the platform's own address shows. */
+function StoreDomainsCard({ d }: { d: GlobalSettings }) {
+  const queryClient = useQueryClient()
+  const value = (d.settings.store_domains?.value ?? {}) as { root_domain?: string | null; main_site?: string }
+  const [root, setRoot] = useState(value.root_domain ?? '')
+  const [main, setMain] = useState(value.main_site === 'store' ? 'store' : 'marketing')
+  const [confirm, setConfirm] = useState(false)
+  const save = useMutation({
+    mutationFn: async (reason: string) => {
+      const { error } = await supabase.rpc('platform_store_domains_save', { p_value: { root_domain: root.trim() || null, main_site: main }, p_reason: reason })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Store addresses saved')
+      void queryClient.invalidateQueries({ queryKey: ['platform-global-settings'] })
+      void queryClient.invalidateQueries({ queryKey: ['platform-config-history'] })
+    },
+  })
+  const changed = (root.trim() || null) !== (value.root_domain ?? null) || main !== (value.main_site === 'store' ? 'store' : 'marketing')
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Store addresses</CardTitle>
+        <CardDescription>Businesses with the online store get <span className="font-mono">name.{root.trim() || 'your-domain.com'}</span>. Point a wildcard record (<span className="font-mono">*.{root.trim() || 'domain'}</span>) at the hosting first. Every store also works at <span className="font-mono">/s/name</span>.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Field label="Platform domain" htmlFor="sd-root" hint="e.g. fullfilio.com — empty: no subdomains yet">
+          <Input id="sd-root" value={root} disabled={!d.can.edit} onChange={(e) => setRoot(e.target.value.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))} placeholder="fullfilio.com" />
+        </Field>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="sd-main" className="text-sm font-normal text-muted-foreground">Main address shows the Fullfilio website</Label>
+          <Switch id="sd-main" checked={main === 'marketing'} disabled={!d.can.edit} onCheckedChange={(on) => setMain(on ? 'marketing' : 'store')} />
+        </div>
+        {d.can.edit && <Button size="sm" disabled={!changed || save.isPending} onClick={() => setConfirm(true)}>Save</Button>}
+        {confirm && (
+          <ConfirmDialog open onOpenChange={setConfirm} title="Save store addresses?" reason reasonRequired confirmLabel="Save"
+            description="Store links change for every business. Customers on old links keep working on /s/name." onConfirm={(r) => save.mutateAsync(r)} />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function Index({ d }: { d: GlobalSettings }) {
   const known = new Set(CATALOG.map((c) => c.key))
   const others = Object.keys(d.settings).filter((k) => !known.has(k))
@@ -133,6 +177,7 @@ function Index({ d }: { d: GlobalSettings }) {
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-2">
         <SignupCard d={d} />
+        <StoreDomainsCard d={d} />
         <NumberSettingCard title="Staff sessions" settingKey="security" canEdit={d.can.security} value={d.settings.security?.value ?? {}}
           description="Enforced on every Super Admin action in the database and the server functions. A staff member signed in longer than this is asked to sign in again."
           fields={[{ name: 'staff_session_hours', label: 'Sign in again after (hours)', hint: '1–720 · empty means no limit', optional: true }]} />

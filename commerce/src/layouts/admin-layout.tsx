@@ -31,6 +31,8 @@ import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { queueCounts, statusCounts } from '@/services/orders'
+import { useStoreAddress } from '@/hooks/use-store-address'
+import { unlockSuperAdmin } from '@/lib/super-admin-gate'
 
 const COLLAPSED_KEY = 'admin-sidebar-collapsed'
 
@@ -181,6 +183,13 @@ function PermissionDenied() {
   )
 }
 
+/** "View store" in the account menu, when the business has an online store. */
+function ViewStoreItem() {
+  const store = useStoreAddress()
+  if (!store.url) return null
+  return <DropdownMenuItem asChild><a href={store.url} target="_blank" rel="noreferrer"><BadgePercent /> View store</a></DropdownMenuItem>
+}
+
 export default function AdminLayout() {
   const { session, loading, access, accessLoading, can, signOut } = useAuth()
   const { data: config } = useStoreConfig()
@@ -219,7 +228,8 @@ export default function AdminLayout() {
   if (loading || accessLoading || (!access && platformMember.isLoading)) return <BrandLoader label="Loading your workspace…" />
   if (!session) return <Navigate to={`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   // Platform team members without a business of their own work in the Super Admin panel.
-  if (!access && platformMember.data) return <Navigate to="/super-admin" replace />
+  // Platform staff without a business: confirmed by the database, so their device may open the panel.
+  if (!access && platformMember.data) { unlockSuperAdmin(); return <Navigate to="/super-admin" replace /> }
   if (!access) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
@@ -299,6 +309,7 @@ export default function AdminLayout() {
             <Search /> <span className="hidden sm:inline">Search</span>
           </Button>
           <nav className="hidden items-center gap-0.5 md:flex [&_[data-slot=button]]:text-foreground/75 [&_[data-slot=button]:hover]:text-foreground" aria-label="Shortcuts">
+            {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/search"><Search /> Search</Link></Button>}
             {can('orders.create') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/new"><Plus /> New Order</Link></Button>}
             {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/web"><Globe /> Web Order List</Link></Button>}
             {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/approved"><ClipboardCheck /> Order List</Link></Button>}
@@ -344,7 +355,7 @@ export default function AdminLayout() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link to="/admin/account"><UserCog /> My account</Link></DropdownMenuItem>
-                <DropdownMenuItem asChild><a href="/" target="_blank" rel="noreferrer"><BadgePercent /> View store</a></DropdownMenuItem>
+                <ViewStoreItem />
                 {can('inventory.view') && <DropdownMenuItem asChild><Link to="/admin/inventory?view=alerts"><Boxes /> Low stock</Link></DropdownMenuItem>}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => signOut().then(() => navigate('/admin/login'))}><LogOut /> Sign out</DropdownMenuItem>

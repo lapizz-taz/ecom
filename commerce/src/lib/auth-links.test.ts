@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/supabase', () => ({ supabase: { auth: { resend: vi.fn() } } }))
+vi.mock('@/lib/merchant', () => ({ storeBasename: () => '' }))
 const { readAuthLinkError } = await import('./auth-links')
 
 const at = (hash: string, search = '') => ({ hash, search })

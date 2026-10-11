@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react'
-import { createBrowserRouter, type RouteObject } from 'react-router'
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
+import { currentSite, storeBasename } from '@/lib/merchant'
+import { SUPER_ADMIN_ENTRY, unlockSuperAdmin } from '@/lib/super-admin-gate'
 import { RouteError } from '@/routes/route-error'
 
 // Every page is lazy-loaded so the storefront never downloads admin code.
@@ -19,8 +21,8 @@ const platform = (path: string, module: string, load: Loader): RouteObject => ({
   ...page(load),
 })
 
-export const router = createBrowserRouter([
-  {
+// A business's store: its own domain, <name>.<root domain> or /s/<name>.
+const storefront: RouteObject = {
     path: '/',
     ...page(() => import('@/layouts/storefront-layout')),
     errorElement: <RouteError />,
@@ -45,7 +47,17 @@ export const router = createBrowserRouter([
       { path: 'policies/:policy', ...page(() => import('@/pages/storefront/policies')) },
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],
-  },
+  }
+
+/** The secret entry address: remembers this device, then opens the Super Admin. */
+function SuperAdminEntry() {
+  unlockSuperAdmin()
+  return <Navigate to="/super-admin" replace />
+}
+
+// Pages every address has: sign-in, sign-up, the admin and the Super Admin.
+const shared: RouteObject[] = [
+  ...(SUPER_ADMIN_ENTRY ? [{ path: SUPER_ADMIN_ENTRY, element: <SuperAdminEntry /> }] : []),
   {
     path: '/super-admin',
     ...page(() => import('@/layouts/super-admin-layout')),
@@ -76,7 +88,6 @@ export const router = createBrowserRouter([
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],
   },
-  { path: '/fullfilio', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/home')) },
   { path: '/start', errorElement: <RouteError />, ...page(() => import('@/pages/start/start')) },
   { path: '/start/finish', errorElement: <RouteError />, ...page(() => import('@/pages/start/finish')) },
   { path: '/admin/login', errorElement: <RouteError />, ...page(() => import('@/pages/admin/login')) },
@@ -88,6 +99,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, handle: { permission: 'dashboard.view' }, ...page(() => import('@/pages/admin/dashboard')) },
+      admin('search', () => import('@/pages/admin/search'), 'orders.view'),
       admin('orders', () => import('@/pages/admin/orders'), 'orders.view'),
       admin('orders/web', () => import('@/pages/admin/web-orders'), 'orders.view'),
       admin('orders/approved', () => import('@/pages/admin/approved-orders'), 'orders.view'),
@@ -169,4 +181,26 @@ export const router = createBrowserRouter([
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],
   },
-])
+]
+
+// The Fullfilio website on the platform's own address.
+const marketing: RouteObject[] = [
+  { path: '/', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/home')) },
+  { path: '/fullfilio', element: <Navigate to="/" replace /> },
+  { path: '/login', element: <Navigate to="/admin/login" replace /> },
+  { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/not-found')) },
+]
+
+// A store address that does not exist (or whose store is switched off).
+const missing: RouteObject[] = [
+  { path: '/', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/store-missing')) },
+  { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/store-missing')) },
+]
+
+/** The routes for what this address shows (see currentSite()). */
+export function createAppRouter() {
+  const site = currentSite()
+  const own = site.kind === 'store' ? [storefront] : site.kind === 'missing' ? missing : marketing
+  return createBrowserRouter([...shared, ...own], { basename: storeBasename() || undefined })
+}
+

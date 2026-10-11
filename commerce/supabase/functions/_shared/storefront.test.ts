@@ -2,10 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { appBase, isLocalBackend, storefrontBase } from './storefront.ts'
 
-/** A fake client: the primary domain row and the store settings. */
-const client = (store: Record<string, unknown>, primary: string | null = null) => ({
+const merchant = vi.hoisted(() => ({ id: null as string | null }))
+vi.mock('./supabase.ts', async (load) => ({ ...(await load<typeof import('./supabase.ts')>()), merchantOf: () => merchant.id }))
+
+/** A fake client: the primary domain row, the store settings, the store name and the platform's root domain. */
+const client = (store: Record<string, unknown>, primary: string | null = null, slug: string | null = null, root: string | null = null) => ({
   from: (table: string) => {
-    const result = table === 'store_domains' ? { data: primary ? { domain: primary } : null, error: null } : { data: { value: store }, error: null }
+    const result = table === 'store_domains' ? { data: primary ? { domain: primary } : null, error: null }
+      : table === 'merchants' ? { data: { slug }, error: null }
+        : table === 'platform_settings' ? { data: { value: { root_domain: root } }, error: null }
+          : { data: { value: store }, error: null }
     const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => result }
     return chain
   },
@@ -45,5 +51,18 @@ describe('site addresses', () => {
     expect(appBase()).toBe('http://localhost:5173')
     vi.stubEnv('PLATFORM_URL', 'https://app.example.com/')
     expect(appBase()).toBe('https://app.example.com')
+  })
+
+  it('sends customers to the store subdomain, or /s/<name> on the platform address', async () => {
+    merchant.id = '00000000-0000-4000-8000-000000000009'
+    vi.stubEnv('SUPABASE_URL', 'https://abc.supabase.co')
+    vi.stubEnv('STOREFRONT_URL', '')
+    vi.stubEnv('PLATFORM_URL', 'https://app.example.com')
+    expect(await storefrontBase(client({ mode: 'OWN' }, null, 'nadia', 'fullfilio.com'))).toBe('https://nadia.fullfilio.com')
+    expect(await storefrontBase(client({ mode: 'OWN' }, null, 'nadia', null))).toBe('https://app.example.com/s/nadia')
+    expect(await storefrontBase(client({ mode: 'OWN' }, 'nadia.shop', 'nadia', 'fullfilio.com'))).toBe('https://nadia.shop')
+    // Store switched off: no store address.
+    expect(await storefrontBase(client({ mode: 'OFF' }, null, 'nadia', 'fullfilio.com'))).toBe('https://app.example.com')
+    merchant.id = null
   })
 })

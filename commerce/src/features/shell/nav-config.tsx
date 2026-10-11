@@ -47,7 +47,7 @@ export const NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard', to: '/admin', icon: <LayoutDashboard />, permission: 'dashboard.view', shortcut: 'G D' },
-      { label: 'Search', action: 'search', icon: <Search />, shortcut: 'Ctrl K' },
+      { label: 'Search', to: '/admin/search', icon: <Search />, permission: 'orders.view', shortcut: 'G S' },
     ],
   },
   {

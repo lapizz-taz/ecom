@@ -1,11 +1,12 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { useState } from 'react'
 import { RouterProvider } from 'react-router'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/features/auth/auth-context'
 import { env } from '@/lib/env'
 import { queryClient } from '@/lib/query-client'
-import { router } from '@/routes/router'
+import { createAppRouter } from '@/routes/router'
 
 function MissingConfig() {
   return (
@@ -20,7 +21,9 @@ function MissingConfig() {
 }
 
 export default function App() {
-  if (!env.isConfigured) return <MissingConfig />
+  // Built once, after main.tsx knows what this address shows.
+  const [router] = useState(() => (env.isConfigured ? createAppRouter() : null))
+  if (!env.isConfigured || !router) return <MissingConfig />
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

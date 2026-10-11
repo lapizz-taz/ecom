@@ -1,4 +1,5 @@
 import { AppError } from '@/lib/errors'
+import { storeBasename } from '@/lib/merchant'
 import { supabase } from '@/lib/supabase'
 
 // Links in auth e-mails (confirm sign-up, reset password) come back to the
@@ -9,7 +10,8 @@ import { supabase } from '@/lib/supabase'
 
 /** Absolute address on this site for an auth e-mail to return to. */
 export function authRedirect(path: string): string {
-  return `${window.location.origin}${path.startsWith('/') ? path : `/${path}`}`
+  // A store opened at /s/<name> keeps that prefix, so the link returns to the same store.
+  return `${window.location.origin}${storeBasename()}${path.startsWith('/') ? path : `/${path}`}`
 }
 
 export interface AuthLinkError { code: string; message: string; expired: boolean }

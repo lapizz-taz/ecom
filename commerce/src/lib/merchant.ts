@@ -6,36 +6,67 @@
 // (a merchant's own domain, or the platform's default store) and sent with
 // every request as x-merchant-id, which the database uses to scope the store.
 
-export interface StorefrontMerchant {
-  merchant_id: string
-  name: string
-  status: string
+/**
+ * What this web address shows (from storefront_resolve):
+ * - store: a business's store (its own domain, <name>.<root domain>, or
+ *   <platform address>/s/<name>);
+ * - platform: the Fullfilio website itself (marketing, sign-in, sign-up);
+ * - missing: a store address that does not exist or whose store is off.
+ */
+export interface SiteInfo {
+  kind: 'store' | 'platform' | 'missing'
+  merchant_id?: string | null
+  name?: string
+  status?: string
+  slug?: string | null
   /** This address is not the store's primary domain: send visitors there. */
   redirect_to?: string | null
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const cacheKey = () => `merchant:${typeof location === 'undefined' ? '' : location.host}`
+/** A store opened by path on the platform address: /s/<store name>/… */
+export const STORE_PATH = /^\/s\/([a-z0-9][a-z0-9-]{1,40})(?=\/|$)/
 
-function readCache(): string | null {
+/** The store name in the address, when the store is opened by path. */
+export function storeSlugInPath(pathname = typeof location === 'undefined' ? '' : location.pathname): string | null {
+  return STORE_PATH.exec(pathname)?.[1] ?? null
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const cacheKey = () => (typeof location === 'undefined' ? 'site:v2' : `site:v2:${location.host}:${storeSlugInPath() ?? ''}`)
+
+function readCache(): SiteInfo | null {
   try {
-    const value = localStorage.getItem(cacheKey())
-    return value && UUID.test(value) ? value : null
+    const value = JSON.parse(localStorage.getItem(cacheKey()) ?? 'null') as SiteInfo | null
+    if (!value || !['store', 'platform', 'missing'].includes(value.kind)) return null
+    if (value.kind === 'store' && !(value.merchant_id && UUID.test(value.merchant_id))) return null
+    return value
   } catch {
     return null
   }
 }
 
-function writeCache(id: string | null) {
+function writeCache(site: SiteInfo) {
   try {
-    if (id) localStorage.setItem(cacheKey(), id)
-    else localStorage.removeItem(cacheKey())
+    localStorage.setItem(cacheKey(), JSON.stringify({ kind: site.kind, merchant_id: site.merchant_id ?? null, name: site.name, slug: site.slug ?? null }))
   } catch {
-    // Private mode: the store is resolved again on the next visit.
+    // Private mode: the address is resolved again on the next visit.
   }
 }
 
-let storefrontMerchantId: string | null = readCache()
+let site: SiteInfo | null = readCache()
+
+/** What this address shows (the remembered answer until the lookup returns). */
+export function currentSite(): SiteInfo {
+  return site ?? { kind: 'platform' }
+}
+
+/** The router's base path: "/s/<name>" for a store opened by path, else "". */
+export function storeBasename(): string {
+  const slug = storeSlugInPath()
+  return slug ? `/s/${slug}` : ''
+}
+
+let storefrontMerchantId: string | null = site?.kind === 'store' ? site.merchant_id ?? null : null
 let staffMerchantId: string | null = null
 
 /** The merchant for requests from this browser (staff merchant first). */
@@ -64,25 +95,28 @@ export const merchantFetch: typeof fetch = (input, init) => {
   return fetch(input, { ...init, headers })
 }
 
-let resolving: Promise<StorefrontMerchant | null> | null = null
+let resolving: Promise<SiteInfo> | null = null
 
 /**
- * Asks which store this web address belongs to. Uses the remembered answer
- * straight away when there is one and refreshes it in the background.
+ * Asks what this web address shows. Uses the remembered answer straight away
+ * when there is one and refreshes it in the background; if the answer changed
+ * (a store was moved or switched off), the page reloads once with the new one.
  */
-export function resolveStorefrontMerchant(
-  lookup: (host: string) => Promise<StorefrontMerchant | null>,
-): Promise<StorefrontMerchant | null> {
-  resolving ??= lookup(location.host).then((found) => {
-    const id = found?.merchant_id && UUID.test(found.merchant_id) ? found.merchant_id : null
-    storefrontMerchantId = id
-    writeCache(id)
-    return found
+export function resolveSite(lookup: (host: string, slug: string | null) => Promise<SiteInfo | null>): Promise<SiteInfo> {
+  const remembered = site
+  resolving ??= lookup(location.host, storeSlugInPath()).then((found) => {
+    const next: SiteInfo = found && found.kind ? found : found?.merchant_id ? { ...found, kind: 'store' } : { kind: 'platform' }
+    if (next.kind === 'store' && !(next.merchant_id && UUID.test(next.merchant_id))) next.kind = 'missing'
+    site = next
+    storefrontMerchantId = next.kind === 'store' ? next.merchant_id! : null
+    writeCache(next)
+    if (remembered && (remembered.kind !== next.kind || (remembered.merchant_id ?? null) !== (next.merchant_id ?? null))) location.reload()
+    return next
   })
   return resolving
 }
 
-/** True when an earlier visit already told us the store (no need to wait). */
-export function hasRememberedStorefront(): boolean {
-  return storefrontMerchantId !== null
+/** True when an earlier visit already told us what this address shows (no need to wait). */
+export function hasRememberedSite(): boolean {
+  return site !== null
 }
