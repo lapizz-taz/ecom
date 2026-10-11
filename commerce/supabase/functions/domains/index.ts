@@ -76,7 +76,7 @@ Deno.serve(
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const input = parse(actions, await readJson(req))
-    const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage')
+    const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage', { supportView: input.action === 'list' })
     const admin = staff.admin
     const v = vercel()
     const save = (d: string, p: Omit<Saved, 'domain'>) => rpc<Saved>(admin, 'store_domain_save', { p_domain: d, p, p_actor: staff.user.id })

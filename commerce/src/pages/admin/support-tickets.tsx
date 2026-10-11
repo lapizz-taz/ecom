@@ -192,7 +192,7 @@ function TicketSheet({ ticket: t, support, onOpenChange }: { ticket: Ticket | nu
           <>
             <SheetHeader className="border-b">
               <SheetTitle className="pr-6">#{t.number} {t.subject}</SheetTitle>
-              <SheetDescription>{nameOf(t.created_by)} · {formatDateTime(t.created_at)}</SheetDescription>
+              <SheetDescription>{t.created_by ? nameOf(t.created_by) : 'Opened by the support team'} · {formatDateTime(t.created_at)}</SheetDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Badge variant={TICKET_STATUS[t.status as TicketStatus].variant}>{TICKET_STATUS[t.status as TicketStatus].label}</Badge>
                 {t.kind === 'BUG' && <Badge variant={PRIORITY_VARIANT[t.priority as keyof typeof PRIORITY_VARIANT]}>{titleCase(t.priority)} priority</Badge>}
@@ -211,7 +211,7 @@ function TicketSheet({ ticket: t, support, onOpenChange }: { ticket: Ticket | nu
               {msgs.isLoading ? <LoadingState /> : (msgs.data ?? []).map((m) => (
                 <div key={m.id} className={cn('flex', m.author_id === access?.user_id ? 'justify-end' : 'justify-start')}>
                   <div className={cn('max-w-[85%] rounded-xl px-3 py-2 text-sm', m.author_id === access?.user_id ? 'bg-brand text-brand-foreground' : 'bg-muted')}>
-                    <p className="mb-0.5 text-[11px] opacity-75">{nameOf(m.author_id)}{m.is_support && ' · Support'} · {timeAgo(m.created_at)}</p>
+                    <p className="mb-0.5 text-[11px] opacity-75">{m.author_id ? nameOf(m.author_id) : (m.author_label ?? 'Support')}{m.author_id && m.is_support && ' · Support'} · {timeAgo(m.created_at)}</p>
                     <p className="whitespace-pre-wrap">{m.body}</p>
                   </div>
                 </div>

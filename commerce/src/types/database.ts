@@ -7138,6 +7138,56 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_notifications: {
+        Row: {
+          id: number
+          user_id: string
+          kind: string
+          severity: string
+          title: string
+          body: string | null
+          link: string | null
+          merchant_id: string | null
+          dedupe_key: string | null
+          read_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          kind: string
+          severity?: string
+          title: string
+          body?: string | null
+          link?: string | null
+          merchant_id?: string | null
+          dedupe_key?: string | null
+          read_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          kind?: string
+          severity?: string
+          title?: string
+          body?: string | null
+          link?: string | null
+          merchant_id?: string | null
+          dedupe_key?: string | null
+          read_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_notifications_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_role_permissions: {
         Row: {
           role_id: string
@@ -9485,33 +9535,90 @@ export type Database = {
           },
         ]
       }
+      support_ticket_events: {
+        Row: {
+          id: number
+          ticket_id: string
+          merchant_id: string
+          kind: string
+          body: string | null
+          data: Json
+          actor_id: string | null
+          actor_email: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          ticket_id: string
+          merchant_id: string
+          kind: string
+          body?: string | null
+          data?: Json
+          actor_id?: string | null
+          actor_email?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          ticket_id?: string
+          merchant_id?: string
+          kind?: string
+          body?: string | null
+          data?: Json
+          actor_id?: string | null
+          actor_email?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_ticket_events_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_ticket_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_ticket_messages: {
         Row: {
           id: string
           ticket_id: string
-          author_id: string
+          author_id: string | null
           body: string
           is_support: boolean
           created_at: string
           merchant_id: string
+          platform_author: string | null
+          author_label: string | null
         }
         Insert: {
           id?: string
           ticket_id: string
-          author_id: string
+          author_id?: string | null
           body: string
           is_support?: boolean
           created_at?: string
           merchant_id?: string
+          platform_author?: string | null
+          author_label?: string | null
         }
         Update: {
           id?: string
           ticket_id?: string
-          author_id?: string
+          author_id?: string | null
           body?: string
           is_support?: boolean
           created_at?: string
           merchant_id?: string
+          platform_author?: string | null
+          author_label?: string | null
         }
         Relationships: [
           {
@@ -9549,7 +9656,7 @@ export type Database = {
           status: string
           priority: string
           context: Json
-          created_by: string
+          created_by: string | null
           replies: number
           last_reply_at: string | null
           last_reply_by: string | null
@@ -9557,6 +9664,15 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          opened_by_platform: string | null
+          internal: boolean
+          assigned_to: string | null
+          assigned_at: string | null
+          due_at: string | null
+          first_response_at: string | null
+          escalation_level: number
+          escalated_at: string | null
+          last_reply_from: string | null
         }
         Insert: {
           id?: string
@@ -9569,7 +9685,7 @@ export type Database = {
           status?: string
           priority?: string
           context?: Json
-          created_by: string
+          created_by?: string | null
           replies?: number
           last_reply_at?: string | null
           last_reply_by?: string | null
@@ -9577,6 +9693,15 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          opened_by_platform?: string | null
+          internal?: boolean
+          assigned_to?: string | null
+          assigned_at?: string | null
+          due_at?: string | null
+          first_response_at?: string | null
+          escalation_level?: number
+          escalated_at?: string | null
+          last_reply_from?: string | null
         }
         Update: {
           id?: string
@@ -9589,7 +9714,7 @@ export type Database = {
           status?: string
           priority?: string
           context?: Json
-          created_by?: string
+          created_by?: string | null
           replies?: number
           last_reply_at?: string | null
           last_reply_by?: string | null
@@ -9597,6 +9722,15 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          opened_by_platform?: string | null
+          internal?: boolean
+          assigned_to?: string | null
+          assigned_at?: string | null
+          due_at?: string | null
+          first_response_at?: string | null
+          escalation_level?: number
+          escalated_at?: string | null
+          last_reply_from?: string | null
         }
         Relationships: [
           {
@@ -9899,6 +10033,10 @@ export type Database = {
           p_ts: string
         }
         Returns: string
+      }
+      _platform_support_session_info: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       _plugin_config: {
         Args: {
@@ -12866,6 +13004,18 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_notifications_list: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_notifications_read: {
+        Args: {
+          p_ids?: number[]
+        }
+        Returns: number
+      }
       platform_overview: {
         Args: {
           p_from: string
@@ -13011,6 +13161,84 @@ export type Database = {
           p_merchant: string
           p_action: string
           p?: Json
+        }
+        Returns: Json
+      }
+      platform_support_session_end: {
+        Args: {
+          p_id?: string
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_support_session_start: {
+        Args: {
+          p_merchant: string
+          p_reason: string
+          p_minutes?: number
+          p_ticket?: string
+        }
+        Returns: Json
+      }
+      platform_support_sessions: {
+        Args: {
+          p?: Json
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_support_settings_save: {
+        Args: {
+          p: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_ticket_create: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_ticket_escalate: {
+        Args: {
+          p_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_ticket_get: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
+      platform_ticket_note: {
+        Args: {
+          p_id: string
+          p_body: string
+        }
+        Returns: Json
+      }
+      platform_ticket_reply: {
+        Args: {
+          p_id: string
+          p_body: string
+        }
+        Returns: Json
+      }
+      platform_ticket_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_tickets_list: {
+        Args: {
+          p?: Json
+          p_limit?: number
+          p_offset?: number
         }
         Returns: Json
       }
@@ -13940,6 +14168,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      support_access_log: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: Json
+      }
       support_ticket_create: {
         Args: {
           p: Json
@@ -13955,7 +14189,7 @@ export type Database = {
           status: string
           priority: string
           context: Json
-          created_by: string
+          created_by: string | null
           replies: number
           last_reply_at: string | null
           last_reply_by: string | null
@@ -13963,6 +14197,15 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          opened_by_platform: string | null
+          internal: boolean
+          assigned_to: string | null
+          assigned_at: string | null
+          due_at: string | null
+          first_response_at: string | null
+          escalation_level: number
+          escalated_at: string | null
+          last_reply_from: string | null
         }
       }
       support_ticket_reply: {
@@ -13973,11 +14216,13 @@ export type Database = {
         Returns: {
           id: string
           ticket_id: string
-          author_id: string
+          author_id: string | null
           body: string
           is_support: boolean
           created_at: string
           merchant_id: string
+          platform_author: string | null
+          author_label: string | null
         }
       }
       support_ticket_update: {
@@ -13996,7 +14241,7 @@ export type Database = {
           status: string
           priority: string
           context: Json
-          created_by: string
+          created_by: string | null
           replies: number
           last_reply_at: string | null
           last_reply_by: string | null
@@ -14004,6 +14249,15 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          opened_by_platform: string | null
+          internal: boolean
+          assigned_to: string | null
+          assigned_at: string | null
+          due_at: string | null
+          first_response_at: string | null
+          escalation_level: number
+          escalated_at: string | null
+          last_reply_from: string | null
         }
       }
       system_status: {

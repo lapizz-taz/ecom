@@ -17,6 +17,7 @@ import { PhoneProvider } from '@/features/voicedrive/phone-context'
 import { PhoneWidget } from '@/features/voicedrive/phone-widget'
 import { useAuth } from '@/features/auth/auth-context'
 import { AccountRestricted, ReadOnlyBanner } from '@/features/billing/account-restricted'
+import { SupportViewBanner } from '@/features/support/support-view-banner'
 import { CommandPalette } from '@/features/shell/command-palette'
 import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
 import { type ShellAction, SidebarNav } from '@/features/shell/sidebar'
@@ -288,7 +289,9 @@ export default function AdminLayout() {
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="no-print sticky top-0 z-30 flex h-14 items-center gap-1 border-b bg-background/90 px-2 backdrop-blur sm:gap-1.5 sm:px-4">
+        {access.support_session && <SupportViewBanner access={access} />}
+        <header className={cn('no-print sticky z-30 flex h-14 items-center gap-1 border-b bg-background/90 px-2 backdrop-blur sm:gap-1.5 sm:px-4',
+          access.support_session ? 'top-10' : 'top-0')}>
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu /></Button>
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setDialog('search')} aria-label="Quick search (Ctrl K)">
             <Search /> <span className="hidden sm:inline">Search</span>

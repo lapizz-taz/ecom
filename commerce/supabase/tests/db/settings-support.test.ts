@@ -142,7 +142,8 @@ describe('support tickets', () => {
 
       await asUser(db, agent)
       const msgs = await value<any[]>(db, `select jsonb_agg(to_jsonb(m) order by created_at) from public.support_ticket_messages m where ticket_id = $1`, [t.id])
-      expect(msgs[0]).toMatchObject({ is_support: true, body: 'Planned for next month' })
+      // Support is the platform team now (support-center.test.ts); the business's own admin answers as the business.
+      expect(msgs[0]).toMatchObject({ is_support: false, body: 'Planned for next month' })
       await db.query(`select public.support_ticket_reply($1, 'Still need it for COD orders')`, [t.id])
       expect(await value<Record<string, any>>(db, `select to_jsonb(t) from public.support_tickets t where id = $1`, [t.id])).toMatchObject({ status: 'OPEN', replies: 2, resolved_at: null })
       await db.query(`select public.support_ticket_update($1, '{"status":"CLOSED"}')`, [t.id])

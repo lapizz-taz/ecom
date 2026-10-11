@@ -11,7 +11,7 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: (count, error) => {
         const message = (error as { message?: string })?.message ?? ''
-        if (/PERMISSION_DENIED|permission denied|NOT_FOUND|JWT|FEATURE_OFF|LIMIT_REACHED|ACCOUNT_RESTRICTED/i.test(message)) return false
+        if (/PERMISSION_DENIED|permission denied|NOT_FOUND|JWT|FEATURE_OFF|LIMIT_REACHED|ACCOUNT_RESTRICTED|SUPPORT_READ_ONLY/i.test(message)) return false
         return count < 2
       },
     },

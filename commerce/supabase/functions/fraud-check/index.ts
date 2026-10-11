@@ -60,7 +60,7 @@ Deno.serve(
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const body = await readJson<Record<string, unknown>>(req)
     const input = parse(schema, { action: 'check', ...body })
-    const staff = await requireStaff(req, PERMISSION[input.action])
+    const staff = await requireStaff(req, PERMISSION[input.action], { supportView: input.action === 'courier_history_status' })
     const admin = staff.admin
     const settings = await getSettings<FraudSettings>(admin, 'fraud')
 

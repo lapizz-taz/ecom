@@ -477,6 +477,8 @@ export interface MyAccess {
   idle_logout_minutes?: number
   /** The PBX rings this staff member's extension when they press Call. */
   pbx_click_to_call?: boolean
+  /** Set when a platform support employee is viewing this business (read-only, time-limited). */
+  support_session?: { id: string; mode: 'VIEW' | 'ASSIST'; reason: string; started_at: string; expires_at: string; ticket: { id: string; number: number } | null } | null
 }
 
 export interface CodReceivableItem {

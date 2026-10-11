@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight, Bell, LogOut, Menu, Search, ShieldAlert } from 'lucide-react'
+import { ArrowLeftRight, Eye, LogOut, Menu, Search, ShieldAlert } from 'lucide-react'
 import { useEffect, useLayoutEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 import { EmptyState, LoadingState } from '@/components/common/states'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -13,10 +12,12 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
 import { PLATFORM_NAV } from '@/features/platform/nav'
+import { NotificationsBell } from '@/features/platform/notifications-bell'
 import { PlatformProvider, usePlatform } from '@/features/platform/platform-context'
 import { initials, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { platformSearch } from '@/services/platform'
+import { endSupportSession } from '@/services/support-center'
 
 /** The Super Admin panel is always dark. */
 function useDarkPanel() {
@@ -108,7 +109,7 @@ function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (op
 }
 
 function Panel() {
-  const { me, loading, error, can } = usePlatform()
+  const { me, loading, error, can, refresh } = usePlatform()
   const { signOut, isStaff } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -167,12 +168,7 @@ function Panel() {
             <kbd className="ml-auto hidden rounded border px-1.5 text-[10px] sm:inline">Ctrl K</kbd>
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <Button variant="ghost" size="icon" asChild aria-label="Approvals">
-              <Link to="/super-admin/security?tab=approvals" className="relative">
-                <Bell />
-                {me.pending_approvals > 0 && <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px]">{me.pending_approvals}</Badge>}
-              </Link>
-            </Button>
+            <NotificationsBell />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-2">
@@ -192,6 +188,14 @@ function Panel() {
             </DropdownMenu>
           </div>
         </header>
+        {me.support_session && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs sm:px-5">
+            <Eye className="size-4 text-amber-500" />
+            <span>You have a read-only customer view of <b>#{me.support_session.merchant.number} {me.support_session.merchant.name}</b> until {new Date(me.support_session.expires_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.</span>
+            <Button size="sm" variant="outline" className="ml-auto h-7" onClick={() => window.location.assign('/admin')}>Open it</Button>
+            <Button size="sm" variant="ghost" className="h-7" onClick={() => void endSupportSession().then(() => refresh())}>End</Button>
+          </div>
+        )}
         <main key={location.pathname} className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
           {allowed ? <Outlet /> : <EmptyState icon={<ShieldAlert />} title="Your role does not include this section" description="Ask a Super Admin if you need it." />}
         </main>

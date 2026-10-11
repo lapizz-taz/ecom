@@ -130,15 +130,25 @@ export interface StaffContext {
   permissions: string[]
 }
 
-/** Requires a signed-in, active staff member with the given permission. */
-export async function requireStaff(req: Request, permission: string): Promise<StaffContext> {
+/**
+ * Requires a signed-in, active staff member with the given permission.
+ *
+ * A platform employee in a customer-view support session is refused unless the
+ * caller marks the action as a pure read (`supportView`): edge functions act
+ * with the service role, so row-level security cannot keep a viewer from
+ * placing calls, importing data or spending the merchant's credits here.
+ */
+export async function requireStaff(req: Request, permission: string, options: { supportView?: boolean } = {}): Promise<StaffContext> {
   const user = await optionalUser(req)
   if (!user) throw new HttpError(401, 'Please sign in', 'UNAUTHENTICATED')
   const client = userClient(req)
   const { data, error } = await client.rpc('get_my_access')
   if (error) throw fromDbError(error)
-  const access = data as { role: string; permissions: string[]; merchant_id: string | null } | null
+  const access = data as { role: string; permissions: string[]; merchant_id: string | null; support_session?: { id: string } | null } | null
   if (!access?.merchant_id) throw new HttpError(403, 'Staff access required', 'PERMISSION_DENIED')
+  if (access.support_session && !(options.supportView && permission.endsWith('.view'))) {
+    throw new HttpError(403, 'You are viewing this business as support: nothing can be changed or sent from here', 'SUPPORT_READ_ONLY')
+  }
   if (access.role !== 'OWNER' && !access.permissions.includes(permission)) {
     throw new HttpError(403, `${permission} is required`, 'PERMISSION_DENIED')
   }

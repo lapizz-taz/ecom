@@ -17,6 +17,7 @@ import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { type AuditRow, listAuditLogs } from '@/services/audit'
+import { SupportAccessCard } from '@/features/support/support-access-card'
 
 const PAGE_SIZE = 50
 const ENTITY_TYPES = [
@@ -76,6 +77,7 @@ export default function AuditLogsPage() {
           : 'Every sensitive action and settings change, with who did it and what changed. Entries cannot be edited or deleted.'}
         actions={<Button size="sm" variant="outline" onClick={() => update({ view: deletions ? '' : 'deletions', page: '1' })}>{deletions ? 'Show everything' : 'Deletions only'}</Button>}
       />
+      {!deletions && <SupportAccessCard />}
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput value={state.action} onChange={(action) => update({ action })} placeholder="Action, e.g. order. or settings" />
         <Select value={state.entity || 'all'} onValueChange={(v) => update({ entity: v === 'all' ? '' : v })}>

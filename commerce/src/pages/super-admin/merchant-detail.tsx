@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MerchantBillingTab, MerchantFeaturesTab } from '@/features/platform/billing/merchant-tabs'
 import { MERCHANT_STATUS } from '@/features/platform/nav'
 import { MerchantCreditsTab } from '@/features/platform/services/merchant-credits-tab'
+import { MerchantSupportTab } from '@/features/platform/support/merchant-support-tab'
 import { usePlatform } from '@/features/platform/platform-context'
 import { StatusChangeDialog } from '@/features/platform/status-change-dialog'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -31,6 +32,7 @@ const merchantTabs: Array<{ key: string; label: string; module: string; render: 
   { key: 'billing', label: 'Plan & billing', module: 'subscriptions', render: (m) => <MerchantBillingTab detail={m} /> },
   { key: 'features', label: 'Features', module: 'features', render: (m) => <MerchantFeaturesTab detail={m} /> },
   { key: 'credits', label: 'Credits & usage', module: 'credits', render: (m) => <MerchantCreditsTab detail={m} /> },
+  { key: 'support', label: 'Support', module: 'support', render: (m) => <MerchantSupportTab detail={m} /> },
 ]
 
 function Row({ label, children }: { label: string; children: ReactNode }) {

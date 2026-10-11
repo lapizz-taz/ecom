@@ -18,6 +18,9 @@ export interface PlatformMe {
   modules: PlatformModule[]
   merchant_staff: boolean
   pending_approvals: number
+  unread_notifications: number
+  /** The employee's open customer-view session, if any. */
+  support_session: import('@/services/support-center').SupportSession | null
 }
 
 export interface MerchantRef { id: string; number: number; name: string }
