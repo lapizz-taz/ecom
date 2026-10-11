@@ -67,7 +67,7 @@ export default function StartPage() {
   })
 
   if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
-  if (session && access) return <Navigate to="/admin" replace />
+  if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
   const errors = businessErrors(business)
   const stepsLabels = ['Plan', 'Business', session ? 'Confirm' : 'Account']

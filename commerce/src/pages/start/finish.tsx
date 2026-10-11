@@ -54,7 +54,7 @@ export default function StartFinishPage() {
   }, [options.data, business])
 
   if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
-  if (access) return <Navigate to="/admin" replace />
+  if (access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
   if (!session) {
     return (
       <AuthShell>

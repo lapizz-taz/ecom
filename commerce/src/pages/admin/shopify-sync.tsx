@@ -196,10 +196,11 @@ function StatusCard({ o, store, health }: { o: SyncOverview; store: string; heal
 }
 
 function QueueCard({ o, onView, onRun, running, canRun }: { o: SyncOverview; onView: () => void; onRun: () => void; running: boolean; canRun: boolean }) {
+  // Neutral tiles; colour only marks the state (and failures that need a look).
   const box = (label: string, value: number, tone: string, icon: React.ReactNode) => (
-    <div className={cn('rounded-lg border px-3 py-2.5', tone)}>
-      <p className="flex items-center gap-1.5 text-xs">{icon}{label}</p>
-      <p className="text-2xl font-semibold tabular-nums">{formatNumber(value)}</p>
+    <div className={cn('rounded-xl border bg-background px-3.5 py-3', label === 'Failed' && value > 0 && 'border-red-300 dark:border-red-500/40')}>
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className={cn('size-1.5 rounded-full', tone)} />{icon}{label}</p>
+      <p className={cn('mt-1 text-2xl font-semibold tracking-[-0.02em] tabular-nums', label === 'Failed' && value > 0 && 'text-red-600')}>{formatNumber(value)}</p>
     </div>
   )
   return (
@@ -212,10 +213,10 @@ function QueueCard({ o, onView, onRun, running, canRun }: { o: SyncOverview; onV
         </div>
       </CardHeader>
       <CardContent className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {box('Pending', o.jobs.pending, 'border-amber-500/40 bg-amber-500/10', <Clock className="size-3.5" />)}
-        {box('Processing', o.jobs.processing, 'border-sky-500/40 bg-sky-500/10', <RefreshCw className="size-3.5" />)}
-        {box('Failed', o.jobs.failed, 'border-red-500/40 bg-red-500/10', <AlertTriangle className="size-3.5" />)}
-        {box('Completed', o.jobs.completed, 'border-emerald-500/40 bg-emerald-500/10', <CircleCheck className="size-3.5" />)}
+        {box('Pending', o.jobs.pending, 'bg-amber-500', <Clock className="size-3.5" />)}
+        {box('Processing', o.jobs.processing, 'bg-sky-500', <RefreshCw className="size-3.5" />)}
+        {box('Failed', o.jobs.failed, 'bg-red-500', <AlertTriangle className="size-3.5" />)}
+        {box('Completed', o.jobs.completed, 'bg-emerald-500', <CircleCheck className="size-3.5" />)}
       </CardContent>
     </Card>
   )

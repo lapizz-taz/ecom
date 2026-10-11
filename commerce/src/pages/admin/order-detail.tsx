@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MessageCircle, MoreHorizontal, Package, PackageMinus,
+  ArrowLeft, ArrowRight, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MessageCircle, MoreHorizontal, Package, PackageMinus,
   PackageX, Pencil, Phone, PhoneCall, Printer, RefreshCw, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from '@/lib/toast'
 import { Can } from '@/components/common/permission-gate'
+import { ActivityTimeline } from '@/components/common/activity-timeline'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Money } from '@/components/common/money'
 import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
@@ -504,20 +505,20 @@ export default function OrderDetailPage() {
           <NotesCard orderId={o.id} notes={notes} onAdded={refresh} canAdd={can('orders.update')} phone={o.customer_phone} />
 
           <Card>
-            <CardHeader><CardTitle className="text-sm">Timeline</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">Activity</CardTitle></CardHeader>
             <CardContent>
-              <ol className="space-y-3 border-l pl-4">
-                {history.map((h) => (
-                  <li key={h.id} className="relative text-sm">
-                    <span className={cn('absolute top-1.5 -left-[21px] size-2 rounded-full', h.to_status ? 'bg-foreground' : 'bg-muted-foreground/50')} />
-                    <p className="font-medium">
-                      {h.to_status ? <>{h.from_status ? `${ORDER_STATUS[h.from_status as OrderStatus].label} → ` : ''}{ORDER_STATUS[h.to_status as OrderStatus].label}</> : EVENT_LABEL[h.event] ?? titleCase(h.event)}
-                    </p>
-                    {h.message && <p className="text-muted-foreground">{h.message}</p>}
-                    <p className="text-xs text-muted-foreground">{formatDateTime(h.created_at)} · {h.actor_name ?? 'System'}</p>
-                  </li>
-                ))}
-              </ol>
+              <ActivityTimeline searchable items={history.map((h) => {
+                const to = h.to_status as OrderStatus | null
+                const label = to ? `${h.from_status ? `moved it from ${ORDER_STATUS[h.from_status as OrderStatus].label} to` : 'set it to'} ${ORDER_STATUS[to].label}` : (EVENT_LABEL[h.event] ?? titleCase(h.event)).toLowerCase()
+                const danger = to === 'CANCELLED' || to === 'RETURNED' || to === 'LOST' || to === 'FAILED_DELIVERY'
+                return {
+                  id: h.id, actor: h.actor_name, at: h.created_at, text: `${label} ${h.message ?? ''}`,
+                  action: to ? <>{h.from_status ? <>moved it from <b className="font-medium text-foreground">{ORDER_STATUS[h.from_status as OrderStatus].label}</b> to </> : 'set it to '}<b className="font-medium text-foreground">{ORDER_STATUS[to].label}</b></> : label,
+                  icon: to ? <ArrowRight /> : undefined,
+                  tone: danger ? 'danger' as const : to === 'DELIVERED' ? 'success' as const : 'default' as const,
+                  body: h.message || undefined,
+                }
+              })} />
             </CardContent>
           </Card>
         </div>

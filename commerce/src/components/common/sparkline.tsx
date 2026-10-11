@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils'
  */
 export function Sparkline({ values, className, tone = 'brand' }: { values: number[]; className?: string; tone?: 'brand' | 'positive' | 'negative' | 'muted' }) {
   const id = useId()
-  if (values.length < 2) return null
+  // Nothing to show yet (a new store): no line rather than a flat one.
+  if (values.length < 2 || values.every((v) => !v)) return null
   const w = 100
   const h = 32
   const min = Math.min(...values)
