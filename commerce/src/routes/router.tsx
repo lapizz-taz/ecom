@@ -12,6 +12,13 @@ const admin = (path: string, load: Loader, permission?: string): RouteObject => 
   ...page(load),
 })
 
+// Super Admin pages name their module; the layout and the database both check it.
+const platform = (path: string, module: string, load: Loader): RouteObject => ({
+  path,
+  handle: { module },
+  ...page(load),
+})
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -36,6 +43,36 @@ export const router = createBrowserRouter([
       { path: 'contact', ...page(() => import('@/pages/storefront/contact')) },
       { path: 'policies', ...page(() => import('@/pages/storefront/policies')) },
       { path: 'policies/:policy', ...page(() => import('@/pages/storefront/policies')) },
+      { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
+    ],
+  },
+  {
+    path: '/super-admin',
+    ...page(() => import('@/layouts/super-admin-layout')),
+    errorElement: <RouteError />,
+    children: [
+      { index: true, handle: { module: 'overview' }, ...page(() => import('@/pages/super-admin/overview')) },
+      platform('merchants', 'merchants', () => import('@/pages/super-admin/merchants')),
+      platform('merchants/new', 'merchants', () => import('@/pages/super-admin/merchant-new')),
+      platform('merchants/:id', 'merchants', () => import('@/pages/super-admin/merchant-detail')),
+      platform('employees', 'employees', () => import('@/pages/super-admin/employees')),
+      platform('subscriptions', 'subscriptions', () => import('@/pages/super-admin/not-built')),
+      platform('credits', 'credits', () => import('@/pages/super-admin/not-built')),
+      platform('sms', 'sms', () => import('@/pages/super-admin/not-built')),
+      platform('bd-courier', 'bd_courier', () => import('@/pages/super-admin/not-built')),
+      platform('integrations', 'integrations', () => import('@/pages/super-admin/not-built')),
+      platform('features', 'features', () => import('@/pages/super-admin/not-built')),
+      platform('support', 'support', () => import('@/pages/super-admin/not-built')),
+      platform('pbx', 'pbx', () => import('@/pages/super-admin/not-built')),
+      platform('usage', 'usage', () => import('@/pages/super-admin/not-built')),
+      platform('automation', 'automation', () => import('@/pages/super-admin/not-built')),
+      platform('health', 'health', () => import('@/pages/super-admin/not-built')),
+      platform('incidents', 'incidents', () => import('@/pages/super-admin/not-built')),
+      platform('notifications', 'notifications', () => import('@/pages/super-admin/not-built')),
+      platform('audit', 'audit', () => import('@/pages/super-admin/audit')),
+      platform('security', 'security', () => import('@/pages/super-admin/security')),
+      platform('data', 'data', () => import('@/pages/super-admin/not-built')),
+      platform('settings', 'settings', () => import('@/pages/super-admin/not-built')),
       { path: '*', ...page(() => import('@/pages/storefront/not-found')) },
     ],
   },

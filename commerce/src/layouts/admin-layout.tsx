@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, Sun, UserCog,
+  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, ShieldCheck, Sun,
+  UserCog,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
@@ -185,6 +186,16 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [dialog, setDialog] = useState<ShellAction | null>(null)
+  const platformMember = useQuery({
+    queryKey: ['is-platform-staff', session?.user.id],
+    enabled: Boolean(session),
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('is_platform_staff')
+      if (error) throw error
+      return data === true
+    },
+  })
   const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')))
   const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')))
   const theme = useAdminThemePreference()
@@ -201,8 +212,10 @@ export default function AdminLayout() {
     document.title = `Admin · ${config?.store.name ?? 'Store'}`
   }, [config?.store.name])
 
-  if (loading || accessLoading) return <LoadingState label="Loading your workspace…" className="min-h-dvh" />
+  if (loading || accessLoading || (!access && platformMember.isLoading)) return <LoadingState label="Loading your workspace…" className="min-h-dvh" />
   if (!session) return <Navigate to={`/admin/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  // Platform team members without a business of their own work in the Super Admin panel.
+  if (!access && platformMember.data) return <Navigate to="/super-admin" replace />
   if (!access) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
@@ -321,6 +334,7 @@ export default function AdminLayout() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link to="/admin/account"><UserCog /> My account</Link></DropdownMenuItem>
+                {platformMember.data && <DropdownMenuItem asChild><Link to="/super-admin"><ShieldCheck /> Super Admin</Link></DropdownMenuItem>}
                 <DropdownMenuItem asChild><a href="/" target="_blank" rel="noreferrer"><BadgePercent /> View store</a></DropdownMenuItem>
                 {can('inventory.view') && <DropdownMenuItem asChild><Link to="/admin/inventory?view=alerts"><Boxes /> Low stock</Link></DropdownMenuItem>}
                 <DropdownMenuSeparator />

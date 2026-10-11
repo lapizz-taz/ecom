@@ -45,7 +45,8 @@ describe('tenancy: structure', () => {
       const exempt = await value<number>(db, `select count(*)::int from public.tenancy_exempt_functions e
         where exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = e.name)`)
       expect(exempt).toBe(await value(db, `select count(*)::int from public.tenancy_exempt_functions`))
-      expect(exempt).toBeLessThan(40)
+      // Outside the Super Admin functions (which check platform permissions themselves) the list stays short.
+      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(40)
     }))
 
   it('turns existing data into Merchant #1', () =>
@@ -184,7 +185,7 @@ describe('tenancy: isolation', () => {
       await asSystem(db, null)
       const id = randomUUID()
       await db.query(`insert into auth.users (id, email) values ($1, $2)`, [id, `ops-${id.slice(0, 6)}@platform.example`])
-      await db.query(`insert into public.platform_staff (user_id, email) values ($1, 'ops@platform.example')`, [id])
+      await db.query(`insert into public.platform_staff (user_id, email, role_id) values ($1, 'ops@platform.example', (select id from public.platform_roles where code = 'SUPPORT_AGENT'))`, [id])
       await asUser(db, id, 'ops@platform.example', null)
       expect(await value(db, `select public.current_merchant_id()`)).toBeNull()
       await db.query(`select set_config('app.merchant_id', $1, true)`, [m2])
@@ -268,7 +269,7 @@ describe('tenancy: platform support sessions', () => {
     await asSystem(db, null)
     const id = randomUUID()
     await db.query(`insert into auth.users (id, email) values ($1, $2)`, [id, `support-${id.slice(0, 6)}@platform.example`])
-    await db.query(`insert into public.platform_staff (user_id, email) values ($1, $2)`, [id, `support-${id.slice(0, 6)}@platform.example`])
+    await db.query(`insert into public.platform_staff (user_id, email, role_id) values ($1, $2, (select id from public.platform_roles where code = 'SUPPORT_AGENT'))`, [id, `support-${id.slice(0, 6)}@platform.example`])
     return id
   }
 
