@@ -3,7 +3,10 @@ import { ArrowRight, Menu, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Wordmark } from '@/components/brand/logo'
-import { AppWindow, CourierBooking, EditorMock, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from '@/features/marketing/mockups'
+import { DashboardDemo } from '@/features/site/dashboard-demo'
+import { CourierBooking, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from '@/features/site/mockups'
+import { ThemeEditorDemo } from '@/features/site/theme-editor-demo'
+import { TourVideo } from '@/features/site/tour-video'
 import { cn } from '@/lib/utils'
 import { signupOptions } from '@/services/onboarding'
 
@@ -73,14 +76,26 @@ export default function MarketingHome() {
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/start" className="rounded-full bg-[#f7f8f8] px-5 py-2.5 text-sm font-medium text-[#08090a] hover:bg-white">Start for free</Link>
-              <a href="#pricing" className="rounded-full border border-white/10 px-5 py-2.5 text-sm text-[#d0d6e0] hover:bg-white/[0.04]">See pricing</a>
+              <a href="#tour" className="rounded-full border border-white/10 px-5 py-2.5 text-sm text-[#d0d6e0] hover:bg-white/[0.04]">Watch the tour</a>
             </div>
           </div>
           <div className="relative mx-auto max-w-6xl px-5 pb-24 [perspective:2000px]">
-            <Reveal className="origin-top [transform:rotateX(14deg)] max-sm:[transform:none]">
-              <AppWindow />
+            {/* A working demo: it lies back until the visitor reaches for it. */}
+            <Reveal className="origin-top transition-transform duration-700 [transform:rotateX(14deg)] hover:[transform:none] focus-within:[transform:none] max-sm:[transform:none]">
+              <DashboardDemo />
             </Reveal>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#08090a] to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#08090a] to-transparent" />
+          </div>
+        </section>
+
+        {/* Product tour */}
+        <section id="tour" className="scroll-mt-20 border-t border-white/[0.06]">
+          <div className="mx-auto max-w-6xl px-5 py-20 sm:py-24">
+            <Reveal className="flex flex-wrap items-end justify-between gap-4">
+              <h2 className="text-[28px] leading-tight font-medium tracking-[-0.03em] sm:text-[40px]">See it in 30 seconds</h2>
+              <p className="max-w-sm text-[15px] text-[#8a8f98]">From the first order to a delivered parcel: sync, fraud checks, courier booking and returns.</p>
+            </Reveal>
+            <Reveal className="mt-10"><TourVideo /></Reveal>
           </div>
         </section>
 
@@ -120,7 +135,7 @@ export default function MarketingHome() {
           subs={['3.1 Courier success rate', '3.2 Advance payments', '3.3 Block list']}><FraudCheck /></Feature>
         <Feature id="store" n="4.0" tag="Store" title={<>Your store,<br />your domain</>}
           text="Launch a fast storefront with a visual theme editor, connect your own domain with HTTPS, or keep selling on Shopify and WooCommerce with two-way sync."
-          subs={['4.1 Theme editor', '4.2 Custom domains', '4.3 Shopify and WooCommerce', '4.4 Website and External API']}><EditorMock /></Feature>
+          subs={['4.1 Theme editor', '4.2 Custom domains', '4.3 Shopify and WooCommerce', '4.4 Website and External API']}><ThemeEditorDemo /></Feature>
         <Feature id="insights" n="5.0" tag="Insights" title={<>Understand profit<br />at scale</>}
           text="Delivered, returned and paid, next to ad spend and courier costs. Know which products and campaigns actually make money."
           subs={['5.1 Profit and loss', '5.2 Ads attribution', '5.3 Inventory insights']}><InsightsMock /></Feature>
