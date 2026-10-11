@@ -24,7 +24,8 @@ export function OnlineStoreChoice() {
   const address = useStoreAddress()
   const { data: config } = useStoreConfig()
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState<boolean | null>(null)
+  // "No, I sell elsewhere" (Shopify, WooCommerce, social) is the default answer.
+  const [open, setOpen] = useState<boolean | null>(false)
   const [slug, setSlug] = useState('')
   const [edited, setEdited] = useState(false)
   const show = can('settings.manage') && address.data && !address.data.asked

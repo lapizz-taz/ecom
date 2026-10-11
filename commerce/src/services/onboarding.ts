@@ -98,6 +98,18 @@ export async function signUpOwner(email: string, password: string, business: Sig
   return data
 }
 
+/**
+ * After sign-up: sign in once the e-mail has been confirmed, wherever the link
+ * was opened (another tab, the phone, or an address the link fell back to).
+ * True when signed in; false while the address is still unconfirmed.
+ */
+export async function signInOnceConfirmed(email: string, password: string): Promise<boolean> {
+  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+  if (!error) return true
+  if (/not confirmed/i.test(error.message)) return false
+  throw error
+}
+
 export const BUSINESS_TYPES = ['Fashion & clothing', 'Cosmetics & beauty', 'Electronics & gadgets', 'Home & living', 'Food & grocery', 'Handicrafts', 'Kids & toys', 'Health', 'Other']
 export const SELLS_ON: Array<{ value: string; label: string }> = [
   { value: 'FACEBOOK', label: 'Facebook page' },

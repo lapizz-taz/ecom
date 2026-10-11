@@ -15,7 +15,7 @@ import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
 import { normalizePhone } from '@/lib/phone'
 import {
-  clearSignupDraft, readSignupDraft, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
+  clearSignupDraft, readSignupDraft, signInOnceConfirmed, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
 } from '@/services/onboarding'
 
 const EMPTY: SignupBusiness = {
@@ -69,6 +69,24 @@ export default function StartPage() {
     },
   })
 
+  // While waiting for the confirmation, check now and then (and whenever this
+  // tab comes back into view) whether the link was opened somewhere else.
+  useEffect(() => {
+    if (!sentTo || session) return
+    let stopped = false
+    let tries = 0
+    const check = async () => {
+      if (stopped || document.visibilityState !== 'visible' || ++tries > 80) return
+      try {
+        if (await signInOnceConfirmed(sentTo, password)) { stopped = true; navigate('/start/finish', { replace: true }) }
+      } catch { /* rate limit or network: try again on the next tick */ }
+    }
+    const timer = window.setInterval(check, 15_000)
+    document.addEventListener('visibilitychange', check)
+    window.addEventListener('focus', check)
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check) }
+  }, [sentTo, session, password, navigate])
+
   if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
   if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
@@ -82,7 +100,7 @@ export default function StartPage() {
         <span className="flex size-12 items-center justify-center rounded-2xl border bg-card shadow-xs"><MailCheck className="size-6 text-brand" /></span>
         <h1 className="mt-5 text-[26px] leading-tight font-semibold tracking-[-0.025em]">Check your inbox</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          We sent a confirmation link to <span className="font-medium text-foreground">{sentTo}</span>. Open it on this device and {business.business_name.trim() || 'your business'} opens straight away, with everything you entered.
+          We sent a confirmation link to <span className="font-medium text-foreground">{sentTo}</span>. Click it once, on any device, then come back to this tab: {business.business_name.trim() || 'your business'} opens here by itself, with everything you entered.
         </p>
         <div className="mt-6"><ResendConfirmation email={sentTo} returnPath="/start/finish" compact /></div>
         <div className="mt-4 rounded-2xl border bg-muted/40 p-4 text-[13px] text-muted-foreground">
