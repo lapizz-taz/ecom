@@ -41,7 +41,7 @@ export function ActivityTimeline({ items, searchable, empty = 'Nothing has happe
   return (
     <div className={cn('space-y-3', className)}>
       {searchable && items.length > 5 && (
-        <label className="flex h-9 items-center gap-2 rounded-[10px] border bg-card px-3 text-sm shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15">
+        <label className="flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15">
           <Search className="size-4 text-muted-foreground" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search activity by person or event" className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground" />
         </label>

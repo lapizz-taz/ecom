@@ -17,7 +17,7 @@ export function PageHeader({ title, description, actions, className, back, icon 
   icon?: ReactNode
 }) {
   return (
-    <div className={cn('mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between', className)}>
+    <div className={cn('mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between', className)}>
       <div className="min-w-0">
         {back && (
           <Link to={back.to} className="mb-2 inline-flex items-center gap-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground">
@@ -25,10 +25,10 @@ export function PageHeader({ title, description, actions, className, back, icon 
           </Link>
         )}
         <div className="flex min-w-0 items-center gap-3">
-          {icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border bg-card text-muted-foreground shadow-xs [&_svg]:size-[18px]">{icon}</span>}
-          <h1 className="truncate text-[22px] leading-tight font-semibold tracking-[-0.02em] sm:text-2xl">{title}</h1>
+          {icon && <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-card text-muted-foreground [&_svg]:size-4">{icon}</span>}
+          <h1 className="truncate text-xl leading-tight font-semibold tracking-[-0.02em] sm:text-[22px]">{title}</h1>
         </div>
-        {description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p>}
+        {description && <p className="mt-1 max-w-2xl text-[13px] text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 sm:max-w-[65%] sm:shrink-0 sm:justify-end">{actions}</div>}
     </div>

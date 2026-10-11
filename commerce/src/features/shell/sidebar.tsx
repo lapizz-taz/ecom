@@ -72,9 +72,9 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
     : []
 
   const itemClass = (active: boolean) => cn(
-    'group/item flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-left text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-[17px] [&_svg]:shrink-0 [&_svg]:text-sidebar-muted',
+    'group/item flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-left text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground [&_svg]:size-[17px] [&_svg]:shrink-0 [&_svg]:text-sidebar-muted',
     collapsed && 'justify-center px-0 py-2',
-    active && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border hover:bg-sidebar-active [&_svg]:text-brand',
+    active && 'bg-sidebar-active font-medium text-sidebar-foreground ring-1 ring-sidebar-border hover:bg-sidebar-active [&_svg]:text-brand',
   )
 
   return (
@@ -88,7 +88,7 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
             onKeyDown={(e) => { if (e.key === 'Escape') setFilter('') }}
             placeholder="Find in menu"
             aria-label="Find a page in the menu"
-            className="h-8 w-full rounded-[10px] border border-sidebar-border bg-sidebar-active/60 pr-7 pl-8 text-[13px] text-sidebar-foreground placeholder:text-sidebar-muted focus:border-ring focus:bg-sidebar-active focus:outline-none"
+            className="h-8 w-full rounded-lg border border-sidebar-border bg-sidebar-active/60 pr-7 pl-8 text-[13px] text-sidebar-foreground placeholder:text-sidebar-muted focus:border-ring focus:bg-sidebar-active focus:outline-none"
           />
           {filter && (
             <button type="button" className="absolute top-1/2 right-2 -translate-y-1/2 text-sidebar-muted hover:text-sidebar-foreground" onClick={() => setFilter('')} aria-label="Clear">

@@ -176,7 +176,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
         <DomainChip d={d} />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border bg-card shadow-xs">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <div className={cn('relative bg-gradient-to-r pt-5', TONE[tone].band)}>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgb(255_255_255/.25),transparent_60%)]" />
           <Globe tone={tone} />
@@ -235,7 +235,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
 
       <div className="space-y-2">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">Domain target and type</h3>
-        <div className="divide-y rounded-2xl border bg-card shadow-xs">
+        <div className="divide-y rounded-xl border bg-card">
           <div className="flex items-center gap-3 px-4 py-3">
             <Store className="size-4 text-muted-foreground" />
             <div className="min-w-0 flex-1"><p className="text-sm font-medium">Target</p><p className="text-xs text-muted-foreground">Online Store</p></div>

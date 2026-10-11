@@ -13,7 +13,7 @@ export function BulkBar({ count, onClear, children, noun = 'selected' }: { count
   return (
     <div className="no-print pointer-events-none fixed inset-x-0 bottom-4 z-[45] flex justify-center px-3 lg:pl-[var(--shell-menu,0px)]">
       <div role="toolbar" aria-label="Actions for the selected rows"
-        className="pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-2xl border bg-popover/95 p-1.5 pl-3.5 text-popover-foreground shadow-xl backdrop-blur-md duration-200 animate-in fade-in-0 slide-in-from-bottom-3 [&_[data-slot=button]]:rounded-[10px] [&_[data-slot=select-trigger]]:rounded-[10px]">
+        className="pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto rounded-2xl border bg-popover/95 p-1.5 pl-3.5 text-popover-foreground shadow-xl backdrop-blur-md duration-200 animate-in fade-in-0 slide-in-from-bottom-3 [&_[data-slot=button]]:rounded-lg [&_[data-slot=select-trigger]]:rounded-lg">
         <span className="text-sm font-medium whitespace-nowrap tabular-nums">{formatNumber(count)} {noun}</span>
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />
         {children}

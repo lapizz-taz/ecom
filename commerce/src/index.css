@@ -508,3 +508,9 @@
   .draw-check { animation: none; stroke-dashoffset: 0; }
   .pop-in { animation: none; }
 }
+
+/* Horizontal tab rows that scroll on narrow screens without a visible bar. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}

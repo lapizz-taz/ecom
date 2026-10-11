@@ -401,10 +401,10 @@ export function OrdersPage({ view }: { view: View }) {
       )}
 
       {tabs.length > 0 && (
-        <div className={cn('flex gap-1', view === 'approved' ? 'flex-wrap rounded-2xl border bg-card p-1' : '-mx-1 overflow-x-auto px-1 pb-1')} role="tablist">
+        <div className={cn('flex gap-1', view === 'approved' ? 'no-scrollbar overflow-x-auto rounded-xl border bg-card p-1' : '-mx-1 overflow-x-auto px-1 pb-1')} role="tablist">
           {tabs.map((t) => (
             <button key={t.key} type="button" role="tab" aria-selected={state.tab === t.key} onClick={() => selectTab(t.key)} title={t.hint ?? undefined}
-              className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-colors',
+              className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors',
                 state.tab === t.key ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-card hover:text-foreground')}>
               {t.label}
               {counts.data && <span className={cn('text-xs tabular-nums', state.tab === t.key ? 'opacity-70' : 'opacity-80')}>{t.count}</span>}
@@ -838,15 +838,15 @@ function DuplicateBadge({ o }: { o: OrderListItem }) {
   const num = o.duplicate_of_number ?? ''
   if (o.duplicate_of_status && DUPLICATE_DONE.includes(o.duplicate_of_status)) {
     return (
-      <Badge variant="outline" className="gap-0.5 text-[10px]" title={`This customer ordered before: ${num} is ${st?.toLowerCase()}. Most likely a new order.`}>
-        <Copy className="size-3" /> Ordered before {num} · {st}
+      <Badge variant="outline" className="max-w-44 gap-0.5 text-[10px]" title={`This customer ordered before: ${num} is ${st?.toLowerCase()}. Most likely a new order.`}>
+        <Copy className="size-3 shrink-0" /> <span className="truncate">Ordered before {num} · {st}</span>
       </Badge>
     )
   }
   return (
-    <Badge variant="warning" className="gap-0.5 text-[10px]"
+    <Badge variant="warning" className="max-w-44 gap-0.5 text-[10px]"
       title={approved ? `This customer already has ${num} in Approved Orders${st ? ` (${st.toLowerCase()})` : ''}` : `Possible duplicate of ${num || 'another order'}${st ? ` (${st.toLowerCase()})` : ''}`}>
-      <Copy className="size-3" /> {approved ? `Already approved ${num}` : `Maybe duplicate${num ? ` ${num}` : ''}`}{st ? ` · ${st}` : ''}
+      <Copy className="size-3 shrink-0" /> <span className="truncate">{approved ? `Already approved ${num}` : `Maybe duplicate${num ? ` ${num}` : ''}`}{st ? ` · ${st}` : ''}</span>
     </Badge>
   )
 }

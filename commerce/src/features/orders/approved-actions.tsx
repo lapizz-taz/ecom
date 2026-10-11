@@ -206,7 +206,7 @@ export function DuplicatesPanel({ result, onSelect, onClose, onRecheck }: {
   const newer = groups.flatMap((g) => g.orders.slice(1).map((o) => o.id))
   const stageNames = result.stages.map((s) => STAGE[s as OrderStage]?.label ?? s).join(', ')
   return (
-    <section className="enter space-y-3 rounded-2xl border bg-card p-3 sm:p-4" aria-label="Duplicate orders">
+    <section className="enter space-y-3 rounded-xl border bg-card p-3 sm:p-4" aria-label="Duplicate orders">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-2 font-semibold"><Copy className="size-4" /> Duplicate orders</h2>

@@ -108,7 +108,7 @@ export default function ScanPage() {
             {MODES.map((m) => (
               <button key={m.value} type="button" role="radio" aria-checked={mode === m.value}
                 onClick={() => { setMode(m.value); sessionStorage.setItem('scan_mode', m.value); setLast(null) }}
-                className={cn('flex items-center gap-3 rounded-2xl border bg-card p-3.5 text-left transition-colors hover:border-foreground/30',
+                className={cn('flex items-center gap-3 rounded-xl border bg-card p-3.5 text-left transition-colors hover:border-foreground/30',
                   mode === m.value && 'border-transparent bg-sidebar text-sidebar-foreground hover:border-transparent')}>
                 <span className={cn('flex size-9 items-center justify-center rounded-xl bg-muted', mode === m.value && 'bg-brand text-brand-foreground')}>
                   <m.icon className="size-4" />
@@ -152,7 +152,7 @@ export default function ScanPage() {
             {camera && <CameraScanner onScan={(c) => { if (!scan.isPending) scan.mutate(c) }} onClose={() => { setCamera(false); inputRef.current?.focus() }} />}
 
             {last && style ? (
-              <div className={cn('flex gap-4 rounded-2xl border-2 p-5', style.cls)} role="status" aria-live="assertive">
+              <div className={cn('flex gap-4 rounded-xl border-2 p-5', style.cls)} role="status" aria-live="assertive">
                 <style.icon className="mt-0.5 size-8 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold tracking-wider uppercase opacity-70">{style.title} · {ACTION_LABEL[mode]}</p>
@@ -170,7 +170,7 @@ export default function ScanPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3 rounded-2xl border border-dashed p-5 text-sm text-muted-foreground">
+              <div className="flex items-center gap-3 rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
                 <current.icon className="size-5" /> Ready — scan a label to mark it <strong className="text-foreground">{current.label.toLowerCase()}</strong>.
               </div>
             )}

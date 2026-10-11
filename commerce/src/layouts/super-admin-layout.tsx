@@ -50,7 +50,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           end={item.to === '/super-admin'}
           onClick={onNavigate}
           className={({ isActive }) => cn(
-            'group flex items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] hover:bg-sidebar-accent hover:text-sidebar-foreground',
+            'group flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] hover:bg-sidebar-accent hover:text-sidebar-foreground',
             isActive && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border hover:bg-sidebar-active',
           )}
         >
@@ -188,7 +188,7 @@ function Panel() {
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMenu(true)} aria-label="Menu"><Menu /></Button>
           <LogoMark className="size-7 lg:hidden" />
           <button type="button" onClick={() => setSearch(true)}
-            className="flex h-9 w-full max-w-md items-center gap-2 rounded-[10px] border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/15 hover:bg-muted">
+            className="flex h-9 w-full max-w-md items-center gap-2 rounded-lg border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/15 hover:bg-muted">
             <Search className="size-4" /> <span className="truncate">Search merchants, orders, stores…</span>
             <kbd className="ml-auto hidden rounded-md border bg-card px-1.5 py-px text-[10px] sm:inline">Ctrl K</kbd>
           </button>
@@ -232,7 +232,7 @@ function Panel() {
             <Button size="sm" variant="ghost" className="h-7" onClick={() => void endSupportSession().then(() => refresh())}>End</Button>
           </div>
         )}
-        <main key={location.pathname} className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-6 sm:py-6">
+        <main key={location.pathname} className="mx-auto w-full max-w-[1280px] flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-8 sm:py-7">
           {allowed ? <Outlet /> : <EmptyState icon={<ShieldAlert />} title="Your role does not include this section" description="Ask a Super Admin if you need it." />}
         </main>
         </div>

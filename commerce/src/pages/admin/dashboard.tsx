@@ -218,7 +218,7 @@ export default function DashboardPage() {
                 { n: actions.low_stock, label: 'Low stock', to: '/admin/inventory?view=alerts', icon: <AlertTriangle className="size-4 text-amber-600" /> },
                 { n: actions.production_overdue, label: 'Production overdue', to: '/admin/production', icon: <Factory className="size-4 text-red-600" /> },
               ].filter((a) => a.n > 0).map((a) => (
-                <Link key={a.label} to={a.to} className="group flex items-center gap-3 rounded-2xl border bg-card px-3.5 py-3 text-sm shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm">
+                <Link key={a.label} to={a.to} className="group flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 text-sm shadow-xs transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted">{a.icon}</span>
                   <span className="min-w-0 flex-1"><span className="block truncate font-medium">{a.label}</span><span className="block text-xs text-muted-foreground">{formatNumber(a.n)} waiting</span></span>
                   <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -228,7 +228,7 @@ export default function DashboardPage() {
           )}
 
           {editing && (
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed px-4 py-2.5 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-4 py-2.5 text-sm text-muted-foreground">
               Drag cards to reorder (or use the arrows), hide what you don't need. Saved for you on this device.
               <Button size="sm" variant="ghost" className="ml-auto" onClick={reset}><RotateCcw /> Reset</Button>
             </div>
@@ -299,7 +299,7 @@ function StatusTiles() {
   ]
   if (!can('orders.view')) return null
   return (
-    <section aria-label="Orders by status" className="rounded-2xl border bg-card shadow-xs">
+    <section aria-label="Orders by status" className="rounded-xl border bg-card">
       <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-1">
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Order pipeline</h2>
         <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">All orders <ArrowRight className="size-3" /></Link>
@@ -486,7 +486,7 @@ function WelcomeChecklist({ onClose }: { onClose: () => void }) {
     { icon: <UserPlus />, title: 'Invite your team', text: 'Give each person only what they need.', to: '/admin/users', permission: 'users.manage' },
   ].filter((x) => can(x.permission))
   return (
-    <section aria-label="Get started" className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-xs">
+    <section aria-label="Get started" className="relative overflow-hidden rounded-xl border bg-card p-5 shadow-xs">
       <div aria-hidden className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-[radial-gradient(closest-side,var(--brand-soft),transparent)]" />
       <button type="button" onClick={onClose} className="absolute top-3 right-3 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Hide"><X className="size-4" /></button>
       <p className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]"><Sparkles className="size-4 text-brand" /> Your business is open</p>

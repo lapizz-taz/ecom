@@ -27,13 +27,14 @@ export function StatCard({ label, value, hint, icon, to, tone, className, trend,
   const good = delta == null ? null : invertDelta ? delta <= 0 : delta >= 0
   const body = (
     <Card className={cn('h-full gap-2 px-4 py-4 transition-[border-color,box-shadow]', to && 'hover:border-foreground/15 hover:shadow-sm', className)}>
-      <div className="flex items-center justify-between gap-2">
+      {/* min-h keeps the value on the same line in cards with and without an icon */}
+      <div className="flex min-h-7 items-center justify-between gap-2">
         <span className="truncate text-[13px] text-muted-foreground">{label}</span>
-        {icon && <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-3.5">{icon}</span>}
+        {icon && <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-3.5">{icon}</span>}
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
         <div className="min-w-0">
-          <div className={cn('truncate text-xl leading-none font-semibold tracking-[-0.02em] tabular-nums sm:text-2xl',
+          <div className={cn('truncate text-xl leading-none font-semibold tracking-[-0.02em] tabular-nums sm:text-[22px]',
             tone === 'positive' && 'text-emerald-600', tone === 'negative' && 'text-red-600', tone === 'warning' && 'text-amber-600')}>
             {value}
           </div>
