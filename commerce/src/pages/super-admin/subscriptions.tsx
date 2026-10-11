@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { GatewaysCard } from '@/features/platform/billing/gateways-card'
 import { InvoiceTable, PendingPayments } from '@/features/platform/billing/invoices'
 import { AddonDialog, PlanDialog } from '@/features/platform/billing/plan-dialog'
 import { usePlatform } from '@/features/platform/platform-context'
@@ -233,6 +234,7 @@ function Rules() {
           {editRules && <Button size="sm" disabled={!rules} onClick={() => setConfirm('rules')}>Save access rules</Button>}
         </CardContent>
       </Card>
+      {can('subscriptions') && <GatewaysCard />}
       {confirm && (
         <ConfirmDialog open onOpenChange={(o) => !o && setConfirm(null)} reason reasonRequired
           title={confirm === 'rules' ? 'Change what account states allow?' : 'Save billing settings?'}

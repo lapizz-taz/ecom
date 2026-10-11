@@ -2,29 +2,31 @@ import type { Condition, SmsEvent } from '@/features/sms/sms-text'
 import { invokeFunction } from '@/lib/functions'
 import { fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
+import type { UsageState } from '@/services/credits'
 import type { Enums } from '@/types/database'
 
 export type SmsProviderCode = 'smsnetbd' | 'bulksmsbd' | 'sslwireless' | 'http'
 export type MessageStatus = Enums<'notification_status'>
 export type DeliveryStatus = 'PENDING' | 'DELIVERED' | 'FAILED' | 'UNKNOWN'
 
+/** The business's SMS settings. The provider account is the platform's and is never shown here. */
 export interface SmsSettings {
   enabled: boolean
+  /** The platform's SMS service is working. */
   connected: boolean
-  provider: SmsProviderCode | null
-  hint: string | null
+  provided_by_platform: true
   sender_id: string
+  /** What one SMS credit costs the business, for Finance. */
   cost_per_sms: number
   currency_text: string
-  balance: number | null
-  balance_checked_at: string | null
-  connected_at: string | null
 }
 
 export interface SmsOverview {
   settings: SmsSettings
+  usage: UsageState
+  policy: { refund_undelivered: boolean; hold_hours: number }
   totals: {
-    sent: number; failed: number; waiting: number; skipped: number; parts: number; cost: number
+    sent: number; failed: number; waiting: number; waiting_credits: number; skipped: number; parts: number; cost: number
     delivered: number; undelivered: number; awaiting_report: number; orders: number
   }
   by_event: Array<{ event: string; sent: number; failed: number; parts: number; cost: number }>
@@ -37,21 +39,14 @@ export async function smsOverview(from: string, to: string) {
   return fromJson<SmsOverview>(data)
 }
 
-export async function updateSmsSettings(values: { enabled?: boolean; senderId?: string; costPerSms?: number; currencyText?: string }) {
+export async function updateSmsSettings(values: { enabled?: boolean; costPerSms?: number; currencyText?: string }) {
   const { error } = await supabase.rpc('sms_update_settings', {
-    p_enabled: values.enabled, p_sender_id: values.senderId, p_cost_per_sms: values.costPerSms, p_currency_text: values.currencyText,
+    p_enabled: values.enabled, p_cost_per_sms: values.costPerSms, p_currency_text: values.currencyText,
   })
   if (error) throw error
 }
 
-// --- Provider (sms edge function: credentials go to Vault) -------------------
-export function connectSms(provider: SmsProviderCode, credentials: Record<string, string>, senderId: string) {
-  return invokeFunction<{ ok: boolean; message: string; balance: number | null }>('sms', {
-    action: 'connect', provider, credentials, sender_id: senderId || undefined,
-  })
-}
-export const disconnectSms = () => invokeFunction<{ ok: boolean }>('sms', { action: 'disconnect' })
-export const refreshSmsBalance = () => invokeFunction<{ balance: number | null; supported: boolean }>('sms', { action: 'balance' })
+// --- Test message (through the platform SMS service; charged like any message)
 export const sendTestSms = (to: string, message: string) =>
   invokeFunction<{ ok: boolean; parts: number; message_id: string | null }>('sms', { action: 'send_test', to, message })
 

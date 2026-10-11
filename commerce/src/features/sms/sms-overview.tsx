@@ -1,8 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { MessageSquare, Plug, RefreshCw, Send, Unplug } from 'lucide-react'
+import { MessageSquare, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
-import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
 import { Field } from '@/components/common/field'
@@ -18,16 +18,16 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useUrlState } from '@/hooks/use-url-state'
 import { rangeFor } from '@/lib/dates'
-import { formatDateTime, formatMoney, formatNumber, formatPercent } from '@/lib/format'
-import { disconnectSms, refreshSmsBalance, type SmsOverview, smsOverview, updateSmsSettings } from '@/services/sms'
-import { ConnectSmsDialog, providerName, SMS_PROVIDERS, TestSmsDialog } from './sms-provider'
+import { formatMoney, formatNumber, formatPercent } from '@/lib/format'
+import { type SmsOverview, smsOverview, updateSmsSettings } from '@/services/sms'
+import { TestSmsDialog } from './sms-provider'
 import { eventLabel } from './sms-text'
 
 export function useSmsOverview(from: string, to: string) {
   return useQuery({ queryKey: ['sms-overview', from, to], placeholderData: keepPreviousData, queryFn: () => smsOverview(from, to) })
 }
 
-/** Provider connection, the on/off switch and what SMS cost in a period. */
+/** The SMS service, the on/off switch and what SMS cost in a period. */
 export function SmsOverviewTab() {
   const initial = rangeFor('30d')
   const [state, update] = useUrlState({ from: initial.from, to: initial.to })
@@ -35,7 +35,6 @@ export function SmsOverviewTab() {
   if (overview.isLoading) return <LoadingState />
   if (!overview.data) return <EmptyState title="Could not load SMS" description={(overview.error as Error | null)?.message} />
   const { totals, settings } = overview.data
-  const reports = SMS_PROVIDERS.find((p) => p.code === settings.provider)?.reports ?? false
   const reported = totals.delivered + totals.undelivered
 
   const columns: Column<SmsOverview['by_event'][number]>[] = [
@@ -55,9 +54,9 @@ export function SmsOverviewTab() {
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Messages sent" value={formatNumber(totals.sent)} hint={`${formatNumber(totals.orders)} ${totals.orders === 1 ? 'order' : 'orders'} · ${formatNumber(totals.parts)} SMS parts`} />
-        <StatCard label="SMS cost" value={formatMoney(totals.cost)} hint={totals.sent ? `${formatMoney(totals.cost / totals.sent)} per message · in Finance` : 'Recorded in Finance → Expenses'} />
-        <StatCard label="Delivered" value={reports && reported ? formatPercent((100 * totals.delivered) / reported) : '—'}
-          hint={reports ? `${formatNumber(totals.delivered)} delivered · ${formatNumber(totals.awaiting_report)} waiting for a report` : 'This provider does not report delivery'} />
+        <StatCard label="SMS cost" value={formatMoney(totals.cost)} hint={totals.sent ? `${formatMoney(totals.cost / totals.sent)} per message · free SMS count as 0 · in Finance` : 'Recorded in Finance → Expenses'} />
+        <StatCard label="Delivered" value={reported ? formatPercent((100 * totals.delivered) / reported) : '—'}
+          hint={reported || totals.awaiting_report ? `${formatNumber(totals.delivered)} delivered · ${formatNumber(totals.awaiting_report)} waiting for a report` : 'Shown when delivery reports come back'} />
         <StatCard label="Failed" value={formatNumber(totals.failed)} tone={totals.failed ? 'negative' : 'default'}
           to={totals.failed ? '/admin/sms?tab=messages&status=FAILED' : undefined}
           hint={`${formatNumber(totals.waiting)} waiting · ${formatNumber(totals.skipped)} not sent`} />
@@ -69,13 +68,15 @@ export function SmsOverviewTab() {
   )
 }
 
+/** The platform's SMS service for this business: on/off, sender, free SMS and credits. */
 function ConnectionCard({ overview }: { overview: SmsOverview }) {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const { data: config } = useStoreConfig()
   const s = overview.settings
+  const u = overview.usage
   const manage = can('sms.manage')
-  const [dialog, setDialog] = useState<'connect' | 'test' | 'disconnect' | null>(null)
+  const [dialog, setDialog] = useState<'test' | null>(null)
   const [cost, setCost] = useState(String(s.cost_per_sms))
   const [currency, setCurrency] = useState(s.currency_text)
   useEffect(() => { setCost(String(s.cost_per_sms)); setCurrency(s.currency_text) }, [s.cost_per_sms, s.currency_text])
@@ -83,7 +84,6 @@ function ConnectionCard({ overview }: { overview: SmsOverview }) {
     void queryClient.invalidateQueries({ queryKey: ['sms-overview'] })
     void queryClient.invalidateQueries({ queryKey: ['sms-messages'] })
   }
-
   const toggle = useMutation({
     mutationFn: (enabled: boolean) => updateSmsSettings({ enabled }),
     onSuccess: (_, enabled) => { toast.success(enabled ? 'Automatic SMS is on' : 'Automatic SMS is off'); refresh() },
@@ -92,58 +92,35 @@ function ConnectionCard({ overview }: { overview: SmsOverview }) {
     mutationFn: () => updateSmsSettings({ costPerSms: Number(cost), currencyText: currency }),
     onSuccess: () => { toast.success('Saved'); refresh() },
   })
-  const balance = useMutation({
-    mutationFn: refreshSmsBalance,
-    onSuccess: (r) => { if (!r.supported) toast.info('This provider has no balance check'); refresh() },
-  })
   const costDirty = Number(cost) !== Number(s.cost_per_sms) || currency !== s.currency_text
-
-  if (!s.connected) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col gap-3 py-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-medium">Connect an SMS provider</p>
-            <p className="text-sm text-muted-foreground">Alpha SMS, BulkSMSBD, SSL Wireless or any provider with an HTTP API. Then choose which messages go out automatically.</p>
-          </div>
-          {manage && <Button onClick={() => setDialog('connect')}><Plug /> Connect</Button>}
-        </CardContent>
-        {dialog === 'connect' && <ConnectSmsDialog current={s} onClose={() => setDialog(null)} onDone={refresh} />}
-      </Card>
-    )
-  }
+  const available = u.feature_enabled && s.connected
+  const unit = u.unit === 'MESSAGE' ? 'message' : 'SMS part'
 
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <CardTitle className="flex items-center gap-2 text-base">
-            {providerName(s.provider)} <Badge variant="success">Connected</Badge>
+            SMS service {available ? <Badge variant="success">Available</Badge> : <Badge variant="neutral">{u.feature_enabled ? 'Temporarily unavailable' : 'Not in your plan'}</Badge>}
           </CardTitle>
-          <CardDescription>
-            Key {s.hint ?? '••••'}{s.sender_id ? ` · sender ${s.sender_id}` : ''}{s.connected_at ? ` · since ${formatDateTime(s.connected_at)}` : ''}
-          </CardDescription>
+          <CardDescription>Provided by the platform — no provider account needed.{s.sender_id ? ` Messages come from ${s.sender_id}.` : ''}</CardDescription>
         </div>
         <label className="flex items-center gap-2 text-sm font-medium">
-          <Switch checked={s.enabled} disabled={!manage || toggle.isPending} onCheckedChange={(v) => toggle.mutate(v)} aria-label="Automatic SMS" />
+          <Switch checked={s.enabled} disabled={!manage || toggle.isPending || (!available && !s.enabled)} onCheckedChange={(v) => toggle.mutate(v)} aria-label="Automatic SMS" />
           Automatic SMS {s.enabled ? 'on' : 'off'}
         </label>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <p className="text-xs text-muted-foreground">Balance</p>
-            <p className="flex items-center gap-1 text-lg font-semibold tabular-nums">
-              {s.balance === null || s.balance === undefined ? '—' : formatNumber(s.balance, 2)}
-              {manage && (
-                <Button size="icon-sm" variant="ghost" aria-label="Check balance" disabled={balance.isPending} onClick={() => balance.mutate()}>
-                  {balance.isPending ? <Spinner /> : <RefreshCw />}
-                </Button>
-              )}
+            <p className="text-xs text-muted-foreground">SMS credits</p>
+            <p className="text-lg font-semibold tabular-nums">{u.unmetered ? 'Included' : formatNumber(u.credits_available)}</p>
+            <p className="text-xs text-muted-foreground">
+              {u.unmetered ? 'Your plan includes SMS' : u.free.eligible ? `${formatNumber(u.free.remaining)} free ${unit}s left${u.free.period === 'MONTH' ? ' this month' : ''}` : `${u.credits_per_unit} credit per ${unit}`}
             </p>
-            <p className="text-xs text-muted-foreground">{s.balance_checked_at ? `Checked ${formatDateTime(s.balance_checked_at)}` : 'Not checked'}</p>
+            {!u.unmetered && <Link to="/admin/settings/billing#credits" className="text-xs font-medium underline">Buy SMS credits</Link>}
           </div>
-          <Field label="Cost per SMS" htmlFor="sms-cost" hint="What one SMS part costs you. Used until the provider reports the charge.">
+          <Field label="Cost per SMS credit" htmlFor="sms-cost" hint="What one credit costs you; free SMS count as zero. Used in Finance.">
             <Input id="sms-cost" type="number" min={0} max={20} step="0.01" value={cost} disabled={!manage} onChange={(e) => setCost(e.target.value)} />
           </Field>
           <Field label="Money written as" htmlFor="sms-currency" hint={currency.includes('৳') ? '৳ makes every message Unicode: 70 characters per SMS.' : 'e.g. "Tk 1,250" — keeps messages at 160 characters per SMS.'}>
@@ -155,17 +132,19 @@ function ConnectionCard({ overview }: { overview: SmsOverview }) {
             {costDirty && (
               <Button onClick={() => saveCosts.mutate()} disabled={saveCosts.isPending || !(Number(cost) >= 0)}>{saveCosts.isPending && <Spinner />} Save</Button>
             )}
-            <Button variant="outline" onClick={() => setDialog('test')}><Send /> Send test</Button>
-            <Button variant="outline" onClick={() => setDialog('connect')}><Plug /> Change</Button>
-            <Button variant="ghost" onClick={() => setDialog('disconnect')}><Unplug /> Disconnect</Button>
+            {available && <Button variant="outline" onClick={() => setDialog('test')}><Send /> Send test</Button>}
           </div>
         )}
+        {overview.totals.waiting_credits > 0 && (
+          <p className="text-sm text-amber-600 md:col-span-2">
+            {formatNumber(overview.totals.waiting_credits)} message{overview.totals.waiting_credits === 1 ? ' is' : 's are'} waiting for SMS credits. They go out as soon as you have credits (within {overview.policy.hold_hours} hours, then they fail without charge).
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground md:col-span-2">
+          Charged when the provider accepts a message. Messages the provider rejects are refunded{overview.policy.refund_undelivered ? ', and so are messages reported undelivered' : ''}. Retries are never charged twice.
+        </p>
       </CardContent>
-      {dialog === 'connect' && <ConnectSmsDialog current={s} onClose={() => setDialog(null)} onDone={refresh} />}
       {dialog === 'test' && <TestSmsDialog storeName={config?.store.name ?? ''} onClose={() => setDialog(null)} onSent={refresh} />}
-      <ConfirmDialog open={dialog === 'disconnect'} onOpenChange={(o) => !o && setDialog(null)} title="Disconnect the SMS provider?" destructive
-        confirmLabel="Disconnect" description="Automatic SMS turns off and the saved keys are erased. Messages already waiting will fail until you connect again."
-        onConfirm={async () => { await disconnectSms(); toast.success('Disconnected'); refresh() }} />
     </Card>
   )
 }

@@ -1,20 +1,21 @@
 // Staff fraud tools:
-//   check                      — run a fresh check for an order or phone (fraud.review),
-//                                optionally applying the decision
-//   connect_courier_history    — test the courier-history API key with a real
-//                                lookup, then save it in Vault (settings.manage)
-//   test_courier_history       — look up a number with the saved key
-//   disconnect_courier_history — remove the key and stop using the service
-// Keys are only ever handled here, with the service role; they never go back
-// to a browser.
+//   check                   — run a fresh check for an order or phone (fraud.review),
+//                             optionally applying the decision
+//   lookup_courier_history  — look up one number on BD Courier (fraud.review); counted
+//                             against the merchant's allowance like any lookup
+//   courier_history_status  — whether the platform's BD Courier connection is available
+//                             and this business uses it (settings.view)
+// BD Courier runs on the platform's account (Super Admin → BD Courier Integration);
+// merchants never enter or see an API key.
 import { z } from 'zod'
 import { COURIER_HISTORY_SERVICES, CourierHistoryProvider, type CourierHistorySummary } from '../_shared/fraud/courier-history.ts'
 import {
-  COURIER_HISTORY_SECRET, courierHistoryConfig, type FraudSecrets, FraudDetectionService, type FraudSettings, loadFraudProviders,
+  courierHistoryConfig, databaseMeter, FraudDetectionService, type FraudSettings, loadFraudProviders, platformCourierHistorySecret,
 } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
 import { getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const schema = z.discriminatedUnion('action', [
   z.object({
@@ -23,34 +24,33 @@ const schema = z.discriminatedUnion('action', [
     phone: phoneSchema.optional(),
     apply: z.boolean().default(false),
   }).refine((v) => v.order_id || v.phone, 'order_id or phone is required'),
-  z.object({
-    action: z.literal('connect_courier_history'),
-    service: z.enum(['bdcourier', 'llcg']).default('bdcourier'),
-    api_key: z.string().trim().min(6, 'Enter the API key').max(200).regex(/^\S+$/, 'The API key has no spaces — copy it again'),
-    base_url: z.union([z.url({ protocol: /^https$/, error: 'Use an https:// address' }), z.literal('')]).optional(),
-    test_phone: phoneSchema,
-  }),
-  z.object({ action: z.literal('test_courier_history'), test_phone: phoneSchema }),
+  z.object({ action: z.literal('lookup_courier_history'), phone: phoneSchema }),
   z.object({ action: z.literal('courier_history_status') }),
-  z.object({ action: z.literal('disconnect_courier_history') }),
 ])
 
 const PERMISSION: Record<string, string> = {
   check: 'fraud.review',
-  connect_courier_history: 'settings.manage',
-  test_courier_history: 'settings.manage',
+  lookup_courier_history: 'fraud.review',
   courier_history_status: 'settings.view',
-  disconnect_courier_history: 'settings.manage',
 }
 
 const REVIEWABLE = ['PENDING', 'FRAUD_CHECK', 'FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'CONFIRMATION_REQUIRED']
 
-async function lookup(secret: FraudSecrets['courierHistory'], phone: string, settings: FraudSettings): Promise<CourierHistorySummary> {
-  const config = courierHistoryConfig(secret, Math.max(settings.courier_history?.timeout_ms ?? 0, 10_000))
-  if (!config) throw new HttpError(422, 'Connect the courier history service first', 'NOT_CONNECTED')
+/** One metered lookup through the platform's BD Courier account. */
+async function lookup(admin: SupabaseClient, phone: string, settings: FraudSettings): Promise<CourierHistorySummary> {
+  const config = courierHistoryConfig(await platformCourierHistorySecret(admin), Math.max(settings.courier_history?.timeout_ms ?? 0, 10_000))
+  if (!config) throw new HttpError(503, 'BD Courier checks are not available on the platform right now', 'NOT_CONNECTED')
+  const meter = databaseMeter(admin)
+  const gate = await meter.begin(phone)
+  if (!gate.allowed || !gate.usageId) {
+    throw new HttpError(gate.reason === 'FEATURE_OFF' ? 403 : 402, gate.message ?? 'This lookup is not allowed right now', gate.reason ?? 'NOT_ALLOWED')
+  }
   try {
-    return await new CourierHistoryProvider(config).lookup(phone)
+    const result = await new CourierHistoryProvider(config).lookup(phone)
+    await meter.finish(gate.usageId, true)
+    return result
   } catch (error) {
+    await meter.finish(gate.usageId, false, (error as Error).message).catch(() => undefined)
     throw new HttpError(422, `Could not check the number: ${(error as Error).message}`, 'LOOKUP_FAILED')
   }
 }
@@ -64,37 +64,18 @@ Deno.serve(
     const admin = staff.admin
     const settings = await getSettings<FraudSettings>(admin, 'fraud')
 
-    if (input.action === 'connect_courier_history') {
-      const secret = { service: input.service, api_key: input.api_key, ...(input.base_url ? { base_url: input.base_url } : {}) }
-      const result = await lookup(secret, input.test_phone, settings)
-      const hint = `${COURIER_HISTORY_SERVICES[input.service].label} ••••${input.api_key.slice(-4)}`
-      await rpc(admin, 'integration_secret_store', { p_key: COURIER_HISTORY_SECRET, p_value: secret, p_hint: hint, p_actor: staff.user.id })
-      const providers = await rpc<string[]>(admin, 'fraud_set_provider', { p_provider: 'courier_history', p_enabled: true })
-      return json(req, { ok: true, hint, providers, result })
-    }
-
     if (input.action === 'courier_history_status') {
-      // Which key the checks use: one saved here (Vault) or a function secret. Never the key itself.
-      const { data, error } = await admin.rpc('integration_secret_get', { p_key: COURIER_HISTORY_SECRET })
-      if (error) throw new HttpError(500, `Could not read the saved key: ${error.message}`, 'SECRET_READ_FAILED')
-      const config = courierHistoryConfig(data as FraudSecrets['courierHistory'])
+      const config = courierHistoryConfig(await platformCourierHistorySecret(admin))
       return json(req, {
-        source: !config ? null : (data as FraudSecrets['courierHistory'])?.api_key ? 'saved' : 'server_secret',
-        service: config?.service ?? null,
+        provided_by_platform: true,
+        connected: !!config,
+        service: config ? COURIER_HISTORY_SERVICES[config.service ?? 'bdcourier'].label : null,
         enabled: (settings.providers ?? []).includes('courier_history'),
       })
     }
 
-    if (input.action === 'test_courier_history') {
-      const { data, error } = await admin.rpc('integration_secret_get', { p_key: COURIER_HISTORY_SECRET })
-      if (error) throw new HttpError(500, `Could not read the saved key: ${error.message}`, 'SECRET_READ_FAILED')
-      return json(req, { ok: true, result: await lookup(data as FraudSecrets['courierHistory'], input.test_phone, settings) })
-    }
-
-    if (input.action === 'disconnect_courier_history') {
-      await rpc(admin, 'integration_secret_clear', { p_key: COURIER_HISTORY_SECRET, p_actor: staff.user.id })
-      const providers = await rpc<string[]>(admin, 'fraud_set_provider', { p_provider: 'courier_history', p_enabled: false })
-      return json(req, { ok: true, providers })
+    if (input.action === 'lookup_courier_history') {
+      return json(req, { ok: true, result: await lookup(admin, input.phone, settings) })
     }
 
     let phone = input.phone ?? ''

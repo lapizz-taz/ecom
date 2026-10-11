@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, CircleCheck, PlugZap, Pencil, Plus, Search, Trash2, Unplug } from 'lucide-react'
+import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
-import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { EmptyState, LoadingState, Spinner } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
 import { Badge } from '@/components/ui/badge'
@@ -17,12 +17,10 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { CourierHistoryTable } from '@/features/fraud/courier-history'
-import { useStoreConfig } from '@/hooks/use-store-config'
-import { formatDateTime } from '@/lib/format'
 import { ADVANCE_TYPE, FRAUD_DECISION } from '@/lib/status'
+import { myCredits } from '@/services/credits'
 import {
-  COURIER_HISTORY_SERVICES, connectCourierHistory, type CourierHistoryResult, type CourierHistoryService, courierHistoryStatus, deleteFraudRule, disconnectCourierHistory, type FraudRule, integrationStatus,
-  listFraudRules, saveFraudRule, testCourierHistory, toggleFraudRule,
+  type CourierHistoryResult, courierHistoryStatus, deleteFraudRule, type FraudRule, listFraudRules, lookupCourierHistory, saveFraudRule, toggleFraudRule,
 } from '@/services/settings'
 import type { Enums } from '@/types/database'
 import { ADVANCE_OPTIONS } from './payment-settings'
@@ -39,153 +37,64 @@ export function FraudSettings() {
   )
 }
 
-const COURIER_HISTORY = 'fraud.courier_history'
-
 /**
- * Courier-history lookup (BD Courier or LLCG: Pathao, Steadfast, RedX,
- * Paperfly…) behind the phone check. The API key is tested, then saved
- * encrypted on the server — or comes from a function secret.
+ * Courier-history lookup (BD Courier: Pathao, Steadfast, RedX, Paperfly…)
+ * behind the phone check. It runs on the platform's account: nothing to
+ * connect here, and each lookup counts against free checks, then credits.
  */
 function CourierHistorySettings() {
   const { can } = useAuth()
-  const { data: config } = useStoreConfig()
-  const queryClient = useQueryClient()
-  const status = useQuery({ queryKey: ['integration-status'], queryFn: integrationStatus })
   const live = useQuery({ queryKey: ['courier-history-status'], queryFn: courierHistoryStatus, enabled: can('settings.view') })
-  const info = status.data?.[COURIER_HISTORY]
-  const saved = !!info?.connected
-  const fromSecret = !saved && live.data?.source === 'server_secret'
-  const connected = saved || fromSecret
-  const serviceLabel = live.data?.service ? COURIER_HISTORY_SERVICES[live.data.service].label : null
-  const canManage = can('settings.manage')
-  const [connectOpen, setConnectOpen] = useState(false)
-  const [confirmOff, setConfirmOff] = useState(false)
+  const credits = useQuery({ queryKey: ['my-credits'], queryFn: myCredits })
   const [phone, setPhone] = useState('')
   const [result, setResult] = useState<CourierHistoryResult | null>(null)
-
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ['integration-status'] })
-    void queryClient.invalidateQueries({ queryKey: ['courier-history-status'] })
-    void queryClient.invalidateQueries({ queryKey: ['settings'] })
-  }
-  const test = useMutation({
+  const lookup = useMutation({
     meta: { silent: true },
-    mutationFn: () => testCourierHistory(phone.trim()),
-    onSuccess: (r) => setResult(r.result),
+    mutationFn: () => lookupCourierHistory(phone.trim()),
+    onSuccess: (r) => { setResult(r.result); void credits.refetch() },
     onError: () => setResult(null),
   })
-  const disconnect = useMutation({
-    mutationFn: disconnectCourierHistory,
-    onSuccess: () => { toast.success('Courier history check turned off'); setResult(null); refresh() },
-  })
-
+  const u = credits.data?.usage.bd_courier
+  const connected = !!live.data?.connected
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Courier history check</CardTitle>
         <CardDescription>
-          Looks up the customer's parcels on Pathao, Steadfast, RedX, Paperfly and other couriers (BD Courier or LLCG fraud checker) the moment they type their number at checkout.
+          Looks up the customer's parcels on Pathao, Steadfast, RedX, Paperfly and other couriers the moment they type their number at checkout.
           The delivery success check below uses it to decide cash on delivery or advance. Customers never see these numbers.
         </CardDescription>
-        {canManage && (
-          <CardAction>
-            <Button size="sm" variant={connected ? 'outline' : 'default'} onClick={() => setConnectOpen(true)}>
-              <PlugZap /> {saved ? 'Change key' : 'Connect'}
-            </Button>
-          </CardAction>
-        )}
       </CardHeader>
       <CardContent className="grid gap-4">
-        {status.isLoading ? <LoadingState /> : (
+        {live.isLoading ? <LoadingState /> : (
           <div className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
-            <span className={`size-2.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+            <span className={`size-2.5 rounded-full ${connected && u?.feature_enabled ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{connected ? `Connected${serviceLabel ? ` · ${serviceLabel}` : ''}` : 'Not connected'}</p>
+              <p className="text-sm font-medium">{connected ? `${live.data?.service ?? 'BD Courier'} · provided by the platform` : 'Not available right now'}</p>
               <p className="text-xs text-muted-foreground">
-                {saved
-                  ? <>API key {info?.hint} · {info?.connected_by_name ? `${info.connected_by_name}, ` : ''}{formatDateTime(info!.connected_at)}</>
-                  : fromSecret
-                    ? 'API key kept as a server secret (Edge Function secrets).'
-                    : 'Only your own store history is used until you connect an API key.'}
+                {!connected ? 'Checks use your own store history until it is back.'
+                  : u && !u.feature_enabled ? 'Not included in your plan — checks use your own store history.'
+                  : u?.unmetered ? 'Included in your plan.'
+                  : u ? `${u.free.eligible ? `${u.free.remaining} free checks left${u.free.period === 'MONTH' ? ' this month' : ''} · ` : ''}${u.credits_available} courier check credits${u.monthly_cap != null ? ` · ${u.month_used} of ${u.monthly_cap} used this month` : ''}` : ''}
                 {connected && live.data && !live.data.enabled && <span className="block text-amber-700">Turned off for checks — tick “Courier history” under Providers below.</span>}
               </p>
             </div>
-            {saved && canManage && (
-              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setConfirmOff(true)}><Unplug /> Disconnect</Button>
-            )}
+            {connected && u && !u.unmetered && u.feature_enabled && <Button size="sm" variant="outline" asChild><Link to="/admin/settings/billing#credits">Buy check credits</Link></Button>}
           </div>
         )}
-        {connected && canManage && (
-          <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) test.mutate() }}>
+        {connected && u?.feature_enabled && can('fraud.review') && (
+          <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) lookup.mutate() }}>
             <div className="flex gap-2">
               <Input aria-label="Mobile number to look up" inputMode="tel" placeholder="Look up a number, e.g. 01712345678" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <Button type="submit" variant="outline" disabled={!phone.trim() || test.isPending}>{test.isPending ? <Spinner /> : <Search />} Look up</Button>
+              <Button type="submit" variant="outline" disabled={!phone.trim() || lookup.isPending}>{lookup.isPending ? <Spinner /> : <Search />} Look up</Button>
             </div>
-            {test.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{test.error.message}</p>}
+            <p className="text-xs text-muted-foreground">Each lookup counts as one check (free checks first, then credits). Failed lookups are not counted.</p>
+            {lookup.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{lookup.error.message}</p>}
             {result && <CourierHistoryTable result={result} className="max-w-xl" />}
           </form>
         )}
       </CardContent>
-      <ConnectCourierHistoryDialog open={connectOpen} onOpenChange={setConnectOpen} defaultPhone={config?.store.phone ?? ''}
-        onConnected={(r) => { setResult(r); refresh() }} />
-      <ConfirmDialog open={confirmOff} onOpenChange={setConfirmOff} title="Disconnect the courier history check?" destructive
-        description="The key is deleted from the server. The checkout falls back to your own store history." confirmLabel="Disconnect"
-        onConfirm={() => disconnect.mutateAsync()} />
     </Card>
-  )
-}
-
-function ConnectCourierHistoryDialog({ open, onOpenChange, defaultPhone, onConnected }: {
-  open: boolean
-  onOpenChange: (o: boolean) => void
-  defaultPhone: string
-  onConnected: (r: CourierHistoryResult) => void
-}) {
-  const [service, setService] = useState<CourierHistoryService>('bdcourier')
-  const [apiKey, setApiKey] = useState('')
-  const [testPhone, setTestPhone] = useState('')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [advanced, setAdvanced] = useState(false)
-  useEffect(() => { if (open) setTestPhone((p) => p || defaultPhone) }, [open, defaultPhone])
-  const connect = useMutation({
-    meta: { silent: true },
-    mutationFn: () => connectCourierHistory({ service, api_key: apiKey.trim(), test_phone: testPhone.trim(), base_url: baseUrl.trim() || undefined }),
-    onSuccess: (r) => {
-      toast.success('Courier history check connected')
-      setApiKey('')
-      onConnected(r.result)
-      onOpenChange(false)
-    },
-  })
-  return (
-    <FormDialog open={open} onOpenChange={(o) => { if (!o) connect.reset(); onOpenChange(o) }} title="Connect courier history check"
-      description="We look up the test number with your key first, then store the key encrypted on the server. It is never shown again."
-      submitLabel="Test & connect" onSubmit={() => connect.mutate()} busy={connect.isPending} disabled={apiKey.trim().length < 6 || !testPhone.trim()}>
-      <Field label="Service" htmlFor="ch-service">
-        <Select value={service} onValueChange={(v) => { setService(v as CourierHistoryService); connect.reset() }}>
-          <SelectTrigger id="ch-service" className="w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="bdcourier">BD Courier (api.bdcourier.com)</SelectItem>
-            <SelectItem value="llcg">LLCG courier fraud checker</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
-      <Field label="API key" htmlFor="ch-key" required hint={COURIER_HISTORY_SERVICES[service].keyHint}>
-        <Input id="ch-key" type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-      </Field>
-      <Field label="Test with this number" htmlFor="ch-phone" required hint="Any Bangladeshi mobile number — e.g. a regular customer">
-        <Input id="ch-phone" inputMode="tel" placeholder="01XXXXXXXXX" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-      </Field>
-      {advanced ? (
-        <Field label="Service address" htmlFor="ch-url" hint="Leave empty for the standard service">
-          <Input id="ch-url" className="font-mono text-xs" placeholder={COURIER_HISTORY_SERVICES[service].url} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-        </Field>
-      ) : (
-        <button type="button" className="w-fit text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setAdvanced(true)}>Use a different service address</button>
-      )}
-      {connect.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{connect.error.message}</p>}
-      {connect.isSuccess && <p className="flex items-center gap-2 text-sm text-emerald-700"><CircleCheck className="size-4" /> Connected</p>}
-    </FormDialog>
   )
 }
 

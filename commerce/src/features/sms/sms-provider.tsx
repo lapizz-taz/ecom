@@ -7,7 +7,7 @@ import { FormDialog } from '@/components/common/form-dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { connectSms, sendTestSms, type SmsProviderCode, type SmsSettings } from '@/services/sms'
+import { sendTestSms, type SmsProviderCode } from '@/services/sms'
 import { smsParts } from './sms-text'
 
 interface CredentialField { key: string; label: string; secret?: boolean; placeholder?: string; hint?: string }
@@ -51,7 +51,13 @@ export const SMS_PROVIDERS: Array<{
 
 export const providerName = (code: string | null | undefined) => SMS_PROVIDERS.find((p) => p.code === code)?.name ?? code ?? '—'
 
-export function ConnectSmsDialog({ current, onClose, onDone }: { current: SmsSettings; onClose: () => void; onDone: () => void }) {
+/** Connects an SMS provider account (the platform's: Super Admin → SMS Management). */
+export function ConnectSmsDialog({ current, connect: connectFn, onClose, onDone }: {
+  current: { connected: boolean; provider: SmsProviderCode | null; sender_id?: string | null }
+  connect: (code: SmsProviderCode, credentials: Record<string, string>, senderId: string) => Promise<{ message: string }>
+  onClose: () => void
+  onDone: () => void
+}) {
   const [code, setCode] = useState<SmsProviderCode>(current.provider ?? 'smsnetbd')
   const [values, setValues] = useState<Record<string, string>>({})
   const [senderId, setSenderId] = useState(current.sender_id ?? '')
@@ -59,7 +65,7 @@ export function ConnectSmsDialog({ current, onClose, onDone }: { current: SmsSet
   const [advanced, setAdvanced] = useState(false)
   const provider = SMS_PROVIDERS.find((p) => p.code === code)!
   const connect = useMutation({
-    mutationFn: () => connectSms(code, { ...values, ...(code === 'http' ? { method } : {}) }, provider.sender === 'none' ? '' : senderId.trim()),
+    mutationFn: () => connectFn(code, { ...values, ...(code === 'http' ? { method } : {}) }, provider.sender === 'none' ? '' : senderId.trim()),
     onSuccess: (r) => { toast.success(r.message); onDone(); onClose() },
   })
   const missing = provider.required.some((k) => !values[k]?.trim()) || (provider.sender === 'required' && !senderId.trim())
@@ -112,18 +118,24 @@ export function ConnectSmsDialog({ current, onClose, onDone }: { current: SmsSet
   )
 }
 
-export function TestSmsDialog({ storeName, onClose, onSent }: { storeName: string; onClose: () => void; onSent: () => void }) {
+export function TestSmsDialog({ storeName, onClose, onSent, send = sendTestSms, description }: {
+  storeName: string
+  onClose: () => void
+  onSent: () => void
+  send?: (to: string, message: string) => Promise<unknown>
+  description?: string
+}) {
   const [to, setTo] = useState('')
   const [message, setMessage] = useState(`Test message from ${storeName || 'our store'}. SMS is working.`)
   const parts = smsParts(message)
-  const send = useMutation({
-    mutationFn: () => sendTestSms(to.trim(), message),
+  const sending = useMutation({
+    mutationFn: () => send(to.trim(), message),
     onSuccess: () => { toast.success('Test SMS sent'); onSent(); onClose() },
   })
   return (
-    <FormDialog open onOpenChange={(o) => !o && onClose()} title="Send a test SMS" submitLabel="Send" busy={send.isPending}
-      disabled={!/^(\+?88)?01[3-9]\d{8}$/.test(to.replace(/[\s-]/g, '')) || !message.trim()} onSubmit={() => send.mutate()}
-      description="Sent through the connected provider. It is logged and its cost is recorded like any other message.">
+    <FormDialog open onOpenChange={(o) => !o && onClose()} title="Send a test SMS" submitLabel="Send" busy={sending.isPending}
+      disabled={!/^(\+?88)?01[3-9]\d{8}$/.test(to.replace(/[\s-]/g, '')) || !message.trim()} onSubmit={() => sending.mutate()}
+      description={description ?? 'Sent through the platform SMS service. It is logged and charged like any other message (free allowance first, then credits).'}>
       <Field label="Mobile number" htmlFor="test-to">
         <Input id="test-to" inputMode="tel" value={to} onChange={(e) => setTo(e.target.value)} placeholder="01XXXXXXXXX" />
       </Field>

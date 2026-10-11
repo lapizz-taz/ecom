@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 import { integrationsOverview, type IntegrationsOverview } from '@/services/support'
 
 type State = 'connected' | 'error' | 'off'
-interface Item { key: string; name: string; group: string; icon: ReactNode; state: State; detail: string; to: string; manage?: string }
+interface Item { key: string; name: string; group: string; icon: ReactNode; state: State; detail: string; to: string; manage?: string; platform?: boolean }
 
 const STATE: Record<State, { label: string; variant: 'success' | 'danger' | 'neutral'; dot: string }> = {
   connected: { label: 'Connected', variant: 'success', dot: 'bg-emerald-500' },
@@ -21,7 +21,6 @@ const STATE: Record<State, { label: string; variant: 'success' | 'danger' | 'neu
   off: { label: 'Not connected', variant: 'neutral', dot: 'bg-zinc-300' },
 }
 const COURIERS = [['pathao', 'Pathao'], ['steadfast', 'Steadfast'], ['redx', 'RedX'], ['carrybee', 'Carrybee']] as const
-const SMS_NAMES: Record<string, string> = { smsnetbd: 'Alpha SMS', bulksmsbd: 'BulkSMSBD', sslwireless: 'SSL Wireless', http: 'Custom SMS gateway' }
 
 function items(o: IntegrationsOverview): Item[] {
   const out: Item[] = []
@@ -69,11 +68,12 @@ function items(o: IntegrationsOverview): Item[] {
       to: platform === 'meta' ? '/admin/marketing' : `/admin/marketing/${platform}`,
     })
   }
-  const smsKey = Object.keys(o.credentials).find((k) => k.startsWith('sms.'))
+  // SMS and the courier history check run on the platform's accounts: nothing to connect here.
   out.push({
-    key: 'sms', group: 'Messaging', icon: <MessageSquare />, name: smsKey ? SMS_NAMES[smsKey.slice(4)] ?? 'SMS gateway' : 'SMS gateway',
-    state: smsKey ? 'connected' : 'off', detail: smsKey ? `${o.credentials[smsKey].hint}${o.sms?.enabled === false ? ' · automations paused' : ''}` : 'Order and shipping SMS to customers',
-    to: '/admin/sms',
+    key: 'sms', group: 'Messaging', icon: <MessageSquare />, name: 'SMS (provided by the platform)',
+    state: o.sms?.connected ? 'connected' : 'off',
+    detail: o.sms?.connected ? `Order and shipping SMS${o.sms?.enabled === false ? ' · automatic SMS is off' : ''} · free SMS, then credits` : 'Not available right now',
+    to: '/admin/sms', platform: true,
   })
   out.push({
     key: 'pbx', group: 'Messaging', icon: <Phone />, name: `${o.pbx?.provider || 'VoiceDrive'} PBX`,
@@ -81,9 +81,10 @@ function items(o: IntegrationsOverview): Item[] {
     detail: o.pbx?.enabled ? `${o.pbx.mode === 'api' ? 'Click-to-call' : 'Phone links'} · ${formatNumber(o.pbx.calls_7d)} calls in 7 days` : 'Call log and click-to-call',
     to: '/admin/settings/pbx',
   })
-  const fraud = cred('fraud.courier_history')
-  out.push({ key: 'fraud', group: 'Fraud check', icon: <ShieldCheck />, name: 'Courier history check', state: fraud ? 'connected' : 'off',
-    detail: fraud ? fraud.hint : 'Parcel history of a phone number across couriers', to: '/admin/settings?tab=fraud' })
+  out.push({ key: 'fraud', group: 'Fraud check', icon: <ShieldCheck />, name: 'Courier history check (BD Courier, provided by the platform)',
+    state: o.bd_courier?.connected && o.bd_courier.enabled ? 'connected' : 'off',
+    detail: o.bd_courier?.connected ? (o.bd_courier.enabled ? 'Parcel history of a phone number across couriers · free checks, then credits' : 'Not included in your plan') : 'Not available right now',
+    to: '/admin/settings?tab=fraud', platform: true })
   return out
 }
 
@@ -116,7 +117,7 @@ export default function AppIntegrationsPage() {
                       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{i.detail}</p>
                     </div>
                     <Button size="sm" variant={i.state === 'off' ? 'outline' : 'ghost'} asChild className="shrink-0">
-                      <Link to={i.to}>{i.state === 'off' ? 'Connect' : 'Manage'} <ArrowRight /></Link>
+                      <Link to={i.to}>{i.platform ? 'Open' : i.state === 'off' ? 'Connect' : 'Manage'} <ArrowRight /></Link>
                     </Button>
                   </Card>
                 ))}

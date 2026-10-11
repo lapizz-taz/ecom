@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { bdMobile, CourierHistoryProvider, summarizeBdCourier, summarizeCourierHistory } from './fraud/courier-history.ts'
-import { courierHistoryConfig, FraudDetectionService, providersFromSettings } from './fraud/service.ts'
+import { courierHistoryConfig, FraudDetectionService, MeteredProvider, providersFromSettings, type UsageMeter } from './fraud/service.ts'
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -207,5 +207,40 @@ describe('courier-history check (BD Courier)', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('courier-history check through the platform meter', () => {
+  const meter = (allowed: boolean, reason?: string) => {
+    const finish = vi.fn<UsageMeter['finish']>().mockResolvedValue(undefined)
+    const m: UsageMeter = {
+      begin: vi.fn<UsageMeter['begin']>().mockResolvedValue({ allowed, usageId: allowed ? 'u1' : null, reason, message: reason ? 'Not enough courier credits' : undefined }),
+      finish,
+    }
+    return { m, finish }
+  }
+
+  it('skips the lookup (no call to BD Courier) when the policy refuses it, without calling the check a failure', async () => {
+    const fetchFn = vi.fn()
+    const { m, finish } = meter(false, 'NO_CREDITS')
+    const providers = providersFromSettings({ providers: ['internal', 'courier_history'] }, fetchFn, { courierHistory: { api_key: 'k', service: 'bdcourier' } }, m)
+    const payload = await new FraudDetectionService(providers).check({ phone: '01711000777' })
+    expect(fetchFn).not.toHaveBeenCalled()
+    expect(finish).not.toHaveBeenCalled()
+    expect(payload.status).toBe('SUCCESS')
+    expect(payload.provider_response.courier_history).toEqual({ skipped: 'NO_CREDITS', reason: 'Not enough courier credits' })
+  })
+
+  it('records a done lookup as done and a failed one as failed (so it is refunded)', async () => {
+    const ok = meter(true)
+    const working = new MeteredProvider(new CourierHistoryProvider({ apiKey: 'k', service: 'llcg' }, vi.fn().mockResolvedValue(jsonResponse(sample))), ok.m)
+    expect((await working.checkCustomer({ phone: '01711000777' })).ok).toBe(true)
+    expect(ok.finish).toHaveBeenCalledWith('u1', true, undefined)
+
+    const bad = meter(true)
+    const failing = new MeteredProvider(new CourierHistoryProvider({ apiKey: 'k', service: 'llcg' }, vi.fn().mockResolvedValue(jsonResponse({ error: 'x' }, 500))), bad.m)
+    const result = await failing.checkCustomer({ phone: '01711000777' })
+    expect(result.ok).toBe(false)
+    expect(bad.finish).toHaveBeenCalledWith('u1', false, result.error)
   })
 })

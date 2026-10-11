@@ -1,11 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { ErrorState, LoadingState } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { ACCESS_MODE, ENTITLEMENT, LIMIT_KEYS, LIMIT_LABEL, myPlan, type MyPlan, SUBSCRIPTION_STATUS } from '@/services/billing'
+import { payInvoice } from '@/services/credits'
+import { PayDialog, useMyCredits } from './credits-section'
 
 /** Why the account is limited, in the merchant's words. */
 export function accessExplanation(p: MyPlan): string | null {
@@ -28,6 +32,9 @@ export function usePlan() {
 /** Plan, usage, features and invoices — what the merchant's owner sees (and pays from). */
 export function PlanSummary({ compact }: { compact?: boolean }) {
   const plan = usePlan()
+  const credits = useMyCredits()
+  const [paying, setPaying] = useState<MyPlan['invoices'][number] | null>(null)
+  const canPayOnline = !!credits.data?.can_pay && (credits.data?.gateways.length ?? 0) > 0
   if (plan.error) return <ErrorState error={plan.error} onRetry={() => plan.refetch()} />
   if (!plan.data) return <LoadingState />
   const p = plan.data
@@ -41,7 +48,7 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
           <p className="font-medium"><Badge variant={ACCESS_MODE[p.access_mode].variant}>{ACCESS_MODE[p.access_mode].label}</Badge> {reason}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {p.access_mode === 'READ_ONLY' ? 'You can view and export everything, but not change it. Your store keeps taking orders.' : 'The admin and new orders are paused until this is resolved.'}
-            {open.length > 0 ? ' To pay, contact the platform team (bank or bKash); the payment is applied once it is confirmed.' : ' Contact the platform team to change this.'}
+            {open.length > 0 ? (canPayOnline ? ' Pay the open invoice below to restore full access.' : ' To pay, contact the platform team (bank or bKash); the payment is applied once it is confirmed.') : ' Contact the platform team to change this.'}
           </p>
         </Card>
       )}
@@ -94,17 +101,22 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
           {p.invoices.length === 0 && <p className="text-sm text-muted-foreground">No invoices yet.</p>}
           {p.invoices.map((i) => (
             <div key={i.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-1.5 text-sm last:border-0">
-              <span><span className="font-mono text-xs">{i.number}</span> <span className="text-muted-foreground">· {i.period_start ? `${formatDate(i.period_start)} – ${formatDate(i.period_end)}` : ''}</span></span>
+              <span><span className="font-mono text-xs">{i.number}</span> <span className="text-muted-foreground">· {i.period_start ? `${formatDate(i.period_start)} – ${formatDate(i.period_end)}` : i.lines.map((l) => l.label).join(', ')}</span></span>
               <span className="flex items-center gap-2">
                 <span className="tabular-nums">{formatMoney(i.total)}</span>
                 <Badge variant={i.status === 'PAID' ? 'success' : i.status === 'OPEN' ? (new Date(i.due_at) < new Date() ? 'danger' : 'warning') : 'neutral'}>
                   {i.status === 'OPEN' ? `due ${formatDate(i.due_at)}` : i.status.toLowerCase()}
                 </Badge>
+                {i.status === 'OPEN' && canPayOnline && <Button size="sm" onClick={() => setPaying(i)}>Pay</Button>}
               </span>
             </div>
           ))}
         </CardContent>
       </Card>
+      {paying && credits.data && (
+        <PayDialog title={`Pay ${paying.number}`} amount={paying.total - paying.amount_paid} gateways={credits.data.gateways}
+          onClose={() => setPaying(null)} start={(gateway) => payInvoice(paying.id, gateway)} />
+      )}
     </div>
   )
 }

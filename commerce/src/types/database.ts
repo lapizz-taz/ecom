@@ -397,6 +397,8 @@ export type Database = {
           note: string | null
           raw: Json | null
           created_at: string
+          provider_session: string | null
+          provider_txn_id: string | null
         }
         Insert: {
           id?: string
@@ -413,6 +415,8 @@ export type Database = {
           note?: string | null
           raw?: Json | null
           created_at?: string
+          provider_session?: string | null
+          provider_txn_id?: string | null
         }
         Update: {
           id?: string
@@ -429,6 +433,8 @@ export type Database = {
           note?: string | null
           raw?: Json | null
           created_at?: string
+          provider_session?: string | null
+          provider_txn_id?: string | null
         }
         Relationships: [
           {
@@ -1911,6 +1917,289 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      credit_balances: {
+        Row: {
+          merchant_id: string
+          credit_type: string
+          balance: number
+          updated_at: string
+        }
+        Insert: {
+          merchant_id: string
+          credit_type: string
+          balance?: number
+          updated_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          credit_type?: string
+          balance?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_balances_credit_type_fkey"
+            columns: ["credit_type"]
+            isOneToOne: false
+            referencedRelation: "credit_types"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "credit_balances_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_ledger: {
+        Row: {
+          id: number
+          merchant_id: string
+          credit_type: string
+          kind: string
+          amount: number
+          balance_after: number
+          reason: string | null
+          actor_id: string | null
+          actor_kind: string
+          reference_type: string | null
+          reference_id: string | null
+          idempotency_key: string
+          expires_at: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id: string
+          credit_type: string
+          kind: string
+          amount: number
+          balance_after: number
+          reason?: string | null
+          actor_id?: string | null
+          actor_kind?: string
+          reference_type?: string | null
+          reference_id?: string | null
+          idempotency_key: string
+          expires_at?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          credit_type?: string
+          kind?: string
+          amount?: number
+          balance_after?: number
+          reason?: string | null
+          actor_id?: string | null
+          actor_kind?: string
+          reference_type?: string | null
+          reference_id?: string | null
+          idempotency_key?: string
+          expires_at?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_ledger_credit_type_fkey"
+            columns: ["credit_type"]
+            isOneToOne: false
+            referencedRelation: "credit_types"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "credit_ledger_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_lot_usage: {
+        Row: {
+          merchant_id: string
+          entry_id: number
+          lot_id: number
+          amount: number
+        }
+        Insert: {
+          merchant_id: string
+          entry_id: number
+          lot_id: number
+          amount: number
+        }
+        Update: {
+          merchant_id?: string
+          entry_id?: number
+          lot_id?: number
+          amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_lot_usage_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "credit_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_lot_usage_lot_id_fkey"
+            columns: ["lot_id"]
+            isOneToOne: false
+            referencedRelation: "credit_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_lot_usage_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_lots: {
+        Row: {
+          id: number
+          merchant_id: string
+          credit_type: string
+          entry_id: number
+          granted: number
+          remaining: number
+          expires_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id: string
+          credit_type: string
+          entry_id: number
+          granted: number
+          remaining: number
+          expires_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          credit_type?: string
+          entry_id?: number
+          granted?: number
+          remaining?: number
+          expires_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_lots_credit_type_fkey"
+            columns: ["credit_type"]
+            isOneToOne: false
+            referencedRelation: "credit_types"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "credit_lots_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "credit_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_lots_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_packages: {
+        Row: {
+          id: string
+          credit_type: string
+          name: string
+          credits: number
+          bonus_credits: number
+          price: number
+          currency: string
+          status: string
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          credit_type: string
+          name: string
+          credits: number
+          bonus_credits?: number
+          price: number
+          currency?: string
+          status?: string
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          credit_type?: string
+          name?: string
+          credits?: number
+          bonus_credits?: number
+          price?: number
+          currency?: string
+          status?: string
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_packages_credit_type_fkey"
+            columns: ["credit_type"]
+            isOneToOne: false
+            referencedRelation: "credit_types"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      credit_types: {
+        Row: {
+          code: string
+          name: string
+          unit: string
+          description: string | null
+          used_by: string | null
+          sort_order: number
+        }
+        Insert: {
+          code: string
+          name: string
+          unit: string
+          description?: string | null
+          used_by?: string | null
+          sort_order?: number
+        }
+        Update: {
+          code?: string
+          name?: string
+          unit?: string
+          description?: string | null
+          used_by?: string | null
+          sort_order?: number
+        }
+        Relationships: []
       }
       customer_addresses: {
         Row: {
@@ -3540,6 +3829,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "merchant_notes_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merchant_service_overrides: {
+        Row: {
+          merchant_id: string
+          service: string
+          free_limit: number | null
+          monthly_cap: number | null
+          sender_id: string | null
+          reason: string
+          set_by: string | null
+          set_at: string
+        }
+        Insert: {
+          merchant_id: string
+          service: string
+          free_limit?: number | null
+          monthly_cap?: number | null
+          sender_id?: string | null
+          reason: string
+          set_by?: string | null
+          set_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          service?: string
+          free_limit?: number | null
+          monthly_cap?: number | null
+          sender_id?: string | null
+          reason?: string
+          set_by?: string | null
+          set_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_service_overrides_merchant_id_fkey"
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
@@ -7916,6 +8246,91 @@ export type Database = {
           },
         ]
       }
+      service_usage: {
+        Row: {
+          id: string
+          merchant_id: string
+          service: string
+          units: number
+          status: string
+          charge: string
+          credits: number
+          credit_type: string | null
+          ledger_entry_id: number | null
+          refunded_at: string | null
+          outcome: string | null
+          denied_reason: string | null
+          error: string | null
+          reference: string | null
+          idempotency_key: string
+          provider_cost: number | null
+          created_at: string
+          finished_at: string | null
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          service: string
+          units: number
+          status: string
+          charge: string
+          credits?: number
+          credit_type?: string | null
+          ledger_entry_id?: number | null
+          refunded_at?: string | null
+          outcome?: string | null
+          denied_reason?: string | null
+          error?: string | null
+          reference?: string | null
+          idempotency_key: string
+          provider_cost?: number | null
+          created_at?: string
+          finished_at?: string | null
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          service?: string
+          units?: number
+          status?: string
+          charge?: string
+          credits?: number
+          credit_type?: string | null
+          ledger_entry_id?: number | null
+          refunded_at?: string | null
+          outcome?: string | null
+          denied_reason?: string | null
+          error?: string | null
+          reference?: string | null
+          idempotency_key?: string
+          provider_cost?: number | null
+          created_at?: string
+          finished_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_usage_credit_type_fkey"
+            columns: ["credit_type"]
+            isOneToOne: false
+            referencedRelation: "credit_types"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "service_usage_ledger_entry_id_fkey"
+            columns: ["ledger_entry_id"]
+            isOneToOne: false
+            referencedRelation: "credit_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_usage_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       settings: {
         Row: {
           key: string
@@ -9511,6 +9926,25 @@ export type Database = {
         }
         Returns: string
       }
+      _usage_feature: {
+        Args: {
+          p_service: string
+        }
+        Returns: string
+      }
+      _usage_module: {
+        Args: {
+          p_service: string
+        }
+        Returns: string
+      }
+      _usage_policy_validate: {
+        Args: {
+          p_service: string
+          p: Json
+        }
+        Returns: Json
+      }
       abandoned_counts: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -11070,6 +11504,10 @@ export type Database = {
         }
         Returns: Json
       }
+      billing_can_pay: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       bulk_transition_orders: {
         Args: {
           p_order_ids: string[]
@@ -11240,6 +11678,12 @@ export type Database = {
           exchange_rate: number | null
           merchant_id: string
         }
+      }
+      credits_start_recharge: {
+        Args: {
+          p_package: string
+        }
+        Returns: Json
       }
       current_merchant_id: {
         Args: Record<PropertyKey, never>
@@ -11852,6 +12296,10 @@ export type Database = {
         }
         Returns: Json
       }
+      my_credits: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       my_plan: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -12230,6 +12678,17 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_billing_gateway_toggle: {
+        Args: {
+          p_provider: string
+          p_enabled: boolean
+        }
+        Returns: Json
+      }
+      platform_billing_gateways: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       platform_can: {
         Args: {
           p_module: string
@@ -12250,6 +12709,32 @@ export type Database = {
         Args: {
           p_version: number
           p_reason: string
+        }
+        Returns: Json
+      }
+      platform_credit_adjust: {
+        Args: {
+          p_merchant: string
+          p_type: string
+          p_amount: number
+          p_kind: string
+          p_reason: string
+          p_expires_at?: string
+          p_request_id?: string
+        }
+        Returns: Json
+      }
+      platform_credit_package_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_credits_overview: {
+        Args: {
+          p_q?: string
+          p_type?: string
+          p_limit?: number
         }
         Returns: Json
       }
@@ -12306,6 +12791,12 @@ export type Database = {
       platform_merchant_create: {
         Args: {
           p: Json
+        }
+        Returns: Json
+      }
+      platform_merchant_credits: {
+        Args: {
+          p_merchant: string
         }
         Returns: Json
       }
@@ -12454,6 +12945,23 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_service_override_set: {
+        Args: {
+          p_merchant: string
+          p_service: string
+          p_free_limit: number
+          p_monthly_cap: number
+          p_sender_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_service_status: {
+        Args: {
+          p_service: string
+        }
+        Returns: Json
+      }
       platform_setting_save: {
         Args: {
           p_key: string
@@ -12464,6 +12972,13 @@ export type Database = {
       }
       platform_settings_get: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_sms_settings_save: {
+        Args: {
+          p: Json
+          p_reason?: string
+        }
         Returns: Json
       }
       platform_staff_assign: {
@@ -12496,6 +13011,23 @@ export type Database = {
           p_merchant: string
           p_action: string
           p?: Json
+        }
+        Returns: Json
+      }
+      platform_usage_policy_save: {
+        Args: {
+          p_service: string
+          p_policy: Json
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_usage_report: {
+        Args: {
+          p_service: string
+          p_from: string
+          p_to: string
+          p_merchant?: string
         }
         Returns: Json
       }

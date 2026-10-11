@@ -117,3 +117,8 @@ import_map = "./functions/import_map.json"
 [functions.voicedrive]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+
+# Merchant payments to the platform; checkout checks the session itself, gateway returns carry none.
+[functions.billing]
+verify_jwt = false
+import_map = "./functions/import_map.json"

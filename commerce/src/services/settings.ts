@@ -122,10 +122,13 @@ export const COURIER_HISTORY_SERVICES: Record<CourierHistoryService, { label: st
   llcg: { label: 'LLCG courier fraud checker', url: 'https://llcgteam.com/courier-fraud-checker', keyHint: 'From your LLCG fraud-checker account' },
 }
 
+/** BD Courier runs on the platform's account; the business only chooses whether checks use it. */
 export interface CourierHistoryStatus {
-  /** saved = key saved from this page; server_secret = BDCOURIER_API_KEY / COURIER_HISTORY_API_KEY function secret. */
-  source: 'saved' | 'server_secret' | null
-  service: CourierHistoryService | null
+  provided_by_platform: true
+  connected: boolean
+  /** Service name, e.g. "BD Courier". */
+  service: string | null
+  /** This business uses it in checks (Fraud → Providers). */
   enabled: boolean
 }
 
@@ -146,17 +149,9 @@ export async function integrationStatus(): Promise<Record<string, IntegrationSta
   return (data ?? {}) as unknown as Record<string, IntegrationStatus>
 }
 
-export function connectCourierHistory(input: { service: CourierHistoryService; api_key: string; base_url?: string; test_phone: string }) {
-  return invokeFunction<{ ok: boolean; hint: string; providers: string[]; result: CourierHistoryResult }>(
-    'fraud-check', { action: 'connect_courier_history', ...input })
-}
-
-export function testCourierHistory(testPhone: string) {
-  return invokeFunction<{ ok: boolean; result: CourierHistoryResult }>('fraud-check', { action: 'test_courier_history', test_phone: testPhone })
-}
-
-export function disconnectCourierHistory() {
-  return invokeFunction<{ ok: boolean; providers: string[] }>('fraud-check', { action: 'disconnect_courier_history' })
+/** One BD Courier lookup, counted against the business's free checks / credits like any other. */
+export function lookupCourierHistory(phone: string) {
+  return invokeFunction<{ ok: boolean; result: CourierHistoryResult }>('fraud-check', { action: 'lookup_courier_history', phone })
 }
 
 export type Gateway = 'bkash' | 'paystation'

@@ -16,13 +16,16 @@ export interface FraudSecrets {
   courierHistory?: { api_key?: string; base_url?: string; service?: CourierHistoryService } | null
 }
 
-/** Vault entry for the courier-history API key, saved from Settings → Fraud. */
-export const COURIER_HISTORY_SECRET = 'fraud.courier_history'
+/**
+ * The platform's BD Courier (courier-history) key, saved from the Super Admin
+ * panel → BD Courier Integration. Merchants never hold their own key.
+ */
+export const PLATFORM_BD_COURIER_SECRET = 'bd_courier'
 
 /**
- * The courier-history connection: the key saved from Settings → Fraud, else a
- * function secret (BDCOURIER_API_KEY, or COURIER_HISTORY_API_KEY for LLCG).
- * Keys saved before BD Courier was supported carry no service and are LLCG keys.
+ * The courier-history connection: the platform key from the Super Admin panel,
+ * else a function secret (BDCOURIER_API_KEY, or COURIER_HISTORY_API_KEY for
+ * LLCG). Keys saved before BD Courier was supported carry no service and are LLCG keys.
  */
 export function courierHistoryConfig(saved: FraudSecrets['courierHistory'], timeoutMs?: number): CourierHistoryConfig | null {
   const urlFor = (service: CourierHistoryService) => env(service === 'bdcourier' ? 'BDCOURIER_API_URL' : 'COURIER_HISTORY_URL')
@@ -37,8 +40,59 @@ export function courierHistoryConfig(saved: FraudSecrets['courierHistory'], time
   return null
 }
 
-/** Builds the configured providers. Credentials come from Vault or secrets only. */
-export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch, secrets: FraudSecrets = {}): FraudProvider[] {
+/**
+ * Every BD Courier lookup is first allowed (and counted) by the platform's
+ * usage policy, then reported done or failed (failures are not charged).
+ */
+export interface UsageMeter {
+  begin(phone: string): Promise<{ allowed: boolean; usageId: string | null; reason?: string; message?: string }>
+  finish(usageId: string, ok: boolean, error?: string): Promise<void>
+}
+
+/** The meter in the database (courier_lookup_begin / courier_lookup_finish), for the merchant named on the client. */
+export function databaseMeter(admin: SupabaseClient): UsageMeter {
+  return {
+    async begin(phone) {
+      const { data, error } = await admin.rpc('courier_lookup_begin', { p_phone: phone, p_key: crypto.randomUUID() })
+      if (error) throw new Error(`Could not check the courier lookup allowance: ${error.message}`)
+      const r = data as { allowed: boolean; usage_id: string | null; reason?: string; message?: string }
+      return { allowed: r.allowed, usageId: r.usage_id, reason: r.reason, message: r.message }
+    },
+    async finish(usageId, ok, error) {
+      const { error: e } = await admin.rpc('courier_lookup_finish', { p_usage: usageId, p_success: ok, p_error: error ?? null })
+      if (e) throw new Error(`Could not record the courier lookup: ${e.message}`)
+    },
+  }
+}
+
+/** Wraps a provider so it runs only when the usage policy allows, and records the outcome. */
+export class MeteredProvider implements FraudProvider {
+  constructor(private readonly inner: FraudProvider, private readonly meter: UsageMeter) {}
+
+  get name() {
+    return this.inner.name
+  }
+
+  async checkCustomer(input: FraudCheckInput): Promise<FraudProviderResult> {
+    let gate: Awaited<ReturnType<UsageMeter['begin']>>
+    try {
+      gate = await this.meter.begin(input.phone)
+    } catch (error) {
+      return { provider: this.name, ok: false, counts: {}, error: (error as Error).message }
+    }
+    if (!gate.allowed || !gate.usageId) {
+      return { provider: this.name, ok: false, counts: {}, skipped: gate.reason ?? 'NOT_ALLOWED', error: gate.message }
+    }
+    const result = await this.inner.checkCustomer(input)
+      .catch((error: Error): FraudProviderResult => ({ provider: this.name, ok: false, counts: {}, error: error.message }))
+    await this.meter.finish(gate.usageId, result.ok, result.error)
+      .catch((error: Error) => console.error('Courier lookup outcome not recorded:', error.message))
+    return result
+  }
+}
+
+/** Builds the configured providers. Credentials come from platform credentials or secrets only. */
+export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch, secrets: FraudSecrets = {}, meter?: UsageMeter): FraudProvider[] {
   const names = settings.providers?.length ? settings.providers : ['internal']
   const providers: FraudProvider[] = []
   for (const name of names) {
@@ -49,7 +103,8 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
         console.warn('Courier history check is enabled but no API key is connected; skipping it')
         continue
       }
-      providers.push(new CourierHistoryProvider(config, fetchFn))
+      const provider = new CourierHistoryProvider(config, fetchFn)
+      providers.push(meter ? new MeteredProvider(provider, meter) : provider)
     }
     if (name === 'http') {
       const urlTemplate = env('FRAUD_API_URL')
@@ -76,15 +131,17 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
   return providers.length ? providers : [new InternalHistoryProvider()]
 }
 
-/** Providers for a check, with the courier-history key read from Vault. */
+/** The platform's courier-history key (service role only), or null. */
+export async function platformCourierHistorySecret(admin: SupabaseClient): Promise<FraudSecrets['courierHistory']> {
+  const { data, error } = await admin.rpc('platform_secret_get', { p_key: PLATFORM_BD_COURIER_SECRET })
+  if (error) console.error('Could not load the BD Courier key', error.message)
+  return (data as FraudSecrets['courierHistory']) ?? null
+}
+
+/** Providers for a check: the platform's BD Courier connection, metered for the merchant on `admin`. */
 export async function loadFraudProviders(admin: SupabaseClient, settings: FraudSettings, fetchFn: typeof fetch = fetch): Promise<FraudProvider[]> {
-  let courierHistory: FraudSecrets['courierHistory'] = null
-  if (settings.providers?.includes('courier_history')) {
-    const { data, error } = await admin.rpc('integration_secret_get', { p_key: COURIER_HISTORY_SECRET })
-    if (error) console.error('Could not load the courier history key', error.message)
-    courierHistory = (data as FraudSecrets['courierHistory']) ?? null
-  }
-  return providersFromSettings(settings, fetchFn, { courierHistory })
+  const courierHistory = settings.providers?.includes('courier_history') ? await platformCourierHistorySecret(admin) : null
+  return providersFromSettings(settings, fetchFn, { courierHistory }, databaseMeter(admin))
 }
 
 function maxDefined(values: Array<number | undefined>): number | undefined {
@@ -107,7 +164,8 @@ export class FraudDetectionService {
         p.checkCustomer(input).catch((error: Error) => ({ provider: p.name, ok: false, counts: {}, error: error.message })),
       ),
     )
-    const external = results.filter((r) => r.provider !== 'internal')
+    // A lookup the usage policy refused is left out (the check uses the store's own history), not counted as a failure.
+    const external = results.filter((r) => r.provider !== 'internal' && !r.skipped)
     const failed = external.filter((r) => !r.ok)
     const counts: OutcomeCounts = {}
     for (const key of ['total', 'delivered', 'cancelled', 'returned', 'failed'] as const) {
@@ -126,7 +184,7 @@ export class FraudDetectionService {
       provider_courier_score: maxDefined(results.map((r) => r.courierScore)),
       provider_counts: counts,
       provider_parcel_floor: maxDefined(results.filter((r) => r.ok).map((r) => r.parcelFloor)),
-      provider_response: Object.fromEntries(results.map((r) => [r.provider, r.raw ?? (r.error ? { error: r.error } : null)])),
+      provider_response: Object.fromEntries(results.map((r) => [r.provider, r.raw ?? (r.skipped ? { skipped: r.skipped, reason: r.error ?? null } : r.error ? { error: r.error } : null)])),
       recommendation: results.find((r) => r.recommendation)?.recommendation,
       context: extras.context,
     }

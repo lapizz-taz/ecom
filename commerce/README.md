@@ -183,6 +183,18 @@ Seeded logins (password `Password123!` for all):
                      and created_at < now() - interval '3 minutes' and created_at > now() - interval '3 days')
    $$);
 
+   -- Finishes payments merchants made to the platform (invoices, credit packages) whose payer never came back.
+   select cron.schedule('billing-reconcile', '*/5 * * * *', $$
+     select net.http_post(
+       url := 'https://<ref>.supabase.co/functions/v1/billing?reconcile=1',
+       headers := jsonb_build_object('Content-Type', 'application/json',
+         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
+       body := '{}'::jsonb)
+     where exists (select 1 from public.billing_payments
+                   where method = 'GATEWAY' and status = 'PENDING' and provider_session is not null
+                     and created_at < now() - interval '3 minutes' and created_at > now() - interval '2 days')
+   $$);
+
    -- Shopify / WooCommerce: fetch recent orders (and Shopify fulfilments made by hand) every hour.
    select cron.schedule('channels-sync', '37 * * * *', $$
      select net.http_post(
@@ -211,9 +223,18 @@ Seeded logins (password `Password123!` for all):
      (`https://<ref>.supabase.co/functions/v1/payments?callback=…`), and the reconcile job above covers customers who
      close the tab. Connect them in **Settings → Payments → Online payment gateways**.
    - SSLCommerz IPN: `https://<ref>.supabase.co/functions/v1/payment-webhook?provider=sslcommerz`
-   - SMS: connect the provider on the **SMS** page (Alpha SMS / sms.net.bd, BulkSMSBD, SSL Wireless, or any gateway with
-     an HTTP send URL). The key is tested (balance check where the provider has one) and stored in Vault; nothing is
-     configured as a function secret. SSL Wireless only accepts whitelisted server IPs.
+   - SMS and the BD Courier history check run on the **platform's** accounts, set up once in the Super Admin panel:
+     **SMS Management** (Alpha SMS / sms.net.bd, BulkSMSBD, SSL Wireless, or any gateway with an HTTP send URL; approved
+     sender IDs; per-merchant sender) and **BD Courier Integration** (API key, tested with a real lookup). Keys go to
+     platform credentials in Vault; merchants never see or enter them. SSL Wireless only accepts whitelisted server IPs.
+     How much each merchant may use — free allowance, eligibility by plan and status, credits per use, monthly caps,
+     unmetered plans — is set on the same pages and enforced by the database. A `BDCOURIER_API_KEY` function secret
+     still works as a fallback while no platform key is saved.
+   - Payments to the platform (invoices, SMS / courier-check credit packages): connect the company's bKash or PayStation
+     account in **Super Admin → Subscriptions & Plans → Billing rules → Online payment to the platform**. Each payment
+     returns to `https://<ref>.supabase.co/functions/v1/billing?callback=…`; add the reconcile job below for payers who
+     close the tab. Set `PLATFORM_URL` (the admin app's address) so payers come back to Plan & Billing.
+     Merchants' own gateways for their customers (Settings → Payments) are separate and unchanged.
    - Meta Ads: **Ads → Tracking setup → Add account** (as many ad accounts as you run). Enter a name, the App ID and
      App Secret (App settings → Basic), a long-lived System User token with `ads_read`, the ad account ID without
      `act_`, the USD → BDT rate and, optionally, the payment account the spend is paid from. **Test Connection** opens the

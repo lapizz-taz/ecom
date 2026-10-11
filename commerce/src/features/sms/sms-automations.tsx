@@ -57,7 +57,7 @@ export function SmsAutomationsTab() {
     <div className="space-y-3">
       {settings && !settings.enabled && (
         <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-          Automatic SMS is off, so nothing below is sent yet. {settings.connected ? 'Turn it on' : 'Connect a provider and turn it on'} under{' '}
+          Automatic SMS is off, so nothing below is sent yet. {settings.connected ? 'Turn it on' : 'SMS is not available right now; once it is, turn it on'} under{' '}
           <Link to="/admin/sms" className="font-medium text-foreground underline-offset-4 hover:underline">Overview</Link>.
         </div>
       )}

@@ -3,6 +3,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-11', tag: 'New', area: 'Billing', title: 'Plan & Billing, SMS and courier checks without keys',
+    body: 'SMS and the BD Courier history check now run on our accounts — no provider keys to enter. Free messages and checks come with your plan, then you buy credits online. See your plan, invoices and credits under Settings → Plan & Billing.', to: '/admin/settings/billing' },
   { date: '2026-10-10', tag: 'New', area: 'Settings', title: 'Device approvals, app integrations and VoiceDrive PBX',
     body: 'Require admin approval when staff sign in from a new device. See every connected service on one page. Connect a cloud PBX for a call log and one-click calling.', to: '/admin/settings/devices' },
   { date: '2026-10-10', tag: 'New', area: 'Support', title: 'Bug reports, feedback and system status',

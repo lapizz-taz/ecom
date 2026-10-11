@@ -83,7 +83,8 @@ export interface IntegrationsOverview {
   couriers: Array<{ name: string; provider: string; hint: string; at: string; last_event_at: string | null }>
   ads: Array<{ platform: string; name: string | null; status: string; last_error: string | null; at: string }>
   credentials: Record<string, { hint: string; at: string }>
-  sms: { provider: string | null; enabled: boolean | null } | null
+  sms: { provided_by_platform: true; connected: boolean; enabled: boolean | null } | null
+  bd_courier?: { provided_by_platform: true; connected: boolean; enabled: boolean } | null
   site_keys: number
   domains: Array<{ domain: string; status: string }>
   pbx: { enabled: boolean | null; provider: string | null; mode: string | null; calls_7d: number; last_call_at: string | null } | null

@@ -19,9 +19,11 @@ interface Log {
   attempts: number
 }
 
-/** SMS connected and switched on, with only the given automations on. */
+/** The platform's SMS provider connected, SMS on for the business, with only the given automations on. */
 async function smsOn(db: Db, events: string[], settings: Record<string, unknown> = {}) {
-  await setSetting(db, 'sms', { enabled: true, connected: true, provider: 'smsnetbd', cost_per_sms: 0.3, ...settings })
+  await asSystem(db)
+  await db.query(`update public.platform_settings set value = value || '{"connected": true, "provider": "smsnetbd", "sender_id": "FULLFILIO"}' where key = 'sms'`)
+  await setSetting(db, 'sms', { enabled: true, cost_per_sms: 0.3, ...settings })
   await db.query(`update public.notifications set is_enabled = (event::text = any($1)) where channel = 'SMS'`, [events])
 }
 
@@ -272,8 +274,10 @@ describe('SMS page access', () => {
       const overview = await value<{ totals: Record<string, number>; settings: Record<string, unknown> }>(db,
         `select public.sms_overview($1::date, $1::date)`, [today])
       expect(overview.totals.sent).toBeGreaterThanOrEqual(1)
-      expect(overview.settings).toMatchObject({ enabled: true, connected: true, provider: 'smsnetbd' })
-      expect(JSON.stringify(overview)).not.toMatch(/api_key|secret/)
+      // Provided by the platform: the merchant sees that it works and its sender ID, not the provider account.
+      expect(overview.settings).toMatchObject({ enabled: true, connected: true, provided_by_platform: true, sender_id: 'FULLFILIO' })
+      expect(overview.settings).not.toHaveProperty('provider')
+      expect(JSON.stringify(overview)).not.toMatch(/api_key|secret|smsnetbd/)
       expect(await value(db, `select count(*)::int from public.notification_logs where order_id = $1`, [o.id])).toBe(1)
       await expectError(db, `select public.sms_update_settings(p_cost_per_sms => 0.5)`, [], /sms\.manage|permission/i)
 
@@ -286,12 +290,14 @@ describe('SMS page access', () => {
 
       const admin = await createStaff(db, 'ADMIN')
       await asUser(db, admin)
-      await setSetting(db, 'sms', { connected: false })
+      await asSystem(db)
+      await db.query(`update public.platform_settings set value = value || '{"connected": false}' where key = 'sms'`)
       await asUser(db, admin)
-      await expectError(db, `select public.sms_update_settings(p_enabled => true)`, [], /connect an SMS provider first/)
-      const saved = await value<Record<string, unknown>>(db,
-        `select public.sms_update_settings(p_sender_id => 'MyShop', p_cost_per_sms => 0.25, p_currency_text => 'BDT')`)
-      expect(saved).toMatchObject({ sender_id: 'MyShop', cost_per_sms: 0.25, currency_text: 'BDT' })
-      await expectError(db, `select public.sms_update_settings(p_sender_id => 'Shop<script>')`, [], /sender ID/)
+      await expectError(db, `select public.sms_update_settings(p_enabled => true)`, [], /not available on the platform/)
+      const saved = await value<Record<string, unknown>>(db, `select public.sms_update_settings(p_cost_per_sms => 0.25, p_currency_text => 'BDT')`)
+      expect(saved).toMatchObject({ cost_per_sms: 0.25, currency_text: 'BDT' })
+      // The sender ID and the provider are the platform's to set.
+      await expectError(db, `select public.sms_update_settings(p_sender_id => 'MyShop')`, [], /set by the platform/)
+      await expectError(db, `select public.sms_set_connection('smsnetbd', 'x', 'MyShop', null, null)`, [], /managed by the platform|permission/i)
     }))
 })

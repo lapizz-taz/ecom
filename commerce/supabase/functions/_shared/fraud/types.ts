@@ -31,6 +31,8 @@ export interface FraudProviderResult {
   recommendation?: string
   raw?: unknown
   error?: string
+  /** Not run because the platform's usage policy refused it (e.g. NO_CREDITS); not a failure. */
+  skipped?: string
 }
 
 export interface FraudProvider {
