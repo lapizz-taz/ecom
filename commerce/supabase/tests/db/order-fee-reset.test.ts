@@ -220,7 +220,15 @@ describe('store reset', () => {
       // The bypass ended with the reset.
       await expectError(db, `delete from public.inventory_movements where merchant_id = $1`, [MERCHANT_1], /IMMUTABLE_RECORD/)
 
-      // Everything: products and their stock history go too; the reset is listed.
+      // A store connection with a saved key, here and in another business.
+      await asSystem(db, MERCHANT_1)
+      const channel = await value<string>(db, `insert into public.sales_channels (platform, name, shop_domain, status) values ('SHOPIFY', 'Old shop', 'old-shop.myshopify.com', 'DISCONNECTED') returning id`)
+      const secret = await value<string>(db, `select vault.create_secret('{"access_token":"x"}')`)
+      await db.query(`insert into public.integration_credentials (key, secret_id) values ($1, $2)`, [`channels.${channel.replace(/-/g, '')}`, secret])
+      await asSystem(db, other)
+      const otherChannel = await value<string>(db, `insert into public.sales_channels (platform, name, shop_domain, status) values ('SHOPIFY', 'Their shop', 'their-shop.myshopify.com', 'CONNECTED') returning id`)
+
+      // Everything: products, their stock history and store connections go too; the reset is listed.
       await as(db, superId)
       const all = await value<Record<string, any>>(db, `select public.platform_store_reset($1, 'EVERYTHING', $2, 'Fresh start before going live')`, [MERCHANT_1, name])
       expect(all.counts.products).toBeGreaterThan(0)
@@ -229,6 +237,11 @@ describe('store reset', () => {
         expect(await value<number>(db, `select count(*)::int from public.${t} where merchant_id = $1`, [MERCHANT_1]), t).toBe(0)
       }
       expect(await value<number>(db, `select count(*)::int from public.product_variants where merchant_id = $1`, [other])).toBe(1)
+      expect(all.counts.store_connections).toBe(1)
+      expect(await value<number>(db, `select count(*)::int from public.sales_channels where merchant_id = $1`, [MERCHANT_1])).toBe(0)
+      expect(await value<number>(db, `select count(*)::int from public.integration_credentials where merchant_id = $1 and key like 'channels.%'`, [MERCHANT_1])).toBe(0)
+      expect(await value<number>(db, `select count(*)::int from vault.secrets where id = $1`, [secret])).toBe(0)
+      expect(await value<number>(db, `select count(*)::int from public.sales_channels where id = $1`, [otherChannel])).toBe(1)
       expect(await balance(db, MERCHANT_1)).toBe(500)
       await as(db, superId)
       expect((await value<Record<string, any>>(db, `select public.platform_store_resets($1)`, [MERCHANT_1])).resets).toHaveLength(2)

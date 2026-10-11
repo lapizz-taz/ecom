@@ -23,11 +23,11 @@ const SCOPES: Record<ResetScope, { title: string; removes: string; keeps: string
   },
   EVERYTHING: {
     title: 'Everything (start fresh)',
-    removes: 'All of the above, plus products, stock and its history, categories, coupons, suppliers and purchases, every income and expense entry, synced ad data and the store catalog links.',
-    keeps: 'Nothing operational. Store connections stay but need a new first sync.',
+    removes: 'All of the above, plus products, stock and its history, categories, coupons, suppliers and purchases, every income and expense entry, synced ad data, and the Shopify and WooCommerce connections with their saved keys.',
+    keeps: 'Nothing operational: the business starts like a new one. Connect stores again from Sales channels.',
   },
 }
-const ALWAYS_KEPT = 'The account, staff and roles, settings, courier and store connections, subscription and invoices, credit balance and its ledger, order fees, and every audit log.'
+const ALWAYS_KEPT = 'The account, staff and roles, settings, courier accounts, domains, subscription and invoices, credit balance and its ledger, order fees, and every audit log. Store connections stay after an orders-only reset.'
 
 function download(number: number, r: Awaited<ReturnType<typeof exportMerchantData>>) {
   const blob = new Blob([JSON.stringify({ exported_at: r.exported_at, export_id: r.export_id, rows: r.rows, ...r.data }, null, 2)], { type: 'application/json' })
