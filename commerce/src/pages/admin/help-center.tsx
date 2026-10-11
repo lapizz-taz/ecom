@@ -55,7 +55,7 @@ export default function HelpCenterPage() {
   const admins = staff.filter((s) => s.is_active && ['OWNER', 'ADMIN'].includes(s.role))
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="space-y-5">
       <PageHeader title="Help Center" description="Answers to common questions, shortcuts, and how to reach the people who can help." />
       <SearchInput value={q} onChange={setQ} placeholder="Search help — e.g. return, stock, courier" className="w-full" autoFocus />
 

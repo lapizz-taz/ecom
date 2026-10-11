@@ -353,7 +353,7 @@ export default function AdminLayout() {
           </div>
         </header>
         <AnnouncementBanner />
-        <main className="print-area mx-auto w-full max-w-[1440px] min-w-0 flex-1 p-3 pb-24 sm:px-8 sm:py-7 sm:pb-24">
+        <main className="print-area w-full min-w-0 flex-1 p-3 pb-24 sm:px-6 sm:py-6 sm:pb-24">
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
             {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}

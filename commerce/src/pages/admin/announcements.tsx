@@ -31,7 +31,7 @@ export default function AnnouncementsPage() {
     prefs.mutate([...muted])
   }
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="space-y-4">
       <PageHeader title="Messages from the platform" description="Maintenance, billing, integration and feature news from the Fullfilio team."
         actions={unread.length > 0 && !access?.support_session && (
           <Button variant="outline" size="sm" disabled={read.isPending} onClick={async () => { for (const a of unread) await read.mutateAsync(a.id) }}>Mark all read</Button>

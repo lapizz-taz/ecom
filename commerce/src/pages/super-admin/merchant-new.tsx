@@ -58,7 +58,7 @@ export default function MerchantNewPage() {
   const setB = (k: keyof typeof biz) => (e: { target: { value: string } }) => setBiz((b) => ({ ...b, [k]: e.target.value }))
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Link to="/super-admin/merchants" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Merchants</Link>
       <PageHeader title="New merchant" description="Nothing is created until you confirm on the last step. The account starts in onboarding with the standard roles, statuses and settings." />
       <ol className="flex gap-2">

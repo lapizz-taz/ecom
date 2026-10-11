@@ -111,7 +111,7 @@ export default function OrderEditPage() {
     : [...ls, { variant_id: v.variant_id!, name: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`, sku: v.sku ?? '', image: null, quantity: 1, unit_price: toNumber(v.unit_price), available: v.track_inventory ? v.available : null }])
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon-sm" onClick={leave} aria-label="Back"><ArrowLeft /></Button>
         <h1 className="text-lg font-semibold">{o.order_number}</h1>

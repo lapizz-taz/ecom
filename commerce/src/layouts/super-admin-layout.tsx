@@ -232,7 +232,7 @@ function Panel() {
             <Button size="sm" variant="ghost" className="h-7" onClick={() => void endSupportSession().then(() => refresh())}>End</Button>
           </div>
         )}
-        <main key={location.pathname} className="mx-auto w-full max-w-[1280px] flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-8 sm:py-7">
+        <main key={location.pathname} className="w-full flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-6 sm:py-6">
           {allowed ? <Outlet /> : <EmptyState icon={<ShieldAlert />} title="Your role does not include this section" description="Ask a Super Admin if you need it." />}
         </main>
         </div>

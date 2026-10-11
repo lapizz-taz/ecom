@@ -159,7 +159,7 @@ export default function ProductEditPage() {
   const inventoryByVariant = new Map((product.data?.product_variants ?? []).map((v) => [v.id, v.inventory]))
 
   return (
-    <form onSubmit={form.handleSubmit((v) => save.mutate(v))} className="mx-auto max-w-5xl space-y-4 pb-24" noValidate>
+    <form onSubmit={form.handleSubmit((v) => save.mutate(v))} className="space-y-4 pb-24" noValidate>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" size="icon-sm" variant="ghost" asChild><Link to="/admin/products" aria-label="Back to products"><ArrowLeft /></Link></Button>
         <div className="min-w-0 flex-1">

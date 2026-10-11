@@ -42,7 +42,7 @@ export default function SystemStatusPage() {
   const loading = status.isLoading || pings.isLoading
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="space-y-4">
       <PageHeader title="System Status" description="Live health of the database, background jobs, webhooks and server functions."
         actions={<Button variant="outline" size="sm" onClick={() => { void status.refetch(); void pings.refetch() }} disabled={status.isFetching || pings.isFetching}>
           <RefreshCw className={cn((status.isFetching || pings.isFetching) && 'animate-spin')} /> Check again</Button>} />

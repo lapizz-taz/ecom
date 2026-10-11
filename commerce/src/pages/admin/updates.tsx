@@ -24,7 +24,7 @@ export default function UpdatesPage() {
   const byDate = [...new Set(shown.map((r) => r.date))]
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="space-y-4">
       <PageHeader title="Updates" description="What's new and what we fixed, newest first." />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Tabs value={tag} onValueChange={(v) => setTag(v as typeof tag)}>
