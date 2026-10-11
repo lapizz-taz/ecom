@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
-import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
+import { requireStaff, rpc } from '../_shared/supabase.ts'
 
 const roleSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/)
 
@@ -28,7 +28,7 @@ Deno.serve(
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const staff = await requireStaff(req, 'users.manage')
     const input = parse(schema, await readJson(req))
-    const admin = adminClient()
+    const admin = staff.admin
 
     switch (input.action) {
       case 'list': {

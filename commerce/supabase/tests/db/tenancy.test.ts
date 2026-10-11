@@ -45,7 +45,7 @@ describe('tenancy: structure', () => {
       const exempt = await value<number>(db, `select count(*)::int from public.tenancy_exempt_functions e
         where exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = e.name)`)
       expect(exempt).toBe(await value(db, `select count(*)::int from public.tenancy_exempt_functions`))
-      expect(exempt).toBeLessThan(30)
+      expect(exempt).toBeLessThan(40)
     }))
 
   it('turns existing data into Merchant #1', () =>
@@ -371,5 +371,84 @@ describe('tenancy: scheduled jobs', () => {
       await asUser(db, owner2)
       const dash = await value<{ orders: number }>(db, `select public.dashboard_overview(current_date - 1, current_date)`)
       expect(num(dash.orders)).toBe(1)
+    }))
+})
+
+describe('tenancy: finding the merchant for outside requests', () => {
+  it('maps channels, couriers, payments, API keys and domains to their merchant — and only for the service role', () =>
+    inTx(async (db) => {
+      const m2 = await createMerchant(db)
+      await asSystem(db, m2)
+      const courier = await value<string>(db, `select id from public.couriers where merchant_id = $1 limit 1`, [m2])
+      const channel = await value<string>(db, `insert into public.sales_channels (platform, name, shop_domain) values ('WOOCOMMERCE', 'Second Woo', 'https://second.example') returning id`)
+      await db.query(`insert into public.site_api_keys (name, kind, key_hash, prefix, allowed_origins) values ('site', 'SECRET', 'hash-m2', 'sk_live_ab', '{}')`)
+      await db.query(`insert into public.store_domains (domain, status) values ('second-shop.example', 'ACTIVE')`)
+
+      await asService(db, null)
+      const lookup = (kind: string, key: string) => value<string | null>(db, `select public.merchant_for($1, $2)`, [kind, key])
+      expect(await lookup('courier', courier)).toBe(m2)
+      expect(await lookup('channel', channel)).toBe(m2)
+      expect(await lookup('site_api_key', 'hash-m2')).toBe(m2)
+      expect(await lookup('store_domain', 'SECOND-SHOP.example')).toBe(m2)
+      expect(await lookup('courier', randomUUID())).toBeNull()
+      expect(await lookup('courier', 'not-a-uuid')).toBeNull()
+      await expectError(db, `select public.merchant_for('everything', 'x')`, [], /unknown lookup/)
+
+      await asUser(db, await createStaff(db, 'OWNER'))
+      await expectError(db, `select public.merchant_for('courier', $1)`, [courier], /permission denied/)
+    }))
+
+  it('answers nothing when a key exists in two merchants (never guesses)', () =>
+    inTx(async (db) => {
+      const m2 = await createMerchant(db)
+      for (const m of [MERCHANT_1, m2]) {
+        await asSystem(db, m)
+        const courier = await value<string>(db, `insert into public.couriers (name, provider) values ('Pathao', 'pathao') returning id`)
+        const p = await createProduct(db, { price: 100, merchantId: m })
+        const o = await createOrder(db, { phone: '01711000941', items: [{ variantId: p.variantIds[0], quantity: 1 }], merchantId: m })
+        await asSystem(db, m)
+        await db.query(`insert into public.shipments (order_id, courier_id, consignment_id) values ($1, $2, 'SAME-123')`, [o.id, courier])
+      }
+      await asService(db, null)
+      expect(await value(db, `select public.merchant_for('consignment', 'pathao:SAME-123')`)).toBeNull()
+    }))
+
+  it('opens the right store for a web address', () =>
+    inTx(async (db) => {
+      const m2 = await createMerchant(db, 'Second Shop')
+      await asSystem(db, m2)
+      await db.query(`insert into public.store_domains (domain, status) values ('second-shop.example', 'ACTIVE')`)
+      await asAnon(db, null)
+      expect(await value(db, `select public.storefront_resolve('www.second-shop.example')`)).toMatchObject({ merchant_id: m2, name: 'Second Shop' })
+      expect(await value(db, `select public.storefront_resolve('second-shop.example:443')`)).toMatchObject({ merchant_id: m2 })
+      // The platform's own address shows the default store (Merchant #1).
+      expect(await value(db, `select public.storefront_resolve('commerce.vercel.app')`)).toMatchObject({ merchant_id: MERCHANT_1 })
+    }))
+
+  it('tells staff which merchant they work for', () =>
+    inTx(async (db) => {
+      const m2 = await createMerchant(db, 'Merchant Two')
+      const owner2 = await createStaff(db, 'OWNER', undefined, m2)
+      await asUser(db, owner2)
+      expect(await value(db, `select public.get_my_access()`)).toMatchObject({ merchant_id: m2, merchant: { name: 'Merchant Two', status: 'ACTIVE' } })
+      expect(await value(db, `select public.is_platform_staff()`)).toBe(false)
+    }))
+
+  it('keeps platform credentials apart from every merchant, with an audit entry', () =>
+    inTx(async (db) => {
+      await asService(db, null)
+      await db.query(`select public.platform_secret_store('test.gateway', '{"token":"platform-1"}', 'tok ••••rm-1', null)`)
+      expect(await value(db, `select public.platform_secret_get('test.gateway')`)).toEqual({ token: 'platform-1' })
+      // A merchant's own credentials with the same name are a different thing.
+      await asService(db)
+      expect(await value(db, `select public.integration_secret_get('test.gateway')`)).toBeNull()
+      await asSystem(db, null)
+      expect(await value(db, `select count(*)::int from public.platform_audit_logs where action = 'platform_credential.saved' and entity_id = 'test.gateway'`)).toBe(1)
+      await expectError(db, `update public.platform_audit_logs set action = 'x'`, [], /IMMUTABLE_RECORD/)
+      await expectError(db, `delete from public.platform_audit_logs`, [], /IMMUTABLE_RECORD/)
+      await asUser(db, await createStaff(db, 'OWNER'))
+      await expectError(db, `select public.platform_secret_get('test.gateway')`, [], /permission denied/)
+      await expectError(db, `select * from public.platform_credentials`, [], /permission denied/)
+      await expectError(db, `select * from public.platform_audit_logs`, [], /permission denied/)
     }))
 })

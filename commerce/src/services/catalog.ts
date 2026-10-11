@@ -1,4 +1,5 @@
 import { asJson } from '@/lib/json'
+import { merchantFolder } from '@/lib/merchant'
 import { supabase } from '@/lib/supabase'
 import type { Enums, TablesInsert, TablesUpdate } from '@/types/database'
 
@@ -150,7 +151,7 @@ export async function uploadProductImage(productId: string, file: File, position
   if (!file.type.startsWith('image/')) throw new Error('VALIDATION: please choose an image file')
   if (file.size > 5 * 1024 * 1024) throw new Error('VALIDATION: images must be smaller than 5 MB')
   const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const path = `${productId}/${crypto.randomUUID()}.${ext}`
+  const path = `${merchantFolder()}/${productId}/${crypto.randomUUID()}.${ext}`
   const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { cacheControl: '31536000', contentType: file.type })
   if (uploadError) throw uploadError
   const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)

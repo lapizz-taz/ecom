@@ -6,6 +6,7 @@
 //   Staff (Settings → Payments, order page):
 //   POST {action: 'connect_gateway' | 'test_gateway' | 'disconnect_gateway'}  (settings.manage)
 //   POST {action: 'check_payment'}  ask the gateway about a pending payment (payments.verify)
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { env, requireEnv } from '../_shared/env.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
@@ -16,7 +17,7 @@ import {
 } from '../_shared/payments/registry.ts'
 import { initiatePaymentSchema, manualPaymentSchema, parse } from '../_shared/schemas.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
-import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, getSettings, merchantFor, requireStaff, rpc, storefrontMerchant } from '../_shared/supabase.ts'
 
 const credential = (max = 200) => z.string().trim().min(1).max(max)
 
@@ -48,14 +49,24 @@ const REQUIRED: Record<Gateway, string[]> = {
 Deno.serve(
   handle(async (req) => {
     const url = new URL(req.url)
-    const admin = adminClient()
     const callback = url.searchParams.get('callback')
 
     if (callback) {
       const providerCode = url.searchParams.get('provider') ?? ''
       const params = await formOrQuery(req)
-      // Which of our payments this return is about.
+      // Which of our payments this return is about, and so which merchant's gateway account confirms it.
       const session = providerCode === 'bkash' ? params.paymentID : providerCode === 'paystation' ? params.invoice_number : params.tran_id
+      const merchantId = session ? await merchantFor('payment_session', `${providerCode}:${session}`) : null
+      if (!merchantId) {
+        void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'payments', message: `${providerCode || 'Gateway'} return for a payment we do not know`,
+          context: { session: session ?? null } })
+        return new Response(
+          '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Payment</title>' +
+          '<p style="font-family:system-ui;max-width:30rem;margin:4rem auto">We could not match this payment to an order. ' +
+          'If money was taken from your account, contact the store with your transaction ID.</p>',
+          { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+      }
+      const admin = adminClient(merchantId)
       const found = session
         ? await rpc<{ id: string | null; reference: string; order_id: string } | null>(admin, 'find_gateway_payment', { p_provider: providerCode, p_session: session })
             .catch(() => null)
@@ -63,7 +74,7 @@ Deno.serve(
       if (found?.reference) params.reference = found.reference
       let orderNumber: string | null = null
       if (found?.order_id) {
-        const { data } = await admin.from('orders').select('order_number').eq('id', found.order_id).maybeSingle()
+        const { data } = await admin.from('orders').select('order_number').eq('id', found.order_id).eq('merchant_id', merchantId).maybeSingle()
         orderNumber = data?.order_number ?? null
       }
       let outcome = callback === 'success' ? 'pending' : callback
@@ -97,6 +108,77 @@ Deno.serve(
     const body = await readJson<{ action?: string }>(req)
     const ip = clientIp(req)
 
+    if (body.action === 'initiate' || body.action === 'submit_manual') {
+      // Shoppers pay the store they are on.
+      return shopper(req, body, ip, adminClient(storefrontMerchant(req)))
+    }
+
+    // ------------------------------------------------------------- staff
+    const input = parse(staffSchema, body)
+    const staff = await requireStaff(req, input.action === 'check_payment' ? 'payments.verify' : 'settings.manage')
+    const admin = staff.admin
+    const settings = await getSettings<PaymentSettings>(admin, 'payments')
+
+    if (input.action === 'check_payment') {
+      const { data: payment } = await admin.from('payments')
+        .select('id, provider, reference, status, metadata, created_at').eq('id', input.payment_id).eq('merchant_id', staff.merchantId).maybeSingle()
+      if (!payment) throw new HttpError(404, 'Payment not found', 'NOT_FOUND')
+      if (!['bkash', 'paystation'].includes(payment.provider)) throw new HttpError(422, 'Only bKash and PayStation payments can be checked', 'UNSUPPORTED')
+      if (payment.status === 'SUCCEEDED') return json(req, { status: 'already_succeeded' })
+      const provider = await loadPaymentProvider(admin, payment.provider, settings, { allowDisabled: true })
+      try {
+        const result = await reconcilePayment(admin, provider, {
+          id: payment.id, provider: payment.provider, reference: payment.reference,
+          sessions: ((payment.metadata as { sessions?: string[] } | null)?.sessions ?? []),
+          age_minutes: Math.round((Date.now() - new Date(payment.created_at).getTime()) / 60_000),
+        })
+        return json(req, { status: result.status })
+      } catch (error) {
+        throw new HttpError(502, `Could not reach ${payment.provider === 'bkash' ? 'bKash' : 'PayStation'}: ${(error as Error).message}`, 'GATEWAY_ERROR')
+      }
+    }
+
+    const code = input.provider
+
+    if (input.action === 'connect_gateway') {
+      const creds = Object.fromEntries(Object.entries(input.credentials).filter(([, v]) => v)) as Record<string, string>
+      const missing = REQUIRED[code].filter((k) => !creds[k])
+      if (missing.length) throw new HttpError(422, `Enter ${missing.join(', ').replace(/_/g, ' ')}`, 'VALIDATION')
+      // Credentials travel to this address: never in clear text (a local mock can opt out).
+      if (creds.base_url && !creds.base_url.startsWith('https://') && env('ALLOW_INSECURE_GATEWAY_URL') !== 'true') {
+        throw new HttpError(422, 'The API address must start with https://', 'VALIDATION')
+      }
+      const provider = gatewayFromCredentials(code, { ...settings.providers?.[code], sandbox: input.sandbox }, creds, admin)
+      let message: string
+      try {
+        message = await provider.test!(`${requireEnv('SUPABASE_URL')}/functions/v1/payments?callback=cancelled&provider=${code}`)
+      } catch (error) {
+        throw new HttpError(422, (error as Error).message, 'GATEWAY_REJECTED')
+      }
+      const hint = code === 'bkash' ? `App key ••••${creds.app_key.slice(-4)}` : `Merchant ${creds.merchant_id}`
+      await rpc(admin, 'integration_secret_store', { p_key: gatewaySecret(code), p_value: creds, p_hint: hint, p_actor: staff.user.id })
+      const config = await rpc(admin, 'payment_set_provider', { p_code: code, p_enabled: true, p_sandbox: code === 'bkash' ? input.sandbox ?? true : null })
+      return json(req, { ok: true, message, hint, config })
+    }
+
+    if (input.action === 'test_gateway') {
+      const provider = await loadPaymentProvider(admin, code, settings, { allowDisabled: true })
+      try {
+        return json(req, { ok: true, message: await provider.test!(`${requireEnv('SUPABASE_URL')}/functions/v1/payments?callback=cancelled&provider=${code}`) })
+      } catch (error) {
+        throw new HttpError(422, (error as Error).message, 'GATEWAY_REJECTED')
+      }
+    }
+
+    await rpc(admin, 'integration_secret_clear', { p_key: gatewaySecret(code), p_actor: staff.user.id })
+    const config = await rpc(admin, 'payment_set_provider', { p_code: code, p_enabled: false, p_sandbox: null })
+    return json(req, { ok: true, config })
+  }),
+)
+
+/** A shopper starts a gateway payment or reports a Send Money transfer, on the store they are on. */
+async function shopper(req: Request, body: { action?: string }, ip: string, admin: SupabaseClient): Promise<Response> {
+  {
     if (body.action === 'initiate') {
       rateLimit(`pay:${ip}`, 10)
       const input = parse(initiatePaymentSchema, body)
@@ -179,66 +261,6 @@ Deno.serve(
       })
       return json(req, { payment: { reference: payment.reference, status: payment.status, amount: payment.amount } }, 201)
     }
-
-    // ------------------------------------------------------------- staff
-    const input = parse(staffSchema, body)
-    const settings = await getSettings<PaymentSettings>(admin, 'payments')
-
-    if (input.action === 'check_payment') {
-      await requireStaff(req, 'payments.verify')
-      const { data: payment } = await admin.from('payments')
-        .select('id, provider, reference, status, metadata, created_at').eq('id', input.payment_id).maybeSingle()
-      if (!payment) throw new HttpError(404, 'Payment not found', 'NOT_FOUND')
-      if (!['bkash', 'paystation'].includes(payment.provider)) throw new HttpError(422, 'Only bKash and PayStation payments can be checked', 'UNSUPPORTED')
-      if (payment.status === 'SUCCEEDED') return json(req, { status: 'already_succeeded' })
-      const provider = await loadPaymentProvider(admin, payment.provider, settings, { allowDisabled: true })
-      try {
-        const result = await reconcilePayment(admin, provider, {
-          id: payment.id, provider: payment.provider, reference: payment.reference,
-          sessions: ((payment.metadata as { sessions?: string[] } | null)?.sessions ?? []),
-          age_minutes: Math.round((Date.now() - new Date(payment.created_at).getTime()) / 60_000),
-        })
-        return json(req, { status: result.status })
-      } catch (error) {
-        throw new HttpError(502, `Could not reach ${payment.provider === 'bkash' ? 'bKash' : 'PayStation'}: ${(error as Error).message}`, 'GATEWAY_ERROR')
-      }
-    }
-
-    const staff = await requireStaff(req, 'settings.manage')
-    const code = input.provider
-
-    if (input.action === 'connect_gateway') {
-      const creds = Object.fromEntries(Object.entries(input.credentials).filter(([, v]) => v)) as Record<string, string>
-      const missing = REQUIRED[code].filter((k) => !creds[k])
-      if (missing.length) throw new HttpError(422, `Enter ${missing.join(', ').replace(/_/g, ' ')}`, 'VALIDATION')
-      // Credentials travel to this address: never in clear text (a local mock can opt out).
-      if (creds.base_url && !creds.base_url.startsWith('https://') && env('ALLOW_INSECURE_GATEWAY_URL') !== 'true') {
-        throw new HttpError(422, 'The API address must start with https://', 'VALIDATION')
-      }
-      const provider = gatewayFromCredentials(code, { ...settings.providers?.[code], sandbox: input.sandbox }, creds, admin)
-      let message: string
-      try {
-        message = await provider.test!(`${requireEnv('SUPABASE_URL')}/functions/v1/payments?callback=cancelled&provider=${code}`)
-      } catch (error) {
-        throw new HttpError(422, (error as Error).message, 'GATEWAY_REJECTED')
-      }
-      const hint = code === 'bkash' ? `App key ••••${creds.app_key.slice(-4)}` : `Merchant ${creds.merchant_id}`
-      await rpc(admin, 'integration_secret_store', { p_key: gatewaySecret(code), p_value: creds, p_hint: hint, p_actor: staff.user.id })
-      const config = await rpc(admin, 'payment_set_provider', { p_code: code, p_enabled: true, p_sandbox: code === 'bkash' ? input.sandbox ?? true : null })
-      return json(req, { ok: true, message, hint, config })
-    }
-
-    if (input.action === 'test_gateway') {
-      const provider = await loadPaymentProvider(admin, code, settings, { allowDisabled: true })
-      try {
-        return json(req, { ok: true, message: await provider.test!(`${requireEnv('SUPABASE_URL')}/functions/v1/payments?callback=cancelled&provider=${code}`) })
-      } catch (error) {
-        throw new HttpError(422, (error as Error).message, 'GATEWAY_REJECTED')
-      }
-    }
-
-    await rpc(admin, 'integration_secret_clear', { p_key: gatewaySecret(code), p_actor: staff.user.id })
-    const config = await rpc(admin, 'payment_set_provider', { p_code: code, p_enabled: false, p_sandbox: null })
-    return json(req, { ok: true, config })
-  }),
-)
+  }
+  throw new HttpError(400, 'Unknown action', 'UNKNOWN_ACTION')
+}

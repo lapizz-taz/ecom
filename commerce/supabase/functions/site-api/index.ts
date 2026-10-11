@@ -14,9 +14,9 @@ import { placeOrder, quoteCart } from '../_shared/checkout-flow.ts'
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { clientIp, handle, HttpError, rateLimit, readJson } from '../_shared/http.ts'
 import { parse, placeOrderSchema, quoteSchema } from '../_shared/schemas.ts'
-import { adminClient, rpc } from '../_shared/supabase.ts'
+import { adminClient, merchantFor, rpc } from '../_shared/supabase.ts'
 
-interface SiteKey { id: string; name: string; kind: 'PUBLISHABLE' | 'SECRET'; allowed_origins: string[] }
+interface SiteKey { id: string; name: string; kind: 'PUBLISHABLE' | 'SECRET'; allowed_origins: string[]; merchantId: string }
 
 const sha256 = async (s: string) =>
   Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, '0')).join('')
@@ -39,8 +39,12 @@ const reply = (req: Request, body: unknown, status = 200) =>
 async function authenticate(req: Request): Promise<SiteKey> {
   const raw = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim() || (req.headers.get('x-api-key') ?? '').trim()
   if (!/^(pk|sk)_live_[0-9a-f]{48}$/.test(raw)) throw new HttpError(401, 'Send your website API key as "Authorization: Bearer pk_live_…"', 'API_KEY_MISSING')
-  const key = await rpc<SiteKey | null>(adminClient(), 'site_api_key_check', { p_hash: await sha256(raw) })
-  if (!key) throw new HttpError(401, 'This API key is not valid or has been turned off', 'API_KEY_INVALID')
+  // The key decides the merchant: its catalog, prices and orders.
+  const hash = await sha256(raw)
+  const merchantId = await merchantFor('site_api_key', hash)
+  const found = merchantId ? await rpc<Omit<SiteKey, 'merchantId'> | null>(adminClient(merchantId), 'site_api_key_check', { p_hash: hash }) : null
+  if (!merchantId || !found) throw new HttpError(401, 'This API key is not valid or has been turned off', 'API_KEY_INVALID')
+  const key: SiteKey = { ...found, merchantId }
   const origin = req.headers.get('origin')
   if (key.kind === 'SECRET' && origin) {
     throw new HttpError(403, 'Secret keys are for your server only. Use a publishable key (pk_live_…) in browser code, and turn this secret key off.', 'SECRET_KEY_IN_BROWSER')
@@ -60,7 +64,7 @@ Deno.serve(async (req) => {
     const path = url.pathname.replace(/^.*\/site-api/, '').replace(/\/+$/, '') || '/'
     const key = await authenticate(req)
     rateLimit(`site:${key.id}:${clientIp(req)}`, req.method === 'POST' ? 30 : 120)
-    const admin = adminClient()
+    const admin = adminClient(key.merchantId)
 
     if (req.method === 'GET' && path === '/v1/products') {
       const data = await rpc(admin, 'storefront_list_products', {
@@ -84,7 +88,7 @@ Deno.serve(async (req) => {
       const body = await readJson<Record<string, unknown>>(req)
       const input = parse(placeOrderSchema, { ...body, action: 'place', idempotency_key: body.idempotency_key ?? req.headers.get('idempotency-key') ?? undefined })
       const result = await placeOrder(admin, input, { ip: clientIp(req), userAgent: req.headers.get('user-agent'), siteKeyId: key.id })
-      dispatchNotificationsInBackground()
+      dispatchNotificationsInBackground(key.merchantId)
       return reply(req, result, 201)
     }
     const track = /^\/v1\/orders\/([A-Za-z0-9-]{3,40})$/.exec(path)

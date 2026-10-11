@@ -17,7 +17,7 @@ import {
 } from '../_shared/meta/graph.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const token = z.string().trim().min(20).max(1000).regex(/^[A-Za-z0-9_|.-]+$/, 'That does not look like a Meta access token')
 const appSecret = z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The App Secret is a 32-character code from App settings → Basic')
@@ -173,9 +173,18 @@ Deno.serve(
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const input = parse(schema, await readJson(req))
-    const admin = adminClient()
-    const cron = input.action === 'sync' && await isCronRequest(req, admin)
-    const staff = cron ? null : await requireStaff(req, 'marketing.manage')
+    const cron = input.action === 'sync' && await isCronRequest(req, adminClient())
+    if (cron && input.action === 'sync') {
+      // Every merchant's active Meta accounts, each with that merchant's own token.
+      return json(req, await forEachMerchant('meta-ads', async (admin) => {
+        const accounts = await rpc<AccountRow[]>(admin, 'meta_accounts_for_sync', { p_id: null })
+        const results = []
+        for (const account of accounts) results.push(await runSync(admin, account, await storedSecrets(admin, account.id), input.days))
+        return { ok: results.every((r) => r.ok), accounts: results }
+      }))
+    }
+    const staff = await requireStaff(req, 'marketing.manage')
+    const admin = staff.admin
 
     switch (input.action) {
       case 'test': {
@@ -209,16 +218,16 @@ Deno.serve(
               }
               : failure ? { status: 'FAILED', error: failure, has_app_secret: !!creds.app_secret } : undefined,
           },
-          p_actor: staff!.user.id,
+          p_actor: staff.user.id,
         })
         if (input.access_token || input.app_secret) {
           try {
             await rpc(admin, 'integration_secret_store', {
-              p_key: secretKey(row.id), p_value: creds, p_hint: creds.access_token ? hintFor(creds.access_token) : null, p_actor: staff!.user.id,
+              p_key: secretKey(row.id), p_value: creds, p_hint: creds.access_token ? hintFor(creds.access_token) : null, p_actor: staff.user.id,
             })
           } catch (error) {
             // Never leave an account active without its credentials.
-            if (!input.id) await rpc(admin, 'meta_account_disconnect', { p_id: row.id, p_actor: staff!.user.id })
+            if (!input.id) await rpc(admin, 'meta_account_disconnect', { p_id: row.id, p_actor: staff.user.id })
             throw error
           }
         }
@@ -228,8 +237,8 @@ Deno.serve(
       }
       case 'disconnect': {
         await accountRow(admin, input.id)
-        await rpc(admin, 'integration_secret_clear', { p_key: secretKey(input.id), p_actor: staff!.user.id })
-        await rpc(admin, 'meta_account_disconnect', { p_id: input.id, p_actor: staff!.user.id })
+        await rpc(admin, 'integration_secret_clear', { p_key: secretKey(input.id), p_actor: staff.user.id })
+        await rpc(admin, 'meta_account_disconnect', { p_id: input.id, p_actor: staff.user.id })
         return json(req, { ok: true })
       }
       case 'sync': {

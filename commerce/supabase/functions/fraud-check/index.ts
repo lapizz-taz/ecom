@@ -14,7 +14,7 @@ import {
 } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
-import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
+import { getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const schema = z.discriminatedUnion('action', [
   z.object({
@@ -61,7 +61,7 @@ Deno.serve(
     const body = await readJson<Record<string, unknown>>(req)
     const input = parse(schema, { action: 'check', ...body })
     const staff = await requireStaff(req, PERMISSION[input.action])
-    const admin = adminClient()
+    const admin = staff.admin
     const settings = await getSettings<FraudSettings>(admin, 'fraud')
 
     if (input.action === 'connect_courier_history') {

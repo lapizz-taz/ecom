@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
 import { env, requireEnv } from './env.ts'
 import { fromDbError, HttpError } from './http.ts'
+import { logEvent } from './monitoring.ts'
 
 const options = { auth: { persistSession: false, autoRefreshToken: false } }
 
@@ -12,9 +13,86 @@ function anonKey(): string {
   return env('SUPABASE_ANON_KEY') ?? requireEnv('SUPABASE_PUBLISHABLE_KEY')
 }
 
-/** Service-role client. Bypasses RLS — only use after validating input. */
-export function adminClient(): SupabaseClient {
-  return createClient(requireEnv('SUPABASE_URL'), serviceKey(), options)
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Service-role client acting for one merchant: the x-merchant-id header makes
+ * the database scope every business function to that merchant. Without a
+ * merchant the client is platform-only and merchant data is out of reach.
+ * Direct table reads bypass row-level security, so always filter them by merchant.
+ */
+export function adminClient(merchantId?: string | null): SupabaseClient {
+  if (merchantId && !UUID.test(merchantId)) throw new Error('adminClient: not a merchant id')
+  const client = createClient(requireEnv('SUPABASE_URL'), serviceKey(), merchantId
+    ? { ...options, global: { headers: { 'x-merchant-id': merchantId } } }
+    : options)
+  serviceMerchant.set(client, merchantId ?? null)
+  return client
+}
+
+// Which merchant each service-role client acts for (null: platform-only).
+// Clients that act as a signed-in user are not listed: row-level security scopes them.
+const serviceMerchant = new WeakMap<SupabaseClient, string | null>()
+
+/**
+ * The merchant to filter direct table reads by. Service-role reads bypass
+ * row-level security, so they must name the merchant; a platform-only client
+ * cannot read merchant tables at all. Returns null for user clients (RLS applies).
+ */
+export function merchantOf(client: SupabaseClient): string | null {
+  if (!serviceMerchant.has(client)) return null
+  const id = serviceMerchant.get(client)
+  if (!id) throw new HttpError(500, 'No merchant for this request', 'MERCHANT_REQUIRED')
+  return id
+}
+
+/** Kinds of things merchant_for() can look up. */
+export type MerchantLookup =
+  | 'channel' | 'channel_oauth_state' | 'ad_oauth_state' | 'courier' | 'consignment' | 'payment_session' | 'payment'
+  | 'site_api_key' | 'store_domain' | 'pbx_bkash_reference' | 'pbx_bkash_payment' | 'pbx_sip_username' | 'pbx_did'
+  | 'pbx_business_code' | 'pbx_call' | 'order' | 'profile'
+
+/** The merchant that owns something arriving from outside (webhook, return URL, API key), or null. */
+export async function merchantFor(kind: MerchantLookup, key: string | null | undefined): Promise<string | null> {
+  if (!key) return null
+  const { data, error } = await adminClient().rpc('merchant_for', { p_kind: kind, p_key: key })
+  if (error) throw fromDbError(error)
+  return (data as string | null) ?? null
+}
+
+/** The store the browser is on (the storefront sends x-merchant-id). */
+export function storefrontMerchant(req: Request): string {
+  const id = req.headers.get('x-merchant-id') ?? ''
+  if (!UUID.test(id)) throw new HttpError(400, 'This request does not say which store it is for. Reload the page and try again.', 'MERCHANT_REQUIRED')
+  return id.toLowerCase()
+}
+
+/** Merchants whose scheduled work should run (everyone except closed accounts). */
+export async function activeMerchants(): Promise<string[]> {
+  const { data, error } = await adminClient().from('merchants').select('id').neq('status', 'CLOSED').order('number')
+  if (error) throw fromDbError(error)
+  return (data ?? []).map((m) => m.id as string)
+}
+
+/**
+ * Runs scheduled work once per merchant, each with its own client. One
+ * merchant's failure is reported (not swallowed) and does not stop the others.
+ */
+export async function forEachMerchant<T>(
+  source: string,
+  work: (admin: SupabaseClient, merchantId: string) => Promise<T>,
+): Promise<{ merchants: number; failed: number; results: Array<{ merchant_id: string } & ({ ok: true; result: T } | { ok: false; error: string })> }> {
+  const results: Array<{ merchant_id: string } & ({ ok: true; result: T } | { ok: false; error: string })> = []
+  for (const id of await activeMerchants()) {
+    try {
+      results.push({ merchant_id: id, ok: true, result: await work(adminClient(id), id) })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      results.push({ merchant_id: id, ok: false, error: message })
+      void logEvent({ level: 'ERROR', category: 'JOB', source, message: `Scheduled work failed for a merchant: ${message}`, error, merchantId: id })
+    }
+  }
+  return { merchants: results.length, failed: results.filter((r) => !r.ok).length, results }
 }
 
 /** Client acting as the caller, so RLS and permission checks apply. */
@@ -43,7 +121,11 @@ export async function optionalUser(req: Request): Promise<User | null> {
 
 export interface StaffContext {
   user: User
+  /** Acts as the signed-in staff member (their permissions and row-level security apply). */
   client: SupabaseClient
+  /** Service role inside the staff member's merchant. */
+  admin: SupabaseClient
+  merchantId: string
   role: string
   permissions: string[]
 }
@@ -55,12 +137,12 @@ export async function requireStaff(req: Request, permission: string): Promise<St
   const client = userClient(req)
   const { data, error } = await client.rpc('get_my_access')
   if (error) throw fromDbError(error)
-  const access = data as { role: string; permissions: string[] } | null
-  if (!access) throw new HttpError(403, 'Staff access required', 'PERMISSION_DENIED')
+  const access = data as { role: string; permissions: string[]; merchant_id: string | null } | null
+  if (!access?.merchant_id) throw new HttpError(403, 'Staff access required', 'PERMISSION_DENIED')
   if (access.role !== 'OWNER' && !access.permissions.includes(permission)) {
     throw new HttpError(403, `${permission} is required`, 'PERMISSION_DENIED')
   }
-  return { user, client, role: access.role, permissions: access.permissions }
+  return { user, client, admin: adminClient(access.merchant_id), merchantId: access.merchant_id, role: access.role, permissions: access.permissions }
 }
 
 /** Calls an RPC and converts database errors into HTTP errors. */
@@ -71,7 +153,10 @@ export async function rpc<T>(client: SupabaseClient, fn: string, args: Record<st
 }
 
 export async function getSettings<T = Record<string, unknown>>(client: SupabaseClient, key: string): Promise<T> {
-  const { data, error } = await client.from('settings').select('value').eq('key', key).maybeSingle()
+  const merchant = merchantOf(client)
+  let query = client.from('settings').select('value').eq('key', key)
+  if (merchant) query = query.eq('merchant_id', merchant)
+  const { data, error } = await query.maybeSingle()
   if (error) throw fromDbError(error)
   return (data?.value ?? {}) as T
 }

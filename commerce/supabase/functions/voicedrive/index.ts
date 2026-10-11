@@ -18,7 +18,7 @@
 //     whose browser never came back.
 import { z } from 'zod'
 import { isCronRequest } from '../_shared/cron.ts'
-import { requireEnv } from '../_shared/env.ts'
+import { env, requireEnv } from '../_shared/env.ts'
 import { formOrQuery } from '../_shared/payment-flow.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
@@ -26,7 +26,8 @@ import { loadPaymentProvider, type PaymentSettings } from '../_shared/payments/r
 import type { PaymentProvider, VerifiedPayment } from '../_shared/payments/types.ts'
 import { parse } from '../_shared/schemas.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
-import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { adminClient, forEachMerchant, getSettings, merchantFor, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 import { constantTimeEqual, iceServers, randomPassword, sha256Hex, type VoiceDriveSettings } from '../_shared/voicedrive.ts'
 
 const GATEWAY_KEY = 'voicedrive.gateway'
@@ -71,20 +72,21 @@ const PERMISSION: Record<string, string> = {
   rotateGatewayToken: 'pbx.super_admin',
 }
 
+// The gateway token, TURN secret and SIP trunk passwords belong to the shared
+// VoiceDrive gateway, so they are platform credentials, not a merchant's.
 async function secret<T>(key: string): Promise<T | null> {
-  const { data, error } = await adminClient().rpc('integration_secret_get', { p_key: key })
+  const { data, error } = await adminClient().rpc('platform_secret_get', { p_key: key })
   if (error) throw new HttpError(500, `Could not read a stored secret: ${error.message}`, 'SECRET_READ_FAILED')
   return (data ?? null) as T | null
 }
 
 async function storeSecret(key: string, value: Record<string, unknown>, hint: string, actor: string) {
-  await rpc(adminClient(), 'integration_secret_store', { p_key: key, p_value: value, p_hint: hint, p_actor: actor })
+  await rpc(adminClient(), 'platform_secret_store', { p_key: key, p_value: value, p_hint: hint, p_actor: actor })
 }
 
 const functionsBase = () => `${requireEnv('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1`
 
-async function bkash(): Promise<PaymentProvider> {
-  const admin = adminClient()
+async function bkash(admin: SupabaseClient): Promise<PaymentProvider> {
   const settings = await getSettings<PaymentSettings>(admin, 'payments')
   try {
     return await loadPaymentProvider(admin, 'bkash', settings, { allowDisabled: true })
@@ -93,8 +95,8 @@ async function bkash(): Promise<PaymentProvider> {
   }
 }
 
-async function complete(verified: VerifiedPayment, reference: string) {
-  return rpc<{ status: string; type?: string }>(adminClient(), 'pbx_bkash_complete', {
+async function complete(admin: SupabaseClient, verified: VerifiedPayment, reference: string) {
+  return rpc<{ status: string; type?: string }>(admin, 'pbx_bkash_complete', {
     p_reference: reference,
     p_success: verified.success,
     p_trx_id: verified.providerTransactionId,
@@ -110,21 +112,25 @@ async function bkashReturn(req: Request): Promise<Response> {
   const reference = params.ref ?? ''
   let outcome = 'failed'
   let type = ''
+  // The recharge reference names the merchant whose package this pays for.
+  const merchantId = /^VD[0-9A-Z]{6,20}$/.test(reference) ? await merchantFor('pbx_bkash_reference', reference) : null
+  const admin = adminClient(merchantId)
   try {
-    if (!/^VD[0-9A-Z]{6,20}$/.test(reference)) throw new Error('Unknown payment reference')
-    const found = params.paymentID ? await rpc<{ reference: string } | null>(adminClient(), 'pbx_bkash_find', { p_payment_id: params.paymentID }) : null
+    if (!merchantId) throw new Error('Unknown payment reference')
+    const found = params.paymentID ? await rpc<{ reference: string } | null>(admin, 'pbx_bkash_find', { p_payment_id: params.paymentID }) : null
     if (!found || found.reference !== reference) throw new Error('This bKash payment does not belong to this recharge')
-    const verified = await (await bkash()).verifyCallback!({ ...params, reference })
-    const result = await complete(verified, reference)
+    const verified = await (await bkash(admin)).verifyCallback!({ ...params, reference })
+    const result = await complete(admin, verified, reference)
     type = result.type ?? ''
     outcome = ['completed', 'already_completed'].includes(result.status) ? 'success' : result.status === 'amount_mismatch' ? 'review' : 'failed'
     if (!verified.success && /cancel/i.test(verified.reason ?? '')) outcome = 'cancelled'
   } catch (error) {
     // Not confirmed yet: the reconcile job checks bKash again.
     outcome = 'review'
-    void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'voicedrive', message: 'Could not confirm a VoiceDrive bKash payment', error, context: { reference } })
+    void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'voicedrive', message: 'Could not confirm a VoiceDrive bKash payment', error, context: { reference }, merchantId })
   }
-  const target = `${await storefrontBase(adminClient())}/admin/settings/voicedrive-pbx?${new URLSearchParams({ tab: 'package', payment: outcome, type })}`
+  const base = merchantId ? await storefrontBase(admin) : (env('STOREFRONT_URL') ?? '').replace(/\/+$/, '')
+  const target = `${base}/admin/settings/voicedrive-pbx?${new URLSearchParams({ tab: 'package', payment: outcome, type })}`
   return new Response(null, { status: 303, headers: { Location: target, 'Cache-Control': 'no-store' } })
 }
 
@@ -137,12 +143,19 @@ async function gateway(req: Request, body: Record<string, unknown>): Promise<Res
     throw new HttpError(401, 'Unknown gateway token', 'UNAUTHORIZED')
   }
   const input = parse(gatewaySchema, body)
-  const admin = adminClient()
+  // The gateway serves every merchant: each call event acts inside the merchant
+  // that owns the SIP user, the dialled number or the call.
+  const platform = adminClient()
+  const inMerchant = async (kind: Parameters<typeof merchantFor>[0], key: string | null | undefined) => {
+    const merchantId = await merchantFor(kind, key)
+    if (!merchantId) throw new HttpError(404, 'Unknown line or call', 'NOT_FOUND')
+    return adminClient(merchantId)
+  }
   switch (input.action) {
     case 'gw_ping':
-      return json(req, await rpc(admin, 'pbx_gw_ping', { p_version: input.version, p_detail: input.detail }))
+      return json(req, await rpc(platform, 'pbx_gw_ping', { p_version: input.version, p_detail: input.detail }))
     case 'gw_trunks': {
-      const trunks = await rpc<Array<Record<string, unknown> & { businessId: string }>>(admin, 'pbx_gw_trunks')
+      const trunks = await rpc<Array<Record<string, unknown> & { businessId: string }>>(platform, 'pbx_gw_trunks')
       const out = []
       for (const t of trunks ?? []) {
         const s = await secret<{ password?: string }>(trunkKey(t.businessId))
@@ -151,38 +164,45 @@ async function gateway(req: Request, body: Record<string, unknown>): Promise<Res
       return json(req, { trunks: out })
     }
     case 'gw_outbound_start':
-      return json(req, await rpc(admin, 'pbx_gw_outbound_start', {
+      return json(req, await rpc(await inMerchant('pbx_sip_username', input.sipUsername), 'pbx_gw_outbound_start', {
         p_sip_username: input.sipUsername, p_dialed: input.dialed, p_call_id: input.callId, p_gateway_call_id: input.gatewayCallId }))
-    case 'gw_inbound_start':
-      return json(req, await rpc(admin, 'pbx_gw_inbound_start', {
+    case 'gw_inbound_start': {
+      const merchantId = await merchantFor('pbx_did', input.did)
+        ?? (input.businessCode != null ? await merchantFor('pbx_business_code', String(input.businessCode)) : null)
+      // A number no merchant owns is refused the same way the database refuses it.
+      if (!merchantId) return json(req, { allow: false, reason: 'UNKNOWN_NUMBER' })
+      return json(req, await rpc(adminClient(merchantId), 'pbx_gw_inbound_start', {
         p_did: input.did, p_from: input.from, p_gateway_call_id: input.gatewayCallId, p_business_code: input.businessCode ?? null }))
+    }
     case 'gw_answered':
-      return json(req, await rpc(admin, 'pbx_gw_call_answered', { p_call_id: input.callId, p_sip_username: input.sipUsername ?? null }))
+      return json(req, await rpc(await inMerchant('pbx_call', input.callId), 'pbx_gw_call_answered', { p_call_id: input.callId, p_sip_username: input.sipUsername ?? null }))
     case 'gw_ended':
-      return json(req, await rpc(admin, 'pbx_gw_call_ended', {
+      return json(req, await rpc(await inMerchant('pbx_call', input.callId), 'pbx_gw_call_ended', {
         p_call_id: input.callId, p_status: input.status, p_billsec: input.billsec, p_hangup_cause: input.hangupCause ?? null, p_answered: input.answered ?? null }))
   }
 }
 
 async function reconcile(req: Request): Promise<Response> {
-  const admin = adminClient()
-  if (!(await isCronRequest(req, admin))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
-  const pending = await rpc<Array<{ reference: string; paymentId: string; ageMinutes: number }>>(admin, 'pbx_bkash_pending', { p_limit: 20 })
-  if (!pending?.length) return json(req, { checked: 0 })
-  const provider = await bkash()
-  const counts: Record<string, number> = {}
-  for (const p of pending) {
-    try {
-      const verified = await provider.reconcile!(p.paymentId, p.reference, p.ageMinutes)
-      if (!verified) { counts.waiting = (counts.waiting ?? 0) + 1; continue }
-      const r = await complete(verified, p.reference)
-      counts[r.status] = (counts[r.status] ?? 0) + 1
-    } catch (error) {
-      counts.error = (counts.error ?? 0) + 1
-      void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'voicedrive', message: 'Could not reconcile a VoiceDrive bKash payment', error, context: { reference: p.reference } })
+  if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
+  return json(req, await forEachMerchant('voicedrive', async (admin) => {
+    const pending = await rpc<Array<{ reference: string; paymentId: string; ageMinutes: number }>>(admin, 'pbx_bkash_pending', { p_limit: 20 })
+    if (!pending?.length) return { checked: 0 }
+    const provider = await bkash(admin)
+    const counts: Record<string, number> = {}
+    for (const p of pending) {
+      try {
+        const verified = await provider.reconcile!(p.paymentId, p.reference, p.ageMinutes)
+        if (!verified) { counts.waiting = (counts.waiting ?? 0) + 1; continue }
+        const r = await complete(admin, verified, p.reference)
+        counts[r.status] = (counts[r.status] ?? 0) + 1
+      } catch (error) {
+        counts.error = (counts.error ?? 0) + 1
+        void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'voicedrive', message: 'Could not reconcile a VoiceDrive bKash payment', error,
+          context: { reference: p.reference }, merchantId: merchantOf(admin) })
+      }
     }
-  }
-  return json(req, { checked: pending.length, ...counts })
+    return { checked: pending.length, ...counts }
+  }))
 }
 
 Deno.serve(
@@ -198,7 +218,11 @@ Deno.serve(
 
     const input = parse(staffSchema, body)
     const staff = await requireStaff(req, PERMISSION[input.action])
-    const admin = adminClient()
+    const admin = staff.admin
+    // Gateway, TURN and trunk secrets are shared by every merchant: only platform staff may change them.
+    if (PERMISSION[input.action] === 'pbx.super_admin' && !(await rpc<boolean>(staff.client, 'is_platform_staff'))) {
+      throw new HttpError(403, 'Only the platform team can change the shared PBX gateway', 'PERMISSION_DENIED')
+    }
 
     if (input.action === 'getMyWebRtcCredentials') {
       rateLimit(`vd-cred:${staff.user.id}`, 12)
@@ -227,7 +251,7 @@ Deno.serve(
       rateLimit(`vd-bkash:${staff.user.id}`, 6)
       const { action: _a, ...p } = input
       const tx = await rpc<{ id: string; reference: string; amountTk: number; type: string; businessPhone: string | null }>(staff.client, 'pbx_bkash_start', { p })
-      const provider = await bkash()
+      const provider = await bkash(admin)
       const back = `${functionsBase()}/voicedrive?bkash=callback&ref=${tx.reference}`
       let started
       try {

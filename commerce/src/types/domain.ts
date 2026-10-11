@@ -460,6 +460,9 @@ export interface StaffMember {
 
 export interface MyAccess {
   user_id: string
+  /** The business this staff member works for. */
+  merchant_id: string
+  merchant?: { id: string; number: number; name: string; status: string }
   email: string
   full_name: string
   role: string

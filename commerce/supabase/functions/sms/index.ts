@@ -10,7 +10,7 @@ import {
   cleanSmsCredentials, SMS_PROVIDER_CODES, smsCredentialHint, SmsError, smsProviderFromCredentials,
 } from '../_shared/sms/providers.ts'
 import { connectedSmsProvider, loadSmsConfig, smsSecretKey } from '../_shared/sms/registry.ts'
-import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
+import { requireStaff, rpc } from '../_shared/supabase.ts'
 
 const schema = z.discriminatedUnion('action', [
   z.object({
@@ -35,7 +35,7 @@ Deno.serve(
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const input = parse(schema, await readJson(req))
     const staff = await requireStaff(req, 'sms.manage')
-    const admin = adminClient()
+    const admin = staff.admin
 
     switch (input.action) {
       case 'connect': {

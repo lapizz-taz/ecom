@@ -17,7 +17,7 @@ import { env, requireEnv } from '../_shared/env.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, merchantFor, requireStaff, rpc } from '../_shared/supabase.ts'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
 
@@ -175,7 +175,10 @@ async function syncMany(admin: SupabaseClient, platformName: Platform | undefine
 async function callback(req: Request, p: Platform): Promise<Response> {
   const url = new URL(req.url)
   const state = url.searchParams.get('state') ?? ''
-  const admin = adminClient()
+  // The state was created by one merchant's staff; the connection belongs to that merchant.
+  const merchantId = await merchantFor('ad_oauth_state', state)
+  if (!merchantId) return page('This link has expired', 'Go back to the admin page and click Connect again.')
+  const admin = adminClient(merchantId)
   const taken = state ? await rpc<{ created_by: string; return_to: string } | null>(admin, 'ad_oauth_state_take', { p_platform: p, p_state: state }) : null
   if (!taken) return page('This link has expired', 'Go back to the admin page and click Connect again.')
   const name = p === 'tiktok' ? 'TikTok' : 'Google'
@@ -229,9 +232,16 @@ Deno.serve(
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
 
     const input = parseInput(await readJson(req))
-    const admin = adminClient()
-    const cron = input.action === 'sync' && await isCronRequest(req, admin)
-    const staff = cron ? null : await requireStaff(req, 'marketing.manage')
+    const cron = input.action === 'sync' && await isCronRequest(req, adminClient())
+    if (cron && input.action === 'sync') {
+      // Every merchant's chosen ad accounts, each with that merchant's own tokens.
+      return json(req, await forEachMerchant('ad-platforms', async (admin) => {
+        const results = await syncMany(admin, input.platform, input.account_id, input.days)
+        return { ok: results.every((r) => r.ok), accounts: results }
+      }))
+    }
+    const staff = await requireStaff(req, 'marketing.manage')
+    const admin = staff.admin
 
     switch (input.action) {
       case 'save_app': {
@@ -239,8 +249,8 @@ Deno.serve(
         if (input.platform === 'tiktok') {
           const value = { app_id: input.app_id, secret: input.secret ?? saved.secret }
           if (!value.secret) throw new HttpError(422, 'Enter the app Secret', 'VALIDATION')
-          await rpc(admin, 'integration_secret_store', { p_key: appKey('tiktok'), p_value: value, p_hint: `App ${input.app_id}`, p_actor: staff!.user.id })
-          const app = await rpc(admin, 'ad_app_set', { p_platform: 'tiktok', p: { app_id: input.app_id, configured: true, hint: `secret ${hint(value.secret)}` }, p_actor: staff!.user.id })
+          await rpc(admin, 'integration_secret_store', { p_key: appKey('tiktok'), p_value: value, p_hint: `App ${input.app_id}`, p_actor: staff.user.id })
+          const app = await rpc(admin, 'ad_app_set', { p_platform: 'tiktok', p: { app_id: input.app_id, configured: true, hint: `secret ${hint(value.secret)}` }, p_actor: staff.user.id })
           return json(req, { ok: true, app, redirect_uri: redirectUri('tiktok') })
         }
         const value = {
@@ -248,24 +258,24 @@ Deno.serve(
           developer_token: input.developer_token ?? saved.developer_token, login_customer_id: input.login_customer_id?.replace(/\D/g, '') || null,
         }
         if (!value.client_secret || !value.developer_token) throw new HttpError(422, 'Enter the client secret and the developer token', 'VALIDATION')
-        await rpc(admin, 'integration_secret_store', { p_key: appKey('google'), p_value: value, p_hint: `Client ${hint(input.client_id.split('.')[0])}`, p_actor: staff!.user.id })
+        await rpc(admin, 'integration_secret_store', { p_key: appKey('google'), p_value: value, p_hint: `Client ${hint(input.client_id.split('.')[0])}`, p_actor: staff.user.id })
         const app = await rpc(admin, 'ad_app_set', {
           p_platform: 'google', p: { client_id: input.client_id, login_customer_id: value.login_customer_id, configured: true, hint: `token ${hint(value.developer_token)}` },
-          p_actor: staff!.user.id,
+          p_actor: staff.user.id,
         })
         return json(req, { ok: true, app, redirect_uri: redirectUri('google') })
       }
       case 'auth_url': {
         const state = randomState()
-        await rpc(admin, 'ad_oauth_state_create', { p_platform: input.platform, p_state: state, p_actor: staff!.user.id, p_return_to: input.return_to })
+        await rpc(admin, 'ad_oauth_state_create', { p_platform: input.platform, p_state: state, p_actor: staff.user.id, p_return_to: input.return_to })
         const url = input.platform === 'tiktok'
           ? tiktokAuthUrl((await tiktokApp(admin)).appId, state, redirectUri('tiktok'))
           : googleAuthUrl((await googleApp(admin)).clientId, state, redirectUri('google'))
         return json(req, { url, redirect_uri: redirectUri(input.platform) })
       }
       case 'disconnect': {
-        await rpc(admin, 'integration_secret_clear', { p_key: tokenKey(input.platform, input.connection_id), p_actor: staff!.user.id })
-        await rpc(admin, 'ad_connection_disconnect', { p_id: input.connection_id, p_actor: staff!.user.id })
+        await rpc(admin, 'integration_secret_clear', { p_key: tokenKey(input.platform, input.connection_id), p_actor: staff.user.id })
+        await rpc(admin, 'ad_connection_disconnect', { p_id: input.connection_id, p_actor: staff.user.id })
         return json(req, { ok: true })
       }
       case 'sync': {

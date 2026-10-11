@@ -1,5 +1,6 @@
 import { invokeFunction } from '@/lib/functions'
 import { fromJson } from '@/lib/json'
+import { merchantFolder } from '@/lib/merchant'
 import { supabase } from '@/lib/supabase'
 import type { Enums, TablesInsert } from '@/types/database'
 import type { CodReceivableItem } from '@/types/domain'
@@ -219,7 +220,7 @@ export type CourierInvoiceDetail = Awaited<ReturnType<typeof getCourierInvoice>>
 
 /** Keeps the original statement file with the record (private bucket). */
 export async function uploadStatementFile(courierId: string, file: File): Promise<string> {
-  const path = `${courierId}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80)}`
+  const path = `${merchantFolder()}/${courierId}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80)}`
   const { error } = await supabase.storage.from('courier-invoices').upload(path, file, { contentType: file.type || undefined })
   if (error) throw error
   return path

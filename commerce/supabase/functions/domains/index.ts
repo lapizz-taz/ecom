@@ -11,7 +11,7 @@ import { env } from '../_shared/env.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
+import { requireStaff, rpc } from '../_shared/supabase.ts'
 
 interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
 interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null }
@@ -77,7 +77,7 @@ Deno.serve(
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const input = parse(actions, await readJson(req))
     const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage')
-    const admin = adminClient()
+    const admin = staff.admin
     const v = vercel()
     const save = (d: string, p: Omit<Saved, 'domain'>) => rpc<Saved>(admin, 'store_domain_save', { p_domain: d, p, p_actor: staff.user.id })
 

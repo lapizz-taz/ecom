@@ -16,6 +16,8 @@ export interface LogEvent {
   message: string
   context?: Record<string, unknown>
   error?: unknown
+  /** The merchant this event belongs to; platform-level when absent. */
+  merchantId?: string | null
 }
 
 const SECRET_KEYS = /(key|secret|token|password|authorization|signature|cookie)/i
@@ -97,9 +99,10 @@ async function writeSystemLog(event: LogEvent, fetchFn: typeof fetch): Promise<v
   const key = env('SUPABASE_SERVICE_ROLE_KEY') ?? env('SUPABASE_SECRET_KEY')
   if (!url || !key) return
   const err = event.error ? errorDetails(event.error) : null
+  const merchant: Record<string, string> = event.merchantId && /^[0-9a-f-]{36}$/i.test(event.merchantId) ? { 'x-merchant-id': event.merchantId } : {}
   await fetchFn(`${url}/rest/v1/rpc/log_system_event`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
+    headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}`, ...merchant },
     body: JSON.stringify({
       p_level: event.level,
       p_category: event.category,

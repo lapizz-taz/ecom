@@ -5,14 +5,16 @@ import { quoteCart, placeOrder } from '../_shared/checkout-flow.ts'
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { parse, placeOrderSchema, quoteSchema } from '../_shared/schemas.ts'
-import { adminClient, optionalUser } from '../_shared/supabase.ts'
+import { adminClient, optionalUser, storefrontMerchant } from '../_shared/supabase.ts'
 
 Deno.serve(
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const body = await readJson<{ action?: string }>(req)
     const ip = clientIp(req)
-    const admin = adminClient()
+    // The store the shopper is on; every price, stock and order check runs inside it.
+    const merchantId = storefrontMerchant(req)
+    const admin = adminClient(merchantId)
 
     if (body.action === 'quote') {
       rateLimit(`quote:${ip}`, 60)
@@ -24,7 +26,7 @@ Deno.serve(
       const input = parse(placeOrderSchema, body)
       const user = await optionalUser(req)
       const result = await placeOrder(admin, input, { ip, userAgent: req.headers.get('user-agent'), userId: user?.id ?? null })
-      dispatchNotificationsInBackground()
+      dispatchNotificationsInBackground(merchantId)
       return json(req, result, 201)
     }
 

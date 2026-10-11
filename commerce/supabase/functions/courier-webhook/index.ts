@@ -11,7 +11,7 @@ import { type CourierEvent, normalizePathao, normalizeSteadfast, sameSecret } fr
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { handle, HttpError, json } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
-import { adminClient, rpc } from '../_shared/supabase.ts'
+import { adminClient, merchantFor, rpc } from '../_shared/supabase.ts'
 
 const PROVIDERS = ['pathao', 'steadfast'] as const
 type Provider = (typeof PROVIDERS)[number]
@@ -32,14 +32,18 @@ Deno.serve(
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const url = new URL(req.url)
-    const admin = adminClient()
     const courierId = url.searchParams.get('courier')
     let provider = url.searchParams.get('provider') as Provider | null
 
+    // A courier's own URL names the merchant through the courier.
     let courier: { id: string; name: string; provider: string } | null = null
+    let merchantId: string | null = null
     if (courierId) {
       if (!UUID.test(courierId)) throw new HttpError(400, 'Unknown courier', 'UNKNOWN_COURIER')
-      const { data } = await admin.from('couriers').select('id, name, provider').eq('id', courierId).maybeSingle()
+      merchantId = await merchantFor('courier', courierId)
+      const { data } = merchantId
+        ? await adminClient(merchantId).from('couriers').select('id, name, provider').eq('id', courierId).eq('merchant_id', merchantId).maybeSingle()
+        : { data: null }
       if (!data) throw new HttpError(404, 'Unknown courier', 'UNKNOWN_COURIER')
       courier = data
       provider ??= data.provider as Provider
@@ -49,7 +53,7 @@ Deno.serve(
     }
 
     const expected = courier
-      ? (await rpc<string | null>(admin, 'courier_webhook_secret_get', { p_courier_id: courier.id }))
+      ? (await rpc<string | null>(adminClient(merchantId), 'courier_webhook_secret_get', { p_courier_id: courier.id }))
         ?? env(provider === 'pathao' ? 'PATHAO_WEBHOOK_SECRET' : 'STEADFAST_WEBHOOK_TOKEN')
       : env(provider === 'pathao' ? 'PATHAO_WEBHOOK_SECRET' : 'STEADFAST_WEBHOOK_TOKEN')
     const given = provider === 'pathao'
@@ -59,7 +63,7 @@ Deno.serve(
       void logEvent({
         level: 'WARN', category: 'WEBHOOK', source: 'courier-webhook',
         message: expected ? `Rejected a ${provider} webhook with a wrong secret` : `Rejected a ${provider} webhook: no webhook secret is set`,
-        context: { courier: courier?.name ?? null },
+        context: { courier: courier?.name ?? null }, merchantId,
       })
       throw new HttpError(401, 'Invalid webhook signature', 'UNAUTHORIZED')
     }
@@ -78,6 +82,16 @@ Deno.serve(
     }
 
     const event: CourierEvent = provider === 'pathao' ? await normalizePathao(body, raw) : await normalizeSteadfast(body, raw)
+    // A provider-wide URL (platform secret) finds the merchant through the parcel.
+    merchantId ??= await merchantFor('consignment', `${provider}:${event.consignment_id ?? ''}`)
+    if (!merchantId) {
+      void logEvent({
+        level: 'WARN', category: 'WEBHOOK', source: 'courier-webhook', message: `A ${provider} event matched no parcel of any merchant`,
+        context: { consignment_id: event.consignment_id, order: event.order_ref },
+      })
+      return reply(req, provider, { received: true, result: 'unmatched' })
+    }
+    const admin = adminClient(merchantId)
     // A database error propagates (HTTP 500) so the courier sends the event again.
     const result = await rpc<{ status: string; event_id: string; error?: string }>(admin, 'record_courier_webhook', {
       p_courier_id: courier?.id ?? null, p_provider: provider, p_event: event,
@@ -86,11 +100,11 @@ Deno.serve(
       void logEvent({
         level: 'WARN', category: 'WEBHOOK', source: 'courier-webhook',
         message: result.status === 'failed' ? `A ${provider} event could not be applied; it will be retried` : `A ${provider} event matched no parcel yet`,
-        context: { event_id: result.event_id, consignment_id: event.consignment_id, order: event.order_ref, error: result.error ?? null },
+        context: { event_id: result.event_id, consignment_id: event.consignment_id, order: event.order_ref, error: result.error ?? null }, merchantId,
       })
     }
     // Out for delivery, delivered, returned… may have queued a customer SMS.
-    if (result.status === 'processed') dispatchNotificationsInBackground()
+    if (result.status === 'processed') dispatchNotificationsInBackground(merchantId)
     return reply(req, provider, { received: true, result: result.status })
   }),
 )

@@ -2,6 +2,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import { registerDevice } from '@/lib/device'
+import { setStaffMerchant } from '@/lib/merchant'
 import { setMonitoringUser } from '@/lib/monitoring'
 import { supabase } from '@/lib/supabase'
 import type { MyAccess } from '@/types/domain'
@@ -52,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   const staffAccess = userId ? (accessQuery.data ?? null) : null
+  // Uploads go into the staff member's merchant folder.
+  setStaffMerchant(staffAccess?.merchant_id ?? null)
   useEffect(() => {
     setMonitoringUser(userId && staffAccess ? { id: userId, role: staffAccess.role } : null)
   }, [userId, staffAccess])

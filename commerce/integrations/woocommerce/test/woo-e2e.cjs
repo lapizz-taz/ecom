@@ -10,7 +10,9 @@ require('fs').mkdirSync(`${SP}/shots`, { recursive: true })
 const STORE = process.env.WOO_STORE_URL || 'http://172.18.0.1:8090'
 const APP = process.env.APP_URL || 'http://localhost:5173'
 const ZIP = path.resolve(__dirname, '../../../public/downloads/fullfilio-connect.zip')
-const sql = (q) => execSync(`PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres -tAc "${q.replace(/"/g, '\\"')}"`).toString().trim()
+// SQL runs as the database owner inside Merchant #1 (the store this test connects).
+const MERCHANT = '00000000-0000-4000-8000-000000000001'
+const sql = (q) => execSync(`PGPASSWORD=postgres PGOPTIONS='-c app.merchant_id=${MERCHANT}' psql -h localhost -p 54322 -U postgres -d postgres -tAc "${q.replace(/"/g, '\\"')}"`).toString().trim()
 const wpsql = (q) => execSync('docker exec -i woo-db mariadb -uwordpress -pwp-pass wordpress -N', { input: q }).toString().trim()
 // Raw output (no escaping) for JSON columns.
 const wpjson = (q) => execSync('docker exec -i woo-db mariadb -uwordpress -pwp-pass wordpress -N -r', { input: q }).toString().trim()

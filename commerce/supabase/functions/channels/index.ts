@@ -40,7 +40,7 @@ import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
-import { adminClient, getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, getSettings, merchantFor, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
 const background = (task: Promise<unknown>) => { if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(task) }
@@ -218,7 +218,7 @@ function afterImport(admin: SupabaseClient, r: IngestResult) {
       void logEvent({ level: 'WARN', category: 'FRAUD', source: 'channels', message: `Courier check after import failed for ${r.order_number}`, error })
     }
   })())
-  dispatchNotificationsInBackground()
+  dispatchNotificationsInBackground(merchantOf(admin))
 }
 
 async function ingest(admin: SupabaseClient, c: Channel, order: NormalizedOrder, via: 'WEBHOOK' | 'SYNC' | 'RETRY'): Promise<IngestResult> {
@@ -394,8 +394,11 @@ function back(to: string, params: Record<string, string>): Response {
 
 async function shopifyCallback(req: Request): Promise<Response> {
   const url = new URL(req.url)
-  const admin = adminClient()
   const state = url.searchParams.get('state') ?? ''
+  // The approval state was created by one merchant's staff; finish inside that merchant.
+  const merchantId = await merchantFor('channel_oauth_state', state)
+  if (!merchantId) return page('This link has expired', 'Go back to Sales channels and click Connect again.')
+  const admin = adminClient(merchantId)
   const taken = state ? await rpc<{ channel_id: string; created_by: string; return_to: string } | null>(admin, 'channel_oauth_state_take', { p_state: state }) : null
   if (!taken) return page('This link has expired', 'Go back to Sales channels and click Connect again.')
   try {
@@ -422,8 +425,10 @@ async function shopifyCallback(req: Request): Promise<Response> {
 
 /** WooCommerce posts the keys it created after the owner approved. */
 async function wooCallback(req: Request): Promise<Response> {
-  const admin = adminClient()
   const body = await readJson<{ key_id?: number; user_id?: string; consumer_key?: string; consumer_secret?: string; key_permissions?: string }>(req)
+  const merchantId = body.user_id ? await merchantFor('channel_oauth_state', String(body.user_id)) : null
+  if (!merchantId) throw new HttpError(400, 'Unknown or expired approval', 'INVALID_STATE')
+  const admin = adminClient(merchantId)
   const taken = body.user_id ? await rpc<{ channel_id: string; created_by: string } | null>(admin, 'channel_oauth_state_take', { p_state: String(body.user_id) }) : null
   if (!taken) throw new HttpError(400, 'Unknown or expired approval', 'INVALID_STATE')
   if (!body.consumer_key || !body.consumer_secret) throw new HttpError(400, 'Keys missing', 'VALIDATION')
@@ -443,7 +448,10 @@ async function wooCallback(req: Request): Promise<Response> {
 async function webhook(req: Request, id: string): Promise<Response> {
   const raw = await req.text()
   if (raw.length > 2_000_000) throw new HttpError(413, 'Too large', 'PAYLOAD_TOO_LARGE')
-  const admin = adminClient()
+  // The store's webhook address names the channel, and the channel its merchant.
+  const merchantId = await merchantFor('channel', id)
+  if (!merchantId) return json(req, { ok: true, ignored: 'not connected' })
+  const admin = adminClient(merchantId)
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
   if (!c?.id || c.status === 'DISCONNECTED') return json(req, { ok: true, ignored: 'not connected' })
   let s = await secretOf(admin, c.id)
@@ -613,7 +621,9 @@ async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: s
 async function pluginEvent(req: Request, id: string): Promise<Response> {
   const raw = await req.text()
   if (raw.length > 512_000) throw new HttpError(413, 'Too large', 'PAYLOAD_TOO_LARGE')
-  const admin = adminClient()
+  const merchantId = await merchantFor('channel', id)
+  if (!merchantId) throw new HttpError(404, 'Unknown store', 'NOT_FOUND')
+  const admin = adminClient(merchantId)
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
   if (!c?.id || c.platform !== 'WOOCOMMERCE') throw new HttpError(404, 'Unknown store', 'NOT_FOUND')
   if (c.status === 'DISCONNECTED') throw new HttpError(410, 'This store is disconnected in Fullfilio. Connect it again there.', 'DISCONNECTED')
@@ -741,11 +751,29 @@ Deno.serve(
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
 
     const input = parse(actions, await readJson(req))
-    const admin = adminClient()
-    const cron = ((input.action === 'sync' && !input.channel_id) || input.action === 'process_jobs') && await isCronRequest(req, admin)
-    const staff = cron ? null : await requireStaff(req,
+    const cron = ((input.action === 'sync' && !input.channel_id) || input.action === 'process_jobs') && await isCronRequest(req, adminClient())
+    // Scheduled runs go through every merchant, each with its own stores and keys.
+    if (cron && input.action === 'sync') {
+      return json(req, await forEachMerchant('channels', async (admin) => {
+        const list = (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED')
+        const results = []
+        for (const c of list) results.push(await syncChannel(admin, c, 2))
+        // The hourly run also refreshes Shopify's abandoned checkouts (last 7 days).
+        for (const c of list.filter((x) => x.platform === 'SHOPIFY')) await syncAbandoned(admin, c, 7)
+        return { ok: results.every((r) => r.ok), channels: results }
+      }))
+    }
+    if (cron && input.action === 'process_jobs') {
+      return json(req, await forEachMerchant('channels', async (admin) => {
+        const jobs = await processJobs(admin, input.limit)
+        const statuses = await processStatusPushes(admin).catch((e) => ({ error: (e as Error).message }))
+        return { ...jobs, statuses }
+      }))
+    }
+    const staff = await requireStaff(req,
       input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' || input.action === 'order_action' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : input.action === 'abandoned_sync' ? 'orders.view' : 'settings.manage')
-    const actor = staff?.user.id ?? null
+    const admin = staff.admin
+    const actor = staff.user.id
 
     try {
       switch (input.action) {
@@ -832,9 +860,7 @@ Deno.serve(
             ? [await channelOf(admin, input.channel_id)]
             : (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED')
           const results = []
-          for (const c of list) results.push(await syncChannel(admin, c, cron ? 2 : input.days))
-          // The hourly run also refreshes Shopify's abandoned checkouts (last 7 days).
-          if (cron) for (const c of list.filter((x) => x.platform === 'SHOPIFY')) await syncAbandoned(admin, c, 7)
+          for (const c of list) results.push(await syncChannel(admin, c, input.days))
           if (input.channel_id && !results[0].ok) throw new HttpError(502, results[0].error ?? 'Sync failed', 'SYNC_FAILED')
           return json(req, { ok: results.every((r) => r.ok), channels: results })
         }
@@ -910,7 +936,7 @@ Deno.serve(
         }
         case 'plugin_config': {
           const c = await channelOf(admin, input.channel_id)
-          const cfg = await rpc<PluginConfig>(staff!.client, 'channel_plugin_config_save', { p_channel_id: c.id, p: input.config })
+          const cfg = await rpc<PluginConfig>(staff.client, 'channel_plugin_config_save', { p_channel_id: c.id, p: input.config })
           // Sent to the store at once; otherwise it arrives with the next heartbeat.
           const check = await pairPlugin(admin, { ...c, settings: { ...c.settings, plugin_config: cfg } }, await credsOf(admin, c))
           return json(req, { config: cfg, delivered: check.status === 'ok', detail: check.detail })

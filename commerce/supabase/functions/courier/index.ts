@@ -15,7 +15,7 @@ import { PathaoProvider, type PathaoStore, RedxProvider } from '../_shared/couri
 import { CourierNotSupportedError } from '../_shared/courier/types.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
-import { adminClient, requireStaff, rpc } from '../_shared/supabase.ts'
+import { forEachMerchant, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const credential = z.union([z.string().trim().max(500), z.boolean(), z.number()])
 const options = z.object({
@@ -116,9 +116,9 @@ async function loadShipment(client: SupabaseClient, id: string) {
   }
 }
 
-async function syncOne(client: SupabaseClient, shipmentId: string) {
+async function syncOne(client: SupabaseClient, admin: SupabaseClient, shipmentId: string) {
   const shipment = await loadShipment(client, shipmentId)
-  const provider = await courierProviderFor(adminClient(), shipment.courier)
+  const provider = await courierProviderFor(admin, shipment.courier)
   const result = await provider.getShipmentStatus({
     consignmentId: shipment.consignment_id,
     trackingNumber: shipment.tracking_number,
@@ -140,7 +140,7 @@ async function syncOne(client: SupabaseClient, shipmentId: string) {
 }
 
 /** Books one order with the courier's API and records the shipment. */
-async function bookOrder(client: SupabaseClient, orderId: string, courier: CourierRow, note?: string | null, storeId?: string | null) {
+async function bookOrder(client: SupabaseClient, admin: SupabaseClient, orderId: string, courier: CourierRow, note?: string | null, storeId?: string | null) {
   const { data: order, error } = await client
     .from('orders')
     .select('id, order_number, status, customer_name, customer_phone, shipping_address, shipping_area, shipping_district, cod_amount, order_items(quantity, product_name, product_variants(weight_grams)), shipments(id, courier_id, tracking_number, is_active)')
@@ -155,7 +155,7 @@ async function bookOrder(client: SupabaseClient, orderId: string, courier: Couri
   if (active?.tracking_number) {
     throw new HttpError(409, `${order.order_number} is already booked (${active.tracking_number})`, 'ALREADY_BOOKED')
   }
-  const provider = await courierProviderFor(adminClient(), courier)
+  const provider = await courierProviderFor(admin, courier)
   const opts = courierOptions(courier.config)
   const items = order.order_items as unknown as Array<{ quantity: number; product_name: string | null; product_variants: { weight_grams: number | null } | null }>
   // Weight only when every item has one; otherwise the courier's minimum is used.
@@ -187,6 +187,32 @@ async function bookOrder(client: SupabaseClient, orderId: string, courier: Couri
   })
 }
 
+/** Refreshes active API parcels from the courier (one merchant at a time). */
+async function syncAll(client: SupabaseClient, admin: SupabaseClient, courierId?: string) {
+  let query = client
+    .from('shipments')
+    .select('id, couriers!inner(api_enabled)')
+    .eq('is_active', true)
+    .eq('couriers.api_enabled', true)
+    .in('status', SYNCABLE)
+    .limit(50)
+  // A service-role client reads every merchant's rows: keep to this one.
+  const merchant = merchantOf(client)
+  if (merchant) query = query.eq('merchant_id', merchant)
+  if (courierId) query = query.eq('courier_id', courierId)
+  const { data, error } = await query
+  if (error) throw new HttpError(500, 'Could not load shipments', 'INTERNAL')
+  const results = []
+  for (const row of data ?? []) {
+    try {
+      results.push(await syncOne(client, admin, row.id))
+    } catch (e) {
+      results.push({ shipment_id: row.id, error: (e as Error).message })
+    }
+  }
+  return { synced: results.length, results }
+}
+
 function notSupported(error: unknown): never {
   if (error instanceof CourierNotSupportedError) throw new HttpError(422, error.message, 'NOT_SUPPORTED')
   throw error
@@ -200,8 +226,12 @@ Deno.serve(
     // pg_cron can trigger a periodic sync with the shared cron secret.
     const isCron = !!env('CRON_SECRET') && req.headers.get('x-cron-secret') === env('CRON_SECRET')
     const input = parse(schema, body)
-    const staff = isCron && input.action === 'sync_all' ? null : await requireStaff(req, PERMISSION[input.action] ?? 'shipments.manage')
-    const client = staff?.client ?? adminClient()
+    if (isCron && input.action === 'sync_all') {
+      return json(req, await forEachMerchant('courier', (admin) => syncAll(admin, admin, input.courier_id)))
+    }
+    const staff = await requireStaff(req, PERMISSION[input.action] ?? 'shipments.manage')
+    const client = staff.client
+    const admin = staff.admin
 
     try {
       switch (input.action) {
@@ -232,12 +262,12 @@ Deno.serve(
           } else {
             await loadCourier(client, courierId)
           }
-          await rpc(adminClient(), 'courier_credentials_store', {
+          await rpc(admin, 'courier_credentials_store', {
             p_courier_id: courierId,
             p_provider: input.provider,
             p_credentials: creds,
             p_hint: credentialHint(input.provider, creds),
-            p_actor: staff!.user.id,
+            p_actor: staff.user.id,
           })
           await saveOptions(client, courierId!, { ...opts, ...(stores ? { stores, stores_synced_at: new Date().toISOString() } : {}) }, input.is_active)
           return json(req, { courier_id: courierId, ok: true, message: test.message })
@@ -260,7 +290,7 @@ Deno.serve(
             provider = buildCourierProvider(input.provider, input.credentials as CourierCredentials)
           } else if (input.courier_id) {
             const courier = await loadCourier(client, input.courier_id)
-            provider = await courierProviderFor(adminClient(), { ...courier, api_enabled: true })
+            provider = await courierProviderFor(admin, { ...courier, api_enabled: true })
           } else {
             throw new HttpError(422, input.provider === 'redx' ? 'Enter the RedX access token first' : 'Enter the Pathao keys first', 'VALIDATION')
           }
@@ -277,19 +307,19 @@ Deno.serve(
         }
         case 'disconnect': {
           await loadCourier(client, input.courier_id)
-          await rpc(adminClient(), 'courier_credentials_clear', { p_courier_id: input.courier_id, p_actor: staff!.user.id })
+          await rpc(admin, 'courier_credentials_clear', { p_courier_id: input.courier_id, p_actor: staff.user.id })
           return json(req, { ok: true })
         }
         case 'create_shipment': {
           const courier = await loadCourier(client, input.courier_id)
-          return json(req, { shipment: await bookOrder(client, input.order_id, courier, input.note, input.store_id) })
+          return json(req, { shipment: await bookOrder(client, admin, input.order_id, courier, input.note, input.store_id) })
         }
         case 'create_shipments': {
           const courier = await loadCourier(client, input.courier_id)
           const results: Array<{ order_id: string; ok: boolean; tracking_number?: string | null; error?: string }> = []
           for (const orderId of input.order_ids) {
             try {
-              const shipment = await bookOrder(client, orderId, courier, null, input.store_id) as { tracking_number: string | null }
+              const shipment = await bookOrder(client, admin, orderId, courier, null, input.store_id) as { tracking_number: string | null }
               results.push({ order_id: orderId, ok: true, tracking_number: shipment.tracking_number })
             } catch (e) {
               results.push({ order_id: orderId, ok: false, error: e instanceof HttpError || e instanceof Error ? e.message : String(e) })
@@ -299,7 +329,7 @@ Deno.serve(
         }
         case 'cancel_shipment': {
           const shipment = await loadShipment(client, input.shipment_id)
-          await (await courierProviderFor(adminClient(), shipment.courier)).cancelShipment({
+          await (await courierProviderFor(admin, shipment.courier)).cancelShipment({
             consignmentId: shipment.consignment_id,
             trackingNumber: shipment.tracking_number,
             orderNumber: shipment.orderNumber,
@@ -311,31 +341,12 @@ Deno.serve(
           return json(req, { shipment: updated })
         }
         case 'sync_status':
-          return json(req, await syncOne(client, input.shipment_id))
-        case 'sync_all': {
-          let query = client
-            .from('shipments')
-            .select('id, couriers!inner(api_enabled)')
-            .eq('is_active', true)
-            .eq('couriers.api_enabled', true)
-            .in('status', SYNCABLE)
-            .limit(50)
-          if (input.courier_id) query = query.eq('courier_id', input.courier_id)
-          const { data, error } = await query
-          if (error) throw new HttpError(500, 'Could not load shipments', 'INTERNAL')
-          const results = []
-          for (const row of data ?? []) {
-            try {
-              results.push(await syncOne(client, row.id))
-            } catch (e) {
-              results.push({ shipment_id: row.id, error: (e as Error).message })
-            }
-          }
-          return json(req, { synced: results.length, results })
-        }
+          return json(req, await syncOne(client, admin, input.shipment_id))
+        case 'sync_all':
+          return json(req, await syncAll(client, admin, input.courier_id))
         case 'tracking': {
           const shipment = await loadShipment(client, input.shipment_id)
-          const tracking = await (await courierProviderFor(adminClient(), shipment.courier)).getTracking({
+          const tracking = await (await courierProviderFor(admin, shipment.courier)).getTracking({
             consignmentId: shipment.consignment_id,
             trackingNumber: shipment.tracking_number,
             orderNumber: shipment.orderNumber,
@@ -344,19 +355,19 @@ Deno.serve(
         }
         case 'delivery_cost': {
           const courier = await loadCourier(client, input.courier_id)
-          const cost = await (await courierProviderFor(adminClient(), courier)).getDeliveryCost({
+          const cost = await (await courierProviderFor(admin, courier)).getDeliveryCost({
             district: input.district, area: input.area, weightGrams: input.weight_grams, codAmount: input.cod_amount ?? 0,
           })
           if (cost !== null) return json(req, { cost, source: 'courier' })
-          const zone = await rpc<{ charge: number } | null>(adminClient(), 'resolve_delivery_zone', {
+          const zone = await rpc<{ charge: number } | null>(admin, 'resolve_delivery_zone', {
             p_district: input.district, p_area: input.area ?? null,
           })
           return json(req, { cost: zone?.charge ?? null, source: 'zone' })
         }
         case 'set_webhook_secret': {
           await loadCourier(client, input.courier_id)
-          await rpc(adminClient(), 'courier_webhook_secret_set', {
-            p_courier_id: input.courier_id, p_secret: input.secret, p_actor: staff!.user.id,
+          await rpc(admin, 'courier_webhook_secret_set', {
+            p_courier_id: input.courier_id, p_secret: input.secret, p_actor: staff.user.id,
           })
           return json(req, { ok: true, hint: `••••${input.secret.slice(-4)}` })
         }
@@ -364,7 +375,7 @@ Deno.serve(
           const courier = await loadCourier(client, input.courier_id)
           let result: { ok: boolean; message: string }
           try {
-            result = await (await courierProviderFor(adminClient(), { ...courier, api_enabled: true })).testConnection()
+            result = await (await courierProviderFor(admin, { ...courier, api_enabled: true })).testConnection()
           } catch (e) {
             result = { ok: false, message: (e as Error).message }
           }

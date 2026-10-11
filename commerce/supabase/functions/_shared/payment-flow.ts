@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotificationsInBackground } from './dispatch.ts'
 import type { PaymentProvider, VerifiedPayment } from './payments/types.ts'
-import { rpc } from './supabase.ts'
+import { merchantOf, rpc } from './supabase.ts'
 
 /**
  * Records a provider-verified payment. confirm_payment() is idempotent per
@@ -12,12 +12,14 @@ export async function recordVerifiedPayment(
   provider: string,
   verified: VerifiedPayment,
 ): Promise<{ status: string; orderNumber: string | null }> {
-  const { data: payment } = await admin
+  let query = admin
     .from('payments')
     .select('currency, orders(order_number)')
     .eq('reference', verified.reference)
     .eq('provider', provider)
-    .maybeSingle()
+  const merchant = merchantOf(admin)
+  if (merchant) query = query.eq('merchant_id', merchant)
+  const { data: payment } = await query.maybeSingle()
   const orderNumber = (payment?.orders as { order_number?: string } | null)?.order_number ?? null
   if (!payment) return { status: 'unknown_payment', orderNumber: null }
 
@@ -34,7 +36,7 @@ export async function recordVerifiedPayment(
     p_payload: { raw: verified.raw, reason: verified.reason ?? null },
     p_success: verified.success,
   })
-  if (result.status === 'succeeded' || result.status === 'failed') dispatchNotificationsInBackground()
+  if (result.status === 'succeeded' || result.status === 'failed') dispatchNotificationsInBackground(merchantOf(admin))
   return { status: result.status, orderNumber }
 }
 
