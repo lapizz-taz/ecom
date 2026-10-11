@@ -138,3 +138,14 @@ export async function supportAccessLog(): Promise<SupportAccessEntry[]> {
   if (error) throw error
   return (data ?? []) as unknown as SupportAccessEntry[]
 }
+
+/** Messages sent from the website contact form (Super Admin). */
+export interface ContactMessage {
+  id: number; name: string; email: string | null; phone: string | null; business: string | null
+  topic: 'SALES' | 'SUPPORT' | 'PARTNERSHIP' | 'GENERAL'; message: string; page: string | null
+  status: 'NEW' | 'REPLIED' | 'CLOSED'; note: string | null; handled_at: string | null; created_at: string
+}
+export const listContactMessages = (status: ContactMessage['status'] | null) =>
+  platformRpc<{ items: ContactMessage[]; new: number }>('platform_contact_messages_list', { p_status: status })
+export const updateContactMessage = (id: number, status: ContactMessage['status'], note?: string) =>
+  platformRpc<ContactMessage>('platform_contact_message_update', { p_id: id, p_status: status, p_note: note ?? null })

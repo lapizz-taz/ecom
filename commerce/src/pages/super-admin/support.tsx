@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePlatform } from '@/features/platform/platform-context'
+import { ContactMessages } from '@/features/platform/support/contact-messages'
 import { StartSessionDialog } from '@/features/platform/support/start-session-dialog'
 import { NewTicketDialog, SessionsTable, TicketSheet, TicketsTable } from '@/features/platform/support/ticket-parts'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -171,15 +172,17 @@ export default function SupportPage() {
   const settings = useQuery({ queryKey: ['platform-tickets', 'settings'], enabled: state.tab === 'settings', queryFn: () => listTickets({ view: 'active' }, 1) })
   return (
     <div className="space-y-4">
-      <PageHeader title="Support & Issues" description="Merchants' bug reports and the team's own tickets, with due times, owners, escalation and a read-only customer view." />
+      <PageHeader title="Support & Issues" description="Merchants' bug reports, the team's own tickets, messages from the website, and a read-only customer view." />
       <Tabs value={state.tab} onValueChange={(tab) => update({ tab })}>
         <TabsList>
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="sessions">Customer view</TabsTrigger>
+          <TabsTrigger value="website">Website messages</TabsTrigger>
           {can('support', 'manage') && <TabsTrigger value="settings">Settings</TabsTrigger>}
         </TabsList>
         <TabsContent value="tickets"><Tickets /></TabsContent>
         <TabsContent value="sessions"><Sessions /></TabsContent>
+        <TabsContent value="website"><ContactMessages /></TabsContent>
         <TabsContent value="settings">
           {settings.error ? <ErrorState error={settings.error} onRetry={() => settings.refetch()} /> : !settings.data ? <LoadingState /> : <SupportSettingsCard settings={settings.data.settings} />}
         </TabsContent>

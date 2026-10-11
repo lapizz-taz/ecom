@@ -136,3 +136,11 @@ export async function suggestStoreSlug(name: string): Promise<string> {
   if (error) throw error
   return data as string
 }
+
+/** The website contact form. */
+export interface ContactInput { name: string; email?: string; phone?: string; business?: string; topic: 'SALES' | 'SUPPORT' | 'PARTNERSHIP' | 'GENERAL'; message: string }
+export async function submitContact(input: ContactInput): Promise<{ id: number }> {
+  const { data, error } = await supabase.rpc('platform_contact_submit' as never, { p: { ...input, page: location.pathname } } as never)
+  if (error) throw error
+  return data as unknown as { id: number }
+}
