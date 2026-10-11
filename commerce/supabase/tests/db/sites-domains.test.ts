@@ -83,4 +83,37 @@ describe('custom domains', () => {
       expect(await value(db, `select public.store_domains_list()`)).toEqual([expect.objectContaining({ domain: 'shop.example.com', status: 'ACTIVE' })])
       await expectError(db, `select public.store_domain_save('x.example.com', '{}')`, [], /PERMISSION_DENIED|permission denied/)
     }))
+
+  it('one primary domain; the others redirect to it once it is live', () =>
+    inTx(async (db) => {
+      const owner = await createStaff(db, 'OWNER')
+      const viewer = await createStaff(db, 'VIEWER')
+      await asService(db)
+      const diag = { pointed: true, records: [{ type: 'A', name: '@', value: '76.76.21.21', ok: true }] }
+      const first = await value<Record<string, any>>(db, `select public.store_domain_save('shop.example.com', $1, $2)`,
+        [JSON.stringify({ status: 'ACTIVE', records: [], diagnostics: diag }), owner])
+      expect(first).toMatchObject({ is_primary: true, diagnostics: diag })
+      const second = await value<Record<string, any>>(db, `select public.store_domain_save('www.shop.example.com', '{"status":"VERIFYING"}', $1)`, [owner])
+      expect(second.is_primary).toBe(false)
+      // A check without a diagnosis keeps the last one.
+      expect((await value<Record<string, any>>(db, `select public.store_domain_save('shop.example.com', '{"status":"ACTIVE"}')`)).diagnostics).toEqual(diag)
+
+      // Visiting the non-primary address sends people to the primary one.
+      expect(await value(db, `select public.storefront_resolve('www.shop.example.com')`)).toMatchObject({ redirect_to: 'shop.example.com' })
+      expect(await value(db, `select public.storefront_resolve('shop.example.com')`)).toMatchObject({ redirect_to: null })
+
+      await asUser(db, viewer)
+      await expectError(db, `select public.store_domain_set_primary('www.shop.example.com')`, [], /PERMISSION_DENIED/)
+      await asUser(db, owner)
+      await expectError(db, `select public.store_domain_set_primary('other.example.com')`, [], /NOT_FOUND/)
+      expect(await value(db, `select public.store_domain_set_primary('www.shop.example.com')`)).toMatchObject({ is_primary: true })
+      // Not live yet: no redirect until it is.
+      expect(await value(db, `select public.storefront_resolve('shop.example.com')`)).toMatchObject({ redirect_to: null })
+
+      // Removing the primary hands it to the remaining domain.
+      await asService(db)
+      await db.query(`select public.store_domain_save('www.shop.example.com', '{"status":"REMOVED","records":[]}', $1)`, [owner])
+      await asUser(db, owner)
+      expect(await value(db, `select public.store_domains_list()`)).toEqual([expect.objectContaining({ domain: 'shop.example.com', is_primary: true })])
+    }))
 })

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Code2, Copy, Globe, KeyRound, Plus, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react'
+import { Check, Code2, Copy, Globe, KeyRound, Plus, ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Field } from '@/components/common/field'
@@ -18,19 +18,11 @@ import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import {
-  addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, removeDomain, revokeSiteKey, type SiteKey, siteApiBase, type StoreDomain,
+  addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, makePrimaryDomain, removeDomain, revokeSiteKey, type SiteKey, siteApiBase,
 } from '@/services/website'
+import { DomainDetail, DomainList } from '@/features/website/domain-status'
 
 const copy = (v: string, what = 'Copied') => void navigator.clipboard.writeText(v).then(() => toast.success(what))
-
-const STATUS: Record<StoreDomain['status'], { label: string; tone: string }> = {
-  ACTIVE: { label: 'Live', tone: 'bg-emerald-600 text-white' },
-  VERIFYING: { label: 'Waiting for DNS', tone: 'bg-amber-500 text-white' },
-  PENDING: { label: 'Adding', tone: 'bg-muted text-muted-foreground' },
-  MANUAL: { label: 'Add DNS + hosting', tone: 'bg-muted text-foreground' },
-  ERROR: { label: 'Problem', tone: 'bg-red-600 text-white' },
-  REMOVED: { label: 'Removed', tone: 'bg-muted text-muted-foreground' },
-}
 
 /** The client's own domain for the hosted store, and API keys for a custom-coded shop. */
 export default function WebsitePage() {
@@ -53,13 +45,17 @@ export default function WebsitePage() {
 function DomainsTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
+  const [state, update] = useUrlState({ tab: 'domain', domain: '' })
   const [value, setValue] = useState('')
   const [removing, setRemoving] = useState<string | null>(null)
   const list = useQuery({ queryKey: ['store-domains'], queryFn: listDomains })
   const refresh = () => void qc.invalidateQueries({ queryKey: ['store-domains'] })
   const add = useMutation({
     mutationFn: () => addDomain(value),
-    onSuccess: (r) => { setValue(''); refresh(); toast.success(r.domain.status === 'ACTIVE' ? `${r.domain.domain} is live` : `${r.domain.domain} added — add the DNS records shown`) },
+    onSuccess: (r) => {
+      setValue(''); refresh(); update({ domain: r.domain.domain }, { resetPage: false })
+      toast.success(r.domain.status === 'ACTIVE' ? `${r.domain.domain} is live` : `${r.domain.domain} added — add the DNS records shown`)
+    },
     onError: (e) => toast.error(toUserMessage(e)),
   })
   const check = useMutation({
@@ -71,6 +67,26 @@ function DomainsTab() {
   if (list.isLoading) return <LoadingState />
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />
   const domains = list.data?.domains ?? []
+  const primary = domains.find((d) => d.is_primary)?.domain ?? null
+  const open = domains.find((d) => d.domain === state.domain)
+
+  if (open) {
+    return (
+      <div className="max-w-3xl">
+        <DomainDetail d={open} primary={primary} canEdit={edit} checking={check.isPending}
+          onBack={() => update({ domain: '' }, { resetPage: false })}
+          onCheck={() => check.mutate(open.domain)} onRemove={() => setRemoving(open.domain)}
+          onMakePrimary={async () => {
+            try { await makePrimaryDomain(open.domain); toast.success(`${open.domain} is now the primary domain`); refresh() }
+            catch (e) { toast.error(toUserMessage(e)); throw e }
+          }} />
+        <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
+          description="The store stops opening on this domain. Your default address keeps working." confirmLabel="Remove" destructive
+          onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); update({ domain: '' }, { resetPage: false }); refresh() }} />
+      </div>
+    )
+  }
+
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="min-w-0 space-y-4">
@@ -88,67 +104,15 @@ function DomainsTab() {
               {!list.data?.automatic && (
                 <p className="mt-3 flex items-start gap-2 rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
                   <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-                  Automatic setup is off on this server (the VERCEL_TOKEN secret is not set). Domains are saved with the DNS records to add, and the platform owner attaches them to the hosting project.
+                  Domains are checked automatically (DNS, every region and HTTPS). The Fullfilio team attaches new domains to the hosting, so a domain can show Pending for a short while after its DNS is right.
                 </p>
               )}
             </CardContent>
           </Card>
         )}
-        {!domains.length ? (
-          <EmptyState title="No custom domain yet" description="The store is on its default address until you connect one." />
-        ) : domains.map((d) => (
-          <Card key={d.id} className="gap-3">
-            <CardHeader className="flex flex-row flex-wrap items-center gap-2 space-y-0">
-              <CardTitle className="min-w-0 flex-1 truncate text-base">
-                <a href={`https://${d.domain}`} target="_blank" rel="noreferrer" className="hover:underline">{d.domain}</a>
-              </CardTitle>
-              <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', STATUS[d.status].tone)}>{STATUS[d.status].label}</span>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {d.detail && <p className="text-sm text-muted-foreground">{d.detail}</p>}
-              {d.status !== 'ACTIVE' && d.records.length > 0 && (
-                <ul className="divide-y rounded-lg border sm:hidden">
-                  {d.records.map((r, i) => (
-                    <li key={i} className="flex items-start gap-2 p-3 text-sm">
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <p className="text-xs text-muted-foreground"><span className="font-mono font-medium text-foreground">{r.type}</span> · host <span className="font-mono text-foreground">{r.name}</span></p>
-                        <p className="font-mono text-xs break-all">{r.value}</p>
-                        <p className="text-[11px] text-muted-foreground">{r.why}</p>
-                      </div>
-                      <Button size="icon-sm" variant="ghost" aria-label="Copy value" onClick={() => copy(r.value)}><Copy /></Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {d.status !== 'ACTIVE' && d.records.length > 0 && (
-                <div className="hidden overflow-x-auto rounded-lg border sm:block">
-                  <table className="w-full min-w-[480px] text-sm">
-                    <thead><tr className="bg-muted/40 text-left text-xs text-muted-foreground"><th className="px-3 py-2">Type</th><th className="px-3 py-2">Name / host</th><th className="px-3 py-2">Value</th><th className="w-8" /></tr></thead>
-                    <tbody>
-                      {d.records.map((r, i) => (
-                        <tr key={i} className="border-t align-top">
-                          <td className="px-3 py-2 font-mono text-xs">{r.type}</td>
-                          <td className="px-3 py-2 font-mono text-xs">{r.name}</td>
-                          <td className="px-3 py-2"><span className="font-mono text-xs break-all">{r.value}</span><span className="block text-[11px] text-muted-foreground">{r.why}</span></td>
-                          <td className="px-1 py-1.5"><Button size="icon-sm" variant="ghost" aria-label="Copy value" onClick={() => copy(r.value)}><Copy /></Button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {d.checked_at && <span>Checked {timeAgo(d.checked_at)}</span>}
-                {edit && (
-                  <span className="ml-auto flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => check.mutate(d.domain)} disabled={check.isPending}><RefreshCw className={cn(check.isPending && 'animate-spin')} /> Check now</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setRemoving(d.domain)}><Trash2 /> Remove</Button>
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {!domains.length
+          ? <EmptyState title="No custom domain yet" description="The store is on its default address until you connect one." />
+          : <DomainList domains={domains} onOpen={(domain) => update({ domain }, { resetPage: false })} />}
       </div>
       <Card className="h-fit">
         <CardHeader><CardTitle className="text-sm">How it works</CardTitle></CardHeader>
@@ -156,14 +120,12 @@ function DomainsTab() {
           <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
             <li>Add your domain here.</li>
             <li>At your registrar (Namecheap, GoDaddy, Cloudflare…), add the DNS record shown. For <b className="text-foreground">shop.com</b> it is an <b className="text-foreground">A</b> record; for <b className="text-foreground">www.shop.com</b> a <b className="text-foreground">CNAME</b>.</li>
-            <li>Click <b className="text-foreground">Check now</b>. DNS changes can take minutes to a few hours. HTTPS is issued automatically once it points here.</li>
-            <li>On Cloudflare, set the record to <b className="text-foreground">DNS only</b> (grey cloud) until it shows Live.</li>
+            <li>Open the domain and click <b className="text-foreground">Check again</b>. You see each record, every region and HTTPS. DNS changes can take minutes to a few hours.</li>
+            <li>On Cloudflare, set the record to <b className="text-foreground">DNS only</b> (grey cloud).</li>
+            <li>The first domain is the <b className="text-foreground">primary</b>; the others redirect to it.</li>
           </ol>
         </CardContent>
       </Card>
-      <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
-        description="The store stops opening on this domain. Your default address keeps working." confirmLabel="Remove" destructive
-        onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); refresh() }} />
     </div>
   )
 }

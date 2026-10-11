@@ -13,7 +13,12 @@ void initMonitoring()
 const storefront = resolveStorefrontMerchant(async (host) => {
   const { data, error } = await supabase.rpc('storefront_resolve', { p_host: host })
   if (error) throw error
-  return (data as unknown as StorefrontMerchant | null) ?? null
+  const found = (data as unknown as StorefrontMerchant | null) ?? null
+  // A secondary custom domain opens the same page on the primary one (staff pages stay put).
+  if (found?.redirect_to && found.redirect_to !== location.hostname && !location.pathname.startsWith('/admin') && !location.pathname.startsWith('/super-admin')) {
+    location.replace(`https://${found.redirect_to}${location.pathname}${location.search}${location.hash}`)
+  }
+  return found
 }).catch((error) => {
   reportError(error, { where: 'storefront_resolve' })
   return null

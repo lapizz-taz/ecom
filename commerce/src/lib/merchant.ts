@@ -10,6 +10,8 @@ export interface StorefrontMerchant {
   merchant_id: string
   name: string
   status: string
+  /** This address is not the store's primary domain: send visitors there. */
+  redirect_to?: string | null
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

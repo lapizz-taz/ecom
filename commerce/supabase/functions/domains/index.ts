@@ -3,10 +3,14 @@
 //   POST {action: 'add', domain}             attach to the Vercel project, return the DNS records to add
 //   POST {action: 'check', domain}           ask Vercel again (verifies once DNS is in place)
 //   POST {action: 'remove', domain}          detach from Vercel
+//   POST {action: 'primary', domain}         make it the primary domain (the others redirect to it)
+// Every add/check also runs a full diagnosis (DNS records found, each region,
+// HTTPS, issues such as a Cloudflare proxy), saved with the domain.
 // Needs the function secrets VERCEL_TOKEN and VERCEL_PROJECT_ID (and VERCEL_TEAM_ID
 // for a team project). Without them the domain is saved as MANUAL with the DNS
 // records to add, and the platform owner attaches it in Vercel by hand.
 import { z } from 'zod'
+import { apexOf, diagnose, type Diagnosis } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
@@ -14,7 +18,7 @@ import { parse } from '../_shared/schemas.ts'
 import { requireStaff, rpc } from '../_shared/supabase.ts'
 
 interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
-interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null }
+interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null; diagnostics?: Diagnosis }
 
 const domain = z.string().trim().toLowerCase().transform((d) => d.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
   .pipe(z.string().regex(/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/, 'Enter a domain like shop.com or www.shop.com'))
@@ -23,15 +27,23 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('add'), domain }),
   z.object({ action: z.literal('check'), domain }),
   z.object({ action: z.literal('remove'), domain }),
+  z.object({ action: z.literal('primary'), domain }),
 ])
 
 /** Apex (shop.com) points an A record at Vercel; a subdomain (www.shop.com) a CNAME. */
 export function baseRecords(d: string): DnsRecord[] {
-  const parts = d.split('.')
-  const apex = parts.length === 2
-  return apex
+  const apex = apexOf(d)
+  return d === apex
     ? [{ type: 'A', name: '@', value: '76.76.21.21', why: 'Points your domain at the store' }]
-    : [{ type: 'CNAME', name: parts.slice(0, -2).join('.'), value: 'cname.vercel-dns.com', why: 'Points this subdomain at the store' }]
+    : [{ type: 'CNAME', name: d.slice(0, -(apex.length + 1)), value: 'cname.vercel-dns.com', why: 'Points this subdomain at the store' }]
+}
+
+/** Without the hosting API: the diagnosis alone decides whether the domain is live. */
+async function manual(d: string, note: string): Promise<Omit<Saved, 'domain'>> {
+  const diagnostics = await diagnose(d)
+  const live = diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true
+  return { status: live ? 'ACTIVE' : 'MANUAL', records: baseRecords(d), diagnostics,
+    detail: live ? 'Live — the store opens on this domain with HTTPS' : note }
 }
 
 function vercel() {
@@ -68,8 +80,9 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string): Pr
   const config = await v.call<VercelConfig>('GET', `/v6/domains/${d}/config`)
   const pointed = config.ok && !config.data.misconfigured
   const records = [...baseRecords(d), ...ownership]
-  if (verified && pointed) return { status: 'ACTIVE', records, detail: 'Live — the store opens on this domain with HTTPS' }
-  return { status: 'VERIFYING', records, detail: !pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'Waiting for the ownership record below' }
+  const diagnostics = await diagnose(d, { vercelPointed: config.ok ? pointed : null })
+  if (verified && pointed) return { status: 'ACTIVE', records, diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
+  return { status: 'VERIFYING', records, diagnostics, detail: !pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'Waiting for the ownership record below' }
 }
 
 Deno.serve(
@@ -86,8 +99,8 @@ Deno.serve(
         return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: !!v })
       case 'add': {
         if (!v) {
-          return json(req, { domain: await save(input.domain, { status: 'MANUAL', records: baseRecords(input.domain),
-            detail: 'Saved. Add the DNS record below at your domain registrar; the platform owner then adds the domain to the hosting project.' }), automatic: false })
+          return json(req, { domain: await save(input.domain, await manual(input.domain,
+            'Saved. Add the DNS record below at your domain registrar; the platform owner then adds the domain to the hosting project.')), automatic: false })
         }
         const added = await v.call<VercelDomain>('POST', `/v10/projects/${v.project}/domains`, { name: input.domain })
         if (!added.ok && added.data.error?.code !== 'domain_already_in_use_by_project' && added.status !== 409) {
@@ -98,7 +111,7 @@ Deno.serve(
         return json(req, { domain: await save(input.domain, await inspect(v, input.domain)), automatic: true })
       }
       case 'check':
-        if (!v) return json(req, { domain: await save(input.domain, { status: 'MANUAL', records: baseRecords(input.domain), detail: 'Automatic checks need VERCEL_TOKEN on the server.' }), automatic: false })
+        if (!v) return json(req, { domain: await save(input.domain, await manual(input.domain, 'Add the DNS record below; the platform owner then connects the domain to the hosting.')), automatic: false })
         return json(req, { domain: await save(input.domain, await inspect(v, input.domain)), automatic: true })
       case 'remove': {
         if (v) {
@@ -108,6 +121,8 @@ Deno.serve(
         await save(input.domain, { status: 'REMOVED', records: [], detail: v ? 'Removed from the store' : 'Removed here; also remove it from the hosting project' })
         return json(req, { ok: true })
       }
+      case 'primary':
+        return json(req, { domain: await rpc(staff.client, 'store_domain_set_primary', { p_domain: input.domain }) })
     }
   }),
 )
