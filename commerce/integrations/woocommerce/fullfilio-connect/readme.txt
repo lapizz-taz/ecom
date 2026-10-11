@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,11 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.2.0 =
+* New dashboard: orders and value of the last 14 days, unfinished checkouts, checkouts stopped or flagged, recent orders, stock and delivery health.
+* Checkout protection: Bangladeshi mobile number check (Normal, or Strict that also refuses made-up numbers); the order keeps the clean 01XXXXXXXXX number.
+* Bot protection: flags or blocks checkouts without any typing or tapping, sent within seconds, from scripts, filling a hidden field, or many orders from one IP; optional Cloudflare Turnstile.
 
 = 1.1.0 =
 * Order statuses follow Fullfilio: Confirmed, Shipped, Delivered, Partially delivered, Return in transit, Returned, Cancelled.

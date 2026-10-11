@@ -85,6 +85,7 @@ class FFC_Checkout {
 		if ( ! $lead_id ) {
 			$lead_id = 'ffc-' . FFC_Signer::uuid();
 			WC()->session->set( self::LEAD_KEY, $lead_id );
+			FFC_Stats::bump( 'leads' );
 			WC()->session->set( 'ffc_lead_started', gmdate( 'c' ) );
 		}
 		$payload = array_merge( $data, self::cart(), array( 'id' => $lead_id, 'created_at' => WC()->session->get( 'ffc_lead_started' ), 'updated_at' => gmdate( 'c' ), 'checkout_url' => wc_get_checkout_url(), 'attribution' => self::attribution() ) );

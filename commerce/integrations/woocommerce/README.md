@@ -4,7 +4,7 @@ Two parts work together:
 
 | Part | Where | What it does |
 | --- | --- | --- |
-| **Fullfilio Connect** (WordPress plugin) | `fullfilio-connect/` | Installed on the store. Sends orders and status changes the moment they happen, captures unfinished checkouts, saves ad attribution on each order, runs the order shield at checkout, adds the Confirmed / Shipped / Delivered / Partially delivered / Return in transit / Returned order statuses, puts returned items back in WooCommerce stock (once, never more than WooCommerce took off) and reports its health every 15 minutes. |
+| **Fullfilio Connect** (WordPress plugin) | `fullfilio-connect/` | Installed on the store. Sends orders and status changes the moment they happen, captures unfinished checkouts, saves ad attribution on each order, runs the order shield at checkout, adds the Confirmed / Shipped / Delivered / Partially delivered / Return in transit / Returned order statuses, puts returned items back in WooCommerce stock (once, never more than WooCommerce took off), protects the checkout (Bangladeshi phone check; bot check with Flag or Block and optional Cloudflare Turnstile, set on the plugin page), shows a dashboard (orders, value, unfinished checkouts, stopped/flagged, delivery health) and reports its health every 15 minutes. |
 | SaaS module | `supabase/functions/channels`, `supabase/migrations/20261031000100_woo_plugin.sql`, `src/features/channels/woo-plugin-panel.tsx` | Connects the store (WooCommerce's own key approval screen), registers the WooCommerce webhooks, imports orders and products through the official REST API (`wc/v3`), receives the plugin's signed events and sets the WooCommerce order's status as the order moves on here (`supabase/migrations/20261102000100_woo_order_sync.sql`, `wooStatusStep` in `_shared/channels/sync.ts`). |
 
 The plugin is optional: without it the store still connects with REST keys and webhooks. With it,
@@ -61,7 +61,8 @@ Fullfilio being unreachable (queued and retried), a paused webhook switched back
 Shipped → Delivered → Return in transit → Returned set on the store once each (not sent back), returned
 items put back in WooCommerce stock once, a partial delivery returned in two steps, a cancel here
 (WooCommerce restores its own stock once; with stock sync on it does not), a cancel on the store,
-the order shield and disconnect / reconnect.
+the order shield, checkout protection (made-up and invalid numbers refused, +880 saved as 01…, a script
+blocked, then only flagged), the dashboard and disconnect / reconnect.
 
 Stock, never counted twice:
 

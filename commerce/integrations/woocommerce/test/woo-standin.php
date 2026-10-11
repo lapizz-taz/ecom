@@ -499,6 +499,18 @@ class WC_Order {
 	public function get_billing_phone() {
 		return $this->data['billing']['phone'];
 	}
+	public function set_billing_phone( $phone ) {
+		$this->data['billing']['phone'] = (string) $phone;
+	}
+	public function get_billing_first_name() {
+		return $this->data['billing']['first_name'];
+	}
+	public function get_billing_last_name() {
+		return $this->data['billing']['last_name'];
+	}
+	public function get_date_created() {
+		return new Standin_Date( $this->data['date_created_gmt'] );
+	}
 	public function get_shipping_phone() {
 		return '';
 	}
@@ -567,6 +579,27 @@ class WC_Order {
 		}
 		standin_fire_webhooks( 'order.updated', standin_order_rest( $this ) );
 	}
+}
+
+/** Like WC_DateTime (only what the plugin uses). */
+class Standin_Date {
+	private $ts;
+	public function __construct( $gmt ) {
+		$this->ts = strtotime( $gmt . ' UTC' );
+	}
+	public function date_i18n( $format ) {
+		return wp_date( $format, $this->ts );
+	}
+	public function getTimestamp() {
+		return $this->ts;
+	}
+}
+
+/** Like wc_get_orders( limit, orderby date, order DESC ): newest first. */
+function wc_get_orders( $args = array() ) {
+	$limit = isset( $args['limit'] ) ? (int) $args['limit'] : 10;
+	$all   = array_map( static function ( $o ) { return new WC_Order( $o ); }, standin_all( 'orders' ) );
+	return $limit > 0 ? array_slice( $all, 0, $limit ) : $all;
 }
 
 function wc_get_order( $id ) {
@@ -682,12 +715,14 @@ add_shortcode(
 		}
 		echo '<p><label for="billing_state">District</label><select id="billing_state" name="billing_state"><option value="BD-13">Dhaka</option><option value="BD-10">Chattogram</option></select></p>';
 		echo '<p><label for="order_comments">Order notes</label><textarea id="order_comments" name="order_comments"></textarea></p>';
+		do_action( 'woocommerce_after_order_notes', null );
 		echo '<ul class="cart">';
 		foreach ( WC()->cart->get_cart() as $line ) {
 			echo '<li>' . esc_html( $line['data']->get_name() . ' × ' . $line['quantity'] . ' = ' . $line['line_total'] ) . '</li>';
 		}
 		echo '</ul><p>Total: <strong id="order-total">' . esc_html( WC()->cart->get_total() ) . '</strong></p>';
 		echo '<p><label><input type="radio" name="payment_method" value="cod" checked> Cash on delivery</label> <label><input type="radio" name="payment_method" value="bkash"> bKash</label></p>';
+		do_action( 'woocommerce_review_order_before_submit' );
 		echo '<div class="woocommerce-error" id="checkout-error" role="alert"></div><button type="submit" id="place_order">Place order</button></form>';
 		echo '<script>document.getElementById("standin-checkout").addEventListener("submit",function(e){e.preventDefault();fetch(' . wp_json_encode( WC_AJAX::get_endpoint( 'checkout' ) ) . ',{method:"POST",credentials:"same-origin",body:new FormData(e.target)}).then(function(r){return r.json()}).then(function(r){if(r.result==="success"){location.href=r.redirect}else{document.getElementById("checkout-error").textContent=r.messages}})})</script>';
 		return ob_get_clean();

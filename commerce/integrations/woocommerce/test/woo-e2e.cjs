@@ -97,16 +97,17 @@ async function wpLogin(p) {
     const hooks = JSON.parse(sql(`select webhooks from sales_channels where id = '${channelId}'`))
     assert(hooks.length >= 2, `WooCommerce webhooks registered (${hooks.map((h) => h.topic).join(', ')})`)
     await cron()
-    await waitFor(() => sql(`select settings #>> '{plugin,plugin_version}' from sales_channels where id = '${channelId}'`) === '1.1.0', 15000, 'heartbeat')
-    assert(true, 'heartbeat arrived: plugin 1.1.0 reported its health')
+    await waitFor(() => sql(`select settings #>> '{plugin,plugin_version}' from sales_channels where id = '${channelId}'`) === '1.2.0', 15000, 'heartbeat')
+    assert(true, 'heartbeat arrived: plugin 1.2.0 reported its health')
     await app.goto(`${APP}/admin/channels`); await app.waitForTimeout(2500)
     await shot(app, 'channel-card')
-    assert((await app.textContent('body')).includes('Plugin 1.1.0'), 'channel card shows the plugin version')
+    assert((await app.textContent('body')).includes('Plugin 1.2.0'), 'channel card shows the plugin version')
 
     // ------------------------------------------------------------------ 3. unfinished checkout (lead) with attribution
     const shirt = wpsql(`select id from wp_standin_products where data like '%Linen Shirt%'`)
     const stockStart = stockOf(101)
-    const customer = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage()
+    // A normal browser name: the headless test browser says "HeadlessChrome", which bot protection rightly refuses.
+    const customer = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36' })).newPage()
     await customer.goto(`${STORE}/?utm_source=facebook&utm_medium=paid&utm_campaign=eid-sale&fbclid=AbC123`)
     await customer.goto(`${STORE}/?add-to-cart=${shirt}&variation_id=101&quantity=2`)
     await customer.waitForURL(/checkout/)
@@ -274,7 +275,7 @@ async function wpLogin(p) {
     assert(stockOf(101) === before5 - 1, `WooCommerce did not put it back itself — Fullfilio sends the count (${before5} → ${stockOf(101)})`)
     assert(wooNotes(o5.woo).some((n) => /Fullfilio keeps this store/.test(n)), 'the WooCommerce order says why')
     sql(`update sales_channels set settings = settings || '{"inventory_sync": false}' where id = '${channelId}'`)
-    await owner.goto(`${STORE}/wp-admin/admin.php?page=fullfilio-connect`)
+    await owner.goto(`${STORE}/wp-admin/admin.php?page=fullfilio-connect&tab=stock`)
     await owner.getByText('Put back by').first().waitFor({ timeout: 15000 })
     const stockPage = await owner.textContent('body')
     assert(stockPage.includes('Put back by') && /Linen Shirt - M/.test(stockPage) && !/critical error/i.test(stockPage), 'plugin page lists the stock put back by Fullfilio')
@@ -314,6 +315,62 @@ async function wpLogin(p) {
     assert(wpsql('select count(*) from wp_standin_orders') === before, 'block-listed number refused at the WooCommerce checkout (no order created)')
     await shot(customer, 'shield')
     sql(`update order_blocks set is_active = false where value = '${blocked}'`)
+
+    // ------------------------------------------------------------------ 10b. checkout protection (phone + bots), set on the plugin page
+    const setProtect = async (phone, bot) => {
+      await owner.goto(`${STORE}/wp-admin/admin.php?page=fullfilio-connect&tab=protect`)
+      await owner.check(`input[name=phone_mode][value=${phone}]`)
+      await owner.check(`input[name=bot_mode][value=${bot}]`)
+      await owner.fill('#ffc-min', '2')
+      await owner.getByRole('button', { name: 'Save protection' }).click()
+      await owner.getByText('Checkout protection saved.').waitFor({ timeout: 15000 })
+    }
+    await setProtect('strict', 'block')
+    await shot(owner, 'protect')
+    const tryOrder = async (phoneNo) => {
+      await customer.goto(`${STORE}/?add-to-cart=${shirt}&variation_id=102&quantity=1`)
+      await customer.click('#billing_first_name')
+      await customer.fill('#billing_first_name', 'Sumi'); await customer.fill('#billing_phone', phoneNo); await customer.fill('#billing_address_1', 'Road 9, Mohammadpur'); await customer.fill('#billing_city', 'Dhaka')
+      await customer.waitForTimeout(2600)
+      const n = wpsql('select count(*) from wp_standin_orders')
+      await customer.click('#place_order')
+      await customer.waitForTimeout(2500)
+      return { created: wpsql('select count(*) from wp_standin_orders') !== n, text: await customer.textContent('body') }
+    }
+    const fake = await tryOrder('01711111111')
+    assert(!fake.created && /does not look real/.test(fake.text), 'strict: a made-up number (01711111111) is refused at checkout')
+    const bad = await tryOrder('12345')
+    assert(!bad.created && /valid Bangladeshi mobile number/.test(bad.text), 'a number that is not a Bangladeshi mobile is refused')
+    const good = await tryOrder('+880 1712-345 699')
+    const goodId = /Order #(\d+)/.exec(good.text)?.[1]
+    assert(good.created && goodId && wooOrderOf(goodId).billing.phone === '01712345699', `a real person with +880… gets through, saved as 01712345699 (${goodId && wooOrderOf(goodId).billing.phone})`)
+
+    // A script: no browser, no typing, posts the checkout right away.
+    const botCheckout = async (phoneNo) => {
+      const ua = 'python-requests/2.31'
+      const r1 = await fetch(`${STORE}/?add-to-cart=${shirt}&variation_id=102&quantity=1`, { redirect: 'manual', headers: { 'User-Agent': ua } })
+      const cookie = (r1.headers.get('set-cookie') || '').split(';')[0]
+      const body = new URLSearchParams({ billing_first_name: 'Bot', billing_phone: phoneNo, billing_address_1: 'Somewhere 12', billing_city: 'Dhaka', billing_state: 'BD-13', payment_method: 'cod' })
+      const r2 = await fetch(`${STORE}/?wc-ajax=checkout`, { method: 'POST', headers: { 'User-Agent': ua, Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' }, body })
+      return r2.json()
+    }
+    const botBlocked = await botCheckout('01812345670')
+    assert(botBlocked.result === 'failure' && /could not confirm this order automatically/.test(botBlocked.messages || ''), `block: a script's checkout is refused (${JSON.stringify(botBlocked).slice(0, 120)})`)
+    await setProtect('normal', 'flag')
+    const flagged = await botCheckout('01812345671')
+    assert(flagged.result === 'success', `flag only: the script's order goes through (${flagged.result})`)
+    assert(wooNotes(flagged.order_id).some((n) => /possible bot or fake order \(risk \d+\/100/.test(n)), 'and the WooCommerce order gets a risk note')
+    await owner.goto(`${STORE}/wp-admin/admin.php?page=fullfilio-connect&tab=protect`)
+    const protectPage = await owner.textContent('body')
+    assert(protectPage.includes('Flagged') && protectPage.includes('Blocked') && protectPage.includes('Wrong number'), 'the plugin page lists what was stopped or flagged')
+    await setProtect('off', 'off')
+
+    // The dashboard.
+    await owner.goto(`${STORE}/wp-admin/admin.php?page=fullfilio-connect`)
+    await owner.getByText('Orders, last 14 days').waitFor({ timeout: 15000 })
+    const dash = await owner.textContent('body')
+    assert(dash.includes('Recent orders') && dash.includes('Delivery to') && /Stopped or flagged/.test(dash) && !/critical error/i.test(dash), 'plugin dashboard: cards, 14-day chart, recent orders, delivery health')
+    await shot(owner, 'dashboard')
 
     const ordersBefore = sql(`select count(*) from orders where sales_channel_id = '${channelId}'`)
     // ------------------------------------------------------------------ 11. disconnect and reconnect

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Fullfilio Connect for WooCommerce
  * Description:       Connects this WooCommerce store to Fullfilio: orders arrive instantly, unfinished checkouts are captured, risky orders are checked at checkout and every order carries the ad it came from.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Fullfilio
@@ -19,7 +19,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FFC_VERSION', '1.1.0' );
+define( 'FFC_VERSION', '1.2.0' );
 define( 'FFC_FILE', __FILE__ );
 define( 'FFC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FFC_URL', plugin_dir_url( __FILE__ ) );
@@ -33,6 +33,8 @@ require_once FFC_DIR . 'includes/class-ffc-rest.php';
 require_once FFC_DIR . 'includes/class-ffc-checkout.php';
 require_once FFC_DIR . 'includes/class-ffc-orders.php';
 require_once FFC_DIR . 'includes/class-ffc-stock.php';
+require_once FFC_DIR . 'includes/class-ffc-stats.php';
+require_once FFC_DIR . 'includes/class-ffc-protect.php';
 require_once FFC_DIR . 'includes/class-ffc-health.php';
 require_once FFC_DIR . 'includes/class-ffc-admin.php';
 
@@ -69,6 +71,8 @@ add_action(
 		FFC_Checkout::init();
 		FFC_Orders::init();
 		FFC_Stock::init();
+		FFC_Stats::init();
+		FFC_Protect::init();
 		FFC_Health::init();
 	},
 	20
