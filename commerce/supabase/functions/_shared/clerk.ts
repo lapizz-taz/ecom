@@ -4,7 +4,8 @@
 // is exchanged for a Supabase session of the user with the same verified
 // e-mail. Only the server talks to Clerk's Backend API; the secret key lives
 // in the CLERK_SECRET_KEY edge function secret, or encrypted in Vault as the
-// platform credential "auth.clerk" ({ "secret_key": "sk_..." }).
+// platform credential "auth.clerk" ({ "secret_key": "sk_...", "proxy_url":
+// "https://<site>/__clerk" }; proxy_url only for a production instance).
 import { env } from './env.ts'
 import { HttpError } from './http.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -25,22 +26,40 @@ export interface ClerkUser {
 
 export interface ClerkClaims { sub: string; sid?: string; azp?: string; exp: number; nbf?: number; iat?: number }
 
-let vaultKey: { at: number; value: string | null } | null = null
+export interface ClerkSettings { secretKey: string | null; proxyUrl: string | null }
 
-/** Clerk's secret key: the edge secret first, then the platform credential in Vault. */
-export async function clerkSecret(readVault: () => Promise<string | null> = vaultSecret): Promise<string> {
-  const key = env('CLERK_SECRET_KEY')
-  if (key) return key
-  if (!vaultKey || Date.now() - vaultKey.at > 5 * 60_000) vaultKey = { at: Date.now(), value: await readVault() }
-  if (!vaultKey.value) throw new HttpError(503, 'Sign-in is not set up yet', 'NOT_CONFIGURED')
-  return vaultKey.value
+let vaultCache: { at: number; value: ClerkSettings } | null = null
+
+async function vaultSettings(read: () => Promise<ClerkSettings>): Promise<ClerkSettings> {
+  if (!vaultCache || Date.now() - vaultCache.at > 5 * 60_000) vaultCache = { at: Date.now(), value: await read() }
+  return vaultCache.value
 }
 
-async function vaultSecret(): Promise<string | null> {
+/** Clerk's secret key: the edge secret first, then the platform credential in Vault. */
+export async function clerkSecret(readVault: () => Promise<ClerkSettings> = readClerkCredential): Promise<string> {
+  const key = env('CLERK_SECRET_KEY')
+  if (key) return key
+  const { secretKey } = await vaultSettings(readVault)
+  if (!secretKey) throw new HttpError(503, 'Sign-in is not set up yet', 'NOT_CONFIGURED')
+  return secretKey
+}
+
+/** The public /__clerk address Clerk's production instance expects, or null when not set. */
+export async function clerkProxySetting(readVault: () => Promise<ClerkSettings> = readClerkCredential): Promise<string | null> {
+  const set = env('CLERK_PROXY_URL') ?? (await vaultSettings(readVault)).proxyUrl
+  if (set) return set.replace(/\/+$/, '')
+  const site = env('PLATFORM_URL')
+  return site ? `${site.replace(/\/+$/, '')}/__clerk` : null
+}
+
+async function readClerkCredential(): Promise<ClerkSettings> {
   const { data, error } = await adminClient().rpc('platform_secret_get', { p_key: 'auth.clerk' })
-  if (error) return null
-  const value = (data as { secret_key?: unknown } | null)?.secret_key
-  return typeof value === 'string' && value.startsWith('sk_') ? value : null
+  if (error) return { secretKey: null, proxyUrl: null }
+  const v = (data ?? {}) as { secret_key?: unknown; proxy_url?: unknown }
+  return {
+    secretKey: typeof v.secret_key === 'string' && v.secret_key.startsWith('sk_') ? v.secret_key : null,
+    proxyUrl: typeof v.proxy_url === 'string' && /^https:\/\/[^/]+\/__clerk\/?$/.test(v.proxy_url) ? v.proxy_url : null,
+  }
 }
 
 async function api<T>(path: string, init: RequestInit = {}, f: Fetch = fetch): Promise<T> {
@@ -75,7 +94,7 @@ async function signingKey(kid: string, f: Fetch): Promise<JsonWebKey | null> {
 }
 
 /** Clears the cached signing keys (tests). */
-export function resetClerkKeys() { jwksCache = null; vaultKey = null }
+export function resetClerkKeys() { jwksCache = null; vaultCache = null }
 
 /**
  * Checks a Clerk session token: RS256 signature by this Clerk instance's key,
@@ -123,13 +142,25 @@ export function verifiedPrimaryEmail(user: ClerkUser): string | null {
   return primary && primary.verification?.status === 'verified' ? primary.email_address.trim().toLowerCase() : null
 }
 
+/** A bcrypt hash as Supabase Auth stores it. */
+export const BCRYPT_DIGEST = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/
+
 /**
  * Creates the Clerk account for someone who already has a Fullfilio account.
- * Their e-mail was verified by us before; their current password (if given)
- * carries over, so nothing changes for them.
+ * Their e-mail was verified by us before; their current password carries over
+ * (given in plain text, or as the bcrypt hash the database keeps), so nothing
+ * changes for them.
  */
-export function createClerkUser(input: { email: string; password?: string; fullName?: string | null; externalId: string }, f: Fetch = fetch) {
+export function createClerkUser(
+  input: { email: string; password?: string; passwordDigest?: string | null; fullName?: string | null; externalId: string },
+  f: Fetch = fetch,
+) {
   const [first, ...rest] = (input.fullName ?? '').trim().split(/\s+/).filter(Boolean)
+  const secret = input.password
+    ? { password: input.password, skip_password_checks: true }
+    : input.passwordDigest && BCRYPT_DIGEST.test(input.passwordDigest)
+      ? { password_digest: input.passwordDigest, password_hasher: 'bcrypt' }
+      : { skip_password_requirement: true }
   return api<ClerkUser>('/users', {
     method: 'POST',
     body: JSON.stringify({
@@ -137,7 +168,7 @@ export function createClerkUser(input: { email: string; password?: string; fullN
       external_id: input.externalId,
       first_name: first || undefined,
       last_name: rest.join(' ') || undefined,
-      ...(input.password ? { password: input.password, skip_password_checks: true } : { skip_password_requirement: true }),
+      ...secret,
     }),
   }, f)
 }
@@ -155,13 +186,55 @@ export const clerkEnabled = (): Promise<boolean> => clerkSecret().then(() => tru
  * person signs in with Clerk: with the password given, an e-mail code, or
  * "Forgot password". False when Clerk is not set up.
  */
-export async function ensureClerkAccount(admin: SupabaseClient, who: { userId: string; email: string; password?: string; fullName?: string | null }): Promise<boolean> {
+export async function ensureClerkAccount(
+  admin: SupabaseClient,
+  who: { userId: string; email: string; password?: string; passwordDigest?: string | null; fullName?: string | null },
+): Promise<'created' | 'existed' | false> {
   if (!(await clerkEnabled())) return false
   const existing = await findClerkUserByEmail(who.email)
-  const clerkId = existing?.id ?? (await createClerkUser({ email: who.email, password: who.password, fullName: who.fullName, externalId: who.userId })).id
+  const clerkId = existing?.id ??
+    (await createClerkUser({ email: who.email, password: who.password, passwordDigest: who.passwordDigest, fullName: who.fullName, externalId: who.userId })).id
   const { data } = await admin.auth.admin.getUserById(who.userId)
   if (data.user && data.user.app_metadata?.clerk_user_id !== clerkId) {
     await admin.auth.admin.updateUserById(who.userId, { app_metadata: { ...data.user.app_metadata, clerk_user_id: clerkId } })
   }
-  return true
+  return existing ? 'existed' : 'created'
+}
+
+// --- Frontend API proxy -----------------------------------------------------
+
+/** Clerk's Frontend API, reached through our own /__clerk address in production. */
+export const CLERK_FAPI = 'https://frontend-api.clerk.services'
+
+const DROP_REQUEST = new Set(['host', 'connection', 'content-length', 'accept-encoding', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'x-forwarded-for', 'x-vercel-forwarded-for', 'cf-connecting-ip', 'clerk-secret-key', 'clerk-proxy-url'])
+const DROP_RESPONSE = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection'])
+
+/** The visitor's address as the edge saw it (Vercel's header first: it sits in front of us). */
+export function visitorIp(req: Request): string | null {
+  const first = (v: string | null) => v?.split(',')[0]?.trim() || null
+  return first(req.headers.get('x-vercel-forwarded-for')) ?? first(req.headers.get('x-forwarded-for')) ?? req.headers.get('x-real-ip')
+}
+
+/**
+ * Builds the request Clerk expects from a proxy: same method, path, query,
+ * body and cookies, plus the proxy address, our secret key and the visitor's IP.
+ */
+export function proxyRequest(req: Request, path: string, proxyUrl: string, secret: string, body: ArrayBuffer | null): [string, RequestInit] {
+  const source = new URL(req.url)
+  const headers = new Headers()
+  req.headers.forEach((value, key) => { if (!DROP_REQUEST.has(key.toLowerCase())) headers.set(key, value) })
+  headers.set('Clerk-Proxy-Url', proxyUrl)
+  headers.set('Clerk-Secret-Key', secret)
+  const ip = visitorIp(req)
+  if (ip) headers.set('X-Forwarded-For', ip)
+  const target = `${CLERK_FAPI}/${path.replace(/^\/+/, '')}${source.search}`
+  return [target, { method: req.method, headers, body, redirect: 'manual' }]
+}
+
+/** Clerk's answer as ours: status, body and every cookie, minus transport headers. */
+export function proxyResponse(res: Response): Response {
+  const headers = new Headers()
+  res.headers.forEach((value, key) => { if (!DROP_RESPONSE.has(key.toLowerCase()) && key.toLowerCase() !== 'set-cookie') headers.set(key, value) })
+  for (const cookie of res.headers.getSetCookie?.() ?? []) headers.append('set-cookie', cookie)
+  return new Response(res.status === 204 || res.status === 304 ? null : res.body, { status: res.status, statusText: res.statusText, headers })
 }

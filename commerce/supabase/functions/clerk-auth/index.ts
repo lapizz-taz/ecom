@@ -2,14 +2,19 @@
 //
 //   session  – a signed-in Clerk session becomes a Supabase session for the
 //              account with the same verified e-mail (created on first use).
-//   setup    – switches off Clerk's "choose an organization" step; needs proof
-//              of Clerk's secret key. (Accounts from before Clerk were imported
-//              into Clerk with their passwords; new staff are created there by
-//              admin-users.)
+//   setup    – switches off Clerk's "choose an organization" step.
+//   import   – gives existing staff and owners their Clerk account, with the
+//              password they have now (its bcrypt hash), e.g. after switching
+//              to a new Clerk instance. New staff are created there by
+//              admin-users and platform-admin.
+//
+// setup and import are internal: only a scheduled-job caller (the cron secret
+// or the service role key) may use them.
 //
 // Clerk's secret key and the service-role key stay on this server.
 import { z } from 'zod'
-import { clerkSecret, getClerkUser, updateOrganizationSettings, verifiedPrimaryEmail, verifySessionToken } from '../_shared/clerk.ts'
+import { BCRYPT_DIGEST, ensureClerkAccount, getClerkUser, updateOrganizationSettings, verifiedPrimaryEmail, verifySessionToken } from '../_shared/clerk.ts'
+import { isCronRequest } from '../_shared/cron.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient, rpc } from '../_shared/supabase.ts'
@@ -17,6 +22,15 @@ import { adminClient, rpc } from '../_shared/supabase.ts'
 const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('session'), token: z.string().min(20).max(8000) }),
   z.object({ action: z.literal('setup') }),
+  z.object({
+    action: z.literal('import'),
+    users: z.array(z.object({
+      user_id: z.uuid(),
+      email: z.email().max(160).transform((e) => e.toLowerCase()),
+      full_name: z.string().trim().max(100).nullable().optional(),
+      password_digest: z.string().regex(BCRYPT_DIGEST).nullable().optional(),
+    })).min(1).max(100),
+  }),
 ])
 
 type Admin = ReturnType<typeof adminClient>
@@ -75,12 +89,28 @@ Deno.serve(
       return json(req, { token_hash: hash, email: address, user_id: user.id })
     }
 
+    if (!(await isCronRequest(req, admin))) throw new HttpError(403, 'Not allowed', 'PERMISSION_DENIED')
+
+    if (input.action === 'import') {
+      const results = []
+      for (const u of input.users) {
+        // Only real accounts, under the e-mail they really have.
+        const { data } = await admin.auth.admin.getUserById(u.user_id)
+        if (data.user?.email?.toLowerCase() !== u.email) {
+          results.push({ email: u.email, status: 'skipped: no such account' })
+          continue
+        }
+        try {
+          const status = await ensureClerkAccount(admin, { userId: u.user_id, email: u.email, passwordDigest: u.password_digest, fullName: u.full_name })
+          results.push({ email: u.email, status: status || 'clerk not set up', password: Boolean(u.password_digest) })
+        } catch (e) {
+          results.push({ email: u.email, status: `failed: ${e instanceof Error ? e.message : String(e)}` })
+        }
+      }
+      return json(req, { results })
+    }
+
     // setup: switch off Clerk's "choose an organization" step (Fullfilio has its own businesses).
-    // Only someone holding Clerk's secret key can ask for it: the proof is its SHA-256.
-    const secret = await clerkSecret()
-    const proof = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret))))
-      .map((b) => b.toString(16).padStart(2, '0')).join('')
-    if (req.headers.get('x-clerk-setup') !== proof) throw new HttpError(403, 'Not allowed', 'PERMISSION_DENIED')
     const settings = await updateOrganizationSettings({ force_organization_selection: false })
     return json(req, { force_organization_selection: settings.force_organization_selection })
   }),

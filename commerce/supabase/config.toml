@@ -133,3 +133,8 @@ import_map = "./functions/import_map.json"
 [functions.clerk-auth]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+
+# Clerk's Frontend API through the site's own /__clerk address (production instance, proxy mode).
+[functions.clerk-proxy]
+verify_jwt = false
+import_map = "./functions/import_map.json"

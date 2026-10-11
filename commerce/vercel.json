@@ -8,6 +8,10 @@
       "source": "/oauth/shopify/callback",
       "destination": "https://tcjdgiohmhjqppzwoztj.supabase.co/functions/v1/channels/callback/shopify"
     },
+    {
+      "source": "/__clerk/:path*",
+      "destination": "https://tcjdgiohmhjqppzwoztj.supabase.co/functions/v1/clerk-proxy/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
