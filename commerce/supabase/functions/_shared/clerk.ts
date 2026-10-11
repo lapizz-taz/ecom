@@ -21,12 +21,13 @@ export interface ClerkUser {
   first_name: string | null
   last_name: string | null
   primary_email_address_id: string | null
+  banned?: boolean
   email_addresses: Array<{ id: string; email_address: string; verification: { status: string } | null }>
 }
 
 export interface ClerkClaims { sub: string; sid?: string; azp?: string; exp: number; nbf?: number; iat?: number }
 
-export interface ClerkSettings { secretKey: string | null; proxyUrl: string | null }
+export interface ClerkSettings { secretKey: string | null; proxyUrl: string | null; webhookSecret?: string | null }
 
 let vaultCache: { at: number; value: ClerkSettings } | null = null
 
@@ -52,11 +53,17 @@ export async function clerkProxySetting(readVault: () => Promise<ClerkSettings> 
   return site ? `${site.replace(/\/+$/, '')}/__clerk` : null
 }
 
+/** The signing secret of Clerk's webhook (Clerk → Webhooks → endpoint), or null when not set. */
+export async function clerkWebhookSecret(readVault: () => Promise<ClerkSettings> = readClerkCredential): Promise<string | null> {
+  return env('CLERK_WEBHOOK_SECRET') ?? (await vaultSettings(readVault)).webhookSecret ?? null
+}
+
 async function readClerkCredential(): Promise<ClerkSettings> {
   const { data, error } = await adminClient().rpc('platform_secret_get', { p_key: 'auth.clerk' })
   if (error) return { secretKey: null, proxyUrl: null }
-  const v = (data ?? {}) as { secret_key?: unknown; proxy_url?: unknown }
+  const v = (data ?? {}) as { secret_key?: unknown; proxy_url?: unknown; webhook_secret?: unknown }
   return {
+    webhookSecret: typeof v.webhook_secret === 'string' && v.webhook_secret.startsWith('whsec_') ? v.webhook_secret : null,
     secretKey: typeof v.secret_key === 'string' && v.secret_key.startsWith('sk_') ? v.secret_key : null,
     proxyUrl: typeof v.proxy_url === 'string' && /^https:\/\/[^/]+\/__clerk\/?$/.test(v.proxy_url) ? v.proxy_url : null,
   }
@@ -173,6 +180,31 @@ export function createClerkUser(
   }, f)
 }
 
+const splitName = (full: string | null | undefined) => {
+  const [first, ...rest] = (full ?? '').trim().split(/\s+/).filter(Boolean)
+  return { first_name: first ?? '', last_name: rest.join(' ') }
+}
+
+/** Removes a Clerk account; one that is already gone counts as removed. */
+export async function deleteClerkUser(id: string, f: Fetch = fetch): Promise<void> {
+  try {
+    await api(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' }, f)
+  } catch (e) {
+    if (!(e instanceof HttpError && (e.details as { code?: string } | undefined)?.code === 'resource_not_found')) throw e
+  }
+}
+
+/** Blocks or unblocks signing in with this Clerk account (Fullfilio deactivate / reactivate). */
+export const setClerkUserBanned = (id: string, banned: boolean, f: Fetch = fetch) =>
+  api<ClerkUser>(`/users/${encodeURIComponent(id)}/${banned ? 'ban' : 'unban'}`, { method: 'POST' }, f)
+
+/** Sets the name on the Clerk account (Fullfilio is where it was changed). */
+export const setClerkUserName = (id: string, fullName: string, f: Fetch = fetch) =>
+  api<ClerkUser>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(splitName(fullName)) }, f)
+
+export const clerkFullName = (u: Pick<ClerkUser, 'first_name' | 'last_name'>): string | null =>
+  [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || null
+
 /** Clerk's organization settings (Fullfilio does not use Clerk organizations). */
 export function updateOrganizationSettings(patch: Record<string, unknown>, f: Fetch = fetch) {
   return api<{ force_organization_selection?: boolean }>('/instance/organization_settings', { method: 'PATCH', body: JSON.stringify(patch) }, f)
@@ -237,4 +269,33 @@ export function proxyResponse(res: Response): Response {
   res.headers.forEach((value, key) => { if (!DROP_RESPONSE.has(key.toLowerCase()) && key.toLowerCase() !== 'set-cookie') headers.set(key, value) })
   for (const cookie of res.headers.getSetCookie?.() ?? []) headers.append('set-cookie', cookie)
   return new Response(res.status === 204 || res.status === 304 ? null : res.body, { status: res.status, statusText: res.statusText, headers })
+}
+
+// --- Webhooks ---------------------------------------------------------------
+
+/**
+ * Checks a Clerk (Svix) webhook: an HMAC-SHA256 of "id.timestamp.body" with
+ * the endpoint's signing secret, sent at most five minutes ago.
+ */
+export async function verifyWebhook(secret: string, headers: Headers, body: string, now = Date.now()): Promise<boolean> {
+  const id = headers.get('svix-id')
+  const timestamp = headers.get('svix-timestamp')
+  const signatures = headers.get('svix-signature')
+  if (!id || !timestamp || !signatures || !/^\d+$/.test(timestamp)) return false
+  if (Math.abs(now / 1000 - Number(timestamp)) > 300) return false
+  const key = await crypto.subtle.importKey('raw', b64(secret.replace(/^whsec_/, '')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${body}`)))
+  const expected = btoa(String.fromCharCode(...mac))
+  return signatures.split(' ').some((part) => {
+    const [version, sig] = part.split(',')
+    return version === 'v1' && sig?.length === expected.length && timingSafeEqual(sig, expected)
+  })
+}
+
+const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+
+function timingSafeEqual(a: string, b: string): boolean {
+  let diff = a.length ^ b.length
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
+  return diff === 0
 }

@@ -2,7 +2,7 @@
 // every role change goes through admin_set_user_role() as the caller, so the
 // database enforces who may grant what (no privilege escalation).
 import { z } from 'zod'
-import { clerkEnabled, ensureClerkAccount } from '../_shared/clerk.ts'
+import { clerkEnabled, ensureClerkAccount, findClerkUserByEmail, setClerkUserBanned } from '../_shared/clerk.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
@@ -90,8 +90,18 @@ Deno.serve(
         const role = (current?.roles as unknown as { code: string } | null)?.code
         if (!role) throw new HttpError(404, 'Staff member not found', 'NOT_FOUND')
         const profile = await rpc(staff.client, 'admin_set_user_role', { p_user_id: input.user_id, p_role_code: role, p_is_active: active })
-        // Also block sign-in at the auth layer while deactivated.
+        // Also block sign-in at the auth layer while deactivated, and in Clerk.
         await admin.auth.admin.updateUserById(input.user_id, { ban_duration: active ? 'none' : '876000h' })
+        if (await clerkEnabled()) {
+          const { data: login } = await admin.auth.admin.getUserById(input.user_id)
+          let clerkId = login.user?.app_metadata?.clerk_user_id as string | undefined
+          if (active && login.user?.email) {
+            // Reactivated: make sure the Clerk account exists (it may have been deleted meanwhile).
+            await ensureClerkAccount(admin, { userId: input.user_id, email: login.user.email, fullName: login.user.user_metadata?.full_name as string | undefined })
+            clerkId = (await findClerkUserByEmail(login.user.email))?.id ?? clerkId
+          }
+          if (clerkId) await setClerkUserBanned(clerkId, !active).catch((e) => { if (active) throw e })
+        }
         return json(req, { profile })
       }
     }

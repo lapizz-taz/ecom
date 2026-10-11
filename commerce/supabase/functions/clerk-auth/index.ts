@@ -1,23 +1,31 @@
 // Clerk sign-in bridge.
 //
-//   session  – a signed-in Clerk session becomes a Supabase session for the
-//              account with the same verified e-mail (created on first use).
-//   setup    – switches off Clerk's "choose an organization" step.
-//   import   – gives existing staff and owners their Clerk account, with the
-//              password they have now (its bcrypt hash), e.g. after switching
-//              to a new Clerk instance. New staff are created there by
-//              admin-users and platform-admin.
+//   session   – a signed-in Clerk session becomes a Supabase session for the
+//               account linked to that Clerk account, else the one with the
+//               same verified e-mail (created on first use). The Clerk
+//               account's e-mail and name are copied to it each time.
+//   setup     – switches off Clerk's "choose an organization" step.
+//   import    – gives existing staff and owners their Clerk account, with the
+//               password they have now (its bcrypt hash), e.g. after switching
+//               to a new Clerk instance. New staff are created there by
+//               admin-users and platform-admin.
+//   removals  – carries out queued login removals (logins of a deleted
+//               business): blocked here, e-mail freed, deleted from Clerk.
 //
-// setup and import are internal: only a scheduled-job caller (the cron secret
-// or the service role key) may use them.
+// setup, import and removals are internal: only a scheduled-job caller (the
+// cron secret or the service role key) may use them.
 //
 // Clerk's secret key and the service-role key stay on this server.
 import { z } from 'zod'
-import { BCRYPT_DIGEST, ensureClerkAccount, getClerkUser, updateOrganizationSettings, verifiedPrimaryEmail, verifySessionToken } from '../_shared/clerk.ts'
+import { findLogin, isBlocked, loginById, retireLogin, syncLoginFromClerk } from '../_shared/accounts.ts'
+import {
+  BCRYPT_DIGEST, clerkFullName, deleteClerkUser, ensureClerkAccount, findClerkUserByEmail, getClerkUser,
+  updateOrganizationSettings, verifiedPrimaryEmail, verifySessionToken,
+} from '../_shared/clerk.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
-import { adminClient, rpc } from '../_shared/supabase.ts'
+import { adminClient } from '../_shared/supabase.ts'
 
 const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('session'), token: z.string().min(20).max(8000) }),
@@ -31,18 +39,42 @@ const schema = z.discriminatedUnion('action', [
       password_digest: z.string().regex(BCRYPT_DIGEST).nullable().optional(),
     })).min(1).max(100),
   }),
+  z.object({ action: z.literal('removals'), limit: z.number().int().min(1).max(50).default(25) }),
 ])
 
 type Admin = ReturnType<typeof adminClient>
 
 const isNotFound = (e: unknown) => e instanceof HttpError && (e.details as { code?: string } | undefined)?.code === 'resource_not_found'
 
-async function authUser(admin: Admin, address: string) {
-  const id = await rpc<string | null>(admin, 'find_auth_user_id', { p_email: address })
-  if (!id) return null
-  const { data, error } = await admin.auth.admin.getUserById(id)
-  if (error || !data.user) throw new HttpError(500, 'Could not read the account', 'INTERNAL')
-  return data.user
+/** Removes queued logins of deleted businesses. Platform staff keep theirs. */
+async function processRemovals(admin: Admin, limit: number) {
+  const { data: rows, error } = await admin.from('account_removals').select('id, user_id, attempts')
+    .eq('status', 'PENDING').lt('attempts', 5).order('created_at').limit(limit)
+  if (error) throw new HttpError(500, 'Could not read the removal queue', 'INTERNAL', { cause: error.message })
+  const results = []
+  for (const row of rows ?? []) {
+    try {
+      const user = await loginById(admin, row.user_id)
+      const { data: staff } = await admin.from('platform_staff').select('user_id').eq('user_id', row.user_id).maybeSingle()
+      const remove = !!user && !staff
+      if (remove) {
+        const clerkId = (user.app_metadata?.clerk_user_id as string | undefined) ??
+          (user.email ? (await findClerkUserByEmail(user.email))?.id : undefined)
+        if (clerkId) await deleteClerkUser(clerkId)
+        await retireLogin(admin, user)
+      }
+      await admin.from('account_removals').update({ status: 'DONE', done_at: new Date().toISOString(), attempts: row.attempts + 1, last_error: null })
+        .eq('id', row.id)
+      results.push({ id: row.id, status: remove ? 'removed' : 'skipped' })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      await admin.from('account_removals')
+        .update({ attempts: row.attempts + 1, last_error: message.slice(0, 500), status: row.attempts + 1 >= 5 ? 'FAILED' : 'PENDING' })
+        .eq('id', row.id)
+      results.push({ id: row.id, status: 'failed', error: message })
+    }
+  }
+  return results
 }
 
 Deno.serve(
@@ -58,9 +90,9 @@ Deno.serve(
       const clerkUser = await getClerkUser(claims.sub)
       const address = verifiedPrimaryEmail(clerkUser)
       if (!address) throw new HttpError(403, 'Confirm your e-mail address first', 'EMAIL_NOT_VERIFIED')
-      const name = [clerkUser.first_name, clerkUser.last_name].filter(Boolean).join(' ') || null
+      const name = clerkFullName(clerkUser)
 
-      let user = await authUser(admin, address)
+      let user = await findLogin(admin, clerkUser)
       if (!user) {
         const created = await admin.auth.admin.createUser({
           email: address, email_confirm: true,
@@ -69,6 +101,9 @@ Deno.serve(
         if (created.error || !created.data.user) throw new HttpError(500, 'Could not open the account', 'INTERNAL')
         user = created.data.user
       } else {
+        if (isBlocked(user)) {
+          throw new HttpError(403, 'This sign-in is switched off. Ask your business owner or Fullfilio support.', 'ACCOUNT_DISABLED')
+        }
         const linked = user.app_metadata?.clerk_user_id as string | undefined
         if (linked && linked !== claims.sub) {
           // The e-mail moved to a new Clerk account. Allow it only when the old one is gone.
@@ -81,6 +116,8 @@ Deno.serve(
           })
           if (error) throw new HttpError(500, 'Could not open the account', 'INTERNAL')
         }
+        // The Clerk account's e-mail and name (changed in Clerk) carry over.
+        await syncLoginFromClerk(admin, user, clerkUser)
       }
 
       const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: address })
@@ -90,6 +127,10 @@ Deno.serve(
     }
 
     if (!(await isCronRequest(req, admin))) throw new HttpError(403, 'Not allowed', 'PERMISSION_DENIED')
+
+    if (input.action === 'removals') {
+      return json(req, { results: await processRemovals(admin, input.limit) })
+    }
 
     if (input.action === 'import') {
       const results = []

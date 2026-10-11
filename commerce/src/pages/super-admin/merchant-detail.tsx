@@ -22,6 +22,7 @@ import { MerchantCreditsTab } from '@/features/platform/services/merchant-credit
 import { MerchantSupportTab } from '@/features/platform/support/merchant-support-tab'
 import { usePlatform } from '@/features/platform/platform-context'
 import { StatusChangeDialog } from '@/features/platform/status-change-dialog'
+import { MerchantDeletePanel } from '@/features/platform/merchant-delete-panel'
 import { StoreResetPanel } from '@/features/platform/store-reset-panel'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatDateTime, formatMoney, formatNumber, timeAgo } from '@/lib/format'
@@ -34,7 +35,7 @@ const merchantTabs: Array<{ key: string; label: string; module: string; render: 
   { key: 'features', label: 'Features', module: 'features', render: (m) => <MerchantFeaturesTab detail={m} /> },
   { key: 'credits', label: 'Credits & usage', module: 'credits', render: (m) => <MerchantCreditsTab detail={m} /> },
   { key: 'support', label: 'Support', module: 'support', render: (m) => <MerchantSupportTab detail={m} /> },
-  { key: 'reset', label: 'Reset store', module: 'merchants', render: (m) => <StoreResetPanel detail={m} /> },
+  { key: 'reset', label: 'Reset or delete', module: 'merchants', render: (m) => <div className="space-y-4"><StoreResetPanel detail={m} /><MerchantDeletePanel detail={m} /></div> },
 ]
 
 function Row({ label, children }: { label: string; children: ReactNode }) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clerkProxySetting, clerkSecret, createClerkUser, proxyRequest, proxyResponse, resetClerkKeys, verifiedPrimaryEmail, verifySessionToken, type ClerkUser } from './clerk.ts'
+import { clerkProxySetting, clerkSecret, clerkWebhookSecret, createClerkUser, deleteClerkUser, setClerkUserBanned, setClerkUserName, verifyWebhook, proxyRequest, proxyResponse, resetClerkKeys, verifiedPrimaryEmail, verifySessionToken, type ClerkUser } from './clerk.ts'
 
 const enc = (v: unknown) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url')
 let keys: CryptoKeyPair
@@ -149,5 +149,55 @@ describe('clerk frontend api proxy', () => {
     expect(res.headers.get('location')).toBe('https://accounts.google.com/o')
     expect(res.headers.get('content-encoding')).toBeNull()
     expect(res.headers.getSetCookie()).toEqual(['__client=1; Path=/; HttpOnly', '__client_uat=2; Path=/'])
+  })
+})
+
+describe('clerk webhooks', () => {
+  const secret = 'whsec_' + Buffer.from('a-very-secret-signing-key-32byte').toString('base64')
+  async function signed(body: string, at = Math.floor(Date.now() / 1000), id = 'msg_1') {
+    const key = await crypto.subtle.importKey('raw', Buffer.from(secret.slice(6), 'base64'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const mac = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${at}.${body}`))).toString('base64')
+    return new Headers({ 'svix-id': id, 'svix-timestamp': String(at), 'svix-signature': `v1,bogus v1,${mac}` })
+  }
+
+  it('accepts only a fresh call signed with the endpoint secret, for this exact body', async () => {
+    const body = JSON.stringify({ type: 'user.updated', data: { id: 'user_1' } })
+    expect(await verifyWebhook(secret, await signed(body), body)).toBe(true)
+    expect(await verifyWebhook(secret, await signed(body), body.replace('user_1', 'user_2'))).toBe(false)
+    expect(await verifyWebhook('whsec_' + Buffer.from('another-key-another-key-32bytes!').toString('base64'), await signed(body), body)).toBe(false)
+    expect(await verifyWebhook(secret, await signed(body, Math.floor(Date.now() / 1000) - 600), body)).toBe(false)
+    expect(await verifyWebhook(secret, new Headers(), body)).toBe(false)
+  })
+
+  it('reads the signing secret from the edge secret, then the Vault credential', async () => {
+    resetClerkKeys()
+    vi.stubEnv('CLERK_WEBHOOK_SECRET', '')
+    await expect(clerkWebhookSecret(async () => ({ secretKey: 'sk', proxyUrl: null, webhookSecret: 'whsec_v' }))).resolves.toBe('whsec_v')
+    vi.stubEnv('CLERK_WEBHOOK_SECRET', 'whsec_env')
+    await expect(clerkWebhookSecret(async () => ({ secretKey: 'sk', proxyUrl: null, webhookSecret: 'whsec_v' }))).resolves.toBe('whsec_env')
+    vi.unstubAllEnvs()
+    resetClerkKeys()
+  })
+})
+
+describe('clerk account changes from Fullfilio', () => {
+  beforeEach(() => vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_x'))
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('bans, unbans, renames and deletes the Clerk account; an account already gone counts as deleted', async () => {
+    const calls: Array<[string, RequestInit]> = []
+    const ok = vi.fn(async (url: string, init: RequestInit) => { calls.push([url, init]); return new Response('{}', { status: 200 }) })
+    await setClerkUserBanned('user_1', true, ok as never)
+    await setClerkUserBanned('user_1', false, ok as never)
+    await setClerkUserName('user_1', '  Ayesha  Rahman Khan ', ok as never)
+    await deleteClerkUser('user_1', ok as never)
+    expect(calls.map(([u, i]) => `${i.method} ${u.replace('https://api.clerk.com/v1', '')}`)).toEqual([
+      'POST /users/user_1/ban', 'POST /users/user_1/unban', 'PATCH /users/user_1', 'DELETE /users/user_1',
+    ])
+    expect(JSON.parse(calls[2][1].body as string)).toEqual({ first_name: 'Ayesha', last_name: 'Rahman Khan' })
+    const gone = vi.fn(async () => new Response(JSON.stringify({ errors: [{ code: 'resource_not_found', message: 'not found' }] }), { status: 404 }))
+    await expect(deleteClerkUser('user_x', gone as never)).resolves.toBeUndefined()
+    const down = vi.fn(async () => new Response('{}', { status: 500 }))
+    await expect(deleteClerkUser('user_x', down as never)).rejects.toMatchObject({ status: 502 })
   })
 })

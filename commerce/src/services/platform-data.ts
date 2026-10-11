@@ -74,6 +74,9 @@ export const storeResets = (merchant: string) =>
 export const resetStore = (merchant: string, scope: ResetScope, confirmName: string, reason: string) =>
   platformRpc<{ reset_id: string; scope: ResetScope; counts: Record<string, number> }>('platform_store_reset',
     { p_merchant: merchant, p_scope: scope, p_confirm_name: confirmName, p_reason: reason })
+/** Asks for the merchant and all its data to be deleted; another Super Admin approves it under Approvals. */
+export const requestMerchantDelete = (merchant: string, confirmName: string, reason: string) =>
+  platformRpc<{ approval_id: string }>('platform_merchant_delete_request', { p_merchant: merchant, p_confirm_name: confirmName, p_reason: reason })
 export const createDeletionRequest = (merchant: string, reason: string) => platformRpc<DeletionRequest>('platform_deletion_request_create', { p_merchant: merchant, p_reason: reason })
 export const decideDeletionRequest = (id: string, approve: boolean, note: string) =>
   platformRpc<DeletionRequest>('platform_deletion_request_decide', { p_id: id, p_approve: approve, p_note: note })

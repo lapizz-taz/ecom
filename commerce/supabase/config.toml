@@ -134,6 +134,11 @@ import_map = "./functions/import_map.json"
 verify_jwt = false
 import_map = "./functions/import_map.json"
 
+# Clerk → Fullfilio account changes; every call is signed by Clerk and checked in the function.
+[functions.clerk-webhook]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
 # Clerk's Frontend API through the site's own /__clerk address (production instance, proxy mode).
 [functions.clerk-proxy]
 verify_jwt = false

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, LogOut, Save } from 'lucide-react'
+import { KeyRound, LogOut, Mail, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/auth-context'
-import { useClerkPasswordChange } from '@/features/auth/clerk-forms'
+import { useClerkAccount, useClerkPasswordChange } from '@/features/auth/clerk-forms'
 import { changeMyPassword, getMyProfile, updateMyProfile } from '@/services/users'
 
 export default function AccountPage() {
@@ -38,8 +38,13 @@ export default function AccountPage() {
   )
 }
 
+const noClerkAccount = () => null
+
 function Profile() {
-  const { user } = useAuth()
+  const { user, usesClerk } = useAuth()
+  // Clerk accounts keep their name in Clerk too (the hook choice is fixed for the page's life).
+  const [useAccount] = useState(() => (usesClerk ? useClerkAccount : noClerkAccount))
+  const clerkAccount = useAccount()
   const queryClient = useQueryClient()
   const profile = useQuery({
     queryKey: ['my-profile', user?.id],
@@ -52,7 +57,10 @@ function Profile() {
     if (profile.data) { setName(profile.data.full_name ?? ''); setPhone(profile.data.phone ?? '') }
   }, [profile.data])
   const save = useMutation({
-    mutationFn: () => updateMyProfile(name.trim(), phone.trim()),
+    mutationFn: async () => {
+      await updateMyProfile(name.trim(), phone.trim())
+      if (clerkAccount && name.trim() !== (profile.data?.full_name ?? '')) await clerkAccount.saveName(name.trim())
+    },
     onSuccess: () => {
       toast.success('Profile saved')
       void queryClient.invalidateQueries({ queryKey: ['my-profile'] })
@@ -69,6 +77,14 @@ function Profile() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name" htmlFor="acc-name" required><Input id="acc-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
             <Field label="Phone" htmlFor="acc-phone"><Input id="acc-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+            {clerkAccount && (
+              <Field label="E-mail" htmlFor="acc-email" hint="Changed and verified in your sign-in account; Fullfilio updates itself.">
+                <div className="flex gap-2">
+                  <Input id="acc-email" value={user?.email ?? ''} readOnly className="bg-muted/40" />
+                  <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={clerkAccount.changeEmail}><Mail /> Change</Button>
+                </div>
+              </Field>
+            )}
           </div>
         )}
       </CardContent>
