@@ -67,6 +67,13 @@ export const exportMerchantData = (merchant: string, reason: string) =>
 /** Records a download made in the browser (lists, audit log, usage). */
 export const recordExport = (kind: 'MERCHANTS' | 'AUDIT' | 'USAGE' | 'REVENUE', detail: Record<string, unknown>) =>
   platformRpc<number>('platform_export_record', { p_kind: kind, p_detail: detail, p_merchant: null })
+export type ResetScope = 'ORDERS' | 'EVERYTHING'
+export interface StoreReset { id: string; scope: ResetScope; reason: string; status: 'RUNNING' | 'DONE'; requested_by_email: string | null; counts: Record<string, number> | null; created_at: string; finished_at: string | null }
+export const storeResets = (merchant: string) =>
+  platformRpc<{ resets: StoreReset[]; last_export_at: string | null; export_valid_until: string | null }>('platform_store_resets', { p_merchant: merchant })
+export const resetStore = (merchant: string, scope: ResetScope, confirmName: string, reason: string) =>
+  platformRpc<{ reset_id: string; scope: ResetScope; counts: Record<string, number> }>('platform_store_reset',
+    { p_merchant: merchant, p_scope: scope, p_confirm_name: confirmName, p_reason: reason })
 export const createDeletionRequest = (merchant: string, reason: string) => platformRpc<DeletionRequest>('platform_deletion_request_create', { p_merchant: merchant, p_reason: reason })
 export const decideDeletionRequest = (id: string, approve: boolean, note: string) =>
   platformRpc<DeletionRequest>('platform_deletion_request_decide', { p_id: id, p_approve: approve, p_note: note })

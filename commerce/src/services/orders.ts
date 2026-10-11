@@ -419,7 +419,9 @@ export async function setWebOrderStatus(ids: string[], status: string, note?: st
 export async function approveOrders(ids: string[], note?: string) {
   const { data, error } = await supabase.rpc('approve_orders', { p_order_ids: ids, p_note: note || undefined })
   if (error) throw error
-  return fromJson<BatchResult & { approved: number }>(data)
+  const r = fromJson<BatchResult & { approved: number }>(data)
+  // "LIMIT_REACHED: approving an order costs…" reads better without the code.
+  return { ...r, failed: r.failed.map((f) => ({ ...f, error: f.error.replace(/^[A-Z_]+: /, '') })) }
 }
 
 export async function queueCounts(): Promise<QueueCounts> {

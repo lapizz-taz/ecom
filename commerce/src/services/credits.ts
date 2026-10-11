@@ -1,11 +1,16 @@
 // Credits, metered services (SMS, BD Courier) and the platform's own service
 // accounts. The database checks every call; secrets never come back to the browser.
+import { formatMoney, formatNumber } from '@/lib/format'
 import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 import type { SmsProviderCode } from '@/services/sms'
 import { platformRpc } from '@/services/platform'
 
-export type CreditType = 'SMS' | 'COURIER' | 'AI'
+export type CreditType = 'SMS' | 'COURIER' | 'AI' | 'BALANCE'
+
+/** The store balance is kept in poisha (100 = 1 Tk); other credits are counted one by one. */
+export const isMoneyCredit = (type: string) => type === 'BALANCE'
+export const formatCredits = (type: string, amount: number) => (isMoneyCredit(type) ? formatMoney(amount / 100) : formatNumber(amount))
 export type Service = 'SMS' | 'BD_COURIER'
 export type LedgerKind = 'RECHARGE' | 'PROMO' | 'ADJUSTMENT' | 'USAGE' | 'REFUND' | 'EXPIRY'
 
@@ -98,7 +103,7 @@ export const creditsOverview = (q?: string, type?: string) =>
     merchants: Array<{ id: string; number: number; name: string; status: string; balances: Partial<Record<CreditType, number>> | null }>
     recent: LedgerEntry[]
     packages: CreditPackage[]
-    settings: { approval_threshold?: number }
+    settings: { approval_threshold?: number; balance_approval_threshold_tk?: number }
   }>('platform_credits_overview', { p_q: q || null, p_type: type || null, p_limit: 200 })
 export const merchantCredits = (merchant: string) =>
   platformRpc<{
@@ -144,6 +149,35 @@ export const connectGateway = (provider: 'bkash' | 'paystation', sandbox: boolea
   invokeFunction<{ ok: boolean; message: string }>('platform-admin', { action: 'gateway_connect', provider, sandbox, credentials })
 export const disconnectGateway = (provider: 'bkash' | 'paystation') => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'gateway_disconnect', provider })
 
+// ---- Order fee (charged for each approved order, from the store balance)
+export type OrderFeeCharge = 'CHARGED' | 'FREE' | 'EXEMPT' | 'UNPAID'
+export interface OrderFeeSettings { enabled: boolean; fee: number; on_empty: 'BLOCK' | 'ALLOW'; free_per_month: number; unmetered_plans: string[]; low_balance_tk: number }
+export interface OrderFeeState {
+  enabled: boolean; fee: number; platform_fee: number; store_fee: number | null; exempt: boolean; override_reason: string | null
+  plan: string | null; unmetered: boolean; on_empty: 'BLOCK' | 'ALLOW'; free_per_month: number; free_used: number; low_balance_tk: number
+  balance_tk: number; orders_left: number | null; low_balance: boolean
+  month: { approved: number; charged: number; free: number; unpaid: number; amount_tk: number }
+}
+export const ORDER_FEE_CHARGE: Record<OrderFeeCharge, { label: string; variant: 'success' | 'info' | 'neutral' | 'warning' }> = {
+  CHARGED: { label: 'Charged', variant: 'neutral' },
+  FREE: { label: 'Free', variant: 'success' },
+  EXEMPT: { label: 'No fee', variant: 'info' },
+  UNPAID: { label: 'Unpaid', variant: 'warning' },
+}
+export const orderFeeOverview = (q?: string) =>
+  platformRpc<{
+    settings: OrderFeeSettings
+    plans: Array<{ code: string; name: string }>
+    totals: { month_charged_tk: number; month_orders: number; unpaid_orders: number; unpaid_tk: number }
+    stores: Array<OrderFeeState & { merchant_id: string; number: number; name: string; status: string }>
+  }>('platform_order_fee_overview', { p_q: q || null, p_limit: 200 })
+export const saveOrderFeeSettings = (p: OrderFeeSettings, reason: string) => platformRpc<OrderFeeSettings>('platform_order_fee_settings_save', { p, p_reason: reason })
+export const setOrderFeeOverride = (merchant: string, fee: number | null, exempt: boolean, reason: string) =>
+  platformRpc<OrderFeeState>('platform_order_fee_override_set', { p_merchant: merchant, p_fee: fee, p_exempt: exempt, p_reason: reason })
+export const orderFeeCharges = (merchant: string) =>
+  platformRpc<Array<{ id: number; order_id: string; order_number: string | null; fee: number; charge: OrderFeeCharge; created_at: string }>>(
+    'platform_order_fee_charges', { p_merchant: merchant, p_limit: 100 })
+
 // ---- The merchant's own credits
 export interface MyCredits {
   balances: Array<{ code: CreditType; name: string; unit: string; description: string; available: number; expiring: Array<{ amount: number; expires_at: string }> }>
@@ -154,6 +188,13 @@ export interface MyCredits {
   recharges: Array<{ id: string; number: string; total: number; status: 'OPEN' | 'PAID' | 'VOID'; lines: Array<{ label: string; credits?: number }>; created_at: string; paid_at: string | null }>
   can_pay: boolean
   gateways: Array<'bkash' | 'paystation'>
+  order_fee?: OrderFeeState
+}
+
+export async function myOrderFee(): Promise<OrderFeeState & { recent: Array<{ id: number; order_number: string | null; fee: number; charge: OrderFeeCharge; created_at: string }> }> {
+  const { data, error } = await supabase.rpc('my_order_fee' as never)
+  if (error) throw error
+  return data as never
 }
 
 export async function myCredits(): Promise<MyCredits> {

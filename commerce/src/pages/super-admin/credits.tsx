@@ -18,19 +18,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePlatform } from '@/features/platform/platform-context'
 import { AdjustCreditsDialog } from '@/features/platform/services/adjust-credits-dialog'
+import { OrderFeePanel } from '@/features/platform/services/order-fee-panel'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { savePlatformSetting } from '@/services/billing'
-import { type CreditPackage, creditsOverview, type CreditType, LEDGER_KIND, savePackage } from '@/services/credits'
+import { type CreditPackage, creditsOverview, type CreditType, formatCredits, isMoneyCredit, LEDGER_KIND, savePackage } from '@/services/credits'
 
 function PackageDialog({ pkg, onClose }: { pkg: CreditPackage | null; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const money = isMoneyCredit(pkg?.credit_type ?? 'SMS')
   const [form, setForm] = useState({
-    name: pkg?.name ?? '', credit_type: pkg?.credit_type ?? 'SMS', credits: String(pkg?.credits ?? ''), bonus: String(pkg?.bonus_credits ?? 0), price: String(pkg?.price ?? ''),
+    name: pkg?.name ?? '', credit_type: pkg?.credit_type ?? 'SMS',
+    credits: pkg ? String(money ? pkg.credits / 100 : pkg.credits) : '', bonus: String(pkg ? (money ? pkg.bonus_credits / 100 : pkg.bonus_credits) : 0), price: String(pkg?.price ?? ''),
   })
+  // Balance packages are entered in Tk and stored in poisha.
+  const unit = isMoneyCredit(form.credit_type) ? 100 : 1
   const save = useMutation({
-    mutationFn: () => savePackage({ ...(pkg ? { id: pkg.id } : { credit_type: form.credit_type }), name: form.name.trim(), credits: Number(form.credits), bonus_credits: Number(form.bonus) || 0, price: Number(form.price) }),
+    mutationFn: () => savePackage({ ...(pkg ? { id: pkg.id } : { credit_type: form.credit_type }), name: form.name.trim(),
+      credits: Math.round(Number(form.credits) * unit), bonus_credits: Math.round((Number(form.bonus) || 0) * unit), price: Number(form.price) }),
     onSuccess: () => { toast.success('Package saved'); void queryClient.invalidateQueries({ queryKey: ['platform-credits'] }); onClose() },
     onError: (e) => toast.error((e as Error).message),
   })
@@ -43,13 +49,16 @@ function PackageDialog({ pkg, onClose }: { pkg: CreditPackage | null; onClose: (
         <Field label="Credit type">
           <Select disabled={!!pkg} value={form.credit_type} onValueChange={(v) => setForm((f) => ({ ...f, credit_type: v as CreditType }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="SMS">SMS credits</SelectItem><SelectItem value="COURIER">Courier check credits</SelectItem></SelectContent>
+            <SelectContent>
+              <SelectItem value="BALANCE">Balance (Tk) — pays the order fee</SelectItem>
+              <SelectItem value="SMS">SMS credits</SelectItem><SelectItem value="COURIER">Courier check credits</SelectItem>
+            </SelectContent>
           </Select>
         </Field>
-        <Field label="Credits" required><Input type="number" min={1} value={form.credits} onChange={(e) => setForm((f) => ({ ...f, credits: e.target.value }))} /></Field>
-        <Field label="Bonus credits"><Input type="number" min={0} value={form.bonus} onChange={(e) => setForm((f) => ({ ...f, bonus: e.target.value }))} /></Field>
+        <Field label={unit === 100 ? 'Balance added (Tk)' : 'Credits'} required><Input type="number" min={1} value={form.credits} onChange={(e) => setForm((f) => ({ ...f, credits: e.target.value }))} /></Field>
+        <Field label={unit === 100 ? 'Bonus (Tk)' : 'Bonus credits'}><Input type="number" min={0} value={form.bonus} onChange={(e) => setForm((f) => ({ ...f, bonus: e.target.value }))} /></Field>
         <Field label="Price (BDT)" required><Input type="number" min={1} step="0.01" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} /></Field>
-        {Number(form.credits) > 0 && Number(form.price) > 0 && (
+        {unit === 1 && Number(form.credits) > 0 && Number(form.price) > 0 && (
           <p className="self-end pb-2 text-xs text-muted-foreground">{formatMoney(Number(form.price) / (Number(form.credits) + (Number(form.bonus) || 0)))} per credit</p>
         )}
       </div>
@@ -76,14 +85,14 @@ export default function CreditsPage() {
         actions={(can('credits', 'create') || can('credits', 'manage')) && <Button size="sm" onClick={() => setAdjust(true)}><Plus /> Change credits</Button>} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {types.map((t) => (
-          <StatCard key={t.code} label={`${t.name} outstanding`} value={formatNumber(t.outstanding)}
-            hint={`${formatNumber(t.merchants_with_balance)} merchants · +${formatNumber(t.added_30d)} added, ${formatNumber(t.used_30d)} used in 30 days`} />
+          <StatCard key={t.code} label={`${t.name} outstanding`} value={formatCredits(t.code, t.outstanding)}
+            hint={`${formatNumber(t.merchants_with_balance)} merchants · +${formatCredits(t.code, t.added_30d)} added, ${formatCredits(t.code, t.used_30d)} used in 30 days`} />
         ))}
-        <StatCard label="AI credits" value="Not used yet" hint="Reserved; no feature spends them" />
       </div>
       <Tabs value={state.tab} onValueChange={(tab) => update({ tab })}>
         <TabsList>
           <TabsTrigger value="balances">Balances</TabsTrigger>
+          <TabsTrigger value="order-fee">Order fee</TabsTrigger>
           <TabsTrigger value="ledger">Latest changes</TabsTrigger>
           <TabsTrigger value="packages">Recharge packages</TabsTrigger>
           <TabsTrigger value="settings">Rules</TabsTrigger>
@@ -101,7 +110,7 @@ export default function CreditsPage() {
                     {d.merchants.map((m) => (
                       <TableRow key={m.id}>
                         <TableCell><Link className="underline" to={`/super-admin/merchants/${m.id}?tab=credits`}>#{m.number} {m.name}</Link> <span className="text-xs text-muted-foreground">{m.status.toLowerCase()}</span></TableCell>
-                        {types.map((t) => <TableCell key={t.code} className="text-right tabular-nums">{formatNumber(m.balances?.[t.code] ?? 0)}</TableCell>)}
+                        {types.map((t) => <TableCell key={t.code} className="text-right tabular-nums">{formatCredits(t.code, m.balances?.[t.code] ?? 0)}</TableCell>)}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -110,6 +119,7 @@ export default function CreditsPage() {
             )}
           </Card>
         </TabsContent>
+        <TabsContent value="order-fee"><OrderFeePanel /></TabsContent>
         <TabsContent value="ledger">
           <Card className="gap-0 overflow-hidden py-0">
             {d.recent.length === 0 ? <EmptyState title="No credit changes yet" /> : (
@@ -122,8 +132,8 @@ export default function CreditsPage() {
                         <TableCell className="text-xs whitespace-nowrap">{formatDateTime(e.created_at)}</TableCell>
                         <TableCell className="text-xs">{e.merchant && <Link className="underline" to={`/super-admin/merchants/${e.merchant.id}?tab=credits`}>#{e.merchant.number} {e.merchant.name}</Link>}</TableCell>
                         <TableCell><Badge variant={LEDGER_KIND[e.kind].variant}>{LEDGER_KIND[e.kind].label}</Badge> <span className="text-xs text-muted-foreground">{e.credit_type.toLowerCase()}</span></TableCell>
-                        <TableCell className={`text-right tabular-nums ${e.amount > 0 ? 'text-emerald-600' : ''}`}>{e.amount > 0 ? '+' : ''}{formatNumber(e.amount)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatNumber(e.balance_after)}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${e.amount > 0 ? 'text-emerald-600' : ''}`}>{e.amount > 0 ? '+' : ''}{formatCredits(e.credit_type, e.amount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCredits(e.credit_type, e.balance_after)}</TableCell>
                         <TableCell className="max-w-56 truncate text-xs">{e.reason}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{e.actor}</TableCell>
                       </TableRow>
@@ -143,11 +153,13 @@ export default function CreditsPage() {
             {d.packages.map((k) => (
               <Card key={k.id} className={`gap-2 px-4 py-3 ${k.status === 'ARCHIVED' ? 'opacity-60' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <div><p className="font-medium">{k.name}</p><p className="text-xs text-muted-foreground">{k.credit_type === 'SMS' ? 'SMS credits' : 'Courier check credits'}</p></div>
+                  <div><p className="font-medium">{k.name}</p><p className="text-xs text-muted-foreground">{k.credit_type === 'SMS' ? 'SMS credits' : k.credit_type === 'BALANCE' ? 'Store balance' : 'Courier check credits'}</p></div>
                   {k.status === 'ARCHIVED' && <Badge variant="neutral">archived</Badge>}
                 </div>
                 <p className="text-xl font-semibold">{formatMoney(k.price)}</p>
-                <p className="text-sm">{formatNumber(k.credits)} credits{k.bonus_credits > 0 && ` + ${formatNumber(k.bonus_credits)} bonus`} <span className="text-xs text-muted-foreground">· {formatMoney(k.price / (k.credits + k.bonus_credits))} each</span></p>
+                {isMoneyCredit(k.credit_type)
+                  ? <p className="text-sm">{formatCredits(k.credit_type, k.credits)} balance{k.bonus_credits > 0 && ` + ${formatCredits(k.credit_type, k.bonus_credits)} bonus`}</p>
+                  : <p className="text-sm">{formatNumber(k.credits)} credits{k.bonus_credits > 0 && ` + ${formatNumber(k.bonus_credits)} bonus`} <span className="text-xs text-muted-foreground">· {formatMoney(k.price / (k.credits + k.bonus_credits))} each</span></p>}
                 {can('credits', 'manage') && (
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => setPkg(k)}><Pencil /> Edit</Button>
@@ -180,7 +192,7 @@ export default function CreditsPage() {
           </Card>
         </TabsContent>
       </Tabs>
-      {adjust && <AdjustCreditsDialog open onOpenChange={setAdjust} threshold={d.settings.approval_threshold} />}
+      {adjust && <AdjustCreditsDialog open onOpenChange={setAdjust} threshold={d.settings.approval_threshold} balanceThresholdTk={d.settings.balance_approval_threshold_tk} />}
       {pkg && <PackageDialog pkg={pkg === 'new' ? null : pkg} onClose={() => setPkg(null)} />}
       {archiving && (
         <ConfirmDialog open onOpenChange={(o) => !o && setArchiving(null)} title={archiving.status === 'ACTIVE' ? `Stop selling ${archiving.name}?` : `Sell ${archiving.name} again?`}

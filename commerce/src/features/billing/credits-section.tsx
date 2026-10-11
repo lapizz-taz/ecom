@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { type CreditPackage, LEDGER_KIND, myCredits, payInvoice, startRecharge } from '@/services/credits'
+import { type CreditPackage, formatCredits, isMoneyCredit, LEDGER_KIND, myCredits, payInvoice, startRecharge } from '@/services/credits'
 
 const GATEWAY_NAME = { bkash: 'bKash', paystation: 'PayStation (card, mobile banking)' } as const
 
@@ -59,8 +59,23 @@ export function CreditsSection() {
               <CardHeader><CardTitle className="text-sm">{b.name}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <p className="text-2xl font-semibold tabular-nums">{u?.unmetered ? 'Included' : formatNumber(b.available)}</p>
-                  <p className="text-xs text-muted-foreground">{b.description}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{u?.unmetered ? 'Included' : formatCredits(b.code, b.available)}</p>
+                  <p className="text-xs text-muted-foreground">{isMoneyCredit(b.code) ? 'Pays the fee for each order you approve.' : b.description}</p>
+                  {isMoneyCredit(b.code) && d.order_fee && (
+                    <div className="mt-2 space-y-0.5 text-sm">
+                      {!d.order_fee.enabled ? <p className="text-muted-foreground">No order fee is charged at the moment.</p>
+                        : d.order_fee.exempt || d.order_fee.unmetered ? <p>Your store is not charged for approved orders.</p> : (
+                          <>
+                            <p>{formatMoney(d.order_fee.fee)} per approved order{d.order_fee.orders_left != null && <span className="text-muted-foreground"> · enough for {formatNumber(d.order_fee.orders_left)} more</span>}</p>
+                            {d.order_fee.free_per_month > 0 && <p className="text-muted-foreground">{formatNumber(Math.max(d.order_fee.free_per_month - d.order_fee.free_used, 0))} free approvals left this month</p>}
+                            <p className="text-muted-foreground">This month: {formatNumber(d.order_fee.month.charged)} charged ({formatMoney(d.order_fee.month.amount_tk)}){d.order_fee.month.unpaid > 0 && `, ${formatNumber(d.order_fee.month.unpaid)} unpaid`}</p>
+                            {d.order_fee.low_balance && (
+                              <p className="text-amber-600">{d.order_fee.on_empty === 'BLOCK' ? 'Low balance: when it runs out, orders cannot be approved until you recharge.' : 'Low balance: recharge to keep approvals paid.'}</p>
+                            )}
+                          </>
+                        )}
+                    </div>
+                  )}
                   {u && !u.unmetered && (
                     <p className="mt-1 text-sm">
                       {u.free.eligible ? `${formatNumber(u.free.remaining)} free ${b.unit}s left${u.free.period === 'MONTH' ? ' this month' : ''}` : 'No free allowance on your current plan or status'}
@@ -73,7 +88,7 @@ export function CreditsSection() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     {packages.map((k) => (
                       <div key={k.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                        <span><span className="font-medium">{k.name}</span><span className="block text-xs text-muted-foreground">{formatNumber(k.credits)}{k.bonus_credits > 0 && ` + ${formatNumber(k.bonus_credits)} bonus`} · {formatMoney(k.price)}</span></span>
+                        <span><span className="font-medium">{k.name}</span><span className="block text-xs text-muted-foreground">{formatCredits(k.credit_type, k.credits)}{k.bonus_credits > 0 && ` + ${formatCredits(k.credit_type, k.bonus_credits)} bonus`} · {formatMoney(k.price)}</span></span>
                         <Button size="sm" variant="outline" disabled={!canBuy} onClick={() => setBuying(k)}>Buy</Button>
                       </div>
                     ))}
@@ -111,7 +126,7 @@ export function CreditsSection() {
             {d.ledger.map((e) => (
               <div key={e.id} className="flex items-center justify-between gap-2 text-sm">
                 <span className="min-w-0 truncate"><Badge variant={LEDGER_KIND[e.kind].variant}>{LEDGER_KIND[e.kind].label}</Badge> <span className="text-xs text-muted-foreground">{e.credit_type.toLowerCase()} · {e.reason} · {formatDateTime(e.created_at)}</span></span>
-                <span className={`shrink-0 tabular-nums ${e.amount > 0 ? 'text-emerald-600' : ''}`}>{e.amount > 0 ? '+' : ''}{formatNumber(e.amount)} → {formatNumber(e.balance_after)}</span>
+                <span className={`shrink-0 tabular-nums ${e.amount > 0 ? 'text-emerald-600' : ''}`}>{e.amount > 0 ? '+' : ''}{formatCredits(e.credit_type, e.amount)} → {formatCredits(e.credit_type, e.balance_after)}</span>
               </div>
             ))}
           </CardContent>

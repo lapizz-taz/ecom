@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { usePlatform } from '@/features/platform/platform-context'
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format'
 import { ENTITLEMENT, type EntitlementState } from '@/services/billing'
-import { LEDGER_KIND, merchantCredits, type Service, type UsageState } from '@/services/credits'
+import { formatCredits, LEDGER_KIND, merchantCredits, type Service, type UsageState } from '@/services/credits'
 import type { MerchantDetail } from '@/services/platform'
 import { AdjustCreditsDialog } from './adjust-credits-dialog'
 import { ServiceOverrideDialog } from './override-dialog'
@@ -56,8 +56,8 @@ export function MerchantCreditsTab({ detail }: { detail: MerchantDetail }) {
           {d.balances.map((b) => (
             <Card key={b.code} className="min-w-44 gap-1 px-4 py-3">
               <p className="text-xs text-muted-foreground">{b.name}</p>
-              <p className="text-xl font-semibold tabular-nums">{formatNumber(b.available)}</p>
-              {b.expiring_30d > 0 && <p className="text-xs text-amber-600">{formatNumber(b.expiring_30d)} expire within 30 days</p>}
+              <p className="text-xl font-semibold tabular-nums">{formatCredits(b.code, b.available)}</p>
+              {b.expiring_30d > 0 && <p className="text-xs text-amber-600">{formatCredits(b.code, b.expiring_30d)} expire within 30 days</p>}
             </Card>
           ))}
         </div>
@@ -72,7 +72,7 @@ export function MerchantCreditsTab({ detail }: { detail: MerchantDetail }) {
           <CardHeader><CardTitle className="text-sm">Credits with an expiry date</CardTitle></CardHeader>
           <CardContent className="space-y-1 text-sm">
             {d.lots.filter((l) => l.expires_at).map((l) => (
-              <p key={l.id}>{formatNumber(l.remaining)} of {formatNumber(l.granted)} {l.credit_type.toLowerCase()} credits · expire {formatDate(l.expires_at)} <span className="text-muted-foreground">— {l.reason}</span></p>
+              <p key={l.id}>{formatCredits(l.credit_type, l.remaining)} of {formatCredits(l.credit_type, l.granted)} {l.credit_type.toLowerCase()} · expire {formatDate(l.expires_at)} <span className="text-muted-foreground">— {l.reason}</span></p>
             ))}
           </CardContent>
         </Card>
@@ -88,8 +88,8 @@ export function MerchantCreditsTab({ detail }: { detail: MerchantDetail }) {
                   <TableRow key={e.id}>
                     <TableCell className="text-xs whitespace-nowrap">{formatDateTime(e.created_at)}</TableCell>
                     <TableCell><Badge variant={LEDGER_KIND[e.kind].variant}>{LEDGER_KIND[e.kind].label}</Badge> <span className="text-xs text-muted-foreground">{e.credit_type.toLowerCase()}</span></TableCell>
-                    <TableCell className={`text-right tabular-nums ${e.amount > 0 ? 'text-emerald-600' : ''}`}>{e.amount > 0 ? '+' : ''}{formatNumber(e.amount)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatNumber(e.balance_after)}</TableCell>
+                    <TableCell className={`text-right tabular-nums ${e.amount > 0 ? 'text-emerald-600' : ''}`}>{e.amount > 0 ? '+' : ''}{formatCredits(e.credit_type, e.amount)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCredits(e.credit_type, e.balance_after)}</TableCell>
                     <TableCell className="max-w-64 truncate text-xs">{e.reason}{e.expires_at && ` · expires ${formatDate(e.expires_at)}`}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{e.actor}</TableCell>
                   </TableRow>

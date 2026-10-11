@@ -22,6 +22,7 @@ import { MerchantCreditsTab } from '@/features/platform/services/merchant-credit
 import { MerchantSupportTab } from '@/features/platform/support/merchant-support-tab'
 import { usePlatform } from '@/features/platform/platform-context'
 import { StatusChangeDialog } from '@/features/platform/status-change-dialog'
+import { StoreResetPanel } from '@/features/platform/store-reset-panel'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDate, formatDateTime, formatMoney, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
@@ -33,6 +34,7 @@ const merchantTabs: Array<{ key: string; label: string; module: string; render: 
   { key: 'features', label: 'Features', module: 'features', render: (m) => <MerchantFeaturesTab detail={m} /> },
   { key: 'credits', label: 'Credits & usage', module: 'credits', render: (m) => <MerchantCreditsTab detail={m} /> },
   { key: 'support', label: 'Support', module: 'support', render: (m) => <MerchantSupportTab detail={m} /> },
+  { key: 'reset', label: 'Reset store', module: 'merchants', render: (m) => <StoreResetPanel detail={m} /> },
 ]
 
 function Row({ label, children }: { label: string; children: ReactNode }) {

@@ -6,9 +6,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { usePlatform } from '@/features/platform/platform-context'
-import { formatNumber } from '@/lib/format'
+import { formatMoney, formatNumber } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { adjustCredits, type CreditType } from '@/services/credits'
+import { adjustCredits, type CreditType, formatCredits, isMoneyCredit } from '@/services/credits'
 import type { MerchantRef } from '@/services/platform'
 import { MerchantPicker } from './merchant-picker'
 
@@ -17,20 +17,27 @@ type Mode = 'PROMO' | 'ADD' | 'DEDUCT'
 /**
  * Add or remove credits by hand. One request id per dialog: a double click or
  * a retry can never add or remove twice. Large changes wait for a second person.
+ * The store balance is entered in Tk and kept in poisha.
  */
-export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, threshold }: {
+export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, threshold, balanceThresholdTk, type: initialType }: {
   merchant?: MerchantRef | null
   open: boolean
   onOpenChange: (o: boolean) => void
   threshold?: number
+  /** Second-person threshold for the store balance, in Tk. */
+  balanceThresholdTk?: number
+  type?: CreditType
 }) {
   const { can } = usePlatform()
   const queryClient = useQueryClient()
   const requestId = useMemo(() => crypto.randomUUID(), [])
   const [merchant, setMerchant] = useState<MerchantRef | null>(fixed ?? null)
   const [mode, setMode] = useState<Mode>(can('credits', 'create', fixed?.id) && !can('credits', 'manage', fixed?.id) ? 'PROMO' : 'ADD')
-  const [form, setForm] = useState({ type: 'SMS' as CreditType, amount: '', expires: '', reason: '' })
-  const amount = Math.floor(Number(form.amount) || 0)
+  const [form, setForm] = useState({ type: initialType ?? ('SMS' as CreditType), amount: '', expires: '', reason: '' })
+  const money = isMoneyCredit(form.type)
+  // Units sent to the ledger: poisha for the balance, whole credits otherwise.
+  const amount = money ? Math.round((Number(form.amount) || 0) * 100) : Math.floor(Number(form.amount) || 0)
+  const limit = money ? (balanceThresholdTk ?? 50000) * 100 : threshold
   const save = useMutation({
     mutationFn: () => adjustCredits({
       merchant: merchant!.id, type: form.type, kind: mode === 'PROMO' ? 'PROMO' : 'ADJUSTMENT', amount: mode === 'DEDUCT' ? -amount : amount,
@@ -38,9 +45,10 @@ export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, thres
     }),
     onSuccess: (r) => {
       if (r.pending_approval) toast.success('Sent for approval', { description: 'A second person with approval rights must confirm it in the Security Center.' })
-      else toast.success(`Done — new balance ${formatNumber(r.balance_after)}`)
+      else toast.success(`Done — new balance ${formatCredits(form.type, r.balance_after)}`)
       void queryClient.invalidateQueries({ queryKey: ['platform-credits'] })
       void queryClient.invalidateQueries({ queryKey: ['platform-merchant-credits'] })
+      void queryClient.invalidateQueries({ queryKey: ['platform-order-fee'] })
       onOpenChange(false)
     },
     onError: (e) => toast.error((e as Error).message),
@@ -48,8 +56,9 @@ export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, thres
   const valid = merchant && amount > 0 && form.reason.trim().length >= 5
   return (
     <FormDialog open={open} onOpenChange={onOpenChange} title="Change credits" busy={save.isPending} disabled={!valid} onSubmit={() => save.mutate()}
-      submitLabel={amount > (threshold ?? Infinity) ? 'Request approval' : 'Apply'}
-      description={`Recorded in the merchant's ledger with your name, the reason and the new balance.${threshold != null ? ` Changes over ${formatNumber(threshold)} credits need a second person.` : ''}`}>
+      submitLabel={amount > (limit ?? Infinity) ? 'Request approval' : 'Apply'}
+      description={`Recorded in the merchant's ledger with your name, the reason and the new balance.${limit != null
+        ? ` Changes over ${money ? formatMoney(limit / 100) : `${formatNumber(limit)} credits`} need a second person.` : ''}`}>
       {!fixed && <Field label="Merchant" required><MerchantPicker value={merchant} onChange={setMerchant} /></Field>}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="What">
@@ -65,10 +74,16 @@ export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, thres
         <Field label="Credit type">
           <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as CreditType }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="SMS">SMS credits</SelectItem><SelectItem value="COURIER">Courier check credits</SelectItem><SelectItem value="AI">AI credits</SelectItem></SelectContent>
+            <SelectContent>
+              <SelectItem value="BALANCE">Balance (Tk) — pays the order fee</SelectItem>
+              <SelectItem value="SMS">SMS credits</SelectItem><SelectItem value="COURIER">Courier check credits</SelectItem><SelectItem value="AI">AI credits</SelectItem>
+            </SelectContent>
           </Select>
         </Field>
-        <Field label="Credits" required><Input type="number" min={1} step={1} value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} /></Field>
+        <Field label={money ? 'Amount (Tk)' : 'Credits'} required>
+          <Input type="number" min={money ? 0.01 : 1} step={money ? 0.01 : 1} inputMode="decimal" value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+        </Field>
         {mode !== 'DEDUCT' && (
           <Field label="Expires (optional)" hint="Unused credits are removed after this day">
             <Input type="date" min={new Date().toISOString().slice(0, 10)} value={form.expires} onChange={(e) => setForm((f) => ({ ...f, expires: e.target.value }))} />
