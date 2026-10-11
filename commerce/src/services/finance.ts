@@ -197,3 +197,87 @@ export async function updateCategoryLook(id: string, patch: { name?: string; col
   const { error } = await supabase.from('finance_categories').update(patch).eq('id', id)
   if (error) throw error
 }
+
+// ---------------------------------------------------------------------------
+// Order financials (profit & loss of orders, read from the ledger)
+// ---------------------------------------------------------------------------
+
+export type FinancialsBasis = 'delivered' | 'approved' | 'created'
+export type FinancialsLine = 'product_sales' | 'delivery_income' | 'return_charges' | 'other_income' | 'refunds'
+  | 'product_cost' | 'delivery_cost' | 'ads' | 'other_expense'
+
+export interface OrderFinancials {
+  from: string
+  to: string
+  basis: FinancialsBasis
+  totals: Record<FinancialsLine | 'sales' | 'total_expense' | 'profit' | 'orders', number> & {
+    margin_pct: number | null
+    profit_per_order: number | null
+    sales_per_order: number | null
+  }
+  /** Orders behind each line, plus ledger entries that belong to no order. */
+  counts: Partial<Record<FinancialsLine, number>>
+  stats: { basis: 'approved' | 'created'; total: number; delivered: number; pending: number; returned: number; cancelled: number; delivered_pct: number | null }
+  quality: {
+    missing_cost_orders: number
+    missing_cost_items: number
+    missing_cost_fixable: number
+    unposted_delivered: number
+    delivery_cost_estimated: number
+    delivery_cost_confirmed: number
+    sold_without_delivery_cost: number
+    synced_sales: number
+    synced_orders: number
+    ads: { status: 'synced' | 'manual' | 'unavailable'; accounts: number; last_sync_at: string | null; entries: number }
+  }
+  channels: Array<{
+    key: string; name: string; platform: string; synced: boolean; orders: number
+    sales: number; other_income: number; refunds: number; product_cost: number; delivery_cost: number; other_cost: number
+    profit: number; margin_pct: number | null; missing_cost_orders: number
+  }>
+  unallocated: { ads: number; other_expense: number; other_income: number; refunds: number }
+  products: { count: number; rows: Array<{ product_id: string | null; name: string; quantity: number; sales: number; cost: number; profit: number; missing_cost: boolean }> }
+  categories: Array<{ code: string; name: string; group: string; line: FinancialsLine; amount: number; orders: number }>
+  daily: Array<{ day: string; sales: number; income: number; product_cost: number; delivery_cost: number; ads: number; other_expense: number; refunds: number; profit: number; orders: number }>
+}
+
+export interface FinancialOrderRow {
+  order_id: string; order_number: string; status: string; day: string; customer: string | null; phone: string | null
+  channel: string; platform: string; sales: number; income: number; refunds: number
+  product_cost: number; delivery_cost: number; other_cost: number; profit: number
+  delivery_estimated: boolean; missing_cost: boolean
+}
+
+export interface CostRebuild {
+  applied: boolean; items: number; orders: number; amount: number; posted: number; unknown_items: number
+  rows: Array<{ order_id: string; order_number: string; product: string; quantity: number; unit_cost: number; amount: number; day: string }>
+}
+
+export async function orderFinancials(from: string, to: string, basis: FinancialsBasis): Promise<OrderFinancials> {
+  const { data, error } = await supabase.rpc('report_order_financials', { p_from: from, p_to: to, p_basis: basis })
+  if (error) throw error
+  return fromJson<OrderFinancials>(data)
+}
+
+export async function orderFinancialsOrders(params: {
+  from: string; to: string; basis: FinancialsBasis; search?: string; missingCost?: boolean; limit: number; offset: number
+}): Promise<{ total: number; rows: FinancialOrderRow[] }> {
+  const { data, error } = await supabase.rpc('report_order_financials_orders', {
+    p_from: params.from, p_to: params.to, p_basis: params.basis, p_search: params.search || undefined,
+    p_missing_cost: params.missingCost ?? false, p_limit: params.limit, p_offset: params.offset,
+  })
+  if (error) throw error
+  return fromJson<{ total: number; rows: FinancialOrderRow[] }>(data)
+}
+
+export async function recalculateOrders(from: string, to: string): Promise<{ orders: number; entries: number }> {
+  const { data, error } = await supabase.rpc('finance_recalculate_orders', { p_from: from, p_to: to })
+  if (error) throw error
+  return fromJson<{ orders: number; entries: number }>(data)
+}
+
+export async function rebuildCost(from: string, to: string, apply: boolean): Promise<CostRebuild> {
+  const { data, error } = await supabase.rpc('finance_rebuild_cost', { p_from: from, p_to: to, p_apply: apply })
+  if (error) throw error
+  return fromJson<CostRebuild>(data)
+}

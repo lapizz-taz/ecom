@@ -9154,6 +9154,21 @@ export type Database = {
         }
         Returns: Json
       }
+      finance_rebuild_cost: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_apply?: boolean
+        }
+        Returns: Json
+      }
+      finance_recalculate_orders: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
       fraud_customer_metrics: {
         Args: {
           p_phone: string
@@ -10319,6 +10334,26 @@ export type Database = {
           p_to: string
           p_level?: string
           p_parent?: string
+        }
+        Returns: Json
+      }
+      report_order_financials: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_basis?: string
+        }
+        Returns: Json
+      }
+      report_order_financials_orders: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_basis?: string
+          p_search?: string
+          p_missing_cost?: boolean
+          p_limit?: number
+          p_offset?: number
         }
         Returns: Json
       }

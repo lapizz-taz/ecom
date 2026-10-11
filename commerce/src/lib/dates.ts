@@ -20,6 +20,7 @@ function addDays(d: Date, days: number): Date {
 
 export const RANGE_PRESETS = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: '7d', label: 'Last 7 days' },
   { key: '30d', label: 'Last 30 days' },
   { key: 'month', label: 'This month' },
@@ -35,6 +36,10 @@ export function rangeFor(preset: RangePreset, now = new Date()): DateRange {
   switch (preset) {
     case 'today':
       return { from: today, to: today }
+    case 'yesterday': {
+      const y = isoDate(addDays(now, -1))
+      return { from: y, to: y }
+    }
     case '7d':
       return { from: isoDate(addDays(now, -6)), to: today }
     case '30d':
