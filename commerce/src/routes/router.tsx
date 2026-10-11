@@ -148,6 +148,7 @@ export const router = createBrowserRouter([
       admin('settings/apps', () => import('@/pages/admin/app-integrations'), 'settings.view'),
       admin('settings/pbx', () => import('@/pages/admin/pbx'), 'orders.view'),
       admin('settings/voicedrive-pbx', () => import('@/pages/admin/voicedrive-pbx'), 'pbx.call'),
+      admin('settings/developers', () => import('@/pages/admin/developers'), 'settings.view'),
       admin('help', () => import('@/pages/admin/help-center')),
       admin('updates', () => import('@/pages/admin/updates')),
       admin('announcements', () => import('@/pages/admin/announcements')),

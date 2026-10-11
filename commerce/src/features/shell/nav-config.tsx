@@ -196,6 +196,7 @@ export const NAV: NavSection[] = [
           { label: 'Website Integration', to: '/admin/store/website' },
           { label: 'Courier Integration', to: '/admin/couriers', permission: 'couriers.view' },
           { label: 'App Integration', to: '/admin/settings/apps' },
+          { label: 'Developers & API', to: '/admin/settings/developers' },
           { label: 'Messaging Channels', to: '/admin/sms', permission: 'sms.view' },
           { label: 'VoiceDrive PBX', to: '/admin/settings/voicedrive-pbx', feature: 'pbx' },
           { label: 'Templates', to: '/admin/settings?tab=notifications' },

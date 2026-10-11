@@ -102,6 +102,10 @@ import_map = "./functions/import_map.json"
 verify_jwt = true
 import_map = "./functions/import_map.json"
 
+[functions.api]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
 [functions.site-api]
 verify_jwt = false
 import_map = "./functions/import_map.json"

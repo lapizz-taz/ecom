@@ -253,6 +253,130 @@ export type Database = {
           },
         ]
       }
+      api_keys: {
+        Row: {
+          id: string
+          merchant_id: string
+          name: string
+          prefix: string
+          key_hash: string
+          scopes: string[]
+          expires_at: string | null
+          created_by: string | null
+          created_at: string
+          last_used_at: string | null
+          request_count: number
+          revoked_at: string | null
+          revoked_by: string | null
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          name: string
+          prefix: string
+          key_hash: string
+          scopes: string[]
+          expires_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          last_used_at?: string | null
+          request_count?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          name?: string
+          prefix?: string
+          key_hash?: string
+          scopes?: string[]
+          expires_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          last_used_at?: string | null
+          request_count?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_request_logs: {
+        Row: {
+          id: number
+          merchant_id: string
+          key_id: string | null
+          method: string
+          path: string
+          status: number
+          duration_ms: number | null
+          ip: string | null
+          error_code: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id?: string
+          key_id?: string | null
+          method: string
+          path: string
+          status: number
+          duration_ms?: number | null
+          ip?: string | null
+          error_code?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          key_id?: string | null
+          method?: string
+          path?: string
+          status?: number
+          duration_ms?: number | null
+          ip?: string | null
+          error_code?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_request_logs_key_id_fkey"
+            columns: ["key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_request_logs_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           id: string
@@ -3904,6 +4028,41 @@ export type Database = {
           },
         ]
       }
+      merchant_order_fees: {
+        Row: {
+          merchant_id: string
+          fee: number | null
+          exempt: boolean
+          reason: string
+          set_by: string | null
+          set_at: string
+        }
+        Insert: {
+          merchant_id: string
+          fee?: number | null
+          exempt?: boolean
+          reason: string
+          set_by?: string | null
+          set_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          fee?: number | null
+          exempt?: boolean
+          reason?: string
+          set_by?: string | null
+          set_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merchant_order_fees_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: true
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       merchant_service_overrides: {
         Row: {
           merchant_id: string
@@ -4758,6 +4917,57 @@ export type Database = {
             columns: ["source_order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_fee_charges: {
+        Row: {
+          id: number
+          merchant_id: string
+          order_id: string
+          order_number: string | null
+          fee: number
+          charge: string
+          ledger_entry_id: number | null
+          approved_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id: string
+          order_id: string
+          order_number?: string | null
+          fee: number
+          charge: string
+          ledger_entry_id?: number | null
+          approved_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          order_id?: string
+          order_number?: string | null
+          fee?: number
+          charge?: string
+          ledger_entry_id?: number | null
+          approved_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_fee_charges_ledger_entry_id_fkey"
+            columns: ["ledger_entry_id"]
+            isOneToOne: false
+            referencedRelation: "credit_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_fee_charges_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
             referencedColumns: ["id"]
           },
         ]
@@ -9743,6 +9953,8 @@ export type Database = {
           checked_at: string | null
           updated_at: string
           merchant_id: string
+          is_primary: boolean
+          diagnostics: Json | null
         }
         Insert: {
           id?: string
@@ -9755,6 +9967,8 @@ export type Database = {
           checked_at?: string | null
           updated_at?: string
           merchant_id?: string
+          is_primary?: boolean
+          diagnostics?: Json | null
         }
         Update: {
           id?: string
@@ -9767,6 +9981,8 @@ export type Database = {
           checked_at?: string | null
           updated_at?: string
           merchant_id?: string
+          is_primary?: boolean
+          diagnostics?: Json | null
         }
         Relationships: [
           {
@@ -9778,6 +9994,59 @@ export type Database = {
           },
           {
             foreignKeyName: "store_domains_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_resets: {
+        Row: {
+          id: string
+          merchant_id: string
+          scope: string
+          reason: string
+          export_id: number | null
+          requested_by: string | null
+          requested_by_email: string | null
+          status: string
+          txid: number
+          counts: Json | null
+          created_at: string
+          finished_at: string | null
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          scope: string
+          reason: string
+          export_id?: number | null
+          requested_by?: string | null
+          requested_by_email?: string | null
+          status?: string
+          txid: number
+          counts?: Json | null
+          created_at?: string
+          finished_at?: string | null
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          scope?: string
+          reason?: string
+          export_id?: number | null
+          requested_by?: string | null
+          requested_by_email?: string | null
+          status?: string
+          txid?: number
+          counts?: Json | null
+          created_at?: string
+          finished_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_resets_merchant_id_fkey"
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
@@ -10645,6 +10914,16 @@ export type Database = {
         }
         Returns: Json
       }
+      _store_reset_active: {
+        Args: {
+          p_merchant: string
+        }
+        Returns: boolean
+      }
+      _store_reset_tables: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
       _support_read_only: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -10780,6 +11059,31 @@ export type Database = {
           created_at: string
           merchant_id: string
         }
+      }
+      admin_api_key_create: {
+        Args: {
+          p_name: string
+          p_scopes: string[]
+          p_expires_at?: string
+        }
+        Returns: Json
+      }
+      admin_api_key_revoke: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      admin_api_keys: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_api_logs: {
+        Args: {
+          p_limit?: number
+          p_key?: string
+        }
+        Returns: Json
       }
       admin_auto_merge_scan: {
         Args: Record<PropertyKey, never>
@@ -13030,6 +13334,12 @@ export type Database = {
         }
         Returns: Json
       }
+      merchant_self_onboard: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
       merchant_usage: {
         Args: {
           p_merchant?: string
@@ -13066,6 +13376,10 @@ export type Database = {
         Returns: Json
       }
       my_data_deletion_request: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      my_order_fee: {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
@@ -13865,6 +14179,36 @@ export type Database = {
         }
         Returns: number
       }
+      platform_order_fee_charges: {
+        Args: {
+          p_merchant: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_order_fee_override_set: {
+        Args: {
+          p_merchant: string
+          p_fee: number
+          p_exempt: boolean
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_order_fee_overview: {
+        Args: {
+          p_q?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_order_fee_settings_save: {
+        Args: {
+          p: Json
+          p_reason: string
+        }
+        Returns: Json
+      }
       platform_overview: {
         Args: {
           p_from: string
@@ -14117,6 +14461,21 @@ export type Database = {
         Args: {
           p_user: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      platform_store_reset: {
+        Args: {
+          p_merchant: string
+          p_scope: string
+          p_confirm_name: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_store_resets: {
+        Args: {
+          p_merchant: string
         }
         Returns: Json
       }
@@ -14383,6 +14742,10 @@ export type Database = {
           updated_at: string
           merchant_id: string
         }
+      }
+      public_signup_options: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       purchase_order_set_status: {
         Args: {
@@ -15073,6 +15436,12 @@ export type Database = {
       }
       staff_directory: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      store_domain_set_primary: {
+        Args: {
+          p_domain: string
+        }
         Returns: Json
       }
       store_domains_list: {
