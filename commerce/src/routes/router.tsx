@@ -188,6 +188,9 @@ const marketing: RouteObject[] = [
   { path: '/', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/home')) },
   { path: '/fullfilio', element: <Navigate to="/" replace /> },
   { path: '/login', element: <Navigate to="/admin/login" replace /> },
+  { path: '/contact', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/contact')) },
+  { path: '/blog', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/blog')) },
+  { path: '/blog/:slug', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/blog-post')) },
   { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/not-found')) },
 ]
 

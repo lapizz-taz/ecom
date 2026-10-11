@@ -159,7 +159,7 @@ function Issues({ diag }: { diag: DomainDiagnosis }) {
   const list = diag.issues.filter((i) => i.severity !== 'info')
   if (!list.length) return null
   return (
-    <div className={cn('rounded-lg p-2.5 text-xs leading-relaxed', list.some((i) => i.severity === 'error') ? 'bg-red-50 text-red-900 dark:bg-red-500/10 dark:text-red-200' : 'bg-muted/70')}>
+    <div className={cn('rounded-lg p-2.5 text-xs leading-relaxed', list.some((i) => i.severity === 'error') ? 'bg-red-50 text-red-900 dark:bg-red-500/15 dark:text-white' : 'bg-muted/70')}>
       <p>{diag.pointed ? 'Your domain is connected, but we recommend you review the following:' : 'Fix the following to connect your domain:'}</p>
       <ul className="mt-1.5 list-disc space-y-1 pl-5">
         {list.map((i) => <li key={i.code}><span className="font-medium">{i.title}.</span> {i.detail}</li>)}

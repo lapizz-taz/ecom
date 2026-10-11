@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Menu, X } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { Wordmark } from '@/components/brand/logo'
+import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
 import { DashboardDemo } from '@/features/site/dashboard-demo'
+import { IntegrationDemo } from '@/features/site/integration-demo'
+import { SiteFooter, SiteHeader } from '@/features/site/site-chrome'
 import { CourierBooking, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from '@/features/site/mockups'
 import { ThemeEditorDemo } from '@/features/site/theme-editor-demo'
 import { TourVideo } from '@/features/site/tour-video'
@@ -13,7 +15,6 @@ import { signupOptions } from '@/services/onboarding'
 // The Fullfilio product site: dark, quiet and precise, with the brand blue
 // used sparingly. Every feature shown here exists in the app.
 
-const NAV = [['Product', '#product'], ['Features', '#orders'], ['Pricing', '#pricing'], ['Changelog', '#changelog'], ['Contact', '#contact']] as const
 
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -34,29 +35,15 @@ function Reveal({ children, className }: { children: ReactNode; className?: stri
 }
 
 export default function MarketingHome() {
-  const [menu, setMenu] = useState(false)
-  useEffect(() => { document.title = 'Fullfilio — the order system for online sellers' }, [])
+  useEffect(() => {
+    document.title = 'Fullfilio — the order system for online sellers'
+    // Arriving from another page at /#section: scroll once the section exists.
+    const id = window.location.hash.slice(1)
+    if (id) window.setTimeout(() => document.getElementById(id)?.scrollIntoView(), 120)
+  }, [])
   return (
     <div className="min-h-dvh bg-[#08090a] font-sans text-[#f7f8f8] antialiased selection:bg-[#2142e7]/60">
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#08090a]/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
-          <a href="#top" aria-label="Fullfilio home" className="text-white"><Wordmark className="h-[18px]" /></a>
-          <nav className="ml-auto hidden items-center gap-6 text-[13px] text-[#8a8f98] md:flex" aria-label="Main">
-            {NAV.map(([l, h]) => <a key={l} href={h} className="transition-colors hover:text-white">{l}</a>)}
-          </nav>
-          <div className="ml-auto flex items-center gap-2 md:ml-4">
-            <Link to="/admin/login" className="hidden px-2 text-[13px] text-[#8a8f98] transition-colors hover:text-white sm:inline">Log in</Link>
-            <Link to="/start" className="rounded-full bg-[#f7f8f8] px-3.5 py-1.5 text-[13px] font-medium text-[#08090a] transition-colors hover:bg-white">Sign up</Link>
-            <button type="button" className="grid size-8 place-items-center md:hidden" aria-label="Menu" onClick={() => setMenu(!menu)}>{menu ? <X className="size-4" /> : <Menu className="size-4" />}</button>
-          </div>
-        </div>
-        {menu && (
-          <nav className="grid gap-1 border-t border-white/[0.06] px-5 py-3 text-sm md:hidden">
-            {NAV.map(([l, h]) => <a key={l} href={h} onClick={() => setMenu(false)} className="py-2 text-[#d0d6e0]">{l}</a>)}
-            <Link to="/admin/login" className="py-2 text-[#d0d6e0]">Log in</Link>
-          </nav>
-        )}
-      </header>
+      <SiteHeader />
 
       <main id="top">
         {/* Hero */}
@@ -140,12 +127,20 @@ export default function MarketingHome() {
           text="Delivered, returned and paid, next to ad spend and courier costs. Know which products and campaigns actually make money."
           subs={['5.1 Profit and loss', '5.2 Ads attribution', '5.3 Inventory insights']}><InsightsMock /></Feature>
 
-        {/* Integrations */}
-        <section className="border-t border-white/[0.06]">
-          <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="text-center text-[13px] text-[#8a8f98]">Works with the tools you already use</p>
-            <div className="mt-8 flex flex-wrap justify-center gap-x-10 gap-y-4 text-[15px] font-medium text-[#62666d]">
-              {['Shopify', 'WooCommerce', 'Steadfast', 'Pathao', 'RedX', 'Carrybee', 'bKash', 'Meta Ads', 'TikTok Ads'].map((n) => <span key={n} className="transition-colors hover:text-[#d0d6e0]">{n}</span>)}
+        {/* Shopify and WooCommerce */}
+        <section id="integrations" className="scroll-mt-20 border-t border-white/[0.06]">
+          <div className="mx-auto max-w-6xl px-5 py-24 sm:py-28">
+            <Reveal className="grid gap-6 md:grid-cols-2 md:items-end">
+              <div>
+                <p className="flex items-center gap-2 font-mono text-[12px] text-[#8a8f98]"><ShopifyLogo className="size-4" /><WooLogo className="h-3.5 w-5" /> Shopify · WooCommerce</p>
+                <h2 className="mt-4 text-[32px] leading-[1.05] font-medium tracking-[-0.03em] sm:text-[44px]">Keep your store.<br />Run the rest here.</h2>
+              </div>
+              <p className="text-[15px] leading-relaxed text-[#8a8f98]">Connect Shopify or WooCommerce in a minute. Orders come in, couriers get booked, and every status, refund and restock goes back to your store, including parcels that come back. Press play to follow one order.</p>
+            </Reveal>
+            <Reveal className="mt-10"><IntegrationDemo /></Reveal>
+            <p className="mt-12 text-center text-[13px] text-[#8a8f98]">Also works with</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-x-10 gap-y-4 text-[15px] font-medium text-[#62666d]">
+              {['Steadfast', 'Pathao', 'RedX', 'Carrybee', 'bKash', 'PayStation', 'Meta Ads', 'TikTok Ads', 'Google Ads'].map((n) => <span key={n} className="transition-colors hover:text-[#d0d6e0]">{n}</span>)}
             </div>
           </div>
         </section>
@@ -182,34 +177,14 @@ export default function MarketingHome() {
               <h2 className="text-[36px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[56px]">Built for how you sell.<br />Available today.</h2>
               <div className="mt-8 flex justify-center gap-3">
                 <Link to="/start" className="rounded-full bg-[#f7f8f8] px-5 py-2.5 text-sm font-medium text-[#08090a] hover:bg-white">Get started</Link>
-                <a href="#contact" className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm text-[#d0d6e0] hover:bg-white/[0.08]">Contact us</a>
+                <Link to="/contact" className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm text-[#d0d6e0] hover:bg-white/[0.08]">Contact us</Link>
               </div>
             </Reveal>
           </div>
         </section>
       </main>
 
-      <footer id="contact" className="border-t border-white/[0.06]">
-        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:grid-cols-[1fr_repeat(4,auto)] sm:gap-16">
-          <div className="text-white"><Wordmark className="h-4" /></div>
-          {[
-            ['Product', [['Orders', '#orders'], ['Couriers', '#couriers'], ['Fraud check', '#fraud'], ['Store', '#store'], ['Pricing', '#pricing']]],
-            ['Features', [['Theme editor', '#store'], ['Custom domains', '#store'], ['Insights', '#insights'], ['Changelog', '#changelog']]],
-            ['Account', [['Sign up', '/start'], ['Log in', '/admin/login'], ['Forgot password', '/admin/forgot-password']]],
-            ['Contact', [['Talk to us', '/start'], ['Track a parcel', '/track-order']]],
-          ].map(([h, links]) => (
-            <div key={h as string}>
-              <p className="text-[13px] font-medium">{h as string}</p>
-              <ul className="mt-4 space-y-2.5 text-[13px] text-[#8a8f98]">
-                {(links as string[][]).map(([l, href]) => (
-                  <li key={l}>{href.startsWith('#') ? <a href={href} className="hover:text-white">{l}</a> : <Link to={href} className="hover:text-white">{l}</Link>}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <p className="mx-auto max-w-6xl px-5 pb-10 text-[12px] text-[#62666d]">© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</p>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }
