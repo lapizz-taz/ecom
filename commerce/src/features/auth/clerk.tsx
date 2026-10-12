@@ -6,7 +6,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '@/lib/env'
 import { currentSite } from '@/lib/merchant'
 import { reportError } from '@/lib/monitoring'
-import { endSupabaseSession, exchangeClerkSession } from '@/services/clerk-auth'
+import { currentClerkLink, endSupabaseSession, exchangeClerkSession } from '@/services/clerk-auth'
 
 // Clerk handles sign-up, e-mail codes, sign-in (password, e-mail code, Google)
 // and password resets on the Fullfilio site and the staff pages, with Clerk's
@@ -69,6 +69,17 @@ export function ClerkRoot({ children }: { children: ReactNode }) {
   return <ClerkProviderWithTheme>{children}</ClerkProviderWithTheme>
 }
 
+/** Opening the account by itself at most this many times per window; then the page asks. */
+const AUTO_LIMIT = 3
+const AUTO_WINDOW_MS = 60_000
+
+/** Runs `fn` while no other tab of this site runs it (Web Locks; directly where unsupported). */
+async function oneTabAtATime(fn: () => Promise<void>): Promise<void> {
+  const locks = typeof navigator !== 'undefined' ? (navigator as Navigator & { locks?: LockManager }).locks : undefined
+  if (locks) await locks.request('fullfilio-clerk-session', fn)
+  else await fn()
+}
+
 export interface ClerkLink {
   /** Clerk has loaded and the database session matches it (or nobody is signed in). */
   ready: boolean
@@ -102,36 +113,58 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
     return () => window.clearTimeout(t)
   }, [isLoaded])
   const inflight = useRef<Promise<void> | null>(null)
+  // When this tab opened the account by itself lately (see AUTO_LIMIT).
+  const autoSyncs = useRef<number[]>([])
   const linkedTo = (session?.user.app_metadata?.clerk_user_id as string | undefined) ?? null
 
   const sync = useCallback(() => {
     if (!inflight.current) {
       inflight.current = (async () => {
-        const token = await getToken()
-        if (!token) throw new Error('Sign in again')
-        await exchangeClerkSession(token)
+        // One tab at a time: the others find the account already open (tabs share it) and skip.
+        await oneTabAtATime(async () => {
+          if (userId && (await currentClerkLink()) === userId) return
+          const token = await getToken()
+          if (!token) throw new Error('Sign in again')
+          await exchangeClerkSession(token)
+        })
         setError(null)
       })().finally(() => { inflight.current = null })
     }
     return inflight.current
-  }, [getToken])
+  }, [getToken, userId])
 
   useEffect(() => {
     if (!isLoaded) return
     if (isSignedIn && userId && linkedTo !== userId) {
+      // Something keeps closing the account right after it opens (e.g. an old Fullfilio tab):
+      // stop instead of opening it again and again, and say so.
+      const now = Date.now()
+      autoSyncs.current = autoSyncs.current.filter((t) => now - t < AUTO_WINDOW_MS)
+      if (autoSyncs.current.length >= AUTO_LIMIT) {
+        setError((e) => e ?? new Error('Your account was signed out again right after it opened, most likely by another Fullfilio tab or window. Close or reload your other Fullfilio tabs, then press Try again.'))
+        return
+      }
+      autoSyncs.current.push(now)
       sync().catch((e: Error) => { setError(e); reportError(e, { where: 'clerk-session-sync' }) })
     } else if (!isSignedIn && linkedTo && !inflight.current && !clerk.user) {
-      // Signed out of Clerk (here or in another tab): close the account here too. The live
-      // check on clerk.user avoids reacting to a render that has not caught up with a sign-in.
-      void endSupabaseSession()
+      // Signed out of Clerk (here or in another tab): close the account in this browser too
+      // (only here: other devices keep theirs). The live check on clerk.user avoids reacting
+      // to a render that has not caught up with a sign-in.
+      void endSupabaseSession('local')
     }
   }, [isLoaded, isSignedIn, userId, linkedTo, sync, clerk])
+
+  // Opened (here or by another tab): an error from an earlier try no longer applies.
+  useEffect(() => {
+    if (userId && linkedTo === userId) setError((e) => (e ? null : e))
+  }, [userId, linkedTo])
 
   const ready = (isLoaded && (!isSignedIn || linkedTo === userId || error !== null)) || (!isLoaded && gaveUp)
   const signedIn = Boolean(isLoaded && isSignedIn)
   const shownError = error ?? (!isLoaded && gaveUp ? new Error('Could not reach the sign-in service. Check your connection and reload the page.') : null)
   // A failed link is not retried by itself: pages show the error with "Try again" instead.
   const retry = useCallback(() => {
+    autoSyncs.current = []
     setError(null)
     sync().catch((e: Error) => { setError(e); reportError(e, { where: 'clerk-session-sync' }) })
   }, [sync])
