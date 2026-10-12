@@ -84,13 +84,20 @@ function readRaw(env: WriteEnv, name: string, t: TableMeta, keys: Key[]): Row[] 
   return env.sql.all(`SELECT * FROM main.${quoteId(name)} AS ${quoteId(name)} WHERE ${w.sql}`, w.params)
 }
 
+let fallback: ((fn: string) => TriggerImpl | undefined) | null = null
+
+/** Runs triggers without a TypeScript port through the PL/pgSQL interpreter (pg/engine.ts). */
+export function setTriggerFallback(fn: (fn: string) => TriggerImpl | undefined): void {
+  fallback = fn
+}
+
 /** Business triggers of a table for an event, failing when one has no port yet. */
 function rowTriggers(name: string, t: TableMeta, op: 'INSERT' | 'UPDATE' | 'DELETE', setColumns?: string[]): Array<{ meta: TriggerMeta; impl: TriggerImpl }> {
   const out: Array<{ meta: TriggerMeta; impl: TriggerImpl }> = []
   for (const tg of t.triggers ?? []) {
     if (!tg.events.includes(op)) continue
     if (op === 'UPDATE' && tg.columns && setColumns && !tg.columns.some((c) => setColumns.includes(c))) continue
-    const impl = registry[tg.function]
+    const impl = registry[tg.function] ?? fallback?.(tg.function)
     if (!impl) throw new DbError('0A000', `NOT_PORTED: ${name} ${op.toLowerCase()} needs ${tg.function}() in TypeScript`)
     out.push({ meta: tg, impl })
   }

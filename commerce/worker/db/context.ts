@@ -21,6 +21,8 @@ export interface Identity {
   /** The browser's request details some functions record (device sign-ins). */
   userAgent?: string | null
   ip?: string | null
+  /** The database owner with no JWT (migrations, cron, the SQL editor): no request claims at all. */
+  system?: boolean
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -43,9 +45,87 @@ export class Context {
     return this.memo.get(key) as T
   }
 
+  /** Other configuration settings (Postgres set_config / current_setting). */
+  readonly settings = new Map<string, string>()
+
   /** Forget cached answers (after a write that changes them, e.g. a new profile). */
   reset(): void {
     this.memo.clear()
+  }
+
+  hasClaims(): boolean {
+    return !this.identity.system
+  }
+
+  /** request.jwt.claims as Postgres functions read them (auth.jwt()). */
+  claims(): Record<string, unknown> | null {
+    if (this.identity.system) return null
+    const id = this.identity
+    const c: Record<string, unknown> = { role: id.role }
+    if (id.role !== 'anon' && id.uid) c.sub = id.uid
+    if (id.email) c.email = id.email
+    if (id.sessionId) c.session_id = id.sessionId
+    return c
+  }
+
+  /** current_setting(name): null when never set. */
+  getSetting(name: string): string | null {
+    const id = this.identity
+    switch (name) {
+      case 'request.jwt.claims': {
+        const c = this.claims()
+        return c ? JSON.stringify(c) : this.settings.get(name) ?? null
+      }
+      case 'request.jwt.claim.sub': return id.uid ?? ''
+      case 'request.jwt.claim.role': return this.claims()?.role as string ?? ''
+      case 'request.headers': {
+        const h: Record<string, string> = {}
+        if (id.merchantHeader) h['x-merchant-id'] = id.merchantHeader
+        if (id.userAgent) h['user-agent'] = id.userAgent
+        if (id.ip) h['x-forwarded-for'] = id.ip
+        return JSON.stringify(h)
+      }
+      case 'app.merchant_id': return id.merchantSetting ?? this.settings.get(name) ?? null
+      case 'role': return id.role
+      default:
+        if (name.startsWith('app.') && this.flags.has(name.slice(4))) return this.flags.get(name.slice(4))!
+        return this.settings.get(name) ?? null
+    }
+  }
+
+  /** set_config(name, value, true): changes who the request acts as when it names those settings. */
+  setSetting(name: string, value: string): void {
+    const id = this.identity
+    this.settings.set(name, value)
+    switch (name) {
+      case 'app.merchant_id':
+        id.merchantSetting = value || null
+        break
+      case 'request.jwt.claims': {
+        const c = value ? (JSON.parse(value) as Record<string, unknown>) : null
+        if (!c) {
+          id.system = true
+          id.role = 'service_role'
+        } else {
+          id.system = false
+          id.role = (c.role === 'authenticated' || c.role === 'anon' ? c.role : 'service_role') as Role
+          id.uid = typeof c.sub === 'string' ? c.sub : null
+          id.email = typeof c.email === 'string' ? c.email : null
+          id.sessionId = typeof c.session_id === 'string' ? c.session_id : null
+        }
+        break
+      }
+      case 'request.headers': {
+        const h = value ? (JSON.parse(value) as Record<string, string>) : {}
+        id.merchantHeader = h['x-merchant-id'] ?? null
+        id.userAgent = h['user-agent'] ?? null
+        id.ip = h['x-forwarded-for'] ?? null
+        break
+      }
+      default:
+        if (name.startsWith('app.')) this.flags.set(name.slice(4), value)
+    }
+    this.reset()
   }
 
   get role(): Role {

@@ -22,6 +22,17 @@ CREATE TABLE users (
 -- so the permanent-record triggers let that one operation through.
 CREATE TABLE _flags (name TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (name, value)) STRICT;
 
+-- Supabase Vault's secrets (courier, payment and platform credentials). Only database
+-- functions read them; the REST API never serves internal tables.
+CREATE TABLE _vault_secrets (
+  id TEXT PRIMARY KEY CHECK (length(id) = 36),
+  name TEXT UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  secret TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+) STRICT;
+
 -- Counters that replace Postgres sequences (order numbers, invoice numbers, …).
 CREATE TABLE _sequences (name TEXT PRIMARY KEY, value INTEGER NOT NULL) STRICT;
 INSERT INTO _sequences (name, value) VALUES

@@ -14,6 +14,10 @@ export interface ColumnMeta {
   type: ColumnType
   elem?: ColumnType
   values?: string[]
+  /** The Postgres enum type (of the column, or of its elements for arrays). */
+  enum?: string
+  /** timestamp without time zone (stored like timestamptz). */
+  local?: boolean
   scale?: number
   nullable?: boolean
   /** The SQLite DEFAULT expression, when SQLite fills the column in. */

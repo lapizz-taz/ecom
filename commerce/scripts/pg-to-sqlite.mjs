@@ -106,6 +106,21 @@ const rpcFunctions = await q(`
     and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
   order by p.proname`)
 
+// Every function's source, for the PL/pgSQL interpreter (worker/db/pg): the business
+// logic runs as written in the migrations.
+const allFunctions = await q(`
+  select p.proname as name, l.lanname as lang, p.prosrc as src, p.prosecdef as definer, pg_get_userbyid(p.proowner) as owner,
+         p.proretset as set, p.provolatile as volatility, format_type(p.prorettype, null) as returns,
+         coalesce(p.proargnames, '{}') as argnames, coalesce(p.proargmodes::text[], '{}') as argmodes,
+         array(select format_type(t, null) from unnest(coalesce(p.proallargtypes, p.proargtypes::oid[])) t) as argtypes,
+         pg_get_expr(p.proargdefaults, 0) as defaults, coalesce(p.proconfig, '{}') as config,
+         has_function_privilege('anon', p.oid, 'execute') as anon,
+         has_function_privilege('authenticated', p.oid, 'execute') as authenticated
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace join pg_language l on l.oid = p.prolang
+  where n.nspname = 'public' and p.prokind = 'f' and l.lanname in ('plpgsql', 'sql')
+    and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+  order by p.proname, p.oid`)
+
 const sqlFunctions = new Set((await q(`
   select distinct p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'`)).map((r) => r.name))
 
@@ -117,8 +132,11 @@ const ddl = []
 
 /** The SQLite storage kind of a Postgres column. */
 function kindOf(col) {
-  if (col.category === 'A') return { kind: 'array', elem: kindOf({ udt: col.elem_udt, category: enums[col.elem_udt] ? 'E' : '' }).kind }
-  if (enums[col.udt]) return { kind: 'enum', values: enums[col.udt] }
+  if (col.category === 'A') {
+    const e = kindOf({ udt: col.elem_udt, category: enums[col.elem_udt] ? 'E' : '' })
+    return { kind: 'array', elem: e.kind, ...(e.enum ? { enum: e.enum } : {}) }
+  }
+  if (enums[col.udt]) return { kind: 'enum', values: enums[col.udt], enum: col.udt }
   switch (col.udt) {
     case 'uuid': return { kind: 'uuid' }
     case 'text': case 'varchar': case 'bpchar': case 'citext': case 'name': case 'inet': return { kind: 'text' }
@@ -201,6 +219,8 @@ for (const t of tables) {
     const cm = { type: k.kind }
     if (k.elem) cm.elem = k.elem
     if (k.values) cm.values = k.values
+    if (k.enum) cm.enum = k.enum
+    if (col.udt === 'timestamp') cm.local = true
     if (k.scale !== undefined) cm.scale = k.scale
     if (!col.notnull) cm.nullable = true
     let line = `${quoteId(col.name)} ${STORAGE[k.kind]}`
@@ -360,7 +380,7 @@ for (const v of views) {
     where n.nspname = 'public' and c.relname = $1 and a.attnum > 0 order by a.attnum`, [v.name]))
   const vmeta = { columns: Object.fromEntries(columnsOf.map((c) => {
     const k = kindOf({ ...c, table: v.name })
-    return [c.name, { type: k.kind, ...(k.scale !== undefined ? { scale: k.scale } : {}), ...(k.elem ? { elem: k.elem } : {}), nullable: true }]
+    return [c.name, { type: k.kind, ...(k.scale !== undefined ? { scale: k.scale } : {}), ...(k.elem ? { elem: k.elem } : {}), ...(k.enum ? { enum: k.enum } : {}), nullable: true }]
   })) }
   try {
     vmeta.sql = toSqlite(v.definition.trim().replace(/;$/, ''), { functions: new Set() })
@@ -412,6 +432,17 @@ CREATE TABLE users (
 -- so the permanent-record triggers let that one operation through.
 CREATE TABLE _flags (name TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (name, value)) STRICT;
 
+-- Supabase Vault's secrets (courier, payment and platform credentials). Only database
+-- functions read them; the REST API never serves internal tables.
+CREATE TABLE _vault_secrets (
+  id TEXT PRIMARY KEY CHECK (length(id) = 36),
+  name TEXT UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  secret TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (${NOW}),
+  updated_at TEXT NOT NULL DEFAULT (${NOW})
+) STRICT;
+
 -- Counters that replace Postgres sequences (order numbers, invoice numbers, …).
 CREATE TABLE _sequences (name TEXT PRIMARY KEY, value INTEGER NOT NULL) STRICT;
 INSERT INTO _sequences (name, value) VALUES
@@ -439,6 +470,18 @@ meta.tables.users = {
   pk: ['id'], unique: [['email'], ['clerk_user_id']], fks: [], grants: {}, rls: true, policies: [], checks: [],
 }
 writeFileSync(resolve(outDir, 'meta.json'), `${JSON.stringify(meta)}\n`)
+
+// name → overloads: { lang, src, args [{ name, type, mode i/o/b/v/t, default? }], returns, set, definer, owner, volatility, config, grants }
+const functionSources = {}
+for (const f of allFunctions) {
+  const modes = f.argmodes.length ? f.argmodes : f.argtypes.map(() => 'i')
+  const args = f.argtypes.map((type, i) => ({ name: f.argnames[i] || null, type, mode: modes[i] }))
+  ;(functionSources[f.name] ??= []).push({
+    lang: f.lang, src: f.src, args, defaults: f.defaults ?? undefined, returns: f.returns, set: f.set, definer: f.definer, owner: f.owner,
+    volatility: f.volatility, config: f.config, grants: [f.anon && 'anon', f.authenticated && 'authenticated'].filter(Boolean),
+  })
+}
+writeFileSync(resolve(outDir, 'functions.json'), `${JSON.stringify(functionSources)}\n`)
 
 const section = (title, items) => `## ${title} (${items.length})\n\n${items.map((i) => `- ${i}`).join('\n') || '- none'}\n`
 writeFileSync(resolve(outDir, 'report.md'), `# Schema conversion report\n\nGenerated by scripts/pg-to-sqlite.mjs. ${tables.length} tables, ${indexes.length} indexes, ${policies.length} row-security rules, ${views.length} views.\n\n${[

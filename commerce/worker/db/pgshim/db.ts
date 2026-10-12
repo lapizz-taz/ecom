@@ -8,6 +8,7 @@ import { resolve } from 'node:path'
 import { migrate } from '../migrate.ts'
 import { nodeSql } from '../sql.ts'
 import { Session, type QueryResult } from './exec.ts'
+import '../pg/engine.ts'
 
 export const ADMIN_URL = 'sqlite::memory:'
 export const MERCHANT_1 = '00000000-0000-4000-8000-000000000001'
@@ -64,10 +65,7 @@ export async function closePool(): Promise<void> {}
 /** Runs `fn` inside a transaction that is always rolled back. */
 export async function inTx<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   const { db, session } = open()
-  session.role = 'postgres'
-  session.claims = {}
-  session.settings.clear()
-  session.replica = false
+  session.fresh()
   db.exec('BEGIN')
   try {
     return await fn(new ShimClient(session))
@@ -76,37 +74,51 @@ export async function inTx<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   }
 }
 
-async function setHeaders(db: Db, merchantId: string | null): Promise<void> {
-  db.session.settings.set('request.headers', JSON.stringify(merchantId ? { 'x-merchant-id': merchantId } : {}))
+function setHeaders(db: Db, merchantId: string | null): void {
+  db.session.identity.merchantHeader = merchantId
 }
 
+function base(db: Db, role: Session['role'], claims: { uid?: string | null; email?: string | null } | null): void {
+  const id = db.session.identity
+  db.session.role = role
+  id.role = role === 'postgres' ? 'service_role' : role
+  id.system = claims === null
+  id.uid = claims?.uid ?? null
+  id.email = claims?.email ?? null
+  id.sessionId = null
+  db.session.ctx.settings.delete('request.jwt.claims')
+}
+
+/** Database owner with no JWT: migrations, SQL editor, pg_cron (acting for one merchant). */
 export async function asSystem(db: Db, merchantId: string | null = MERCHANT_1): Promise<void> {
-  db.session.role = 'postgres'
-  db.session.claims = {}
-  db.session.settings.set('request.jwt.claims', '')
-  db.session.settings.set('app.merchant_id', merchantId ?? '')
-  await setHeaders(db, null)
+  base(db, 'postgres', null)
+  db.session.identity.merchantSetting = merchantId ?? null
+  setHeaders(db, null)
+  db.session.ctx.reset()
 }
 
+/** Edge functions using the service-role key (they send x-merchant-id). */
 export async function asService(db: Db, merchantId: string | null = MERCHANT_1): Promise<void> {
-  db.session.role = 'service_role'
-  db.session.claims = { role: 'service_role' }
-  db.session.settings.set('app.merchant_id', '')
-  await setHeaders(db, merchantId)
+  base(db, 'service_role', {})
+  db.session.identity.merchantSetting = null
+  setHeaders(db, merchantId)
+  db.session.ctx.reset()
 }
 
+/** A signed-in user (staff or customer) calling through PostgREST. Customers' storefront sends x-merchant-id. */
 export async function asUser(db: Db, userId: string, email = 'user@example.com', merchantId: string | null = MERCHANT_1): Promise<void> {
-  db.session.role = 'authenticated'
-  db.session.claims = { sub: userId, role: 'authenticated', email }
-  db.session.settings.set('app.merchant_id', '')
-  await setHeaders(db, merchantId)
+  base(db, 'authenticated', { uid: userId, email })
+  db.session.identity.merchantSetting = null
+  setHeaders(db, merchantId)
+  db.session.ctx.reset()
 }
 
+/** An anonymous storefront visitor on a merchant's store. */
 export async function asAnon(db: Db, merchantId: string | null = MERCHANT_1): Promise<void> {
-  db.session.role = 'anon'
-  db.session.claims = { role: 'anon' }
-  db.session.settings.set('app.merchant_id', '')
-  await setHeaders(db, merchantId)
+  base(db, 'anon', {})
+  db.session.identity.merchantSetting = null
+  setHeaders(db, merchantId)
+  db.session.ctx.reset()
 }
 
 export async function one<T = Record<string, unknown>>(db: Db, sql: string, params: unknown[] = []): Promise<T> {
