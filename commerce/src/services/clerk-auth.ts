@@ -12,7 +12,16 @@ export async function exchangeClerkSession(clerkToken: string): Promise<void> {
   if (error) throw error
 }
 
-/** Ends the Supabase side of a Clerk sign-in (Clerk itself is signed out by the caller). */
-export async function endSupabaseSession(): Promise<void> {
-  await supabase.auth.signOut()
+/** The Clerk user the account open in this browser belongs to (tabs share it), or null. */
+export async function currentClerkLink(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  return (data.session?.user.app_metadata?.clerk_user_id as string | undefined) ?? null
+}
+
+/**
+ * Ends the Supabase side of a Clerk sign-in (Clerk itself is signed out by the caller):
+ * everywhere when the person signs out, only in this browser when it follows Clerk.
+ */
+export async function endSupabaseSession(scope: 'global' | 'local' = 'global'): Promise<void> {
+  await supabase.auth.signOut({ scope })
 }
