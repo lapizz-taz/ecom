@@ -171,7 +171,9 @@ Seeded logins (password `Password123!` for all):
        headers := jsonb_build_object('Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
        body := '{"action": "sync", "days": 3}'::jsonb)
-     where (select (value ->> 'connected')::boolean from public.settings where key = 'meta_ads')
+     -- One settings row per merchant: "any merchant connected", never a single-row subquery.
+     where exists (select 1 from public.settings where key = 'meta_ads' and coalesce((value ->> 'connected')::boolean, false))
+        or exists (select 1 from public.meta_ad_accounts)
    $$);
 
    -- TikTok / Google Ads: campaigns and daily spend for the last 3 days, every 3 hours, only while an account is selected.
