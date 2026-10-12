@@ -9,7 +9,7 @@ export const IS_PREVIEW = process.env.NEXT_PUBLIC_PREVIEW_MODE === "1";
 export function page(href: string): string {
   if (!IS_PREVIEW || !href.startsWith("/")) return href;
   const [path, hash] = href.split("#");
-  const file = path === "/" || path === "" ? "index.html" : `${path.slice(1)}.html`;
+  const file = path === "/" || path === "" ? "home.html" : `${path.slice(1)}.html`;
   return hash !== undefined ? `${file}#${hash}` : file;
 }
 
@@ -25,7 +25,7 @@ export function isActive(href: string, pathname: string): boolean {
     // Preview pages are files like ".../services.html", possibly inside a sub-folder.
     const file = pathname.split("/").pop() || "";
     const name = file.replace(/\.html$/, "");
-    return href === "/" ? name === "" || name === "index" : name === href.slice(1);
+    return href === "/" ? ["", "index", "home"].includes(name) : name === href.slice(1);
   }
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");

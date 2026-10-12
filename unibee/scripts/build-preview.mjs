@@ -41,6 +41,9 @@ execSync("npx next build", {
 fs.cpSync(path.join(tmp, "out"), out, { recursive: true });
 fs.rmSync(tmp, { recursive: true, force: true });
 
+// Some static hosts reserve names starting with "_", so serve Next's files from "nx/".
+fs.renameSync(path.join(out, "_next"), path.join(out, "nx"));
+
 // Make every absolute path relative (all pages sit at the folder root).
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]));
 for (const file of walk(out)) {
@@ -51,14 +54,21 @@ for (const file of walk(out)) {
   if (ext === ".css") {
     s = s.replace(/url\((["']?)\/_next\/static\/media\//g, "url($1../media/");
   } else if (ext === ".js") {
-    s = s.replace(/"\/_next\/"/g, '"./_next/"');
+    s = s
+      .replace(/"\/_next\/"/g, '"./nx/"')
+      // Some hosts reject a literal U+FFFD; inside JS strings the escape means the same thing.
+      .replace(/\uFFFD/g, "\\uFFFD");
   } else {
     // Covers HTML attributes and the escaped copies inside the inline React payload,
     // so the server HTML and the client render stay identical.
-    s = s.replace(/(["'(]|\\")\/(_next\/|icon\.png|apple-icon\.png|images\/|brand\/)/g, "$1./$2");
+    s = s
+      .replace(/(["'(]|\\")\/(_next\/|icon\.png|apple-icon\.png|images\/|brand\/)/g, "$1./$2")
+      .replace(/\.\/_next\//g, "./nx/");
   }
   if (s !== before) fs.writeFileSync(file, s);
 }
+// The home page is published as home.html (links already point there).
+fs.copyFileSync(path.join(out, "index.html"), path.join(out, "home.html"));
 // Remove files the preview doesn't need.
 for (const f of ["robots.txt", "sitemap.xml", "404.html"]) fs.rmSync(path.join(out, f), { force: true });
 for (const f of walk(out)) if (f.endsWith(".txt")) fs.rmSync(f);
