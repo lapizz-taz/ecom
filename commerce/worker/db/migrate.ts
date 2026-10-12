@@ -29,6 +29,26 @@ export const migrations: Array<{ name: string; sql: readonly string[] }> = [
     `CREATE TABLE _ended_sessions (id TEXT PRIMARY KEY, ended_at TEXT NOT NULL DEFAULT (${NOW})) STRICT`,
     'CREATE TRIGGER sessions_ended AFTER DELETE ON sessions FOR EACH ROW BEGIN INSERT OR IGNORE INTO _ended_sessions (id) VALUES (OLD.id); END',
   ] },
+  // Sign-in sessions served here (worker/db/auth.ts): one-time sign-in tokens and the
+  // sessions' refresh tokens, each stored only as its SHA-256.
+  { name: '0004_auth_tokens', sql: [
+    `CREATE TABLE _auth_link_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (${NOW}),
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    ) STRICT`,
+    `CREATE TABLE _auth_refresh_tokens (
+      token_hash TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (${NOW}),
+      revoked_at TEXT
+    ) STRICT`,
+    'CREATE INDEX _auth_refresh_tokens_session_idx ON _auth_refresh_tokens (session_id)',
+  ] },
 ]
 
 export function migrate(sql: Sql): string[] {

@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { createClient } from '@supabase/supabase-js'
 
 const root = resolve(import.meta.dirname, '..')
 const port = 8000 + Math.floor(Math.random() * 900)
@@ -107,6 +108,29 @@ try {
   check('sign-in sessions are recorded once, a signed-out one stays out, and only the server reads them',
     JSON.stringify(recorded) === JSON.stringify([S1]) && JSON.stringify(after) === JSON.stringify([S2]) && (hidden.status === 401 || hidden.status === 403),
     `${JSON.stringify(recorded)} ${JSON.stringify(after)} ${hidden.status}`)
+
+  // Sign-in sessions with supabase-js itself, as the pages use it: the server makes a one-time
+  // sign-in token (clerk-auth does, after checking Clerk), the page turns it into a session,
+  // reads as that person, renews the session, and signs out.
+  const server = createClient(base, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } })
+  await server.auth.admin.createUser({ email: 'page@example.com', email_confirm: true, user_metadata: { full_name: 'Page' }, app_metadata: { clerk_user_id: 'user_page' } })
+  const link = await server.auth.admin.generateLink({ type: 'magiclink', email: 'page@example.com' })
+  const page = createClient(base, 'sb_publishable_e2e', { auth: { persistSession: false, autoRefreshToken: false } })
+  const opened = await page.auth.verifyOtp({ type: 'magiclink', token_hash: link.data?.properties?.hashed_token })
+  const me = await page.auth.getUser()
+  const asPerson = await page.rpc('find_auth_user_id', { p_email: 'page@example.com' })
+  const reused = await createClient(base, 'sb_publishable_e2e', { auth: { persistSession: false } }).auth.verifyOtp({ type: 'magiclink', token_hash: link.data?.properties?.hashed_token })
+  check('a sign-in token opens a session once; the person is known by it (supabase-js)',
+    !link.error && Boolean(opened.data?.session?.access_token) && me.data?.user?.email === 'page@example.com' && asPerson.error?.code === '42501' && reused.error?.code === 'otp_expired',
+    JSON.stringify({ link: link.error, opened: opened.error, me: me.error, asPerson: asPerson.error, reused: reused.error }))
+  const renewed = await page.auth.refreshSession()
+  const sessionId = JSON.parse(Buffer.from(renewed.data?.session?.access_token.split('.')[1] ?? 'e30', 'base64url').toString()).session_id
+  const sessionRow = await call('GET', `/rest/v1/sessions?select=id&id=eq.${sessionId}`, { key: SERVICE })
+  await page.auth.signOut()
+  const afterOut = await page.auth.refreshSession({ refresh_token: renewed.data?.session?.refresh_token ?? '' })
+  check('the session renews, is recorded for staff session limits, and ends on sign-out',
+    !renewed.error && sessionRow.body?.length === 1 && Boolean(afterOut.error),
+    JSON.stringify({ renewed: renewed.error, sessionRow: sessionRow.body, afterOut: afterOut.error }))
 
   const product = await call('POST', '/rest/v1/rpc/admin_save_product', { key: SERVICE, merchant: M1, body: { p_payload: {
     name: 'E2E Shirt', price: 500, status: 'ACTIVE', variants: [{ sku: 'E2E-SHIRT', title: 'Default', initial_stock: 10 }] } } })
