@@ -43,6 +43,8 @@ describe('store addresses', () => {
       await asUser(db, c.id, c.email, null)
       await expectError(db, `select public.merchant_self_onboard($1)`, [signUp({ store_slug: 'nadia-crafts-bd' })], /store address: This store name is taken/)
       await expectError(db, `select public.merchant_self_onboard($1)`, [signUp({ store_slug: 'admin' })], /reserved/)
+      // stores.<platform domain> is where merchants' own domains point.
+      await expectError(db, `select public.merchant_self_onboard($1)`, [signUp({ store_slug: 'stores' })], /reserved/)
     }))
 
   it('checks and suggests store names for anyone, without showing other data', () =>

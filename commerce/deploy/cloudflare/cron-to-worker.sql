@@ -2,24 +2,21 @@
 --
 -- Run this only on Workers Paid, after the Worker is live on your domain and
 -- SUPABASE_FUNCTIONS is "" there (on Workers Free the long jobs must stay on
--- Supabase: leave the jobs as they are). Paste into Supabase → SQL Editor,
--- change the two values below, run. Undo: cron-to-supabase.sql.
+-- Supabase: leave the jobs as they are). Paste into Supabase → SQL Editor and
+-- run (the address is set to https://fullfilio.com). Undo: cron-to-supabase.sql.
 --
 -- Nothing else changes: the jobs keep their schedule, their "only when there
 -- is work" conditions and their secret. Each call may now take up to two
 -- minutes (Workers stop work when the caller hangs up, so pg_net must wait).
 do $$
 declare
-  v_site text := 'https://YOUR-DOMAIN';                                  -- the Worker's address, no trailing slash
+  v_site text := 'https://fullfilio.com';                                -- the Worker's address, no trailing slash
   v_from text := 'https://tcjdgiohmhjqppzwoztj.supabase.co/functions/v1/'; -- where the jobs call today
   v_to text;
   r record;
   v_cmd text;
   v_moved int := 0;
 begin
-  if v_site like '%YOUR-DOMAIN%' then
-    raise exception 'Set v_site to the Worker address first';
-  end if;
   v_to := rtrim(v_site, '/') || '/functions/v1/';
   for r in select jobid, jobname, command from cron.job where command like '%' || v_from || '%' loop
     v_cmd := replace(r.command, v_from, v_to);

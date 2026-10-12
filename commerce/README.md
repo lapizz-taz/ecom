@@ -306,7 +306,7 @@ Seeded logins (password `Password123!` for all):
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email notifications |
 | `FUNCTIONS_URL` | Public address of the backend functions when they are reached through the site (Cloudflare Worker: `https://<site>/functions/v1`). Webhook, payment-return and OAuth addresses use it; default `<SUPABASE_URL>/functions/v1` |
-| `CF_SAAS_API_TOKEN`, `CF_ZONE_ID`, `CUSTOM_DOMAIN_TARGET` | Store domains through Cloudflare for SaaS (see docs/CLOUDFLARE.md, step 10). Without them `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID`) attach domains to Vercel; with neither, domains are saved for manual setup |
+| `CF_SAAS_API_TOKEN`, `CF_ZONE_ID`, `CUSTOM_DOMAIN_TARGET` | Store domains through Cloudflare for SaaS (see docs/CLOUDFLARE.md, step 11). Without them `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID`) attach domains to Vercel; with neither, domains are saved for manual setup |
 | `PLATFORM_URL` | The app's address (e.g. `https://commerce-sage-eight-89.vercel.app`): links in staff invitations, where merchants return after paying the platform, and the storefront fallback when no store domain or `STOREFRONT_URL` is set |
 | `MANAGEMENT_API_TOKEN`, `PROJECT_REF` (optional) | A Supabase personal access token (and the project ref, when it is not the one in the URL) so **Super Admin → Data Management** can show backup status. Without it the panel says it cannot see backups. Edge function secrets cannot start with `SUPABASE_`, hence the names |
 

@@ -28,6 +28,13 @@
 
   "vars": {
     "SUPABASE_URL": "https://tcjdgiohmhjqppzwoztj.supabase.co",
+    // The platform's own address: links in e-mails, payment and webhook addresses, Clerk.
+    "PLATFORM_URL": "https://fullfilio.com",
+    "FUNCTIONS_URL": "https://fullfilio.com/functions/v1",
+    "CLERK_PROXY_URL": "https://fullfilio.com/__clerk",
+    "CLERK_AUTHORIZED_PARTIES": "https://fullfilio.com,https://www.fullfilio.com",
+    // Merchants' own domains point here with a CNAME (Cloudflare for SaaS fallback origin).
+    "CUSTOM_DOMAIN_TARGET": "stores.fullfilio.com",
     // Long-running functions stay on Supabase Edge Functions while the Worker is on
     // Workers Free (10 ms CPU, 50 outgoing requests per call). On Workers Paid set "".
     "SUPABASE_FUNCTIONS": "channels,courier,meta-ads,ad-platforms,notifications-dispatch"
@@ -39,11 +46,10 @@
   // Product images, theme images and courier statements (Supabase Storage before).
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "fullfilio-files" }],
 
-  // After the domain is on Cloudflare (docs/CLOUDFLARE.md, step 6), add for example:
-  // "routes": [
-  //   { "pattern": "example.com", "custom_domain": true },
-  //   { "pattern": "www.example.com", "custom_domain": true }
-  // ],
+  // Every hostname in the fullfilio.com zone runs this Worker: fullfilio.com, www, store
+  // subdomains (<name>.fullfilio.com) and merchants' own domains (Cloudflare for SaaS).
+  // Each needs a proxied DNS record (docs/CLOUDFLARE.md, step 2).
+  "routes": [{ "pattern": "*/*", "zone_name": "fullfilio.com" }],
 
   "env": {
     // `npx wrangler deploy --env staging`: its own Worker, cache and files.

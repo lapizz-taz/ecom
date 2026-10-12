@@ -29,7 +29,7 @@ Why no Cron Triggers or Queues: the database already schedules every job
 public.channel_jobs_due()` and similar). A Cloudflare Cron Trigger would wake
 the Worker every minute to ask the same question (~1,440 extra calls a day),
 and the job queues are already durable tables with retries and locking. The
-jobs point at Supabase now and can point at the Worker later (step 11).
+jobs point at Supabase now and can point at the Worker later (step 12).
 
 ## How the code supports both
 
@@ -64,13 +64,13 @@ jobs point at Supabase now and can point at the Worker later (step 11).
 | R2 | Free tier | $0 | 10 GB stored, 1M uploads and 10M reads a month, no egress fees; then $0.015/GB-month |
 | Workers KV | Free | $0 | 100,000 reads and 1,000 writes a day (we write a few a day) |
 | Cloudflare for SaaS | Free | $0 | 100 merchant domains, then $0.10/domain/month |
-| Domain (Cloudflare Registrar) | — | at cost (a `.com` is about $10–11/year; the exact price is shown before you pay) | |
+| Domain fullfilio.com (Cloudflare Registrar) | — | at cost (about $10–11/year for a `.com`) | renew yearly (turn on auto-renew) |
 | Supabase | Free | $0 | 500 MB database, 500k Edge Function calls/month; **free projects pause after a week without activity** |
 | | Pro | $25/month | daily backups, no pausing — recommended before taking real orders |
 | Clerk | Free | $0 | 50,000 monthly retained users |
 | | Pro | $25/month | only if you need its paid features |
 
-Starting cost: **about $11 for the domain** and $0/month. A safe production
+Starting cost: the domain (already bought) and $0/month. A safe production
 setup: Workers Paid $5 + Supabase Pro $25 = **$30/month** plus the domain.
 
 Paid plans are needed for: running the long jobs on Cloudflare (Workers Paid),
@@ -78,10 +78,12 @@ more than 100 merchant domains, Supabase backups/no pausing (Supabase Pro).
 
 ---
 
-## Step by step
+## Step by step (fullfilio.com)
 
 You do the clicks that need your accounts and payment details; nothing here
-needs you to share a password or API key in chat.
+needs you to share a password or API key in chat. Already done: fullfilio.com
+is registered and its DNS is on Cloudflare; the Worker configuration in this
+repo is set for fullfilio.com.
 
 ### 0. Back up first
 
@@ -96,50 +98,56 @@ The switch doesn't move or change data, but take a copy anyway:
   ```
   Keep both files somewhere private (they contain customer data).
 
-### 1. Buy the domain (Cloudflare Registrar)
+### 1. Turn on R2 (file storage)
 
-1. Sign in at <https://dash.cloudflare.com>.
-2. Left menu: **Domain Registration → Register Domains**.
-3. Type the name you want (e.g. `fullfilio.com`), press **Search**.
-4. Pick an available one, **Purchase**. Fill in your contact details, add a
-   card, confirm. Turn **Auto-renew** on.
-5. The domain appears under **Websites** with DNS already on Cloudflare.
+1. <https://dash.cloudflare.com> → left menu **R2 Object Storage** → **Get
+   started / Purchase R2 plan** (the free tier is $0; Cloudflare asks for a card).
+2. Tell Claude R2 is on — it creates the buckets `fullfilio-files` and
+   `fullfilio-files-staging` for you. (Or: **Create bucket** → `fullfilio-files`,
+   and again `fullfilio-files-staging`.)
 
-(Cloudflare sells at cost and doesn't sell every ending — `.com.bd` isn't
-available there; `.com`, `.net`, `.shop`, `.store` are.)
+The first deploy (step 3) stops with "bucket not found" until the bucket exists.
 
-### 2. Turn on R2 (file storage)
+### 2. DNS records for fullfilio.com
 
-1. Left menu: **R2 Object Storage** → **Get started / Purchase R2 plan** (the
-   free tier is $0; Cloudflare asks for a card).
-2. **Create bucket** → name `fullfilio-files` → Create.
-3. **Create bucket** again → `fullfilio-files-staging` → Create.
+Cloudflare → **fullfilio.com → DNS → Records → Add record**, three times
+(Proxy status **Proxied**, the orange cloud, on all three):
 
-(Or tell Claude once R2 is on: it can create both buckets for you.)
+| Type | Name | IPv6 address | What it is for |
+| --- | --- | --- | --- |
+| AAAA | `www` | `100::` | www.fullfilio.com |
+| AAAA | `*` | `100::` | store addresses like `yourshop.fullfilio.com` |
+| AAAA | `stores` | `100::` | where merchants point their own domains |
+
+`100::` is Cloudflare's "no server, the Worker answers" address. Leave the
+existing `fullfilio.com` records and any `MX`/`TXT` (e-mail) records as they
+are: once the Worker is deployed it answers for fullfilio.com in front of them.
+
+Then send www to the main address: **Rules → Redirect Rules → Create rule →
+template "Redirect from WWW to root"** → Deploy.
 
 ### 3. Connect GitHub (Cloudflare builds and deploys on every push)
 
-1. Left menu: **Workers & Pages → Create → Workers → Import a repository**.
+1. **Workers & Pages → Create → Workers → Import a repository**.
 2. **Connect GitHub**, allow access to `lapizz-taz/ecom`, select it.
 3. Fill in:
    - **Project name:** `fullfilio` (must match `name` in `wrangler.jsonc`)
-   - **Production branch:** the branch you deploy from (`main` once this work is merged)
+   - **Production branch:** `claude/optimistic-cray-c2d0fc` (the branch the live site is built from)
    - **Build command:** `npm run build:cloudflare`
    - **Deploy command:** `npx wrangler deploy`
    - **Advanced → Root directory:** `commerce`
-   - **Build variables** (copy the values from Vercel → Project → Settings →
-     Environment Variables):
-     `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
-     `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_SUPER_ADMIN_PATH`
-     (and `VITE_SENTRY_DSN` if you use Sentry).
-4. **Deploy**. The first build takes 2–3 minutes. The KV namespace already
-   exists (`fullfilio-cache`); the R2 bucket must exist (step 2) or the deploy
-   stops with "bucket not found".
+   - **Build variables** — copy each value from Vercel → project `commerce` →
+     Settings → Environment Variables: `VITE_SUPABASE_URL`,
+     `VITE_SUPABASE_ANON_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_SUPER_ADMIN_PATH`.
+4. **Deploy** (2–3 minutes). This deploy also puts the Worker on
+   `fullfilio.com/*` (and every other hostname of the zone): from now on
+   https://fullfilio.com shows Fullfilio.
 
-### 4. Variables and secrets of the Worker
+### 4. Secrets of the Worker
 
-**Workers & Pages → fullfilio → Settings → Variables and Secrets → Add.**
-Type **Secret** for everything except the last block.
+**Workers & Pages → fullfilio → Settings → Variables and Secrets → Add →
+type Secret**. Then **Deployments → Retry deployment** (or push any commit) so
+they apply.
 
 | Name | Value |
 | --- | --- |
@@ -148,113 +156,97 @@ Type **Secret** for everything except the last block.
 | `CRON_SECRET` | the same value as the `CRON_SECRET` Edge Function secret in Supabase (Edge Functions → Secrets) |
 | `CLERK_SECRET_KEY` | Clerk → API Keys → Secret key |
 | `CLERK_WEBHOOK_SECRET` | Clerk → Webhooks → your endpoint → Signing secret (if you use it) |
-| `FILES_SIGNING_KEY` | any long random text (e.g. from a password generator, 40+ characters) |
+| `FILES_SIGNING_KEY` | any long random text (a password generator, 40+ characters) |
 | every other secret listed in Supabase → Edge Functions → Secrets | the same value (`RESEND_API_KEY`, `META_APP_SECRET`, courier/payment fallbacks, …) — except names starting with `SUPABASE_` |
 
-Plain variables (type **Text**), after step 6:
+The public settings (`PLATFORM_URL=https://fullfilio.com`, `FUNCTIONS_URL`,
+`CLERK_PROXY_URL`, `CLERK_AUTHORIZED_PARTIES`, `CUSTOM_DOMAIN_TARGET`,
+`SUPABASE_URL`, `SUPABASE_FUNCTIONS`) are already in `wrangler.jsonc`.
 
-| Name | Value |
-| --- | --- |
-| `PLATFORM_URL` | `https://yourdomain.com` |
-| `FUNCTIONS_URL` | `https://yourdomain.com/functions/v1` (new webhook, payment and OAuth addresses use it) |
-| `CLERK_PROXY_URL` | `https://yourdomain.com/__clerk` |
-| `CLERK_AUTHORIZED_PARTIES` | `https://yourdomain.com` |
+### 5. Check
 
-`SUPABASE_URL` and `SUPABASE_FUNCTIONS` are already in `wrangler.jsonc`.
-Variables set in the dashboard survive deploys (`keep_vars`).
+- https://fullfilio.com opens the Fullfilio website; https://fullfilio.com/admin/login
+  shows the sign-in page; https://www.fullfilio.com goes to https://fullfilio.com.
+- https://fullfilio.com/functions/v1/checkout shows a short JSON error (not a page): the functions run.
 
-### 5. First check on the workers.dev address
+Staff sign-in does **not** work yet: Clerk still expects the Vercel address (step 6).
 
-Open `https://fullfilio.<your-account>.workers.dev`:
+### 6. Move Clerk to fullfilio.com (the switch-over moment)
 
-- the marketing site, storefront pages and deep links (e.g. `/admin/login`) open;
-- `https://fullfilio.<…>.workers.dev/functions/v1/checkout` answers with a JSON error (not a page) — the functions run.
-
-Staff sign-in does **not** work here yet: Clerk's production instance only
-accepts its own domain (step 7).
-
-### 6. Put the site on your domain
-
-1. **Workers & Pages → fullfilio → Settings → Domains & Routes → Add → Custom
-   domain** → `yourdomain.com` → Add. Again for `www.yourdomain.com`.
-2. Wait until both show **Active** (a few minutes; HTTPS is automatic).
-3. Add the plain variables from step 4 (`PLATFORM_URL`, `FUNCTIONS_URL`, …).
-4. Supabase → **Edge Functions → Secrets → Add**: `FUNCTIONS_URL` =
-   `https://yourdomain.com/functions/v1` too. The functions that still run on
-   Supabase (store sync, couriers, ads, notifications on Workers Free) then
-   hand out the same new addresses (webhooks, OAuth returns), and the Worker
-   passes those calls on to them.
-
-### 7. Move Clerk to the new domain (the switch-over moment)
-
-From here staff sign in on the new domain; the Vercel address stops accepting
+From here staff sign in on fullfilio.com; the Vercel address stops accepting
 sign-ins. Do it at a quiet hour.
 
 1. Clerk dashboard → production instance → **Domains** → change the domain to
-   `yourdomain.com` and keep the **proxy** setup with proxy URL
-   `https://yourdomain.com/__clerk` (no DNS records needed). Clerk's screens
-   change from time to time; their docs call this "change your production domain".
+   `fullfilio.com`, keeping the **proxy** setup with proxy URL
+   `https://fullfilio.com/__clerk` (no DNS records needed). (Clerk's screens
+   change from time to time; their docs call this "change your production domain".)
 2. Clerk → **API Keys**: copy the new **publishable key** into the Cloudflare
-   build variable `VITE_CLERK_PUBLISHABLE_KEY` (Settings → Build), and the
-   secret key into `CLERK_SECRET_KEY` if it changed.
-3. Clerk → **Webhooks**: set the endpoint to
-   `https://yourdomain.com/functions/v1/clerk-webhook`.
-4. Cloudflare → fullfilio → **Deployments → Retry/Redeploy** the latest build
-   (the publishable key is built into the site).
-5. Sign in at `https://yourdomain.com/admin/login` with your Super Admin account.
+   build variable `VITE_CLERK_PUBLISHABLE_KEY` (fullfilio → Settings → Build),
+   and the secret key into `CLERK_SECRET_KEY` if it changed.
+3. Clerk → **Webhooks**: endpoint `https://fullfilio.com/functions/v1/clerk-webhook`.
+4. Cloudflare → fullfilio → **Deployments → Retry deployment** (the publishable key is built into the site).
+5. Sign in at https://fullfilio.com/admin/login with your Super Admin account.
 
-### 8. Supabase sign-in links
+### 7. Supabase sign-in links
 
 Supabase → **Authentication → URL Configuration**:
-- **Site URL:** `https://yourdomain.com`
-- **Redirect URLs:** add `https://yourdomain.com/**` (keep the old ones until Vercel is retired).
+- **Site URL:** `https://fullfilio.com`
+- **Redirect URLs:** add `https://fullfilio.com/**` and `https://*.fullfilio.com/**`
+  (keep the Vercel ones until step 13).
 
-### 9. Tell outside services the new address
+### 8. Store addresses on fullfilio.com
+
+Tell Claude, or: **Super Admin → Global Settings → Store domains → Root
+domain** = `fullfilio.com`. Stores then open at `<store name>.fullfilio.com`.
+
+### 9. One public address for every webhook and return link
+
+Tell Claude: it adds `FUNCTIONS_URL=https://fullfilio.com/functions/v1` to the
+Supabase Edge Function secrets and redeploys the Supabase functions from this
+version, so the functions that still run there (store sync, couriers, ads,
+notifications on Workers Free) hand out fullfilio.com addresses too.
+
+### 10. Tell outside services the new address
 
 Old `…supabase.co/functions/v1/…` addresses keep working (those functions stay
 deployed), so this can be done calmly over a few days:
 
 - **Shopify app** (Partners / Dev Dashboard → your app → Configuration): App
-  URL `https://yourdomain.com/admin/channels`, Allowed redirection URL
-  `https://yourdomain.com/oauth/shopify/callback`. Then in Fullfilio **Sales
-  channels → your Shopify store → Fix webhooks** (re-registers them on the new address).
-- **WooCommerce plugin:** Sales channels → WooCommerce → **Connect plugin**
-  again (the plugin learns the new address).
+  URL `https://fullfilio.com/admin/channels`, Allowed redirection URL
+  `https://fullfilio.com/oauth/shopify/callback`. Then in Fullfilio **Sales
+  channels → your Shopify store → Fix webhooks**.
+- **WooCommerce plugin:** Sales channels → WooCommerce → **Connect plugin** again.
 - **Couriers:** Couriers → Connections → Webhook shows the new URL — paste it
   into the Pathao / Steadfast panel.
-- **TikTok / Google Ads:** add the new redirect URI shown on the Ads →
-  connection pages to the TikTok app / Google OAuth client.
-- **SSLCommerz IPN** (if used): `https://yourdomain.com/functions/v1/payment-webhook?provider=sslcommerz`.
+- **TikTok / Google Ads:** add the redirect URI shown on the Ads → connection
+  pages (`https://fullfilio.com/functions/v1/ad-platforms/callback/…`).
+- **SSLCommerz IPN** (if used): `https://fullfilio.com/functions/v1/payment-webhook?provider=sslcommerz`.
 - bKash / PayStation need nothing: each payment carries its own return address.
 
-### 10. Merchants' own store domains (Cloudflare for SaaS)
+### 11. Merchants' own store domains (Cloudflare for SaaS)
 
-1. Cloudflare → `yourdomain.com` → **DNS → Records → Add**: type `AAAA`, name
-   `stores`, IPv6 `100::`, Proxy **on** (orange cloud).
-2. **SSL/TLS → Custom Hostnames → Enable Cloudflare for SaaS** (free for 100).
-   **Fallback Origin** → `stores.yourdomain.com` → Add (wait for *Active*).
-3. **Workers Routes → Add route**: `*/*` → Worker `fullfilio`.
-4. **My Profile → API Tokens → Create Token → Custom token**: permission
-   *Zone → SSL and Certificates → Edit*, zone `yourdomain.com`. Copy the token.
-5. Worker secrets: `CF_SAAS_API_TOKEN` (the token), `CF_ZONE_ID` (Overview page
-   of the domain, right column); plain variable `CUSTOM_DOMAIN_TARGET` =
-   `stores.yourdomain.com`.
+1. Cloudflare → fullfilio.com → **SSL/TLS → Custom Hostnames → Enable** (free
+   for 100). **Fallback Origin** → `stores.fullfilio.com` → Add (wait for *Active*).
+2. **My Profile → API Tokens → Create Token → Custom token**: permission
+   *Zone → SSL and Certificates → Edit*, zone `fullfilio.com`. Copy the token.
+3. Worker secrets: `CF_SAAS_API_TOKEN` (the token) and `CF_ZONE_ID` (fullfilio.com
+   → Overview, right column "Zone ID").
 
-Merchants then add their domain in **Settings → Domain**: a subdomain
+The Worker route `*/*` (in `wrangler.jsonc`) already sends merchant domains to
+the Worker. Merchants add their domain in **Settings → Domain**: a subdomain
 (`shop.theirbrand.com` / `www.theirbrand.com`) gets a CNAME to
-`stores.yourdomain.com`. A bare root domain (`theirbrand.com`) works only
-where their DNS provider allows a CNAME at the root (ALIAS / ANAME / CNAME
+`stores.fullfilio.com`. A bare root domain (`theirbrand.com`) works only where
+their DNS provider allows a CNAME at the root (ALIAS / ANAME / CNAME
 flattening — e.g. Cloudflare DNS); otherwise use `www`.
 
-### 11. (Workers Paid only) Run everything on Cloudflare
+### 12. (Workers Paid only) Run everything on Cloudflare
 
 1. Cloudflare → **Workers & Pages → Plans → Workers Paid** ($5/month).
-2. Worker variable `SUPABASE_FUNCTIONS` → set to an empty value (or edit
-   `wrangler.jsonc` to `""` and push).
-3. Supabase → **SQL Editor** → paste `deploy/cloudflare/cron-to-worker.sql`,
-   set `v_site` to `https://yourdomain.com`, Run. The scheduled jobs now call the Worker.
+2. In `wrangler.jsonc` set `"SUPABASE_FUNCTIONS": ""` and push (or ask Claude).
+3. Supabase → **SQL Editor** → paste `deploy/cloudflare/cron-to-worker.sql`
+   (already set to https://fullfilio.com) → Run. The scheduled jobs now call the Worker.
 
-### 12. Retire Vercel (after a week without problems)
+### 13. Retire Vercel (after a week without problems)
 
 Vercel → project `commerce` → **Settings → Advanced → Pause** (or delete).
 Then remove `vercel.json` from the repo. Supabase Edge Functions can stay
@@ -267,15 +259,17 @@ deployed as a free fallback.
 Nothing in the database changes when you switch, so going back is only
 pointing things at Vercel/Supabase again:
 
-1. Clerk → Domains → set the production domain back to the Vercel address
-   (proxy URL `https://commerce-sage-eight-89.vercel.app/__clerk`) and put the
-   matching publishable key back in Vercel; redeploy Vercel.
-2. Supabase → Authentication → URL Configuration → Site URL back to the Vercel address.
-   Supabase → Edge Functions → Secrets → delete `FUNCTIONS_URL`.
-3. If you ran step 11: run `deploy/cloudflare/cron-to-supabase.sql` (same `v_site`).
+1. Clerk → Domains → set the production domain back to
+   `commerce-sage-eight-89.vercel.app` (proxy URL
+   `https://commerce-sage-eight-89.vercel.app/__clerk`) and put the matching
+   publishable key back in Vercel; redeploy Vercel.
+2. Supabase → Authentication → URL Configuration → Site URL back to the Vercel
+   address. Supabase → Edge Functions → Secrets → delete `FUNCTIONS_URL`.
+3. If you ran step 12: run `deploy/cloudflare/cron-to-supabase.sql`.
 4. Shopify / WooCommerce / couriers: **Fix webhooks** / **Connect plugin** from the Vercel site.
-5. Files uploaded to R2 while on Cloudflare stay reachable on their R2
-   addresses as long as the Worker stays deployed; don't delete the bucket.
+5. fullfilio.com itself: Workers & Pages → fullfilio → Settings → Domains &
+   Routes → remove the `*/*` route (fullfilio.com then shows what its old DNS
+   records point to). Files uploaded to R2 stay in the bucket; don't delete it.
 
 ## Local development
 
