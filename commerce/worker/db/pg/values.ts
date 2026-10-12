@@ -420,6 +420,7 @@ function toNumber(v: unknown, t: string): number {
   const s = String(v).trim()
   if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s)) {
     if (/^nan$/i.test(s)) return NaN
+    if (t !== 'int' && /^[+-]?infinity$/i.test(s)) return s.startsWith('-') ? -Infinity : Infinity
     return invalid(t === 'int' ? 'integer' : 'numeric', v)
   }
   return Number(s)

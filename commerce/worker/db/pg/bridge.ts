@@ -3,7 +3,7 @@
 import type { SqlValue } from '../codec.ts'
 import type { ColumnMeta } from '../meta.ts'
 import { elemType, isArrayType } from './types.ts'
-import { cleanNumber, Interval, isTableType, JNULL, parseInterval, parseJson, PgRow, plainValue, toText } from './values.ts'
+import { cleanNumber, Interval, isTableType, JNULL, parseArrayText, parseInterval, parseJson, PgRow, plainValue, toText } from './values.ts'
 
 /** The engine type of a stored column. */
 export function columnType(c: ColumnMeta): string {
@@ -38,8 +38,10 @@ export function decodeSql(raw: unknown, t: string): unknown {
   if (typeof raw === 'bigint') raw = Number(raw)
   if (isArrayType(t)) {
     if (typeof raw !== 'string') return [raw]
-    const list = JSON.parse(raw) as unknown[]
     const et = elemType(t)
+    if (raw.startsWith('{')) return parseArrayText(raw).map((x) => (x === null ? null : decodeElem(x, et)))
+    const parsed = JSON.parse(raw) as unknown
+    const list = Array.isArray(parsed) ? parsed : [parsed]
     return list.map((x) => (x === null ? null : decodeElem(x, et)))
   }
   switch (t) {

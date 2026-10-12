@@ -122,6 +122,20 @@ export class Context {
         id.ip = h['x-forwarded-for'] ?? null
         break
       }
+      case 'app.store_reset':
+      case 'app.erasure_request': {
+        // The permanent-record triggers (SQLite) let a running store reset or an approved
+        // erasure through only while its switch is on for that store.
+        const flag = name === 'app.store_reset' ? 'store_reset' : 'erasure'
+        this.flags.set(name.slice(4), value)
+        this.sql.run('DELETE FROM _flags WHERE name = ?', [flag])
+        if (value) {
+          this.sql.run(name === 'app.store_reset'
+            ? "INSERT OR IGNORE INTO _flags (name, value) SELECT 'store_reset', merchant_id FROM store_resets WHERE id = ? AND status = 'RUNNING'"
+            : "INSERT OR IGNORE INTO _flags (name, value) SELECT 'erasure', merchant_id FROM merchant_deletion_requests WHERE id = ? AND status = 'APPROVED'", [value])
+        }
+        break
+      }
       default:
         if (name.startsWith('app.')) this.flags.set(name.slice(4), value)
     }

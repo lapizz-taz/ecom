@@ -141,6 +141,7 @@ class RowVars implements Vars {
   constructor(private readonly rows: Map<string, PgRow>, private readonly outer: Vars, private readonly bare: PgRow | null) {}
 
   lookup(parts: string[]): Typed | null {
+    if (parts.length === 3 && parts[0] === 'public') parts = parts.slice(1)
     if (parts.length === 1 && this.bare && Object.hasOwn(this.bare.values, parts[0])) {
       return { t: this.bare.types[parts[0]], v: this.bare.values[parts[0]] }
     }
@@ -229,6 +230,7 @@ function execInsert(engine: Engine, st: Insert, vars: Vars, params: Typed[]): Re
       if (v !== undefined) values[c] = forColumn(v, colTypes[c])
     })
     let key: Key | null = null
+    let updatedKey: Key | null = null
     if (st.conflict) {
       const existing = findConflict(engine, st, t, values)
       if (existing) {
@@ -245,6 +247,7 @@ function execInsert(engine: Engine, st: Insert, vars: Vars, params: Typed[]): Re
         const done = Object.keys(set).length ? update(w, st.table, set, { keys: [k] }) : [k]
         if (!done.length) throw new DbError('42501', `new row violates row-level security policy (USING expression) for table "${st.table}"`)
         key = k
+        updatedKey = k
       }
     }
     if (!key) {
@@ -253,7 +256,14 @@ function execInsert(engine: Engine, st: Insert, vars: Vars, params: Typed[]): Re
       key = keys[0]
     }
     count++
-    if (st.returning) written.push(...readRows(engine, st.table, [key]))
+    if (st.returning) {
+      // xmax = 0 tells an inserted row from an updated one (… RETURNING (xmax = 0) AS inserted)
+      for (const r of readRows(engine, st.table, [key])) {
+        r.values.xmax = updatedKey === key ? 1 : 0
+        r.types.xmax = 'int'
+        written.push(r)
+      }
+    }
   }
   engine.ctx.reset()
   if (!st.returning) return { cols: [], rows: [], count, command: 'INSERT' }

@@ -3,6 +3,7 @@
 // window and set-returning functions only have the SQLite form.
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import type { Expr } from './ast.ts'
+import { schema } from '../meta.ts'
 import type { Engine, Typed } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
 import {
@@ -46,6 +47,13 @@ export interface Builtin {
 }
 
 const fixed = (t: string) => () => t
+
+let grantsOf: (name: string) => string[] | null = () => null
+/** Set by the engine: who may execute a function (anon / authenticated). */
+export function setFunctionGrants(fn: (name: string) => string[] | null): void {
+  grantsOf = fn
+}
+const functionGrants = (name: string) => grantsOf(name)
 const same = (types: string[]) => (types.find((t) => t !== 'unknown' && t !== 'null') ?? 'text')
 const str = (v: unknown, t = 'text') => (typeof v === 'string' ? v : toText(v, t))
 const q = (s: string) => `'${s.replaceAll("'", "''")}'`
@@ -310,7 +318,9 @@ function age(a: unknown, b: unknown, ta: string, tb: string): Interval {
 
 function jsonPathKeys(path: unknown): string[] {
   if (Array.isArray(path)) return path.map((p) => String(p))
-  return String(path).replace(/^\{|\}$/g, '').split(',').map((k) => k.trim().replace(/^"|"$/g, ''))
+  const inner = String(path).trim().replace(/^\{|\}$/g, '')
+  if (inner.trim() === '') return []
+  return inner.split(',').map((k) => k.trim().replace(/^"|"$/g, ''))
 }
 
 export function jsonGet(j: unknown, key: unknown): unknown {
@@ -990,6 +1000,33 @@ export const builtins: Record<string, Builtin> = {
   inet_client_addr: { ret: fixed('text'), strict: false, js: (_a, _t, c) => c.engine.ctx.identity.ip ?? null },
   version: { ret: fixed('text'), strict: false, js: () => 'PostgreSQL 15 compatible (Cloudflare SQLite)' },
   pg_typeof: { ret: fixed('text'), strict: false, js: (_a, t) => t[0] },
+  enum_range: { ret: (t) => `${t[0]}[]`, strict: false, js: (_a, t) => [...(schema.enums[t[0]] ?? [])] },
+  to_regclass: { ret: fixed('text'), js: (a) => {
+    const name = String(a[0]).replace(/^public\./, '').replace(/^"|"$/g, '')
+    return Object.hasOwn(schema.tables, name) || Object.hasOwn(schema.views, name) ? name : null
+  } },
+  current_database: { ret: fixed('text'), strict: false, js: () => 'postgres' },
+  has_function_privilege: {
+    ret: fixed('bool'),
+    js: (a, _t, c) => {
+      const [role, fnText] = a.length === 3 ? [String(a[0]), String(a[1])] : [c.engine.roleName(), String(a[0])]
+      const name = fnText.replace(/^public\./, '').replace(/\(.*$/, '').trim()
+      const defs = functionGrants(name)
+      if (!defs) return err('42883', `function "${fnText}" does not exist`)
+      if (role === 'postgres' || role === 'service_role' || role === 'app_owner') return true
+      return defs.includes(role)
+    },
+  },
+  has_table_privilege: {
+    ret: fixed('bool'),
+    js: (a) => {
+      const [role, tableText, priv] = a.map((x) => String(x))
+      const name = tableText.replace(/^public\./, '')
+      const g = (schema.tables[name] ?? schema.views[name])?.grants as Record<string, string[]> | undefined
+      if (role === 'postgres' || role === 'service_role') return true
+      return Boolean(g?.[role]?.some((p) => priv.toLowerCase().includes(p)))
+    },
+  },
 }
 
 function uuidSql(h: SqlHelp): string {

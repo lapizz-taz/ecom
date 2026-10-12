@@ -12,6 +12,7 @@ import type { Sql } from '../sql.ts'
 import { setTriggerFallback, type TriggerImpl, type Values } from '../writer.ts'
 import type { Expr, Select, Statement } from './ast.ts'
 import { columnType, setRowTypes } from './bridge.ts'
+import { setFunctionGrants } from './builtins.ts'
 import { Evaluator } from './evaluate.ts'
 import { lex } from './lex.ts'
 import { Parser } from './parse.ts'
@@ -59,6 +60,11 @@ function normArg(t: string): string {
   const base = normType(arr ? t.slice(0, -2) : t)
   return arr ? `${base}[]` : base
 }
+
+setFunctionGrants((name) => {
+  const defs = catalog.get(name)
+  return defs ? [...new Set(defs.flatMap((d) => d.grants))] : null
+})
 
 setRowTypes((t) => {
   const meta = tableMeta(t)

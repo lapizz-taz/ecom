@@ -352,7 +352,8 @@ export class Compiler implements SqlHelp {
       case 'table': return this.tableSource(f, scope)
       case 'subq': {
         if (f.lateral && this.singleRow(f.q)) return this.lateralColumns(f.q, f.alias ?? '_lateral', f.cols, scope, false)
-        const c = this.query(f.q, f.lateral ? scope : scope.parent)
+        // (a plain sub-query cannot use its siblings' columns, but it sees the WITH queries)
+        const c = this.query(f.q, scope)
         const alias = f.alias ?? `_sub${++this.cteCount}`
         const names = c.cols.map((col, i) => f.cols?.[i] ?? col.name)
         // rename through a wrapper when the alias gives column names
@@ -805,7 +806,12 @@ export class Compiler implements SqlHelp {
       case 'field': throw new NotSupported('a field of a composite value from a column')
       case 'index': {
         const x = this.expr(e.e, scope)
-        if (e.slice) throw new NotSupported('array slices on a column')
+        if (e.slice) {
+          const lo = e.idx ? this.expr(e.idx, scope) : { sql: '1', t: 'int', c: { t: 'int', v: 1 } }
+          const hi = e.upper ? this.expr(e.upper, scope) : { sql: 'NULL', t: 'int', c: { t: 'int', v: null } }
+          return this.lookup(scope, [x, lo, hi], x.t, (v) => this.evaluator.eval({ k: 'index', slice: true, e: { k: 'value', v: v[0].v, type: v[0].t },
+            idx: { k: 'value', v: v[1].v ?? 1, type: 'int' }, upper: v[2].v === null ? undefined : { k: 'value', v: v[2].v, type: 'int' } }))
+        }
         const i = this.expr(e.idx!, scope)
         const et = isArrayType(x.t) ? elemType(x.t) : 'jsonb'
         return { sql: `json_extract(${x.sql}, '$[' || ((${i.sql}) - 1) || ']')`, t: et }
@@ -953,8 +959,9 @@ export class Compiler implements SqlHelp {
         return { sql: `(${l.sql} ->> ${r.sql})`, t: 'text' }
       }
       case '#>': case '#>>': {
-        if (!r.c) throw new NotSupported(`${op} with a path from a column`)
-        const keys = Array.isArray(r.c.v) ? (r.c.v as unknown[]).map(String) : String(r.c.v).replace(/^\{|\}$/g, '').split(',').map((k) => k.trim().replace(/^"|"$/g, ''))
+        if (!r.c) return this.lookup(scope, [l, r], op === '#>' ? 'jsonb' : 'text', (v) => this.evaluator.eval({ k: 'bin', op, l: { k: 'value', v: v[0].v, type: v[0].t }, r: { k: 'value', v: v[1].v, type: v[1].t } }))
+        const inner = String(r.c.v).trim().replace(/^\{|\}$/g, '')
+        const keys = Array.isArray(r.c.v) ? (r.c.v as unknown[]).map(String) : inner.trim() === '' ? [] : inner.split(',').map((k) => k.trim().replace(/^"|"$/g, ''))
         const path = `$${keys.map((k) => (/^\d+$/.test(k) ? `[${k}]` : `."${k.replaceAll('"', '\\"')}"`)).join('')}`
         return op === '#>' ? { sql: `(${l.sql} -> ${str(path)})`, t: 'jsonb' } : { sql: `(${l.sql} ->> ${str(path)})`, t: 'text' }
       }
@@ -1184,10 +1191,15 @@ export class Compiler implements SqlHelp {
         return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }))
       }
       try {
-        return { sql: b.sql(args, this), t: b.ret(args.map((x) => x.t), e.args) }
+        const rt = b.ret(args.map((x) => x.t), e.args)
+        // literals take the type of the other arguments (coalesce(tags, '{}'))
+        const conv = ['coalesce', 'nullif', 'greatest', 'least'].includes(name) ? args.map((a) => (a.c && a.t === 'unknown' ? this.coerceTo(a, rt) : a)) : args
+        return { sql: b.sql(conv, this), t: rt }
       } catch (err) {
         if (err instanceof DbError) throw err
-        throw new NotSupported((err as Error).message)
+        // SQLite has no form of it: per distinct argument in JavaScript
+        const rt = b.ret(args.map((x) => x.t), e.args)
+        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }))
       }
     }
     if (builtin && SRF.has(name)) throw new NotSupported(`set-returning ${name}() in a select list`)
@@ -1279,7 +1291,12 @@ export class Compiler implements SqlHelp {
       case 'min': case 'max': sql = `${name}(${args[0].sql})${filter}`; break
       case 'bool_or': sql = `max(${args[0].sql})${filter}`; break
       case 'bool_and': case 'every': sql = `min(${args[0].sql})${filter}`; break
-      case 'string_agg': sql = `group_concat(${distinct}${textSql(args[0])}, ${args[1].sql}${order})${filter}`; break
+      case 'string_agg':
+        // SQLite's DISTINCT aggregates take one argument: collect distinct values, then join them
+        sql = e.distinct
+          ? `(SELECT group_concat(value, ${args[1].sql}) FROM json_each(json_group_array(DISTINCT ${textSql(args[0])}${order})${filter}))`
+          : `group_concat(${textSql(args[0])}, ${args[1].sql}${order})${filter}`
+        break
       case 'array_agg': sql = `nullif(json_group_array(${distinct}${this.json(args[0])}${order})${filter}, '[]')`; break
       case 'jsonb_agg': case 'json_agg': sql = `nullif(json_group_array(${distinct}${this.json({ ...args[0], t: args[0].t === 'unknown' ? 'text' : args[0].t })}${order})${filter}, '[]')`; break
       case 'jsonb_object_agg': case 'json_object_agg': sql = `nullif(json_group_object(${textSql(args[0])}, ${this.json(args[1])}${order})${filter}, '{}')`; break
