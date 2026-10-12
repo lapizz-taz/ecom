@@ -65,7 +65,8 @@ export class Evaluator {
       case 'value':
         return { t: e.type, v: e.v, s: e.s }
       case 'param': {
-        const v = this.vars.lookup([`$${e.n}`]) ?? this.params[e.n - 1]
+        // a statement's own parameters (EXECUTE … USING) come first; else the function's $n
+        const v = this.params.length ? this.params[e.n - 1] : this.vars.lookup([`$${e.n}`])
         if (!v) throw new DbError('42P02', `there is no parameter $${e.n}`)
         return v
       }

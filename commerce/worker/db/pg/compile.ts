@@ -850,7 +850,8 @@ export class Compiler implements SqlHelp {
       case 'param': {
         const frag = this.fragment([`$${e.n}`])
         if (frag) return frag
-        const v = this.vars.lookup([`$${e.n}`]) ?? this.stmtParams[e.n - 1]
+        // a statement's own parameters (EXECUTE … USING) come first; else the function's $n
+        const v = this.stmtParams.length ? this.stmtParams[e.n - 1] : this.vars.lookup([`$${e.n}`])
         if (!v) throw new DbError('42P02', `there is no parameter $${e.n}`)
         return { sql: this.bind(v.v, v.t), t: v.t, c: v, s: v.s }
       }
