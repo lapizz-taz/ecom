@@ -21,8 +21,16 @@ async function newMerchant(db: Db, superId: string): Promise<{ id: string; owner
   return { id: created.id, owner }
 }
 
-const entitlement = (db: Db, merchant: string, code: string) =>
-  value<Entitlement>(db, `select public.merchant_entitlements($1) -> $2`, [merchant, code])
+/** What the backend sees for a merchant's feature. The helper answers only the server side, so
+ *  the probe runs as the owner inside a savepoint and leaves the test's role as it was. */
+async function entitlement(db: Db, merchant: string, code: string): Promise<Entitlement> {
+  await db.query('savepoint entitlement_probe; reset role')
+  try {
+    return await value<Entitlement>(db, `select public.merchant_entitlements($1) -> $2`, [merchant, code])
+  } finally {
+    await db.query('rollback to savepoint entitlement_probe')
+  }
+}
 
 describe('plans: a new merchant', () => {
   it('starts on the default plan as a trial, and sees its own plan, limits and features', () =>
@@ -84,7 +92,7 @@ describe('features: switches change what the backend does', () => {
       const after = await value<Entitlement>(db, `select public.platform_merchant_feature_set($1, 'pbx', true, 'Pilot customer')`, [m.id])
       expect(after.state).toBe('ENABLED')
       await asUser(db, m.owner, 'owner@shop.example', m.id)
-      expect(await value(db, `select public.feature_enabled('pbx')`)).toBe(true)
+      expect(await value(db, `select (public.my_plan() -> 'features' -> 'pbx' ->> 'enabled')::boolean`)).toBe(true)
     }))
 
   it('switches reports off for one merchant but keeps the dashboard working', () =>

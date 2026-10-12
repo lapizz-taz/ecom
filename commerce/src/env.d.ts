@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_RELEASE?: string
   readonly VITE_FUNCTIONS_URL?: string
   readonly VITE_FILE_STORE?: string
+  /** "cloudflare" after the switch-over: the database answers on the site's own address. */
+  readonly VITE_DATABASE_BACKEND?: string
 }
 
 interface ImportMeta {
