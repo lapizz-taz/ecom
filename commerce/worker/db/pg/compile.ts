@@ -469,7 +469,7 @@ export class Compiler implements SqlHelp {
     if (f.schema && f.schema !== 'public') throw new NotSupported(`${f.schema}.${f.name}`)
     const meta = tableMeta(f.name) ?? viewMeta(f.name)
     if (!meta) throw new DbError('42P01', `relation "${f.name}" does not exist`)
-    if (this.engine.role === 'anon' || this.engine.role === 'authenticated') requireGrant(f.name, this.engine.ctx, 'select')
+    if (this.engine.role === 'anon' || this.engine.role === 'authenticated') requireGrant(f.name, this.engine.ctx, 'select', this.engine.role)
     const names = Object.keys(meta.columns)
     this.addSource(scope, alias, names.map((n, i) => ({ name: f.cols?.[i] ?? n, t: columnType(meta.columns[n]), s: meta.columns[n].scale })), f.name)
     if (f.cols) {
@@ -1045,14 +1045,14 @@ export class Compiler implements SqlHelp {
       }
       case '->>': {
         if (l.t !== 'jsonb') l = this.coerceTo(l, 'jsonb')
-        return { sql: `(${l.sql} ->> ${r.sql})`, t: 'text' }
+        return { sql: jsonTextSql(l.sql, r.sql), t: 'text' }
       }
       case '#>': case '#>>': {
         if (!r.c) return this.lookup(scope, [l, r], op === '#>' ? 'jsonb' : 'text', (v) => this.evaluator.eval({ k: 'bin', op, l: { k: 'value', v: v[0].v, type: v[0].t }, r: { k: 'value', v: v[1].v, type: v[1].t } }))
         const inner = String(r.c.v).trim().replace(/^\{|\}$/g, '')
         const keys = Array.isArray(r.c.v) ? (r.c.v as unknown[]).map(String) : inner.trim() === '' ? [] : inner.split(',').map((k) => k.trim().replace(/^"|"$/g, ''))
         const path = `$${keys.map((k) => (/^\d+$/.test(k) ? `[${k}]` : `."${k.replaceAll('"', '\\"')}"`)).join('')}`
-        return op === '#>' ? { sql: `(${l.sql} -> ${str(path)})`, t: 'jsonb' } : { sql: `(${l.sql} ->> ${str(path)})`, t: 'text' }
+        return op === '#>' ? { sql: `(${l.sql} -> ${str(path)})`, t: 'jsonb' } : { sql: jsonTextSql(l.sql, str(path)), t: 'text' }
       }
       case '?': {
         if (isArrayType(l.t)) throw new NotSupported('? on an array')
@@ -1458,6 +1458,15 @@ function sqlLiteral(v: SqlValue): string {
 }
 
 /** jsonb || jsonb in SQLite: objects merge (right wins, one level), anything else concatenates as arrays. */
+/**
+ * j ->> k as Postgres returns it: strings unquoted, everything else as its JSON text
+ * (false, 1.50, {"a":1}); SQLite's ->> would give booleans as 0/1 and numbers as numbers.
+ */
+function jsonTextSql(j: string, k: string): string {
+  const v = `(${j} -> ${k})`
+  return `(CASE json_type(${v}) WHEN 'text' THEN (${j} ->> ${k}) WHEN 'null' THEN NULL ELSE ${v} END)`
+}
+
 function jsonConcatSql(l: string, r: string): string {
   // each element as JSON text, parsed again where it is aggregated (SQLite forgets a value is JSON once it leaves a sub-query)
   const v = (alias: string) => `(CASE ${alias}.type WHEN 'text' THEN json_quote(${alias}.value) WHEN 'true' THEN 'true' WHEN 'false' THEN 'false' WHEN 'null' THEN 'null' ELSE CAST(${alias}.value AS TEXT) END)`

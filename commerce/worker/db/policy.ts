@@ -90,9 +90,9 @@ export function condition(name: string, ctx: Context, cmd: Exclude<Command, 'ALL
 }
 
 /** Table privileges (GRANT) for the API roles; definer code and the service role have all. */
-export function requireGrant(name: string, ctx: Context, privilege: 'select' | 'insert' | 'update' | 'delete'): void {
-  const role = roleOf(ctx)
-  if (role === 'service_role') return
+export function requireGrant(name: string, ctx: Context, privilege: 'select' | 'insert' | 'update' | 'delete', role: DbRole = roleOf(ctx)): void {
+  // the role the statement runs as (SET ROLE, SECURITY DEFINER), not only who signed in
+  if (role !== 'anon' && role !== 'authenticated') return
   const grants = table(name)?.grants ?? view(name)?.grants
   if (!grants) permissionDenied(`table ${name}`)
   if (!(grants![role as 'anon' | 'authenticated'] ?? []).includes(privilege)) permissionDenied(`table ${name}`)

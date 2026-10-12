@@ -212,8 +212,8 @@ function audit(env: WriteEnv, name: string, t: TableMeta, op: 'INSERT' | 'UPDATE
 export function insert(env: WriteEnv, name: string, rows: Values[], opts: InsertOptions = {}): Key[] {
   const t = mustTable(name)
   if (isApi(env.role)) {
-    requireGrant(name, env.ctx, 'insert')
-    if (opts.resolution === 'merge') requireGrant(name, env.ctx, 'update')
+    requireGrant(name, env.ctx, 'insert', env.role)
+    if (opts.resolution === 'merge') requireGrant(name, env.ctx, 'update', env.role)
   }
   const hooks = rowTriggers(name, t, 'INSERT')
   const keys: Key[] = []
@@ -286,7 +286,7 @@ function target(env: WriteEnv, name: string, t: TableMeta, where: Where, cmd: 'U
 
 export function update(env: WriteEnv, name: string, set: Values, where: Where): Key[] {
   const t = mustTable(name)
-  if (isApi(env.role)) requireGrant(name, env.ctx, 'update')
+  if (isApi(env.role)) requireGrant(name, env.ctx, 'update', env.role)
   const changes: Values = {}
   for (const [c, v] of Object.entries(set)) {
     const col = columnOf(name, t, c)
@@ -336,7 +336,7 @@ export function update(env: WriteEnv, name: string, set: Values, where: Where): 
 
 export function remove(env: WriteEnv, name: string, where: Where): Values[] {
   const t = mustTable(name)
-  if (isApi(env.role)) requireGrant(name, env.ctx, 'delete')
+  if (isApi(env.role)) requireGrant(name, env.ctx, 'delete', env.role)
   const rows = target(env, name, t, where, 'DELETE')
   if (!rows.length) return []
   const hooks = rowTriggers(name, t, 'DELETE')
