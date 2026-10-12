@@ -1209,7 +1209,12 @@ export class Compiler implements SqlHelp {
         if (!entries.length) return `(json_type(${big.sql}) = 'object')`
         return `(${entries.map(([k, x]) => {
           const path = this.bind(`$."${k.replaceAll('"', '\\"')}"`, 'text')
-          if (x !== null && typeof x === 'object') return `(${big.sql} -> ${path}) = json(${this.bind(JSON.stringify(x), 'text')})`
+          if (x !== null && typeof x === 'object') {
+            // nested: containment again ({"sessions":["A","B"]} @> {"sessions":["A"]})
+            const inner = `(${big.sql} -> ${path})`
+            const kind = Array.isArray(x) ? 'array' : 'object'
+            return `(json_type(${inner}) = '${kind}' AND ${this.contains({ sql: inner, t: 'jsonb' }, { sql: '', t: 'jsonb', c: { t: 'jsonb', v: x } })})`
+          }
           if (typeof x === 'boolean') return `json_type(${big.sql}, ${path}) = '${x}'`
           if (x === null) return `json_type(${big.sql}, ${path}) = 'null'`
           return `json_extract(${big.sql}, ${path}) = ${this.bind(x, guessScalar(x))}`

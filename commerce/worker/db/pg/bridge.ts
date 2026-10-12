@@ -21,6 +21,8 @@ export function columnType(c: ColumnMeta): string {
 export function encodeSql(v: unknown, t: string): SqlValue {
   if (v === null || v === undefined) return null
   if (v === JNULL) return 'null'
+  // a jsonb value is JSON text whatever it holds ("TR-B", true, 5), as the column codec stores it
+  if (t === 'jsonb' || t === 'json') return JSON.stringify(plainValue(v))
   if (typeof v === 'boolean') return v ? 1 : 0
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string') return v
