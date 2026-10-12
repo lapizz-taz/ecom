@@ -92,6 +92,12 @@ export function setTriggerFallback(fn: (fn: string) => TriggerImpl | undefined):
 }
 
 /** Business triggers of a table for an event, failing when one has no port yet. */
+/**
+ * session_replication_role = replica (only a superuser session sets it; the API cannot): user
+ * triggers and the audit trail stay quiet, as in Postgres.
+ */
+const replica = (env: WriteEnv) => env.ctx.flags.get('__replica') === '1'
+
 function rowTriggers(name: string, t: TableMeta, op: 'INSERT' | 'UPDATE' | 'DELETE', setColumns?: string[]): Array<{ meta: TriggerMeta; impl: TriggerImpl }> {
   const out: Array<{ meta: TriggerMeta; impl: TriggerImpl }> = []
   for (const tg of t.triggers ?? []) {
@@ -202,7 +208,7 @@ export function logAudit(env: WriteEnv, action: string, entityType: string, enti
 }
 
 function audit(env: WriteEnv, name: string, t: TableMeta, op: 'INSERT' | 'UPDATE' | 'DELETE', oldRow: Values | null, newRow: Values | null): void {
-  if (!t.audit || !t.audit.events.includes(op)) return
+  if (!t.audit || !t.audit.events.includes(op) || replica(env)) return
   if (op === 'DELETE' && storeResetActive(env.sql, oldRow?.merchant_id)) return
   const key = t.audit.key
   if (op === 'INSERT') return logAudit(env, `${name}.insert`, name, newRow![key] == null ? null : String(newRow![key]), null, newRow)
@@ -228,7 +234,7 @@ export function insert(env: WriteEnv, name: string, rows: Values[], opts: Insert
     requireGrant(name, env.ctx, 'insert', env.role)
     if (opts.resolution === 'merge') requireGrant(name, env.ctx, 'update', env.role)
   }
-  const hooks = rowTriggers(name, t, 'INSERT')
+  const hooks = replica(env) ? [] : rowTriggers(name, t, 'INSERT')
   const keys: Key[] = []
   for (const input of rows) {
     for (const c of Object.keys(input)) {
@@ -313,10 +319,10 @@ export function update(env: WriteEnv, name: string, set: Values, where: Where): 
     if (col.generated) throw new DbError('428C9', `column "${c}" can only be updated to DEFAULT`)
     changes[c] = v
   }
-  if (t.updatedAt) changes.updated_at = env.ctx.now
+  if (t.updatedAt && !replica(env)) changes.updated_at = env.ctx.now
   const rows = target(env, name, t, where, 'UPDATE')
   if (!rows.length) return []
-  const hooks = rowTriggers(name, t, 'UPDATE', Object.keys(set))
+  const hooks = replica(env) ? [] : rowTriggers(name, t, 'UPDATE', Object.keys(set))
   const perRow = hooks.length > 0 || Boolean(t.audit)
   const keys = rows.map((r) => keyOf(t, r))
   if (!perRow) {
@@ -359,7 +365,7 @@ export function remove(env: WriteEnv, name: string, where: Where): Values[] {
   if (isApi(env.role)) requireGrant(name, env.ctx, 'delete', env.role)
   const rows = target(env, name, t, where, 'DELETE')
   if (!rows.length) return []
-  const hooks = rowTriggers(name, t, 'DELETE')
+  const hooks = replica(env) ? [] : rowTriggers(name, t, 'DELETE')
   const removed: Values[] = []
   const keys: Key[] = []
   for (const row of rows) {

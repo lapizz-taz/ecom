@@ -583,8 +583,9 @@ export class Compiler implements SqlHelp {
       const value = result.v
       if (declared) {
         cols = declared.map((c, i) => ({ name: f.cols?.[i] ?? c.name, t: c.type }))
-        const list = Array.isArray(value) && !isArrayType(result.t) ? value : value === null ? [] : [value]
-        rows = (list as unknown[]).map((r) => rowObject(r, declared.map((c) => c.name)))
+        // a function returning one row gives a row of NULLs when it found nothing; SETOF gives none
+        const list = Array.isArray(value) && !isArrayType(result.t) ? value : value === null && result.t.startsWith('setof ') ? [] : [value]
+        rows = (list as unknown[]).map((r) => (r === null ? {} : rowObject(r, declared.map((c) => c.name))))
       } else {
         cols = [{ name: f.cols?.[0] ?? alias, t: result.t.replace(/^setof /, '') }]
         const list = result.t.startsWith('setof ') ? (value as unknown[]) ?? [] : [value]
