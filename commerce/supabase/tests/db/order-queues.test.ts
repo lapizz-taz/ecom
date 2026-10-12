@@ -87,18 +87,34 @@ describe('web orders', () => {
       await asUser(db, agent)
       expect((await value<Batch>(db, `select public.set_web_order_status($1, 'NO_RESPONSE')`, [[order.id]])).failed[0].error)
         .toMatch(/this order is cancelled/)
-      await db.query(`select public.set_web_order_status($1, 'INVALID')`, [[order.id]])
-      expect((await row(db, order.id)).review_status).toBe('INVALID')
+      await db.query(`select public.set_web_order_status($1, 'CANCELLED')`, [[order.id]])
+      expect((await row(db, order.id)).review_status).toBe('CANCELLED')
       expect((await value<Batch>(db, `select public.approve_orders($1)`, [[order.id]])).failed[0].error).toMatch(/cannot be approved/)
 
-      // Cancellations from anywhere else show up as Cancelled / Invalid.
+      // "Invalid" and "Old cancelled" are off: no tab, and they cannot be chosen.
+      expect(await value(db, `select count(*)::int from public.order_review_statuses where code in ('INVALID', 'OLD_CANCELLED') and is_active`)).toBe(0)
+      await expectError(db, `select public.set_web_order_status($1, 'INVALID')`, [[order.id]], /choose a status/)
+      await expectError(db, `select public.set_web_order_status($1, 'OLD_CANCELLED')`, [[order.id]], /choose a status/)
+
+      // Cancellations from anywhere else show up as Cancelled, a fraud rejection too.
       const other = await createOrder(db, { phone: '01711000503', items: [{ variantId: variant, quantity: 1 }] })
       await advanceOrder(db, other.id, ['FRAUD_CHECK', 'REJECTED_FRAUD'])
-      expect((await row(db, other.id)).review_status).toBe('INVALID')
+      expect((await row(db, other.id)).review_status).toBe('CANCELLED')
       await advanceOrder(db, other.id, ['FRAUD_REVIEW'])
       expect((await row(db, other.id)).review_status).toBe('PROCESSING')
       await advanceOrder(db, other.id, ['CANCELLED'])
       expect((await row(db, other.id)).review_status).toBe('CANCELLED')
+
+      // A store that switches Invalid back on gets fraud rejections there again, and can turn it off.
+      const admin = await createStaff(db, 'ADMIN')
+      await asUser(db, admin)
+      await db.query(`select public.admin_save_review_status($1)`, [JSON.stringify({ code: 'INVALID', label: 'Invalid', color: 'danger', is_active: true })])
+      const third = await createOrder(db, { phone: '01711000504', items: [{ variantId: variant, quantity: 1 }] })
+      await advanceOrder(db, third.id, ['FRAUD_CHECK', 'REJECTED_FRAUD'])
+      expect((await row(db, third.id)).review_status).toBe('INVALID')
+      await asUser(db, admin)
+      expect(await value(db, `select (public.admin_save_review_status($1)).is_active`, [JSON.stringify({ code: 'INVALID', label: 'Invalid', color: 'danger', is_active: false })])).toBe(false)
+      await expectError(db, `select public.admin_save_review_status($1)`, [JSON.stringify({ code: 'CANCELLED', label: 'Cancelled', is_active: false })], /cannot be turned off/)
     }))
 
   it('lets admins add call statuses without changing how the built-in ones behave', () =>

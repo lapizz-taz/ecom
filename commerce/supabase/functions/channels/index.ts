@@ -358,7 +358,8 @@ async function processJobs(admin: SupabaseClient, limit: number) {
         out = { outcome: 'FAILED', error: 'The store is disconnected' }
       } else {
         if (!secrets.has(c.id)) secrets.set(c.id, await credsOf(admin, c))
-        const opts = { notify_customer: c.settings?.notify_customer !== false, fulfill_without_tracking: c.settings?.fulfill_without_tracking === true }
+        const opts = { notify_customer: c.settings?.notify_customer !== false, fulfill_without_tracking: c.settings?.fulfill_without_tracking === true,
+          cancel_email: c.settings?.cancel_email !== false }
         if (c.platform === 'SHOPIFY') {
           const client = () => shopifyClient(c, secrets.get(c.id)!)
           out = job.kind === 'FULFILL' ? await fulfillJob(job, call, client, opts) : await inventoryJob(job, call, client)
@@ -894,7 +895,8 @@ Deno.serve(
             await rpc(admin, 'channel_order_action_record', { p_order_id: input.order_id, p_action: 'MARK_PAID', p_actor: actor, p_detail: { financial_status: status } })
             return json(req, { ok: true, financial_status: status })
           }
-          const jobId = await client.cancelOrder(ctx.external_order_id, input.note ?? `Cancelled from ${appName()} (${ctx.order_number})`)
+          const jobId = await client.cancelOrder(ctx.external_order_id, input.note ?? `Cancelled from ${appName()} (${ctx.order_number})`, false,
+            c.settings?.cancel_email !== false)
           await rpc(admin, 'channel_order_action_record', { p_order_id: input.order_id, p_action: 'CANCEL', p_actor: actor, p_detail: { job_id: jobId } })
           return json(req, { ok: true, job_id: jobId })
         }

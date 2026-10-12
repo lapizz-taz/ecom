@@ -319,9 +319,23 @@ describe('Order status → Shopify (one job, each step once)', () => {
     const h = harness2(base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null }, status_tag: 'Status: Cancelled',
       sync: { cancel_status: 'PENDING', paid_status: null, status_tag: null, events: {} } }), { orderState: async () => st(), cancelOrder, updateTags })
     expect(await fulfillJob(job('FULFILL'), h.rpc, h.shopify, opts)).toMatchObject({ outcome: 'DONE' })
-    expect(cancelOrder).toHaveBeenCalledExactlyOnceWith('5001', expect.stringContaining('ISO-1'), false)
-    expect(h.syncSaves[0]).toMatchObject({ cancel_status: 'REQUESTED', restocked_in_store: false })
+    expect(cancelOrder).toHaveBeenCalledExactlyOnceWith('5001', expect.stringContaining('ISO-1'), false, false)
+    expect(h.syncSaves[0]).toMatchObject({ cancel_status: 'REQUESTED', restocked_in_store: false, customer_emailed: false })
     expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], ['Status: New'])
+  })
+
+  it('cancelled here with the cancellation e-mail on: Shopify e-mails the customer, and the order log says so', async () => {
+    const cancelOrder = vi.fn(async () => 'gid://shopify/Job/2')
+    const h = harness2(base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: 'a@b.co' },
+      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: null, events: {} } }), { orderState: async () => st(), cancelOrder, updateTags: async () => undefined })
+    expect(await fulfillJob(job('FULFILL'), h.rpc, h.shopify, { ...opts, cancel_email: true })).toMatchObject({ outcome: 'DONE' })
+    expect(cancelOrder).toHaveBeenCalledExactlyOnceWith('5001', expect.stringContaining('ISO-1'), false, true)
+    expect(h.syncSaves[0]).toMatchObject({ cancel_status: 'REQUESTED', customer_emailed: true })
+    // Already cancelled on Shopify: nothing is sent, so no second e-mail.
+    const again = harness2(base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: 'a@b.co' },
+      sync: { cancel_status: 'REQUESTED', paid_status: null, status_tag: null, events: {} } }), { orderState: async () => st({ cancelled: true }), cancelOrder, updateTags: async () => undefined })
+    await fulfillJob(job('FULFILL'), again.rpc, again.shopify, { ...opts, cancel_email: true })
+    expect(cancelOrder).toHaveBeenCalledTimes(1)
   })
 
   it('Fullfilio tag: written only when every step went through; replaces old "Status:" tags; "needs attention" when a step failed; none while retrying', async () => {
@@ -355,7 +369,7 @@ describe('Order status → Shopify (one job, each step once)', () => {
       sync: { cancel_status: 'PENDING', paid_status: null, status_tag: 'x', events: {} }, settings: { inventory_sync: false, mark_paid_on_delivery: true, status_tags: false, courier_events: true }, ...over })
     const a = harness2(ctx(), { orderState: async () => st(), cancelOrder })
     await fulfillJob(job('FULFILL'), a.rpc, a.shopify, opts)
-    expect(cancelOrder).toHaveBeenLastCalledWith('5001', expect.any(String), true)
+    expect(cancelOrder).toHaveBeenLastCalledWith('5001', expect.any(String), true, false)
     const b = harness2(ctx(), { orderState: async () => st({ cancelled: true }), cancelOrder })
     await fulfillJob(job('FULFILL'), b.rpc, b.shopify, opts)
     expect(b.syncSaves[0]).toMatchObject({ cancel_status: 'CONFIRMED' })

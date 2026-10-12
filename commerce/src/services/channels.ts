@@ -134,7 +134,7 @@ export interface SyncOverview {
     first_sync_at: string | null; catalog_items: number; shop_domain?: string; last_error?: string | null
     scopes: string[]; settings: { inventory_sync: boolean; location_id: string | null; external_changes: 'FLAG' | 'SAAS_WINS' | 'TWO_WAY'; fulfill_on_ship: boolean; notify_customer: boolean
       fulfill_without_tracking: boolean; auto_import_products: boolean; mark_delivered: boolean
-      cancel_on_shopify: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; update_products: boolean; status_sync?: boolean } }
+      cancel_on_shopify: boolean; cancel_email?: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; update_products: boolean; status_sync?: boolean } }
   items: SyncItem[]
   unmapped: Array<{ external_variant_id: string; sku: string | null; title: string; status: string | null; available: number | null
     reason: 'NO_SKU' | 'DUPLICATE_SKU_SHOPIFY' | 'DUPLICATE_SKU_HERE' | 'NO_MATCH' }>

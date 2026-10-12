@@ -389,14 +389,15 @@ export class ShopifyClient {
   /**
    * Cancels the order on Shopify without refunding or restocking there: stock
    * comes back through this app's own cancel and the stock sync, so it is
-   * never counted twice. Shopify finishes the cancel in the background.
+   * never counted twice. Shopify finishes the cancel in the background and,
+   * with notifyCustomer, sends the customer its order cancelled e-mail.
    */
-  async cancelOrder(orderId: string, staffNote: string | null, restock = false): Promise<string> {
+  async cancelOrder(orderId: string, staffNote: string | null, restock = false, notifyCustomer = false): Promise<string> {
     const id = orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`
     type R = { orderCancel: { job: { id: string } | null; orderCancelUserErrors: Array<{ message: string; code: string | null }> } | null }
-    const { data, errors } = await this.raw<R>(`mutation($id: ID!, $note: String, $restock: Boolean!) { orderCancel(orderId: $id, reason: OTHER, restock: $restock,
-      refundMethod: { originalPaymentMethodsRefund: false }, notifyCustomer: false, staffNote: $note) {
-      job { id } orderCancelUserErrors { message code } } }`, { id, note: staffNote?.slice(0, 255) ?? null, restock })
+    const { data, errors } = await this.raw<R>(`mutation($id: ID!, $note: String, $restock: Boolean!, $notify: Boolean!) { orderCancel(orderId: $id, reason: OTHER, restock: $restock,
+      refundMethod: { originalPaymentMethodsRefund: false }, notifyCustomer: $notify, staffNote: $note) {
+      job { id } orderCancelUserErrors { message code } } }`, { id, note: staffNote?.slice(0, 255) ?? null, restock, notify: notifyCustomer })
     if (errors.some((e) => e.extensions?.code === 'ACCESS_DENIED')) throw new ChannelError('Shopify refused: the app needs write_orders.', 403, 'ACCESS_DENIED')
     const res = data?.orderCancel
     if (!res) throw new ChannelError(`Shopify: ${errors.map((e) => e.message).join('; ') || 'no answer'}`)

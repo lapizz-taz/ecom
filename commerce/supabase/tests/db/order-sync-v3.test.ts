@@ -160,6 +160,30 @@ describe('Order status → Shopify', () => {
       expect(await inventory(db, p.variantIds[0])).toMatchObject({ reserved: 0, available: 10 })
     }))
 
+  it("Shopify's cancellation e-mail: on by default, can be turned off, and the order log says when it was sent", () =>
+    inTx(async (db) => {
+      const sku = `CE-${Math.floor(Math.random() * 1e6)}`
+      await createProduct(db, { price: 500, stock: 10, variants: [{ sku, title: 'Default', stock: 10 }] })
+      const c = await shopify(db)
+      const owner = await createStaff(db, 'OWNER')
+      await asUser(db, owner)
+      const settings = async () => (await value<Record<string, any>>(db, `select public.channel_inventory_overview($1)`, [c])).channel.settings
+      expect(await settings()).toMatchObject({ cancel_on_shopify: true, cancel_email: true })
+      await db.query(`select public.channel_sync_settings_save($1, '{"cancel_email": false}')`, [c])
+      expect(await settings()).toMatchObject({ cancel_on_shopify: true, cancel_email: false })
+      await db.query(`select public.channel_sync_settings_save($1, '{"cancel_email": true}')`, [c])
+      expect(await settings()).toMatchObject({ cancel_email: true })
+
+      const a = await imported(db, c, { sku, phone: phone() })
+      await asSystem(db)
+      await db.query(`select public._transition_order($1, 'CANCELLED', 'customer changed mind')`, [a.order_id])
+      await asService(db)
+      await db.query(`select public.channel_order_sync_update($1, '{"cancel_status":"REQUESTED","restocked_in_store":false,"customer_emailed":true}')`, [a.order_id])
+      await asSystem(db)
+      expect(await value<string>(db, `select message from public.order_status_history where order_id = $1 and event = 'CHANNEL_SYNC' order by created_at desc limit 1`, [a.order_id]))
+        .toBe('Cancel sent to Shopify (stock handled here, not restocked twice); Shopify e-mails the customer that it was cancelled')
+    }))
+
   it('every status change queues the store update with the right tag; "cancel on Shopify" off keeps Shopify untouched', () =>
     inTx(async (db) => {
       const sku = `ST-${Math.floor(Math.random() * 1e6)}`

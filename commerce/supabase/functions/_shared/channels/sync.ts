@@ -20,7 +20,7 @@ export interface ShopifyPort extends StockPort {
   markDelivered(fulfillmentId: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }>
   markEvent(fulfillmentId: string, status: string, happenedAt: string | null): Promise<{ id: string; existing: boolean }>
   orderState(orderId: string): Promise<{ cancelled: boolean; financialStatus: string | null; tags: string[]; fulfilled: boolean }>
-  cancelOrder(orderId: string, staffNote: string | null, restock?: boolean): Promise<string>
+  cancelOrder(orderId: string, staffNote: string | null, restock?: boolean, notifyCustomer?: boolean): Promise<string>
   markPaid(orderId: string): Promise<string>
   updateTags(orderId: string, add: string[], remove: string[]): Promise<void>
 }
@@ -54,7 +54,7 @@ interface FulfillContext {
   shipment: { courier: string | null; provider: string | null; tracking: string | null; tracking_url: string | null; shipped_at: string | null } | null
   lines: Array<{ variant_id: string; sku: string | null; quantity: number; external_variant_id: string | null }>
 }
-interface ChannelOpts { notify_customer: boolean; fulfill_without_tracking: boolean }
+interface ChannelOpts { notify_customer: boolean; fulfill_without_tracking: boolean; /** Shopify e-mails the customer when an order is cancelled here. */ cancel_email?: boolean }
 
 const SHIPPED = ['SHIPPED', 'DELIVERED', 'PARTIALLY_DELIVERED']
 /** Shopify knows these carriers by name (others are sent as written). */
@@ -130,8 +130,9 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
         return { outcome: 'DONE', result: { cancel: 'fulfilled' } }
       }
       const restock = !set?.inventory_sync
-      const jobId = await shopify().cancelOrder(ext, `Cancelled in ${APP_TAG} (${ctx.order.order_number})`, restock)
-      await saveSync({ cancel_status: 'REQUESTED', restocked_in_store: restock, cancel_error: '' })
+      const notify = opts.cancel_email === true
+      const jobId = await shopify().cancelOrder(ext, `Cancelled in ${APP_TAG} (${ctx.order.order_number})`, restock, notify)
+      await saveSync({ cancel_status: 'REQUESTED', restocked_in_store: restock, cancel_error: '', customer_emailed: notify })
       return { outcome: 'DONE', result: { cancel_job: jobId } }
     })
   }

@@ -71,14 +71,14 @@ function reportBatch(done: number, failed: Array<{ order_number: string; error: 
   if (failed.length > 3) toast.error(`${failed.length - 3} more could not be ${verb}`)
 }
 
-/** Store orders that could not come in (e.g. the district could not be read): shown where orders are worked. */
+/** Store orders that could not come in (e.g. no usable phone number): shown where orders are worked. */
 function StoreImportsBanner() {
   const failed = useQuery({ queryKey: ['channel-imports', 'FAILED', 'banner'], queryFn: () => listChannelImports({ status: 'FAILED', limit: 1 }), staleTime: 60_000, refetchInterval: 120_000 })
   const n = failed.data?.total ?? 0
   if (!n) return null
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm" role="status">
-      <span><span className="font-medium">{n} store order{n === 1 ? '' : 's'} could not be imported.</span> <span className="text-muted-foreground">Usually the district could not be read from the address. Fix it and import again.</span></span>
+      <span><span className="font-medium">{n} store order{n === 1 ? '' : 's'} could not be imported.</span> <span className="text-muted-foreground">Usually the phone number is missing or wrong. Fix it and import again.</span></span>
       <Button asChild size="sm" variant="outline"><Link to="/admin/channels?imports=FAILED">Fix {n === 1 ? 'it' : 'them'}</Link></Button>
     </div>
   )
