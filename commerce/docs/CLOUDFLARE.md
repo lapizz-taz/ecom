@@ -146,22 +146,24 @@ template "Redirect from WWW to root"** → Deploy.
 ### 4. Secrets of the Worker
 
 **Workers & Pages → fullfilio → Settings → Variables and Secrets → Add →
-type Secret**. Then **Deployments → Retry deployment** (or push any commit) so
+type Secret**. Then **Deployments → Retry build** (or push any commit) so
 they apply.
 
 | Name | Value |
 | --- | --- |
-| `SUPABASE_ANON_KEY` | Supabase → Project Settings → API Keys → *Legacy API keys* → `anon` |
-| `SUPABASE_SERVICE_ROLE_KEY` | same page → `service_role` (secret; never put it anywhere else) |
-| `CRON_SECRET` | the same value as the `CRON_SECRET` Edge Function secret in Supabase (Edge Functions → Secrets) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API Keys → *Legacy API keys* → `service_role` → Reveal → copy (secret; never put it anywhere else) |
 | `CLERK_SECRET_KEY` | Clerk → API Keys → Secret key |
-| `CLERK_WEBHOOK_SECRET` | Clerk → Webhooks → your endpoint → Signing secret (if you use it) |
-| `FILES_SIGNING_KEY` | any long random text (a password generator, 40+ characters) |
-| every other secret listed in Supabase → Edge Functions → Secrets | the same value (`RESEND_API_KEY`, `META_APP_SECRET`, courier/payment fallbacks, …) — except names starting with `SUPABASE_` |
 
-The public settings (`PLATFORM_URL=https://fullfilio.com`, `FUNCTIONS_URL`,
-`CLERK_PROXY_URL`, `CLERK_AUTHORIZED_PARTIES`, `CUSTOM_DOMAIN_TARGET`,
-`SUPABASE_URL`, `SUPABASE_FUNCTIONS`) are already in `wrangler.jsonc`.
+Optional: `CLERK_WEBHOOK_SECRET` (Clerk → Webhooks → endpoint → Signing
+secret), `FILES_SIGNING_KEY` (otherwise derived from the service key),
+`CRON_SECRET` (otherwise the copy in Supabase Vault is used), and provider
+fallbacks such as `RESEND_API_KEY` if you set them in Supabase.
+
+The public settings (`SUPABASE_URL`, the publishable `SUPABASE_ANON_KEY`,
+`PLATFORM_URL=https://fullfilio.com`, `FUNCTIONS_URL`, `CLERK_PROXY_URL`,
+`CLERK_AUTHORIZED_PARTIES`, `CUSTOM_DOMAIN_TARGET`, `SUPABASE_FUNCTIONS`) are
+already in `wrangler.jsonc` — don't add those names as secrets (a secret and a
+setting with the same name stop the deploy).
 
 ### 5. Check
 

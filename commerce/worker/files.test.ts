@@ -143,6 +143,20 @@ describe('R2 files', () => {
     expect(e.files.items.size).toBe(0)
   })
 
+  it('signs private links with a key derived from the service key when no signing key is set', async () => {
+    const e = { ...env(), FILES_SIGNING_KEY: undefined, SUPABASE_SERVICE_ROLE_KEY: 'service-secret' }
+    database({ merchant: MERCHANT })
+    const up = await (await filesApi(e)(upload('bucket=courier-invoices&folder=c1&name=s.pdf', PDF, 'application/pdf'))).json()
+    const { url } = await (await filesApi(e)(new Request('https://app.example.com/functions/v1/files/sign', {
+      method: 'POST', body: JSON.stringify({ bucket: 'courier-invoices', path: up.path }), headers: { Authorization: 'Bearer user-jwt' },
+    }))).json()
+    expect((await serveFile(new Request(url), e)).status).toBe(200)
+    // A link signed with another service key does not open.
+    expect((await serveFile(new Request(url), { ...e, SUPABASE_SERVICE_ROLE_KEY: 'other' })).status).toBe(404)
+    // With neither key, private files stay closed.
+    expect((await serveFile(new Request(url), { ...e, SUPABASE_SERVICE_ROLE_KEY: undefined })).status).toBe(404)
+  })
+
   it('uses the bucket\'s own domain for public links when one is set', async () => {
     const e = { ...env(), FILES_PUBLIC_URL: 'https://files.example.com/' }
     database({ merchant: MERCHANT })

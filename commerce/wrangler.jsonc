@@ -28,6 +28,8 @@
 
   "vars": {
     "SUPABASE_URL": "https://tcjdgiohmhjqppzwoztj.supabase.co",
+    // The publishable (public) key: the same one built into the website.
+    "SUPABASE_ANON_KEY": "sb_publishable_DOHK7YEXapzXDRpQIu67Cg_2cSNTxTC",
     // The platform's own address: links in e-mails, payment and webhook addresses, Clerk.
     "PLATFORM_URL": "https://fullfilio.com",
     "FUNCTIONS_URL": "https://fullfilio.com/functions/v1",

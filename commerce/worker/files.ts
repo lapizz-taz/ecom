@@ -16,8 +16,9 @@ export interface FilesEnv {
   SUPABASE_URL?: string
   SUPABASE_ANON_KEY?: string
   SUPABASE_PUBLISHABLE_KEY?: string
-  /** Secret for private-file links (any long random string). */
+  /** Secret for private-file links (any long random string); derived from the service key when unset. */
   FILES_SIGNING_KEY?: string
+  SUPABASE_SERVICE_ROLE_KEY?: string
   /** Public address of the bucket's custom domain (e.g. https://files.example.com); else /files on this site. */
   FILES_PUBLIC_URL?: string
 }
@@ -99,6 +100,12 @@ function looksLikeCsv(bytes: Uint8Array): boolean {
   return !/[\u0000-\u0008\u000e-\u001f]/.test(head) && !/<\s*(script|html|svg|iframe|body)/.test(head)
 }
 
+/** The key that signs private-file links: FILES_SIGNING_KEY, else one derived from the (secret) service key. */
+function signingKey(env: FilesEnv): string | null {
+  if (env.FILES_SIGNING_KEY) return env.FILES_SIGNING_KEY
+  return env.SUPABASE_SERVICE_ROLE_KEY ? `fullfilio-file-links:${env.SUPABASE_SERVICE_ROLE_KEY}` : null
+}
+
 const hex = (buf: ArrayBuffer) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('')
 
 async function signature(secret: string, bucket: string, path: string, expires: number): Promise<string> {
@@ -156,9 +163,10 @@ async function sign(req: Request, env: FilesEnv): Promise<Response> {
   const merchant = await allowed(req, env, bucket, 'read')
   if (!path.startsWith(`${merchant}/`)) throw new HttpError(404, 'File not found', 'NOT_FOUND')
   if (BUCKETS[bucket].public) return json(req, { url: publicUrl(req, env, bucket, path) })
-  if (!env.FILES_SIGNING_KEY) throw new HttpError(503, 'Private files are not set up (FILES_SIGNING_KEY)', 'NOT_CONFIGURED')
+  const key = signingKey(env)
+  if (!key) throw new HttpError(503, 'Private files are not set up (FILES_SIGNING_KEY)', 'NOT_CONFIGURED')
   const expires = Math.floor(Date.now() / 1000) + SIGNED_LINK_SECONDS
-  const sig = await signature(env.FILES_SIGNING_KEY, bucket, path, expires)
+  const sig = await signature(key, bucket, path, expires)
   return json(req, { url: `${new URL(req.url).origin}/files/${bucket}/${path}?expires=${expires}&sig=${sig}` }, 200, { 'Cache-Control': 'no-store' })
 }
 
@@ -197,8 +205,9 @@ export async function serveFile(req: Request, env: FilesEnv): Promise<Response> 
   if (!BUCKETS[bucket].public) {
     const expires = Number(url.searchParams.get('expires'))
     const sig = url.searchParams.get('sig') ?? ''
-    if (!env.FILES_SIGNING_KEY || !Number.isFinite(expires) || expires < Date.now() / 1000) return notFound()
-    if (!sameText(sig, await signature(env.FILES_SIGNING_KEY, bucket, path, expires))) return notFound()
+    const key = signingKey(env)
+    if (!key || !Number.isFinite(expires) || expires < Date.now() / 1000) return notFound()
+    if (!sameText(sig, await signature(key, bucket, path, expires))) return notFound()
   }
   const object = await store(env).get(`${bucket}/${path}`)
   if (!object) return notFound()
