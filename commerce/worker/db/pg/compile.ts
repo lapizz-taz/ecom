@@ -14,6 +14,7 @@ import type { Row } from '../sql.ts'
 import { Evaluator } from './evaluate.ts'
 import { runSql } from './run.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
+import { catalogTable } from './catalog.ts'
 import { tempRowsJson, tempTable } from './temp.ts'
 import { elemType, isArrayType } from './types.ts'
 import { addInterval as addIv, arithScale, cast, castScale, castTyped, Interval, isEnum, isTableType, PgRow, scaleOf, zoneOffset } from './values.ts'
@@ -495,7 +496,7 @@ export class Compiler implements SqlHelp {
       }
       return `${qi(cte.sqlName)} AS ${qi(alias)}`
     }
-    const temp = tempTable(this.engine.ctx, f.name, f.schema)
+    const temp = tempTable(this.engine.ctx, f.name, f.schema) ?? catalogTable(f.name, f.schema)
     if (temp) {
       const names = temp.cols.map((c, i) => f.cols?.[i] ?? c.name)
       this.addSource(scope, alias, temp.cols.map((c, i) => ({ name: names[i], t: c.t, s: c.s })))

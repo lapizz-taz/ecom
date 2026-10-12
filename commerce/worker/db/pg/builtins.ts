@@ -283,6 +283,28 @@ function toCharDate(v: unknown, t: string, fmt: string): string {
   return out
 }
 
+/** The database's size in bytes (0 where the host does not say). */
+function databaseSize(engine: Engine): number {
+  try {
+    const row = engine.sql.all('SELECT page_count * page_size AS n FROM pragma_page_count(), pragma_page_size()')[0]
+    return Number(row?.n ?? 0)
+  } catch {
+    return 0
+  }
+}
+
+/** pg_size_pretty: bytes, kB, MB, GB, TB with Postgres' rounding (switching at 10 of the next unit's base). */
+function sizePretty(n: number): string {
+  const units = ['bytes', 'kB', 'MB', 'GB', 'TB', 'PB']
+  let size = n
+  let u = 0
+  while (u < units.length - 1 && Math.abs(size) >= 10 * 1024 - 0.5) {
+    size = size / 1024
+    u++
+  }
+  return `${Math.round(size)} ${units[u]}`
+}
+
 /** to_char for numbers ('FM999,990.00', '9999'). */
 function toCharNumber(n: number, fmt: string): string {
   const fm = fmt.startsWith('FM')
@@ -1049,6 +1071,8 @@ export const builtins: Record<string, Builtin> = {
     return Object.hasOwn(schema.tables, name) || Object.hasOwn(schema.views, name) ? name : null
   } },
   current_database: { ret: fixed('text'), strict: false, js: () => 'postgres' },
+  pg_database_size: { ret: fixed('int'), js: (_a, _t, call) => databaseSize(call.engine) },
+  pg_size_pretty: { ret: fixed('text'), js: (a) => sizePretty(num(a[0])) },
   has_function_privilege: {
     ret: fixed('bool'),
     js: (a, _t, c) => {

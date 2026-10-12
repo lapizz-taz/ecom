@@ -6,6 +6,7 @@ import { nextval } from '../writer.ts'
 import type { CallExpr, Expr, Select } from './ast.ts'
 import { decodeSql } from './bridge.ts'
 import { aggregates, builtins, jsonConcat, jsonContains, jsonDelete, jsonGet, jsonGetText, jsonHasKey, jsonPath, likeRegex, msOf, fromMs, pgRegex, windowFunctions } from './builtins.ts'
+import { SERVER_SETTINGS } from './catalog.ts'
 import { runSql } from './run.ts'
 import { FLOAT, NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
@@ -525,7 +526,7 @@ export class Evaluator {
         }
         case 'current_setting': {
           const [k, missing] = e.args.map((x) => this.eval(x))
-          const v = this.engine.ctx.getSetting(String(k.v))
+          const v = this.engine.ctx.getSetting(String(k.v)) ?? SERVER_SETTINGS[String(k.v)] ?? null
           if (v === null && !(missing && missing.v === true)) throw new DbError('42704', `unrecognized configuration parameter "${String(k.v)}"`)
           return T('text', v)
         }
