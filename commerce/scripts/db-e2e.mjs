@@ -147,6 +147,32 @@ try {
     won === 10 && refused === 10 && left.body?.[0]?.on_hand === 0 && moves.headers.get('content-range') === '*/10',
     `won ${won}, refused ${refused}, left ${JSON.stringify(left.body)}, moves ${moves.headers.get('content-range')}`)
 
+  // Live updates with supabase-js, as the pages use them: a staff member of the store
+  // hears about a stock change; a visitor listening to the same table hears nothing.
+  const ownerRole = await call('GET', `/rest/v1/roles?select=id&merchant_id=eq.${M1}&code=eq.OWNER`, { key: SERVICE, merchant: M1 })
+  const liveUser = await server.auth.admin.createUser({ email: 'live@example.com', email_confirm: true, app_metadata: { clerk_user_id: 'user_live' } })
+  const profile = await call('POST', '/rest/v1/profiles', { key: SERVICE, merchant: M1, body: { id: liveUser.data?.user?.id, merchant_id: M1, role_id: ownerRole.body?.[0]?.id, email: 'live@example.com', full_name: 'Live', is_active: true } })
+  const liveLink = await server.auth.admin.generateLink({ type: 'magiclink', email: 'live@example.com' })
+  const staffPage = createClient(base, 'sb_publishable_e2e', { auth: { persistSession: false, autoRefreshToken: false } })
+  await staffPage.auth.verifyOtp({ type: 'magiclink', token_hash: liveLink.data?.properties?.hashed_token })
+  const visitorPage = createClient(base, 'sb_publishable_e2e', { auth: { persistSession: false, autoRefreshToken: false } })
+  const heard = []
+  const overheard = []
+  const listen = (client, name, sink) => new Promise((done) => {
+    const ch = client.channel(name).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'inventory' }, (p) => sink.push(p))
+    ch.subscribe((status) => { if (status !== 'CLOSED') done(status) })
+    setTimeout(() => done('TIMED_OUT'), 8000)
+  })
+  const joined = [await listen(staffPage, 'live-stock', heard), await listen(visitorPage, 'peek', overheard)]
+  await call('POST', '/rest/v1/rpc/adjust_stock', { key: SERVICE, merchant: M1, body: { p_variant_id: variantId, p_type: 'PURCHASE', p_quantity: 5, p_note: 'live' } })
+  for (let i = 0; i < 40 && !heard.length; i++) await new Promise((r) => setTimeout(r, 100))
+  await new Promise((r) => setTimeout(r, 300))
+  check('live updates: store staff hear a stock change, a visitor hears nothing (supabase-js realtime)',
+    profile.status === 201 && joined.every((s) => s === 'SUBSCRIBED') && heard.length === 1 && heard[0].new?.variant_id === variantId && heard[0].new?.on_hand === 5 && overheard.length === 0,
+    JSON.stringify({ profile: profile.status, joined, heard: heard.map((h) => h.new), overheard: overheard.length }))
+  await staffPage.removeAllChannels()
+  await visitorPage.removeAllChannels()
+
   const rpc = await call('POST', '/rest/v1/rpc/find_auth_user_id', { key: SERVICE, body: { p_email: 'e2e@example.com' } })
   check('server functions run (rpc)', rpc.status === 200 && rpc.body === user.body?.id, JSON.stringify(rpc))
   const rpcDenied = await call('POST', '/rest/v1/rpc/find_auth_user_id', { body: { p_email: 'e2e@example.com' } })

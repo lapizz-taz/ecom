@@ -7,6 +7,7 @@ import { decode, encode, type SqlValue } from './codec.ts'
 import type { Context } from './context.ts'
 import { DbError } from './errors.ts'
 import { quoteId } from './ident.ts'
+import { noteChange } from './realtime.ts'
 import { table as tableMeta, type ColumnMeta, type TableMeta, type TriggerMeta } from './meta.ts'
 import { condition, requireGrant, secure, type DbRole } from './policy.ts'
 import type { Row, Sql } from './sql.ts'
@@ -294,6 +295,7 @@ export function insert(env: WriteEnv, name: string, rows: Values[], opts: Insert
     verify(env, name, t, [key], 'INSERT', raw)
     const decoded = decodeRow(t, raw[0])
     audit(env, name, t, 'INSERT', null, decoded)
+    noteChange(env.ctx, name, 'INSERT', decoded)
     runAfter(env, name, hooks, 'INSERT', decoded, null)
     keys.push(key)
   }
@@ -333,6 +335,7 @@ export function update(env: WriteEnv, name: string, set: Values, where: Where): 
         [...cols.map((c) => encode(changes[c], t.columns[c])), ...w.params])
     }
     verify(env, name, t, keys, 'UPDATE')
+    for (const k of keys) noteChange(env.ctx, name, 'UPDATE', Object.fromEntries(t.pk.map((c, i) => [c, decode(k[i], t.columns[c])])))
     return keys
   }
   const done: Key[] = []
@@ -352,6 +355,7 @@ export function update(env: WriteEnv, name: string, set: Values, where: Where): 
     const raw = verify(env, name, t, [key], 'UPDATE')
     const written = decodeRow(t, raw[0])
     audit(env, name, t, 'UPDATE', oldRow, written)
+    noteChange(env.ctx, name, 'UPDATE', written)
     runAfter(env, name, hooks, 'UPDATE', written, oldRow)
     done.push(key)
   }

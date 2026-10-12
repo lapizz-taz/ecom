@@ -4,6 +4,9 @@
 // that identity along; nothing here trusts the browser for it.
 import { DurableObject } from 'cloudflare:workers'
 import * as sessions from './auth.ts'
+import * as live from './realtime.ts'
+import type { SocketState } from './realtime.ts'
+import { authSecret, type TokenEnv, verifyAccessToken } from './tokens.ts'
 import { Context, type Identity } from './context.ts'
 import { migrate } from './migrate.ts'
 import { errorResponse, handleRest, type RestRequest, type RestResponse } from './rest/index.ts'
@@ -73,10 +76,71 @@ export class Database extends DurableObject {
 
   async rest(req: RestRequest, caller: Caller): Promise<RestResponse> {
     try {
-      return handleRest(this.sql, new Context(this.sql, this.identity(caller)), req)
+      const ctx = new Context(this.sql, this.identity(caller))
+      const res = handleRest(this.sql, ctx, req)
+      // Saved: tell live-update subscribers about the rows they may read.
+      if (res.status < 400 && ctx.changes.length) this.broadcast(ctx.changes)
+      return res
     } catch (e) {
       return errorResponse(e)
     }
+  }
+
+  /** Live updates (realtime.ts): the WebSocket supabase-js opens at /realtime/v1/websocket. */
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (!url.pathname.endsWith('/realtime/v1/websocket') || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response('Not found', { status: 404 })
+    }
+    const pair = new WebSocketPair()
+    const [client, server] = Object.values(pair)
+    this.ctx.acceptWebSocket(server)
+    const state: SocketState = { vsn: url.searchParams.get('vsn') ?? '1.0.0', uid: null, sid: null, exp: 0, subs: [], next: 0 }
+    server.serializeAttachment(state)
+    return new Response(null, { status: 101, webSocket: client })
+  }
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    if (typeof message !== 'string') return
+    const state = ws.deserializeAttachment() as SocketState
+    const m = live.decode(message, state.vsn)
+    if (!m) return
+    const replies = await live.handle(state, m, (token) => this.verifyLiveToken(token))
+    ws.serializeAttachment(state)
+    for (const r of replies) ws.send(live.encode(r, state.vsn))
+  }
+
+  /** A session access token (tokens.ts) of an account that is not blocked; null otherwise. */
+  private async verifyLiveToken(token: string): Promise<{ uid: string; sid: string; exp: number } | null> {
+    const secret = authSecret(this.env as TokenEnv)
+    const claims = secret ? await verifyAccessToken(secret, token) : null
+    if (!claims || claims === 'expired') return null
+    const u = this.sql.all('SELECT banned_until FROM users WHERE id = ?', [claims.sub])[0]
+    if (!u || (u.banned_until && String(u.banned_until) > new Date().toISOString())) return null
+    return { uid: claims.sub, sid: claims.session_id, exp: claims.exp }
+  }
+
+  private broadcast(changes: live.Change[]): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const state = ws.deserializeAttachment() as SocketState | null
+      if (!state?.subs.length) continue
+      for (const m of live.deliveries(state, changes, (st, table, search) => this.readAs(st, table, search))) {
+        try {
+          ws.send(live.encode(m, state.vsn))
+        } catch {
+          // closed meanwhile
+        }
+      }
+    }
+  }
+
+  /** A row as a live-update subscriber may read it (row security applies), or null. */
+  private readAs(state: SocketState, table: string, search: string): Record<string, unknown> | null {
+    const identity = this.identity(state.uid ? { role: 'authenticated', userId: state.uid, sessionId: state.sid } : { role: 'anon' })
+    if (state.uid && !identity.uid) return null
+    const res = handleRest(this.sql, new Context(this.sql, identity), { method: 'GET', path: table, search, headers: {}, body: null })
+    if (res.status !== 200 || !res.body) return null
+    return (JSON.parse(res.body) as Array<Record<string, unknown>>)[0] ?? null
   }
 
   /** Sign-in accounts (the Supabase Auth admin API the server code uses). Service callers only. */

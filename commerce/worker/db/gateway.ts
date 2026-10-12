@@ -168,6 +168,12 @@ export async function database(req: Request, env: DbEnv): Promise<Response> {
   if (req.method === 'OPTIONS') return reply(204, null)
   if (!usesCloudflareDb(env)) return reply(503, JSON.stringify({ code: 'NOT_CONFIGURED', message: 'The Cloudflare database is not switched on' }), { 'Content-Type': 'application/json' })
   const url = new URL(req.url)
+  // Live updates: the Database Durable Object takes the WebSocket (realtime.ts); the
+  // access token comes with each channel join, as supabase-js sends it.
+  if (url.pathname.startsWith('/realtime/v1/')) {
+    if (req.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return reply(426, JSON.stringify({ code: 'UPGRADE_REQUIRED', message: 'Expected a WebSocket' }), { 'Content-Type': 'application/json' })
+    return stub(env).fetch(req)
+  }
   let caller: Caller
   try {
     caller = await identify(req, env)

@@ -26,7 +26,7 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Only these paths start the Worker; every other request is a static file or the app shell.
-    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*", "/rest/*", "/auth/*"]
+    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*", "/rest/*", "/auth/*", "/realtime/*"]
   },
 
   "vars": {

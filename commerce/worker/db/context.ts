@@ -2,6 +2,7 @@
 // auth.uid(), current_merchant_id(), has_permission(), is_staff(), is_platform_staff(),
 // _support_session_id(), _support_read_only(), current_role_code(), _device_ok() and
 // merchant_access_mode(). Each answer is worked out once per request.
+import type { Change } from './realtime.ts'
 import { raise } from './errors.ts'
 import type { Sql } from './sql.ts'
 
@@ -34,6 +35,8 @@ export class Context {
   readonly now: string
   /** Transaction-local switches (Postgres set_config(…, true)), e.g. store_order_import. */
   readonly flags = new Map<string, string>()
+  /** Rows this request wrote to tables with live updates (realtime.ts), sent once saved. */
+  readonly changes: Change[] = []
   private memo = new Map<string, unknown>()
 
   constructor(readonly sql: Sql, readonly identity: Identity, now = new Date()) {
