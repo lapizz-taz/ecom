@@ -67,7 +67,8 @@ describe('clerk session tokens', () => {
     await expect(verifySessionToken(`${h}.${enc({ sub: 'user_evil', exp: t + 60 })}.${s}`, jwksFetch as never, now)).rejects.toMatchObject({ status: 401 })
     await expect(verifySessionToken(await sign({ sub: 'user_abc', exp: t + 60 }, other), jwksFetch as never, now)).rejects.toMatchObject({ status: 401 })
     await expect(verifySessionToken(await sign({ sub: 'user_abc', exp: t - 60 }), jwksFetch as never, now)).rejects.toMatchObject({ code: 'TOKEN_EXPIRED' })
-    await expect(verifySessionToken(await sign({ sub: 'user_abc', exp: t + 60 }, keys, 'ins_unknown'), jwksFetch as never, now)).rejects.toMatchObject({ status: 401 })
+    // A key id the server's Clerk instance does not have: most often a key from another instance.
+    await expect(verifySessionToken(await sign({ sub: 'user_abc', exp: t + 60 }, keys, 'ins_unknown'), jwksFetch as never, now)).rejects.toMatchObject({ status: 401, code: 'CLERK_KEY_MISMATCH' })
     await expect(verifySessionToken(await sign({ sub: 'not-a-user', exp: t + 60 }), jwksFetch as never, now)).rejects.toMatchObject({ status: 401 })
     await expect(verifySessionToken('abc', jwksFetch as never, now)).rejects.toMatchObject({ status: 401 })
     const none = `${enc({ alg: 'none', kid: 'ins_1' })}.${enc({ sub: 'user_abc', exp: t + 60 })}.`

@@ -5,6 +5,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router'
 import { LogoMark, Wordmark } from '@/components/brand/logo'
 import { Spinner } from '@/components/common/states'
 import { useAuth } from '@/features/auth/auth-context'
+import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { superAdminUnlocked } from '@/lib/super-admin-gate'
 import MarketingNotFound from '@/pages/marketing/not-found'
 import { SignInForm } from '@/pages/storefront/login'
@@ -18,7 +19,8 @@ const safeNext = (next: string | null) => (next && next.startsWith('/super-admin
  * address; who may use the panel is still decided by the database.
  */
 export default function SuperAdminLoginPage() {
-  const { session, loading, clerkError, signOut, usesClerk } = useAuth()
+  const { session, loading, clerkError, usesClerk } = useAuth()
+  const linkPending = useClerkLinkPending()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = safeNext(params.get('next'))
@@ -52,14 +54,16 @@ export default function SuperAdminLoginPage() {
           <p className="mt-1.5 text-sm text-zinc-400">Restricted area. Sign in with your platform staff account.</p>
         </div>
 
-        {clerkError && (
+        {clerkError && !linkPending && (
           <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm" role="alert">
             <p className="text-red-300">{clerkError.message}</p>
-            <button type="button" className="mt-1 text-xs font-medium text-zinc-300 underline underline-offset-4" onClick={() => void signOut()}>Sign out and try another account</button>
           </div>
         )}
 
-        {loading ? (
+        {linkPending ? (
+          // Clerk is signed in here but the account did not open: Clerk's box would send the browser straight back.
+          <ClerkLinkNotice className="border-white/10 bg-[#0d0d10]" />
+        ) : loading ? (
           <div className="flex justify-center py-10"><Spinner className="size-5" /></div>
         ) : usesClerk ? (
           <div className="flex justify-center">

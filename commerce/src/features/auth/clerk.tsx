@@ -72,10 +72,14 @@ export function ClerkRoot({ children }: { children: ReactNode }) {
 export interface ClerkLink {
   /** Clerk has loaded and the database session matches it (or nobody is signed in). */
   ready: boolean
+  /** Clerk has a signed-in person in this browser (whether or not the Fullfilio session is open yet). */
+  signedIn: boolean
   /** The Clerk sign-in could not be turned into a Fullfilio session. */
   error: Error | null
   /** Waits until the signed-in Clerk user has a Fullfilio session in this browser. */
   sync: () => Promise<void>
+  /** Tries again after an error (once, when the person asks). */
+  retry: () => void
   signOut: () => Promise<void>
 }
 
@@ -124,12 +128,19 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
   }, [isLoaded, isSignedIn, userId, linkedTo, sync, clerk])
 
   const ready = (isLoaded && (!isSignedIn || linkedTo === userId || error !== null)) || (!isLoaded && gaveUp)
+  const signedIn = Boolean(isLoaded && isSignedIn)
   const shownError = error ?? (!isLoaded && gaveUp ? new Error('Could not reach the sign-in service. Check your connection and reload the page.') : null)
+  // A failed link is not retried by itself: pages show the error with "Try again" instead.
+  const retry = useCallback(() => {
+    setError(null)
+    sync().catch((e: Error) => { setError(e); reportError(e, { where: 'clerk-session-sync' }) })
+  }, [sync])
   const signOut = useCallback(async () => {
     await clerk.signOut().catch((e) => reportError(e, { where: 'clerk-sign-out' }))
     await endSupabaseSession()
+    setError(null)
   }, [clerk])
-  useEffect(() => { onChange({ ready, error: shownError, sync, signOut }) }, [ready, shownError?.message, sync, signOut, onChange])
+  useEffect(() => { onChange({ ready, signedIn, error: shownError, sync, retry, signOut }) }, [ready, signedIn, shownError?.message, sync, retry, signOut, onChange])
   return null
 }
 
