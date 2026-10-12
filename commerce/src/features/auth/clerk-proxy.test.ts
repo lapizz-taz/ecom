@@ -13,3 +13,15 @@ describe('where the browser reaches Clerk', () => {
     expect(clerkProxyUrl('pk_test_abc', undefined)).toBeUndefined()
   })
 })
+
+describe('clerkSignedInHere (Clerk\'s cross-tab cookie)', () => {
+  it('reads whether anyone is signed in to Clerk in this browser', async () => {
+    const { clerkSignedInHere } = await import('@/features/auth/clerk')
+    expect(clerkSignedInHere('a=1; __client_uat=1760284800; b=2')).toBe(true)
+    expect(clerkSignedInHere('__client_uat_Xy12=1760284800')).toBe(true)
+    expect(clerkSignedInHere('__client_uat=0; __client_uat_Xy12=0')).toBe(false)
+    expect(clerkSignedInHere('__client_uat=0; __client_uat_Xy12=1760284800')).toBe(true)
+    expect(clerkSignedInHere('a=1')).toBeNull()
+    expect(clerkSignedInHere('')).toBeNull()
+  })
+})
