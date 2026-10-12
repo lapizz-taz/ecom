@@ -1,9 +1,6 @@
-// TypeScript ports of the Postgres business triggers, by trigger function name.
-// A table whose trigger has no port here refuses writes (NOT_PORTED) instead of
-// silently skipping the rule; each module stage adds its ports.
+// TypeScript versions of Postgres business triggers, by trigger function name. Empty:
+// the PL/pgSQL interpreter (pg/engine.ts) runs every trigger as written in the
+// migrations; a port here would take precedence and must then match it exactly.
 import type { TriggerImpl } from '../writer.ts'
-import { catalogTriggers } from './catalog.ts'
 
-export const triggers: Record<string, TriggerImpl> = {
-  ...catalogTriggers,
-}
+export const triggers: Record<string, TriggerImpl> = {}

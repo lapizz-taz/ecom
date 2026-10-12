@@ -1,33 +1,19 @@
-// /rpc/<name>: the database functions the app calls, ported to TypeScript. Each runs
-// in one transaction (all or nothing, like a Postgres function), as its Postgres
-// owner did: definer functions owned by postgres see every row, those owned by
-// app_owner keep store isolation, invoker functions run with the caller's rights.
+// /rpc/<name>: the database functions the app calls, run as written in the migrations
+// by the PL/pgSQL interpreter (pg/engine.ts). Each call is one transaction (all or
+// nothing, like a Postgres function) and runs as its Postgres owner did: definer
+// functions owned by postgres see every row, those owned by app_owner keep store
+// isolation, invoker functions run with the caller's rights.
 import { toTimestamp } from '../codec.ts'
 import type { Context } from '../context.ts'
 import { DbError } from '../errors.ts'
-import { fn as fnMeta, type FunctionMeta } from '../meta.ts'
-import type { DbRole } from '../policy.ts'
+import { fn as fnMeta } from '../meta.ts'
 import type { Sql } from '../sql.ts'
-import type { WriteEnv } from '../writer.ts'
-import { functions as registry } from './registry.ts'
-
-export interface RpcCall {
-  sql: Sql
-  ctx: Context
-  /** Writes as the function's owner (see roleFor). */
-  env: WriteEnv
-  /** Arguments by name, converted to their declared types; missing optional ones are undefined. */
-  args: Record<string, unknown>
-}
-
-export type RpcImpl = (call: RpcCall) => unknown
+import { asDbError, PgEngine } from '../pg/engine.ts'
+import type { Typed } from '../pg/runtime.ts'
+import { normType } from '../pg/types.ts'
+import { JNULL, plainValue } from '../pg/values.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-export function roleFor(meta: FunctionMeta, ctx: Context): DbRole {
-  if (!meta.definer) return ctx.role
-  return meta.owner === 'app_owner' ? 'app_owner' : 'service_role'
-}
 
 function coerce(name: string, type: string, value: unknown): unknown {
   if (value === null || value === undefined) return null
@@ -76,19 +62,40 @@ export function callRpc(sql: Sql, ctx: Context, name: string, input: Record<stri
   if (ctx.role !== 'service_role' && !meta.grants.includes(ctx.role as 'anon' | 'authenticated')) {
     throw new DbError('42501', `permission denied for function ${name}`)
   }
-  const args: Record<string, unknown> = {}
   const known = new Set(meta.args.map((a) => a.name))
   for (const k of Object.keys(input)) {
     if (!known.has(k)) throw new DbError('PGRST202', `Could not find the function public.${name}(${signature}) in the schema cache`)
   }
+  const args: Typed[] = []
+  const names: string[] = []
   for (const a of meta.args) {
     if (!Object.hasOwn(input, a.name)) {
       if (!a.optional) throw new DbError('PGRST202', `Could not find the function public.${name}(${signature}) in the schema cache`)
-      args[a.name] = undefined
-    } else args[a.name] = coerce(a.name, a.type, input[a.name])
+      continue
+    }
+    // PostgREST hands the database JSON; the function's parameter types read it.
+    const v = coerce(a.name, a.type, input[a.name])
+    args.push({ t: a.type === 'jsonb' || a.type === 'json' ? 'jsonb' : v === null ? 'unknown' : argType(a.type), v: a.type === 'jsonb' || a.type === 'json' ? jsonArg(v) : v })
+    names.push(a.name)
   }
-  const impl = registry[name]
-  if (!impl) throw new DbError('0A000', `NOT_PORTED: ${name} is not available on the Cloudflare database yet`)
-  const env: WriteEnv = { sql, ctx, role: roleFor(meta, ctx) }
-  return sql.transaction(() => impl({ sql, ctx, env, args }))
+  // The function as written in the migrations, run by the PL/pgSQL interpreter (pg/engine.ts).
+  const engine = new PgEngine(sql, ctx, ctx.role)
+  try {
+    const result = sql.transaction(() => engine.call(name, args, names))
+    return plainValue(result.v)
+  } catch (e) {
+    throw asDbError(e)
+  }
+}
+
+/** A PostgREST argument type as the engine names it. */
+function argType(type: string): string {
+  const arr = type.endsWith('[]')
+  const base = normType(arr ? type.slice(0, -2) : type)
+  return arr ? `${base}[]` : base
+}
+
+/** JSON from the request body: a top-level null is JSON null when it was sent as a value. */
+function jsonArg(v: unknown): unknown {
+  return v === null ? JNULL : v
 }

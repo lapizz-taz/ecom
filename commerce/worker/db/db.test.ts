@@ -121,15 +121,22 @@ describe('rest api', () => {
     expect(rest(sql, asUser(sql, viewer), 'GET', 'coupons?select=code').body).toEqual([])
   }))
 
-  it('checks rules SQLite cannot (patterns) and refuses unported business rules', () => rolledBack(sql, () => {
+  it('checks rules SQLite cannot (patterns) and runs the business triggers', () => rolledBack(sql, () => {
     const owner = createStaff(sql, 'OWNER')
     const bad = rest(sql, asUser(sql, owner), 'POST', 'categories', { body: { name: 'Bad slug', slug: 'Not A Slug' } })
     expect(bad.status).toBe(400)
     expect((bad.body as { code: string; message: string })).toMatchObject({ code: '23514', message: expect.stringContaining('categories_slug_check') })
-    // coupons has a business trigger (usage counter guard) that is ported in its own stage.
-    const coupon = rest(sql, asUser(sql, owner), 'POST', 'coupons', { body: { code: 'SAVE10', discount_type: 'FIXED', discount_value: 10 } })
-    expect(coupon.status).toBe(400)
-    expect((coupon.body as { message: string }).message).toMatch(/NOT_PORTED/)
+    // coupons' trigger (as written in the migrations) zeroes the usage counter a person sends …
+    const coupon = rest(sql, asUser(sql, owner), 'POST', 'coupons', {
+      body: { code: 'SAVE10', discount_type: 'FIXED', discount_value: 10, usage_count: 50 }, prefer: 'return=representation',
+    })
+    expect(coupon.status).toBe(201)
+    const [row] = coupon.body as Array<{ id: string; usage_count: number; created_by: string }>
+    expect(row).toMatchObject({ usage_count: 0, created_by: owner })
+    // … and refuses edits to it.
+    const edit = rest(sql, asUser(sql, owner), 'PATCH', `coupons?id=eq.${row.id}`, { body: { usage_count: 3 } })
+    expect(edit.status).toBe(400)
+    expect((edit.body as { message: string }).message).toMatch(/counted automatically/)
   }))
 
   it('embeds related rows: to-one objects, to-many arrays, inner joins and per-parent order', () => rolledBack(sql, () => {

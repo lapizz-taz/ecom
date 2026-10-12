@@ -139,12 +139,21 @@ function fillValue(env: WriteEnv, col: ColumnMeta): unknown {
   throw new DbError('0A000', `NOT_PORTED: default ${f.expr}`)
 }
 
+/** A DEFAULT expression with now() as the request's transaction time (Postgres: every now() in a transaction is the same). */
+const atNow = (env: WriteEnv, expr: string) => expr.replaceAll("'now'", `'${env.ctx.now}'`)
+
 /** Evaluates SQLite DEFAULT expressions for columns a BEFORE trigger needs to see. */
 function defaults(env: WriteEnv, t: TableMeta, missing: string[]): Values {
   const withDefault = missing.filter((c) => t.columns[c].default !== undefined)
   if (!withDefault.length) return {}
-  const raw = env.sql.all(`SELECT ${withDefault.map((c, i) => `${t.columns[c].default} AS d${i}`).join(', ')}`)[0]
+  const raw = env.sql.all(`SELECT ${withDefault.map((c, i) => `${atNow(env, t.columns[c].default!)} AS d${i}`).join(', ')}`)[0]
   return Object.fromEntries(withDefault.map((c, i) => [c, decode(raw[`d${i}`], t.columns[c])]))
+}
+
+/** Defaults that read the clock, filled with the transaction time. */
+function nowDefaults(env: WriteEnv, t: TableMeta, given: Values): Values {
+  const cols = Object.keys(t.columns).filter((c) => !Object.hasOwn(given, c) && t.columns[c].default?.includes("'now'"))
+  return cols.length ? defaults(env, t, cols) : {}
 }
 
 /** WITH CHECK policies and application checks on rows just written. */
@@ -240,6 +249,7 @@ export function insert(env: WriteEnv, name: string, rows: Values[], opts: Insert
     for (const [c, col] of Object.entries(t.columns)) {
       if (!Object.hasOwn(given, c) && col.fill) given[c] = fillValue(env, col)
     }
+    Object.assign(given, nowDefaults(env, t, given))
     let newRow: Values = given
     if (hooks.some((h) => h.meta.timing === 'BEFORE')) {
       const missing = Object.keys(t.columns).filter((c) => !Object.hasOwn(given, c) && !t.columns[c].generated && !t.columns[c].identity)

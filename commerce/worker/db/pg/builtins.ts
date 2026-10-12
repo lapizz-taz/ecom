@@ -574,7 +574,12 @@ export const builtins: Record<string, Builtin> = {
   rtrim: { ret: fixed('text'), js: (a) => trimChars(str(a[0]), a[1] === undefined ? ' ' : str(a[1]), 'right'), sql: (a) => `rtrim(${a.map((x) => x.sql).join(', ')})` },
   substring: {
     ret: fixed('text'),
-    js: (a) => {
+    js: (a, t) => {
+      // substring(s from 'pattern'): the first capture group (or the whole match) of a regular expression
+      if (a.length === 2 && (t[1] === 'text' || t[1] === 'unknown') && typeof a[1] === 'string' && !/^-?\d+$/.test(a[1])) {
+        const m = pgRegex(a[1]).exec(str(a[0]))
+        return m ? (m.length > 1 ? m[1] ?? null : m[0]) : null
+      }
       const chars = [...str(a[0])]
       const from = num(a[1])
       if (a.length < 3) return chars.slice(Math.max(from - 1, 0)).join('')
@@ -583,7 +588,10 @@ export const builtins: Record<string, Builtin> = {
       const start = from - 1
       return chars.slice(Math.max(start, 0), Math.max(start + len, 0)).join('')
     },
-    sql: (a) => `substr(${a.map((x) => x.sql).join(', ')})`,
+    sql: (a) => {
+      if (a.length === 2 && (a[1].t === 'text' || a[1].t === 'unknown')) throw new Error('substring with a regular expression')
+      return `substr(${a.map((x) => x.sql).join(', ')})`
+    },
   },
   substr: {
     ret: fixed('text'),

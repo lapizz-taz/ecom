@@ -54,6 +54,9 @@ export class QScope {
   fromSql: string[] = []
   /** This level's WITH definitions as SQL (for those lookups). */
   cteSql: string[] = []
+  whereSql: string | null = null
+  /** GROUP BY of plain expressions (null when it names output columns). */
+  groupSql: string | null = ''
   recursive = false
   constructor(readonly parent: QScope | null) {}
 
@@ -284,6 +287,11 @@ export class Compiler implements SqlHelp {
       scope.fromSql = [...from]
     }
     const where = q.where ? this.cond(q.where, scope) : null
+    scope.whereSql = where
+    if (q.groupBy.length) {
+      const plain = q.groupBy.every((g) => !(g.k === 'lit' && typeof g.v === 'number') && !(g.k === 'ref' && g.parts.length === 1 && !this.findColumn(g.parts, scope)))
+      scope.groupSql = plain ? q.groupBy.map((g) => this.expr(g, scope).sql).join(', ') : null
+    }
     // select list, with * expanded
     const items: Array<{ sql: string; t: string; name: string }> = []
     for (const it of q.items) {
@@ -1020,7 +1028,7 @@ export class Compiler implements SqlHelp {
         return { sql: `EXISTS (SELECT 1 FROM json_each(${l.sql}) AS "_x" WHERE "_x"."value" IN (SELECT value FROM json_each(${r.sql})))`, t: 'bool' }
       case '~': case '~*': case '!~': case '!~*': {
         const tl = l.t === 'unknown' ? { ...l, t: 'text' } : l
-        return this.lookup(scope, [tl, r], 'bool', (vals) => this.evaluator.eval({ k: 'bin', op, l: { k: 'value', v: vals[0].v, type: vals[0].t }, r: { k: 'value', v: vals[1].v, type: vals[1].t } }))
+        return this.lookup(scope, [tl, r], 'bool', (vals) => this.evaluator.eval({ k: 'bin', op, l: { k: 'value', v: vals[0].v, type: vals[0].t }, r: { k: 'value', v: vals[1].v, type: vals[1].t } }), hasAggregate(le) || hasAggregate(re))
       }
       case 'like':
         return { sql: this.like(textSql(l), r, false, false), t: 'bool' }
@@ -1226,7 +1234,7 @@ export class Compiler implements SqlHelp {
       const args = e.args.map((x) => this.expr(x, scope))
       if (!b.sql) {
         const rt = b.ret(args.map((x) => x.t), e.args)
-        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }))
+        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }), e.args.some((x) => hasAggregate(x)))
       }
       try {
         const rt = b.ret(args.map((x) => x.t), e.args)
@@ -1237,7 +1245,7 @@ export class Compiler implements SqlHelp {
         if (err instanceof DbError) throw err
         // SQLite has no form of it: per distinct argument in JavaScript
         const rt = b.ret(args.map((x) => x.t), e.args)
-        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }))
+        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }), e.args.some((x) => hasAggregate(x)))
       }
     }
     if (builtin && SRF.has(name)) throw new NotSupported(`set-returning ${name}() in a select list`)
@@ -1248,7 +1256,7 @@ export class Compiler implements SqlHelp {
       const rt = this.engine.returnType(name, args.map((x) => x.t), e.schema)
       if (!rt) throw new DbError('42883', `function ${name}(${args.map((x) => x.t).join(', ')}) does not exist`)
       if (rt.startsWith('setof ')) throw new NotSupported(`set-returning function ${name} with per-row arguments`)
-      return this.lookup(scope, args, rt, (vals) => this.engine.call(name, vals, e.names, e.schema))
+      return this.lookup(scope, args, rt, (vals) => this.engine.call(name, vals, e.names, e.schema), e.args.some((x) => hasAggregate(x)))
     }
     const frag = new Map<string, SqlArg>()
     inline.params.forEach((p, i) => {
@@ -1270,16 +1278,16 @@ export class Compiler implements SqlHelp {
 
   /**
    * A per-row value SQLite cannot compute (a PL/pgSQL function, a regular expression):
-   * computed in JavaScript for each distinct argument tuple the query's rows have,
-   * then looked up per row.
+   * computed in JavaScript once per distinct argument tuple the query produces, then
+   * read per row from a JSON object keyed by the arguments (hex of their JSON array,
+   * computed by SQLite on both sides, so the keys always agree).
    */
-  private lookup(scope: QScope, args: SqlArg[], t: string, compute: (vals: Typed[]) => Typed): SqlArg {
+  private lookup(scope: QScope, args: SqlArg[], t: string, compute: (vals: Typed[]) => Typed, grouped = false): SqlArg {
     const level = this.sourceLevel(scope)
     if (!level) throw new NotSupported('a per-row function outside a query with FROM')
-    const cols = args.map((a, i) => `${a.sql} AS "a${i}"`)
-    // The query's own FROM; when the arguments use an outer query's columns too, those FROMs as well.
-    let rows: Row[] | null = null
-    const froms: string[] = []
+    if (grouped && level.groupSql === null) throw new NotSupported('a per-row function of aggregates grouped by output names')
+    const key = `('k' || hex(json_array(${args.map((a) => a.sql).join(', ')})))`
+    const cols = [`${key} AS "__k"`, ...args.map((a, i) => `${a.sql} AS "a${i}"`)]
     const ctes: string[] = []
     let recursive = false
     for (let s: QScope | null = scope; s; s = s.parent) {
@@ -1287,25 +1295,30 @@ export class Compiler implements SqlHelp {
       recursive ||= s.recursive
     }
     const withSql = ctes.length ? `WITH ${recursive ? 'RECURSIVE ' : ''}${ctes.join(', ')} ` : ''
+    // The query's own FROM (and WHERE / GROUP BY when known); when the arguments use an
+    // outer query's columns too, those FROMs as well.
+    let rows: Row[] | null = null
+    const froms: string[] = []
     for (let s: QScope | null = level; s && !rows; s = s.parent) {
       if (!s.fromSql.length) continue
       froms.unshift(s.fromSql.join(', '))
+      const own = s === level
+      const where = own && level.whereSql ? ` WHERE ${level.whereSql}` : ''
+      const group = own && grouped && level.groupSql ? ` GROUP BY ${level.groupSql}` : ''
       try {
-        rows = runSql(this.engine, `${withSql}SELECT DISTINCT ${cols.join(', ')} FROM ${froms.join(', ')}`, [...this.params])
+        rows = runSql(this.engine, `${withSql}SELECT DISTINCT ${cols.join(', ')} FROM ${froms.join(', ')}${where}${group}`, [...this.params])
       } catch (e) {
         if (!(e instanceof DbError && e.code === '42703')) throw e
       }
     }
     if (!rows) throw new NotSupported('a per-row function on columns SQLite cannot reach')
-    const map = rows.map((r) => {
-      const raw = args.map((_, i) => r[`a${i}`] ?? null)
-      const vals = args.map((a, i) => ({ t: a.t, v: decodeSql(raw[i], a.t) }))
+    const map: Record<string, unknown> = {}
+    for (const r of rows) {
+      const vals = args.map((a, i) => ({ t: a.t, v: decodeSql(r[`a${i}`] ?? null, a.t) }))
       const result = compute(vals)
-      return [...raw, encodeSql(result.v, result.t)]
-    })
-    const m = this.bind(map, 'jsonb')
-    const conds = args.map((a, i) => `json_extract("_m".value, '$[${i}]') IS ${a.sql}`).join(' AND ')
-    return { sql: `(SELECT json_extract("_m".value, '$[${args.length}]') FROM json_each(${m}) AS "_m" WHERE ${conds} LIMIT 1)`, t }
+      map[String(r.__k)] = encodeSql(result.v, result.t)
+    }
+    return { sql: `(${this.bind(map, 'jsonb')} ->> ${key})`, t }
   }
 
   /** The innermost query level that has FROM items. */
