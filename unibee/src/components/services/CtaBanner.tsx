@@ -1,22 +1,29 @@
 import { ArrowRight } from "lucide-react";
 import { Reveal } from "@/components/ui/Reveal";
+import { WhatsAppLink } from "@/components/home/WhatsAppLink";
 import { page } from "@/lib/links";
 
-/** Red call-to-action band. */
-export function CtaBanner({ title = "Ready to start your journey?", text = "Register in 5 minutes. Our team will call you on WhatsApp within 24 hours.", button = "Register Now" }) {
+/** Closing call to action: big centred statement and two buttons. */
+export function CtaBanner({
+  title = "Ready to start your journey?",
+  text = "Register in 5 minutes. Our team will call you on WhatsApp within 24 hours.",
+  button = "Register Now",
+}) {
   return (
-    <section className="bg-white pb-16 md:pb-24">
-      <div className="container-page">
-        <Reveal className="relative isolate overflow-hidden rounded-[var(--radius-frame)] bg-brand-dark px-6 py-12 text-center text-white sm:px-10 md:py-16">
-          <div className="absolute -top-24 -right-16 -z-10 size-72 rounded-full bg-brand blur-2xl" aria-hidden="true" />
-          <div className="absolute -bottom-28 -left-10 -z-10 size-72 rounded-full bg-[#b91c1c] blur-2xl" aria-hidden="true" />
-          <h2 className="h2 text-white">{title}</h2>
-          <p className="mx-auto mt-3 max-w-[520px] text-[17px] text-white/90">{text}</p>
-          <a href={page("/#register")} className="btn mt-8 bg-white px-8 text-[17px] font-bold text-brand-dark shadow-[var(--shadow-btn)] hover:bg-brand-tint">
-            {button} <ArrowRight className="size-5" aria-hidden="true" />
+    <section className="border-t border-line bg-white">
+      <Reveal className="container-page py-24 text-center md:py-32">
+        <span className="mx-auto mb-6 block size-2 rounded-full bg-brand" aria-hidden="true" />
+        <h2 className="h2 mx-auto max-w-[640px] md:text-[52px] lg:text-[56px]">{title}</h2>
+        <p className="mx-auto mt-4 max-w-[480px] text-[17px] text-muted">{text}</p>
+        <div className="mt-8 flex flex-col justify-center gap-2.5 sm:flex-row">
+          <a href={page("/#register")} className="btn btn-primary min-h-12 px-6">
+            {button} <ArrowRight className="size-4" aria-hidden="true" />
           </a>
-        </Reveal>
-      </div>
+          <WhatsAppLink location="cta" className="btn btn-secondary min-h-12 px-6">
+            Talk on WhatsApp
+          </WhatsAppLink>
+        </div>
+      </Reveal>
     </section>
   );
 }

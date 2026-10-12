@@ -10,7 +10,7 @@ import { trackEvent } from "@/lib/analytics";
 
 /** Real logo if provided, otherwise a monogram tile in the university's colour. */
 export function UniversityLogo({ u, size = "md" }: { u: University; size?: "md" | "lg" }) {
-  const box = size === "lg" ? "h-16 w-16 text-lg" : "h-12 w-12 text-[13px]";
+  const box = size === "lg" ? "h-14 w-14 text-base" : "h-10 w-10 text-[11px]";
   if (u.logo) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={asset(u.logo)} alt="" className={`${size === "lg" ? "h-16" : "h-12"} w-auto max-w-[140px] object-contain`} loading="lazy" />;
@@ -59,14 +59,14 @@ export function UniversityMarquee() {
             type="button"
             onClick={() => open(u)}
             tabIndex={copy ? -1 : undefined}
-            className="group flex h-[88px] w-[232px] items-center gap-3 rounded-[var(--radius-card)] border border-line bg-white px-4 text-left transition duration-300 hover:-translate-y-0.5 hover:border-transparent hover:shadow-[var(--shadow-card-hover)] focus-visible:border-transparent"
+            className="group flex h-[72px] w-[236px] items-center gap-3 rounded-[var(--radius-card)] px-3 text-left transition duration-300 hover:bg-surface"
             aria-label={copy ? undefined : `${u.name}, ${u.city}. View details`}
           >
             <span className="grayscale transition duration-300 group-hover:grayscale-0 group-focus-visible:grayscale-0">
               <UniversityLogo u={u} />
             </span>
             <span className="min-w-0">
-              <span className="line-clamp-2 text-[14px] leading-snug font-semibold text-ink-soft transition group-hover:text-ink">{u.name}</span>
+              <span className="line-clamp-2 text-[14px] leading-snug font-medium text-muted transition group-hover:text-ink">{u.name}</span>
               <span className="mt-0.5 flex items-center gap-1 text-[13px] text-muted">
                 <MapPin className="size-3.5" aria-hidden="true" /> {u.city}
               </span>
@@ -95,7 +95,7 @@ export function UniversityMarquee() {
           {list(1)}
         </div>
       </div>
-      <p className="mt-4 text-center text-[14px] text-muted">Tap a university to see programs, fees and requirements.</p>
+      <p className="container-page mt-6 font-mono text-[12px] text-faint">Tap a university to see programs, fees and requirements →</p>
 
       <Modal open={!!selected} onClose={close} labelledBy="uni-title">
         {selected && <UniversityDetails u={selected} onApply={() => { const u = selected; close(); requestAnimationFrame(() => applyWith(u)); }} />}

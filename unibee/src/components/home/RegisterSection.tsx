@@ -1,60 +1,63 @@
-import { Check, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { RegistrationForm } from "@/components/home/RegistrationForm";
 import { Reveal } from "@/components/ui/Reveal";
+import { SectionIntro } from "@/components/ui/SectionIntro";
 import { WhatsAppLink } from "@/components/home/WhatsAppLink";
 import { SocialIcon } from "@/components/ui/SocialIcon";
 
 const nextSteps = [
-  "We review your profile for free",
-  "A counsellor calls you on WhatsApp within 24 hours",
-  "You get a shortlist of universities that fit your results and budget",
-  "We guide you through application, file processing and visa",
+  { title: "Free profile review", text: "We look at your SSC, HSC and English results." },
+  { title: "WhatsApp call within 24 hours", text: "A counsellor talks through your goals and budget." },
+  { title: "Your university shortlist", text: "Programs that fit your results, budget and timeline." },
+  { title: "Application to visa", text: "We guide you through every document and deadline." },
 ];
 
 /**
  * Phones: heading → form → "what happens next" (the form comes first because it's the main goal).
- * Desktop: heading + "what happens next" on the left, form on the right.
+ * Desktop: heading row, then "what happens next" on the left and the form on the right.
  */
 export function RegisterSection() {
   return (
-    <section id="register" aria-labelledby="register-title" className="section scroll-mt-16 border-y border-line bg-surface">
-      <div className="container-page grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:grid-rows-[auto_1fr] lg:gap-x-16 lg:gap-y-0">
-        <Reveal className="lg:col-start-1 lg:row-start-1">
-          <p className="eyebrow mb-3">Free registration</p>
-          <h2 id="register-title" className="h2">
-            Register Your Profile
-          </h2>
-          <p className="lead mt-4">Fill in your details and our team will contact you within 24 hours.</p>
-        </Reveal>
+    <section id="register" aria-labelledby="register-title" className="section scroll-mt-16 bg-white">
+      <div className="container-page">
+        <SectionIntro
+          id="register-title"
+          title="Register Your Profile"
+          text="Fill in your details and our team will contact you within 24 hours."
+          label="1.0  Free registration"
+        />
 
-        <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <RegistrationForm />
+        <div className="mt-12 grid gap-10 md:mt-16 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+          <div className="lg:order-2">
+            <RegistrationForm />
+          </div>
+
+          <Reveal className="lg:order-1 lg:pt-2">
+            <h3 className="text-[13px] font-medium text-ink">What happens next</h3>
+            <ol className="mt-4 border-t border-line">
+              {nextSteps.map((s, i) => (
+                <li key={s.title} className="flex gap-4 border-b border-line py-4">
+                  <span className="pt-0.5 font-mono text-[12px] text-faint">{`0${i + 1}`}</span>
+                  <div>
+                    <p className="text-[15px] font-medium text-ink">{s.title}</p>
+                    <p className="mt-0.5 text-[14px] text-muted">{s.text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <p className="mt-6 flex gap-2 text-[13px] leading-relaxed text-muted">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              Your details are only used by the UniBee team to help with your application. We never sell your data.
+            </p>
+            <p className="mt-4 text-[14px] text-muted">
+              Prefer to chat first?{" "}
+              <WhatsAppLink location="register-aside" className="inline-flex items-center gap-1 font-medium text-whatsapp-dark underline-offset-4 hover:underline">
+                <SocialIcon network="whatsapp" className="size-4" /> Message us on WhatsApp
+              </WhatsAppLink>
+            </p>
+          </Reveal>
         </div>
-
-        <Reveal className="lg:col-start-1 lg:row-start-2">
-          <h3 className="mt-2 font-heading text-[16px] font-semibold lg:mt-8">What happens next</h3>
-          <ul className="mt-3 space-y-3">
-            {nextSteps.map((s) => (
-              <li key={s} className="flex gap-3 text-[16px] text-ink-soft">
-                <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-white ring-1 ring-line">
-                  <Check className="size-3.5 text-brand-dark" strokeWidth={3} aria-hidden="true" />
-                </span>
-                {s}
-              </li>
-            ))}
-          </ul>
-
-          <p className="mt-8 flex gap-2 text-[14px] text-muted">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            Your details are only used by the UniBee team to help with your application. We never sell your data.
-          </p>
-          <p className="mt-4 text-[15px] text-ink-soft">
-            Prefer to chat first?{" "}
-            <WhatsAppLink location="register-aside" className="inline-flex items-center gap-1 font-semibold text-whatsapp-dark underline-offset-4 hover:underline">
-              <SocialIcon network="whatsapp" className="size-4" /> Message us on WhatsApp
-            </WhatsAppLink>
-          </p>
-        </Reveal>
       </div>
     </section>
   );

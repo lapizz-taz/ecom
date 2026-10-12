@@ -37,23 +37,23 @@ export function VideoFacade({ youtube, title }: { youtube: string; title: string
     <button
       type="button"
       onClick={() => (id ? setPlaying(true) : setMissing(true))}
-      className="group absolute inset-0 grid size-full place-items-center overflow-hidden bg-night text-white"
+      className={`group absolute inset-0 grid size-full place-items-center overflow-hidden ${id ? "bg-night text-white" : "bg-surface text-ink"}`}
       aria-label={`Play video: ${title}`}
     >
       {id ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" loading="lazy" className="absolute inset-0 size-full object-cover opacity-80 transition duration-500 group-hover:scale-[1.03]" />
       ) : (
-        <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,#e02424_0%,#18181b_60%)]" aria-hidden="true">
-          <Logo className="absolute bottom-6 left-6 h-6 w-auto text-white/70" />
+        <span className="absolute inset-0 [background-image:linear-gradient(to_right,#ececee_1px,transparent_1px),linear-gradient(to_bottom,#ececee_1px,transparent_1px)] [background-size:40px_40px]" aria-hidden="true">
+          <Logo className="absolute bottom-5 left-5 h-5 w-auto text-faint" />
         </span>
       )}
-      <span className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" aria-hidden="true" />
+      {id && <span className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" aria-hidden="true" />}
       <span className="relative flex flex-col items-center gap-4">
-        <span className="grid size-20 place-items-center rounded-full bg-brand shadow-[0_10px_40px_rgba(255,51,51,0.45)] ring-8 ring-white/15 transition group-hover:scale-105">
-          <Play className="ml-1 size-8 fill-white" aria-hidden="true" />
+        <span className="grid size-16 place-items-center rounded-full bg-brand-dark text-white shadow-[0_10px_30px_rgba(224,36,36,0.3)] ring-8 ring-white/40 transition group-hover:scale-105">
+          <Play className="ml-0.5 size-6 fill-white" aria-hidden="true" />
         </span>
-        <span className="px-6 text-center text-[15px] font-medium text-white/90">
+        <span className={`px-6 text-center text-[14px] font-medium ${id ? "text-white/90" : "text-muted"}`}>
           {missing ? "Sample class video coming soon. UniBee will add the YouTube link." : "Play sample class"}
         </span>
       </span>

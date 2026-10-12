@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { Check, FileCheck2 } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
+import { page } from "@/lib/links";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SectionIntro } from "@/components/ui/SectionIntro";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/ui/Reveal";
 import { Placeholder } from "@/components/ui/Placeholder";
@@ -21,75 +22,90 @@ export const metadata: Metadata = {
 export default function ServicesPage() {
   return (
     <>
-      <PageHeader eyebrow="Our services" title="Our Services" subtitle="Everything you need to study in Lithuania, under one roof." />
+      <PageHeader eyebrow="Our services" title="Our Services" subtitle="Everything you need to study in Lithuania, under one roof.">
+        {servicesPlaceholder && <Placeholder label="Confirm service list" className="mt-6" />}
+      </PageHeader>
 
-      {/* Service cards: 1 col mobile, 2 tablet, 3 desktop */}
-      <section aria-labelledby="services-title" className="section bg-white">
+      {/* Service grid: 1 col mobile, 2 tablet, 3 desktop, divided by hairlines */}
+      <section aria-labelledby="services-title" className="bg-white pb-20 md:pb-28">
         <div className="container-page">
           <h2 id="services-title" className="sr-only">
             What we do
           </h2>
-          {servicesPlaceholder && (
-            <p className="mb-6 text-center">
-              <Placeholder label="Confirm service list" />
-            </p>
-          )}
-          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-px border-y border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
             {services.map((s, i) => (
-              <Reveal as="li" key={s.title} delay={(i % 3) * 60}>
-                <div className="card card-hover group h-full p-6 sm:p-7">
-                  <span className="grid size-12 place-items-center rounded-[12px] bg-brand-tint text-brand-dark transition group-hover:bg-brand group-hover:text-white">
-                    <Icon name={s.icon} className="size-6" />
-                  </span>
-                  <h3 className="mt-5 font-heading text-[19px] leading-snug font-semibold tracking-[-0.01em]">{s.title}</h3>
-                  <p className="mt-2 text-[15px] leading-relaxed text-ink-soft">{s.description}</p>
-                </div>
+              <Reveal
+                as="li"
+                key={s.title}
+                delay={(i % 3) * 60}
+                className="group bg-white py-8 sm:px-6 lg:px-8"
+              >
+                <span className="grid size-10 place-items-center rounded-[10px] bg-surface text-ink-soft transition group-hover:bg-brand-tint group-hover:text-brand-dark">
+                  <Icon name={s.icon} className="size-5" />
+                </span>
+                <h3 className="mt-5 text-[16px] font-medium text-ink">{s.title}</h3>
+                <p className="mt-1.5 max-w-[340px] text-[15px] leading-relaxed text-muted">{s.description}</p>
               </Reveal>
             ))}
+            {/* Ninth cell keeps the 3-column grid even and points to the form */}
+            <li className="bg-white py-8 sm:hidden lg:block lg:px-8">
+              <a href={page("/#register")} className="group flex h-full flex-col justify-between gap-6">
+                <span className="grid size-10 place-items-center rounded-[10px] bg-brand-tint text-brand-dark">
+                  <ArrowRight className="size-5" aria-hidden="true" />
+                </span>
+                <span>
+                  <span className="block text-[16px] font-medium text-ink">Not sure where to start?</span>
+                  <span className="mt-1.5 block text-[15px] text-muted">
+                    Register for a free profile assessment and we&apos;ll suggest the right next step.{" "}
+                    <span className="font-medium text-brand-dark group-hover:underline">Register now →</span>
+                  </span>
+                </span>
+              </a>
+            </li>
           </ul>
         </div>
       </section>
 
-      {/* Process timeline */}
-      <section aria-labelledby="process-title" className="section border-y border-line bg-surface">
+      {/* Process */}
+      <section aria-labelledby="process-title" className="section border-t border-line bg-white">
         <div className="container-page">
-          <SectionHeading
+          <SectionIntro
             id="process-title"
-            eyebrow="Step by step"
             title="How It Works: Our Full Process"
-            subtitle="From your first message to landing in Lithuania, here's exactly what happens and roughly how long each step takes."
-            badge={processPlaceholder ? <Placeholder label="Confirm steps & times" className="ml-1" /> : null}
+            text="From your first message to landing in Lithuania, here's exactly what happens and roughly how long each step takes."
+            label="1.0  Process"
+            badge={processPlaceholder ? <Placeholder label="Confirm steps & times" /> : null}
           />
           <ProcessTimeline />
         </div>
       </section>
 
-      {/* Documents checklist (dark panel) */}
-      <section aria-labelledby="docs-title" className="section bg-white">
-        <div className="container-page">
-          <Reveal className="grid overflow-hidden rounded-[var(--radius-frame)] bg-night text-white lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="p-7 sm:p-10 lg:p-12">
-              <span className="grid size-12 place-items-center rounded-[12px] bg-white/10 ring-1 ring-white/15">
-                <FileCheck2 className="size-6" aria-hidden="true" />
-              </span>
-              <h2 id="docs-title" className="h2 mt-6 text-white">
-                Documents You&apos;ll Need
-              </h2>
-              <p className="mt-4 max-w-[420px] text-[16px] leading-relaxed text-white/85">
-                Start collecting these early. We&apos;ll check every document and tell you if anything is missing.
-              </p>
-              {processPlaceholder && <Placeholder label="Confirm list" className="mt-5" />}
-            </div>
-            <ul className="grid gap-2.5 bg-graphite p-7 sm:grid-cols-2 sm:p-10 lg:p-12">
-              {documentsNeeded.map((d) => (
-                <li key={d} className="flex items-start gap-3 rounded-[var(--radius-card)] bg-white/[0.04] p-3.5 text-[15px] text-white/90 ring-1 ring-white/10">
-                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand">
-                    <Check className="size-3 text-white" strokeWidth={3.5} aria-hidden="true" />
-                  </span>
-                  {d}
-                </li>
-              ))}
-            </ul>
+      {/* Documents checklist */}
+      <section aria-labelledby="docs-title" className="section border-t border-line bg-white">
+        <div className="container-page grid gap-10 md:grid-cols-2 md:gap-12 lg:gap-24">
+          <Reveal>
+            <h2 id="docs-title" className="h2">
+              Documents You&apos;ll Need
+            </h2>
+            <p className="mt-5 max-w-[420px] text-[17px] leading-[1.55] text-muted">
+              Start collecting these early. We&apos;ll check every document and tell you if anything is missing.
+            </p>
+            <p className="tag-link mt-5">2.0  Checklist</p>
+            {processPlaceholder && (
+              <div className="mt-5">
+                <Placeholder label="Confirm list" />
+              </div>
+            )}
+          </Reveal>
+          <Reveal as="ul" className="border-t border-line">
+            {documentsNeeded.map((d) => (
+              <li key={d} className="flex items-center gap-3 border-b border-line py-4 text-[15px] text-ink">
+                <span className="grid size-5 shrink-0 place-items-center rounded-full bg-ink">
+                  <Check className="size-3 text-white" strokeWidth={3.5} aria-hidden="true" />
+                </span>
+                {d}
+              </li>
+            ))}
           </Reveal>
         </div>
       </section>

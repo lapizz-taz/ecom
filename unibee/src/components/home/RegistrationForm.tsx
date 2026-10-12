@@ -278,7 +278,7 @@ export function RegistrationForm() {
           <div className="mx-auto grid size-16 place-items-center rounded-full bg-success/10 text-success">
             <CheckCircle2 className="size-9" aria-hidden="true" />
           </div>
-          <h3 className="mt-6 font-heading text-[24px] leading-tight font-bold tracking-[-0.01em] sm:text-[28px]">Thank you, {submittedName}!</h3>
+          <h3 className="mt-6 text-[24px] leading-tight font-semibold tracking-[-0.025em] sm:text-[28px]">Thank you, {submittedName}!</h3>
           <p className="mx-auto mt-3 max-w-[420px] text-[17px] text-ink-soft">Our team will contact you on WhatsApp within 24 hours.</p>
           <a
             href={whatsappUrl(`Hi UniBee, I just registered on your website. My name is ${submittedName}.`)}
@@ -311,7 +311,7 @@ export function RegistrationForm() {
         {/* Progress */}
         <div className="border-b border-line px-5 pt-5 pb-4 sm:px-8 sm:pt-7">
           <div className="flex items-center justify-between text-[13px]">
-            <span className="font-mono font-medium tracking-wide text-brand-dark uppercase">
+            <span className="font-mono font-medium text-brand-dark">
               Step {step + 1} of {STEPS.length}
             </span>
             <span className="flex items-center gap-1.5 text-muted">
@@ -321,7 +321,7 @@ export function RegistrationForm() {
           <ol className="mt-3 grid grid-cols-3 gap-2" aria-label="Form progress">
             {STEPS.map((label, i) => (
               <li key={label} aria-current={i === step ? "step" : undefined}>
-                <div className={`h-1.5 rounded-full transition-colors duration-300 ${i <= step ? "bg-brand" : "bg-line"}`} />
+                <div className={`h-1 rounded-full transition-colors duration-300 ${i <= step ? "bg-brand" : "bg-line"}`} />
                 <span className={`mt-2 flex items-center gap-1 text-[13px] font-medium ${i === step ? "text-ink" : i < step ? "text-ink-soft" : "text-muted"}`}>
                   {i < step && <Check className="size-3.5 text-success" aria-hidden="true" />}
                   {label}
@@ -361,7 +361,7 @@ export function RegistrationForm() {
             </div>
           )}
 
-          <h3 id="reg-step-title" ref={stepHeadingRef} tabIndex={-1} className="font-heading text-[20px] font-semibold tracking-[-0.01em] outline-none">
+          <h3 id="reg-step-title" ref={stepHeadingRef} tabIndex={-1} className="text-[20px] font-semibold tracking-[-0.02em] outline-none">
             {step === 0 && "Personal contact information"}
             {step === 1 && "Academic profile"}
             {step === 2 && "Almost done"}
@@ -407,7 +407,7 @@ export function RegistrationForm() {
             <>
               {(["ssc", "hsc"] as const).map((lvl) => (
                 <div key={lvl} className="rounded-[var(--radius-card)] border border-line p-4 sm:p-5">
-                  <p className="mb-4 flex items-center gap-2 font-heading text-[16px] font-semibold">
+                  <p className="mb-4 flex items-center gap-2 text-[15px] font-semibold">
                     <GraduationCap className="size-5 text-brand-dark" aria-hidden="true" /> {lvl.toUpperCase()} (or equivalent)
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -492,7 +492,7 @@ export function RegistrationForm() {
               </div>
 
               {scored && (
-                <div className="grid gap-4 rounded-[var(--radius-card)] bg-brand-tint/60 p-4 sm:grid-cols-2 sm:p-5">
+                <div className="grid gap-4 rounded-[var(--radius-card)] bg-surface p-4 sm:grid-cols-2 sm:p-5">
                   <div>
                     <Label name="englishScore" required>Overall score</Label>
                     <input {...bind("englishScore", { help: true })} type="text" inputMode="decimal" placeholder={scored.hint.split("e.g. ")[1]} className="field-input" />
@@ -508,7 +508,7 @@ export function RegistrationForm() {
               )}
 
               {values.englishTest === "Medium of Instruction (MOI)" && (
-                <div className="rounded-[var(--radius-card)] bg-brand-tint/60 p-4 sm:p-5">
+                <div className="rounded-[var(--radius-card)] bg-surface p-4 sm:p-5">
                   <Label name="moiDetails" required>Medium of Instruction details</Label>
                   <input {...bind("moiDetails")} type="text" placeholder="e.g. English Medium School / English Version" className="field-input" />
                   <FieldError name="moiDetails" error={err("moiDetails")} />
@@ -516,7 +516,7 @@ export function RegistrationForm() {
               )}
 
               {values.englishTest === "Not taken yet" && (
-                <div className="space-y-4 rounded-[var(--radius-card)] bg-brand-tint/60 p-4 sm:p-5">
+                <div className="space-y-4 rounded-[var(--radius-card)] bg-surface p-4 sm:p-5">
                   <Fieldset legend="Do you plan to take a test?" required name="planToTakeTest" error={err("planToTakeTest")}>
                     <ChoiceGroup name="planToTakeTest" options={PLAN_OPTIONS} value={values.planToTakeTest} onChange={(v) => { set("planToTakeTest", v); touch("planToTakeTest"); }} invalid={!!err("planToTakeTest")} cols={3} />
                   </Fieldset>
@@ -599,20 +599,20 @@ export function RegistrationForm() {
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col-reverse gap-3 border-t border-line bg-surface/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-5">
+        <div className="flex flex-col-reverse gap-3 border-t border-line bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-5">
           {step > 0 ? (
-            <button type="button" onClick={() => goTo(step - 1)} className="btn min-h-12 text-[16px] text-ink-soft hover:bg-white hover:text-ink">
+            <button type="button" onClick={() => goTo(step - 1)} className="btn min-h-12 text-muted hover:bg-white hover:text-ink">
               <ArrowLeft className="size-5" aria-hidden="true" /> Back
             </button>
           ) : (
             <span className="hidden text-[14px] text-muted sm:block">Takes about 5 minutes</span>
           )}
           {step < 2 ? (
-            <button type="submit" className="btn btn-primary sm:min-w-44">
+            <button type="submit" className="btn btn-primary min-h-12 px-6 sm:min-w-44">
               Continue <ArrowRight className="size-5" aria-hidden="true" />
             </button>
           ) : (
-            <button type="submit" className="btn btn-primary sm:min-w-56" disabled={status === "submitting"} aria-busy={status === "submitting"}>
+            <button type="submit" className="btn btn-primary min-h-12 px-6 sm:min-w-56" disabled={status === "submitting"} aria-busy={status === "submitting"}>
               {status === "submitting" ? (
                 <>
                   <Loader2 className="size-5 animate-spin" aria-hidden="true" /> Submitting…
@@ -646,15 +646,11 @@ function safeSession(key: string) {
   }
 }
 
-/** Card with stacked "sheets" behind it. */
+/** Framed panel around the form. */
 function FormShell({ children, cardRef }: { children: ReactNode; cardRef: React.RefObject<HTMLDivElement | null> }) {
   return (
-    <div className="relative scroll-mt-24">
-      <div className="absolute inset-x-6 -bottom-3 top-6 -z-10 hidden rotate-[1.5deg] rounded-[var(--radius-frame)] border border-line bg-white/70 sm:block" aria-hidden="true" />
-      <div className="absolute inset-x-3 -bottom-1.5 top-3 -z-10 hidden -rotate-[1deg] rounded-[var(--radius-frame)] border border-line bg-white sm:block" aria-hidden="true" />
-      <div ref={cardRef} className="relative scroll-mt-24 overflow-hidden rounded-[var(--radius-frame)] bg-white" style={{ boxShadow: "var(--shadow-float)" }}>
-        {children}
-      </div>
+    <div ref={cardRef} className="frame relative scroll-mt-24">
+      {children}
     </div>
   );
 }

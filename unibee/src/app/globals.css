@@ -1,48 +1,44 @@
 @import "tailwindcss";
 
 /* ──────────────────────────────────────────────────────────────────────────
-   UniBee design tokens
-   Brand values come from the UniBee brief (red, Poppins/Inter, pill buttons,
-   12px cards). Elevation, hairlines, tracking and layout rhythm follow the
-   "Arcade" + "Basis Theory" style references. Change a value here and it
+   UniBee design tokens: Linear-style layout, in white.
+   Quiet white canvas, hairline borders, large tight headings, muted grey
+   copy, and UniBee red as the single accent. Change a value here and it
    updates everywhere.
    ────────────────────────────────────────────────────────────────────────── */
 @theme {
-  --color-brand: #ff3333; /* primary red: big buttons, highlights */
-  --color-brand-dark: #e02424; /* hover, small red text, red bands (AA with white) */
-  --color-brand-deeper: #c81e1e; /* hover for brand-dark */
-  --color-brand-tint: #fff0f0; /* soft section/field backgrounds */
-  --color-ink: #1a1a1a; /* headings + main text */
-  --color-ink-soft: #3f3f46; /* emphasised body copy */
-  --color-muted: #6b6b6b; /* helper / secondary text */
-  --color-surface: #f7f7f7; /* light grey bands */
-  --color-line: #e5e5e5; /* hairline borders */
-  --color-line-strong: #d4d4d8; /* stronger structural edges */
-  --color-night: #18181b; /* dark panels */
-  --color-graphite: #27272a; /* cards on dark panels */
+  --color-brand: #ff3333; /* accent dots, highlights, focus */
+  --color-brand-dark: #e02424; /* buttons + small red text (passes WCAG AA with white) */
+  --color-brand-deeper: #c81e1e; /* button hover */
+  --color-brand-tint: #fff0f0; /* soft red fills */
+  --color-ink: #0f1011; /* headings */
+  --color-ink-soft: #3c3f44; /* emphasised body copy */
+  --color-muted: #62666d; /* body + secondary text */
+  --color-faint: #6f747b; /* captions, mono labels */
+  --color-surface: #f7f8f8; /* panels, alternate bands */
+  --color-surface-2: #f1f2f3; /* nested fills, secondary buttons */
+  --color-line: #e8e9eb; /* hairline borders */
+  --color-line-strong: #d6d8db; /* inputs, structural edges */
+  --color-night: #0f1011;
+  --color-graphite: #1c1d1f;
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-whatsapp: #25d366;
   --color-whatsapp-dark: #128c4b;
 
-  --font-heading: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --radius-card: 12px;
-  --radius-input: 12px;
-  --radius-frame: 24px;
+  --radius-input: 10px;
+  --radius-frame: 16px;
 
-  /* Hairline ring + soft lift (brief: 0 4px 20px rgba(0,0,0,.06)) */
-  --shadow-card: 0 0 0 1px rgba(17, 24, 39, 0.06), 0 4px 20px rgba(0, 0, 0, 0.06);
-  --shadow-card-hover: 0 0 0 1px rgba(17, 24, 39, 0.08), 0 12px 32px rgba(0, 0, 0, 0.1);
-  /* Diffused multi-layer stack for floating panels (form, modal) */
-  --shadow-float:
-    0 0 0 1px rgba(17, 24, 39, 0.08), 0 2px 2px -1px rgba(17, 24, 39, 0.04), 0 8px 8px rgba(17, 24, 39, 0.04),
-    0 16px 16px rgba(17, 24, 39, 0.04), 0 32px 32px rgba(17, 24, 39, 0.05);
-  --shadow-btn:
-    0 2px 2px -1px rgba(17, 24, 39, 0.06), 0 4px 4px -2px rgba(17, 24, 39, 0.06), 0 8px 8px rgba(17, 24, 39, 0.05),
-    0 16px 16px rgba(17, 24, 39, 0.04);
+  --shadow-card: 0 0 0 1px var(--color-line);
+  --shadow-card-hover: 0 0 0 1px var(--color-line-strong), 0 8px 24px rgba(15, 16, 17, 0.06);
+  /* Framed "product panel" look */
+  --shadow-float: 0 0 0 1px var(--color-line), 0 1px 2px rgba(15, 16, 17, 0.04), 0 12px 40px rgba(15, 16, 17, 0.06);
+  --shadow-btn: 0 1px 2px rgba(15, 16, 17, 0.08);
 
   --animate-marquee: marquee var(--marquee-duration, 40s) linear infinite;
   --animate-pulse-once: pulse-once 1.6s ease-out 0.8s 2;
@@ -61,12 +57,12 @@
   html {
     -webkit-text-size-adjust: 100%;
     scroll-behavior: smooth;
-    scroll-padding-top: 80px; /* sticky header */
+    scroll-padding-top: 72px; /* sticky header */
   }
   body {
     @apply bg-white font-sans text-base text-ink antialiased;
     line-height: 1.6;
-    font-feature-settings: "cv11", "ss01";
+    font-feature-settings: "cv01", "ss03";
   }
   h1, h2, h3, h4 {
     @apply font-heading text-ink;
@@ -74,7 +70,7 @@
   }
   p { text-wrap: pretty; }
   :focus-visible {
-    outline: 3px solid var(--color-brand-dark);
+    outline: 2px solid var(--color-brand-dark);
     outline-offset: 2px;
     border-radius: 6px;
   }
@@ -82,75 +78,61 @@
 }
 
 @layer components {
-  /* Type scale (mobile → desktop) */
-  .h1 { @apply font-heading text-[32px] leading-[1.12] font-bold tracking-[-0.02em] md:text-[44px] lg:text-[56px] lg:tracking-[-0.025em]; }
-  .h2 { @apply font-heading text-[26px] leading-[1.18] font-bold tracking-[-0.015em] md:text-[34px] lg:text-[40px] lg:tracking-[-0.02em]; }
-  .h3 { @apply font-heading text-[20px] leading-[1.3] font-semibold tracking-[-0.01em] lg:text-[24px]; }
-  .lead { @apply text-[17px] leading-[1.6] text-muted md:text-lg; }
-  .eyebrow { @apply inline-flex items-center gap-2 font-mono text-[12px] font-medium tracking-[0.08em] text-brand-dark uppercase; }
+  /* Type scale (mobile → desktop): large, medium weight, tight tracking */
+  .h1 { @apply font-heading text-[36px] leading-[1.08] font-semibold tracking-[-0.035em] md:text-[52px] lg:text-[64px] lg:leading-[1.04]; }
+  .h2 { @apply font-heading text-[28px] leading-[1.12] font-semibold tracking-[-0.03em] md:text-[36px] lg:text-[44px]; }
+  .h3 { @apply font-heading text-[18px] leading-[1.35] font-semibold tracking-[-0.015em]; }
+  .lead { @apply text-[17px] leading-[1.6] text-muted md:text-[18px]; }
+  .eyebrow { @apply inline-flex items-center gap-2 font-mono text-[12px] font-medium text-faint; }
 
   .container-page { @apply mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8; }
-  .section { @apply py-16 md:py-20 lg:py-24; }
+  .section { @apply py-20 md:py-28 lg:py-32; }
 
-  /* Buttons: pill, lift 2px on hover */
+  /* Buttons: compact pills, lift slightly on hover */
   .btn {
-    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 font-semibold whitespace-nowrap transition duration-200 ease-out select-none;
-    @apply hover:-translate-y-0.5 active:translate-y-0 disabled:pointer-events-none disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-medium whitespace-nowrap transition duration-200 ease-out select-none;
+    @apply hover:-translate-y-px active:translate-y-0 disabled:pointer-events-none disabled:opacity-60;
   }
-  /* Large primary: #FF3333 with ≥19px bold text = WCAG "large text" (3.6:1 passes) */
-  .btn-primary {
-    @apply bg-brand text-[19px] font-bold text-white hover:bg-brand-dark;
-    box-shadow: var(--shadow-btn), 0 0 0 1px var(--color-brand-dark);
-  }
-  /* Compact primary (small text) uses the darker red for AA contrast */
-  .btn-primary-sm {
-    @apply min-h-11 bg-brand-dark px-5 text-[15px] text-white hover:bg-brand-deeper;
-    box-shadow: var(--shadow-btn), 0 0 0 1px var(--color-brand-deeper);
-  }
-  .btn-secondary {
-    @apply border-2 border-brand-dark bg-white text-[17px] text-brand-dark hover:bg-brand-tint;
-    box-shadow: var(--shadow-btn);
-  }
-  .btn-ghost-light {
-    @apply border border-white/40 bg-white/10 text-[17px] text-white backdrop-blur-sm hover:bg-white/20;
-  }
-  .btn-whatsapp {
-    @apply bg-whatsapp-dark text-[17px] text-white hover:bg-[#0e7a40];
-    box-shadow: var(--shadow-btn);
-  }
+  .btn-primary { @apply bg-brand-dark text-white hover:bg-brand-deeper; box-shadow: var(--shadow-btn); }
+  .btn-primary-sm { @apply min-h-9 bg-brand-dark px-4 text-[14px] text-white hover:bg-brand-deeper; box-shadow: var(--shadow-btn); }
+  .btn-secondary { @apply bg-surface-2 text-ink hover:bg-[#e8e9eb]; }
+  .btn-outline { @apply bg-white text-ink ring-1 ring-line-strong hover:bg-surface; }
+  .btn-ghost-light { @apply bg-surface-2 text-ink hover:bg-[#e8e9eb]; }
+  .btn-whatsapp { @apply bg-whatsapp-dark text-white hover:bg-[#0e7a40]; box-shadow: var(--shadow-btn); }
 
-  .card {
-    @apply rounded-[var(--radius-card)] bg-white;
-    box-shadow: var(--shadow-card);
-  }
+  .card { @apply rounded-[var(--radius-card)] bg-white; box-shadow: var(--shadow-card); }
   .card-hover {
-    @apply transition duration-300 hover:-translate-y-1;
+    @apply transition duration-300;
     &:hover { box-shadow: var(--shadow-card-hover); }
   }
+  .frame { @apply overflow-hidden rounded-[var(--radius-frame)] bg-white; box-shadow: var(--shadow-float); }
+
+  /* Small mono label with arrow, e.g. "1.0  Universities →" */
+  .tag-link { @apply inline-flex items-center gap-2 font-mono text-[13px] text-faint transition-colors hover:text-ink; }
 
   /* Form controls */
-  .field-label { @apply mb-1.5 block text-[15px] font-medium text-ink; }
+  .field-label { @apply mb-1.5 block text-[14px] font-medium text-ink; }
   .field-input {
-    @apply block min-h-12 w-full rounded-[var(--radius-input)] border border-line-strong bg-white px-4 py-3 text-base text-ink transition;
-    @apply placeholder:text-[#8a8a8a] hover:border-[#b8b8bd] focus:border-brand-dark focus:ring-4 focus:ring-brand/15 focus:outline-none;
+    @apply block min-h-12 w-full rounded-[var(--radius-input)] border border-line-strong bg-white px-3.5 py-2.5 text-base text-ink transition;
+    @apply placeholder:text-faint hover:border-[#c4c7cb] focus:border-brand-dark focus:ring-4 focus:ring-brand/10 focus:outline-none;
   }
-  .field-input[aria-invalid="true"] { @apply border-danger bg-[#fffafa] focus:ring-danger/15; }
-  .field-help { @apply mt-1.5 text-[14px] leading-snug text-muted; }
-  .field-error { @apply mt-1.5 flex items-start gap-1.5 text-[14px] leading-snug font-medium text-danger; }
+  .field-input[aria-invalid="true"] { @apply border-danger bg-[#fffafa] focus:ring-danger/10; }
+  .field-help { @apply mt-1.5 text-[13px] leading-snug text-muted; }
+  .field-error { @apply mt-1.5 flex items-start gap-1.5 text-[13px] leading-snug font-medium text-danger; }
   .req { @apply ml-0.5 text-danger; }
 
   .choice {
-    @apply flex min-h-12 cursor-pointer items-center gap-3 rounded-[var(--radius-input)] border border-line-strong bg-white px-4 py-2.5 text-[15px] transition hover:border-[#b8b8bd];
+    @apply flex min-h-12 cursor-pointer items-center gap-3 rounded-[var(--radius-input)] border border-line-strong bg-white px-4 py-2.5 text-[15px] transition hover:border-[#c4c7cb];
     &:has(input:checked) { @apply border-brand-dark bg-brand-tint text-ink; }
-    &:has(input:focus-visible) { @apply ring-4 ring-brand/20; }
+    &:has(input:focus-visible) { @apply ring-4 ring-brand/15; }
   }
 }
 
 /* Scroll reveal (only hides content once JS is running) */
 .js .reveal {
   opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+  transform: translateY(14px);
+  transition: opacity 0.45s ease-out, transform 0.45s ease-out;
   transition-delay: var(--reveal-delay, 0ms);
 }
 .js .reveal.is-visible { opacity: 1; transform: none; }
@@ -160,6 +142,10 @@
 .marquee:hover .marquee-track,
 .marquee:focus-within .marquee-track,
 .marquee[data-paused="true"] .marquee-track { animation-play-state: paused; }
+
+/* Line-art illustrations */
+.lineart { stroke: #b7bbc1; fill: none; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.lineart-accent { stroke: var(--color-brand); }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
