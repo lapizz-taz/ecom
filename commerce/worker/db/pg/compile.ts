@@ -8,9 +8,11 @@ import { quoteId } from '../ident.ts'
 import { table as tableMeta, view as viewMeta } from '../meta.ts'
 import { requireGrant } from '../policy.ts'
 import type { CallExpr, Expr, FromItem, OrderItem, Query, Select, SelItem, Values } from './ast.ts'
-import { columnType, encodeSql } from './bridge.ts'
+import { columnType, decodeSql, encodeSql } from './bridge.ts'
 import { aggregates, aggregateType, builtins, textSql, windowFunctions, windowType, type SqlArg, type SqlHelp } from './builtins.ts'
+import type { Row } from '../sql.ts'
 import { Evaluator } from './evaluate.ts'
+import { runSql } from './run.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
 import { addInterval as addIv, cast, Interval, isEnum, isTableType, zoneOffset } from './values.ts'
@@ -48,6 +50,11 @@ export class QScope {
   ctes = new Map<string, Cte>()
   /** Conditions added by rewrites (CROSS JOIN LATERAL … LIMIT 1). */
   extraWhere: string[] = []
+  /** The FROM items as compiled so far (for per-row lookups computed in JavaScript). */
+  fromSql: string[] = []
+  /** This level's WITH definitions as SQL (for those lookups). */
+  cteSql: string[] = []
+  recursive = false
   constructor(readonly parent: QScope | null) {}
 
   cte(name: string): Cte | undefined {
@@ -226,6 +233,7 @@ export class Compiler implements SqlHelp {
         scope.ctes.set(c.name, { sqlName, cols })
         const all = this.query(c.q, scope)
         parts.push(`${qi(sqlName)}(${cols.map((x) => qi(x.name)).join(', ')}) AS (${all.sql})`)
+        scope.cteSql = [...parts]
         continue
       }
       const compiled = this.query(c.q, scope)
@@ -233,6 +241,8 @@ export class Compiler implements SqlHelp {
       scope.ctes.set(c.name, { sqlName, cols })
       parts.push(`${qi(sqlName)}(${cols.map((x) => qi(x.name)).join(', ')}) AS ${c.materialized === false ? 'NOT MATERIALIZED ' : ''}(${compiled.sql})`)
     }
+    scope.cteSql = [...parts]
+    scope.recursive = w.recursive
     return `WITH ${w.recursive ? 'RECURSIVE ' : ''}${parts.join(', ')} `
   }
 
@@ -265,7 +275,11 @@ export class Compiler implements SqlHelp {
     const q = this.expandSrf(q0)
     const scope = new QScope(parent)
     const withSql = q.with ? this.withClause(q.with, scope) : ''
-    const from = q.from.map((f) => this.fromItem(f, scope))
+    const from: string[] = []
+    for (const f of q.from) {
+      from.push(this.fromItem(f, scope))
+      scope.fromSql = [...from]
+    }
     const where = q.where ? this.cond(q.where, scope) : null
     // select list, with * expanded
     const items: Array<{ sql: string; t: string; name: string }> = []
@@ -681,6 +695,7 @@ export class Compiler implements SqlHelp {
   }
 
   private translate(e: Expr, scope: QScope): SqlArg {
+    this.currentScope = scope
     switch (e.k) {
       case 'lit':
         if (e.v === null) return { sql: 'NULL', t: 'unknown', c: { t: 'unknown', v: null } }
@@ -909,7 +924,7 @@ export class Compiler implements SqlHelp {
     }
     if (['=', '<>', '<', '>', '<=', '>='].includes(op)) {
       const [l, r] = this.pair(le, re, scope)
-      if (l.t === 'bool' || r.t === 'bool') return { sql: `(${l.sql} ${op} ${r.sql})`, t: 'bool' }
+      if (l.t === 'interval' || r.t === 'interval') return { sql: `(${this.intervalEpoch(l)} ${op} ${this.intervalEpoch(r)})`, t: 'bool' }
       return { sql: `(${l.sql} ${op} ${r.sql})`, t: 'bool' }
     }
     let l = this.expr(le, scope)
@@ -958,8 +973,10 @@ export class Compiler implements SqlHelp {
       }
       case '&&':
         return { sql: `EXISTS (SELECT 1 FROM json_each(${l.sql}) AS "_x" WHERE "_x"."value" IN (SELECT value FROM json_each(${r.sql})))`, t: 'bool' }
-      case '~': case '~*': case '!~': case '!~*':
-        throw new NotSupported('a regular expression on a column')
+      case '~': case '~*': case '!~': case '!~*': {
+        const tl = l.t === 'unknown' ? { ...l, t: 'text' } : l
+        return this.lookup(scope, [tl, r], 'bool', (vals) => this.evaluator.eval({ k: 'bin', op, l: { k: 'value', v: vals[0].v, type: vals[0].t }, r: { k: 'value', v: vals[1].v, type: vals[1].t } }))
+      }
       case 'like':
         return { sql: this.like(textSql(l), r, false, false), t: 'bool' }
       case '-':
@@ -1006,11 +1023,14 @@ export class Compiler implements SqlHelp {
     if (op === '+' && l.t === 'interval' && dateLike(r.t)) return { sql: this.addInterval(r, l, false), t: r.t === 'date' ? 'timestamp' : r.t }
     if (dateLike(l.t) && dateLike(r.t) && op === '-') {
       if (l.t === 'date' && r.t === 'date') return { sql: `CAST(julianday(${l.sql}) - julianday(${r.sql}) AS INTEGER)`, t: 'int' }
-      throw new NotSupported('timestamp - timestamp on columns (an interval)')
+      const diff = `(julianday(${l.sql}) - julianday(${r.sql}))`
+      return { sql: `json_array(0, CAST(${diff} AS INTEGER), (${diff} - CAST(${diff} AS INTEGER)) * 86400)`, t: 'interval' }
     }
     if (l.t === 'date' && (r.t === 'int' || r.c?.t === 'int') && (op === '+' || op === '-')) {
       return { sql: `date(${l.sql}, (${op === '-' ? '-' : ''}(${r.sql})) || ' days')`, t: 'date' }
     }
+    const iv = this.intervalArith(op, l, r)
+    if (iv) return iv
     if (l.t === 'interval' || r.t === 'interval') throw new NotSupported('interval arithmetic on columns')
     const t = l.t === 'int' && r.t === 'int' ? 'int' : l.t === 'int' && r.t === 'unknown' ? 'int' : 'numeric'
     if (op === '/') {
@@ -1023,35 +1043,68 @@ export class Compiler implements SqlHelp {
     return { sql: `(${l.sql} ${op} ${r.sql})`, t }
   }
 
+  /** An interval's parts in SQL: months, days, seconds (constants inline, else read from the [m, d, s] triple). */
+  private ivParts(iv: SqlArg): { m: string; d: string; s: string } {
+    if (iv.c && iv.c.v instanceof Interval) {
+      const v = iv.c.v
+      return { m: String(v.months), d: String(v.days), s: String(v.ms / 1000) }
+    }
+    if (iv.c && typeof iv.c.v === 'string') {
+      const v = cast(iv.c.v, 'text', 'interval') as Interval
+      return { m: String(v.months), d: String(v.days), s: String(v.ms / 1000) }
+    }
+    return { m: `(${iv.sql} ->> 0)`, d: `(${iv.sql} ->> 1)`, s: `(${iv.sql} ->> 2)` }
+  }
+
   private addInterval(ts: SqlArg, iv: SqlArg, minus: boolean): string {
     const fmt = ts.t === 'timestamptz' ? '%Y-%m-%dT%H:%M:%fZ' : '%Y-%m-%dT%H:%M:%f'
     const base = ts.t === 'date' ? `(${ts.sql} || 'T00:00:00.000')` : ts.sql
-    if (iv.c && iv.c.v instanceof Interval) {
-      const v = minus ? iv.c.v.negate() : iv.c.v
+    const p = this.ivParts(iv)
+    const sign = minus ? '-' : ''
+    if (iv.c) {
       const mods: string[] = []
-      if (v.months) mods.push(`'${v.months >= 0 ? '+' : ''}${v.months} months'`)
-      if (v.days) mods.push(`'${v.days >= 0 ? '+' : ''}${v.days} days'`)
-      if (v.ms) mods.push(`'${v.ms >= 0 ? '+' : ''}${v.ms / 1000} seconds'`)
+      const lit = (n: string, unit: string) => {
+        const v = Number(n) * (minus ? -1 : 1)
+        if (v) mods.push(`'${v >= 0 ? '+' : ''}${v} ${unit}'`)
+      }
+      lit(p.m, 'months')
+      lit(p.d, 'days')
+      lit(p.s, 'seconds')
       return `strftime('${fmt}', ${base}${mods.length ? `, ${mods.join(', ')}` : ''})`
     }
-    const parts = this.intervalParts(iv)
-    const s = minus ? '-' : ''
-    return `strftime('${fmt}', ${base}, (${s}(${parts.months})) || ' months', (${s}(${parts.days})) || ' days', (${s}(${parts.secs})) || ' seconds')`
+    return `strftime('${fmt}', ${base}, (${sign}${p.m}) || ' months', (${sign}${p.d}) || ' days', (${sign}${p.s}) || ' seconds')`
   }
 
-  /** An interval from a column expression: (n || ' days')::interval, n * interval '1 day'. */
-  private intervalParts(iv: SqlArg): { months: string; days: string; secs: string } {
-    const m = /^\(\((.+)\) \|\| ' (day|days|hour|hours|minute|minutes|month|months|second|seconds)'\)$/.exec(iv.sql)
-    if (m) {
-      const unit = m[2].replace(/s$/, '')
-      const n = m[1]
-      if (unit === 'month') return { months: n, days: '0', secs: '0' }
-      if (unit === 'day') return { months: '0', days: n, secs: '0' }
-      const secs = unit === 'hour' ? `(${n}) * 3600` : unit === 'minute' ? `(${n}) * 60` : n
-      return { months: '0', days: '0', secs }
+  /** Interval arithmetic in SQL on [months, days, seconds]. */
+  private intervalArith(op: string, l: SqlArg, r: SqlArg): SqlArg | null {
+    const isIv = (a: SqlArg) => a.t === 'interval' || (a.c?.v instanceof Interval)
+    if (isIv(l) && isIv(r) && (op === '+' || op === '-')) {
+      const a = this.ivParts(l)
+      const b = this.ivParts(r)
+      return { sql: `json_array(${a.m} ${op} ${b.m}, ${a.d} ${op} ${b.d}, ${a.s} ${op} ${b.s})`, t: 'interval' }
     }
-    throw new NotSupported('an interval computed from a column')
+    if ((isIv(l) && !isIv(r) && (op === '*' || op === '/')) || (isIv(r) && !isIv(l) && op === '*')) {
+      const iv = isIv(l) ? this.ivParts(l) : this.ivParts(r)
+      const n = isIv(l) ? r.sql : l.sql
+      const f = op === '/' ? `/ CAST(${n} AS REAL)` : `* (${n})`
+      return { sql: `json_array(CAST(${iv.m} ${f} AS INTEGER), CAST(${iv.d} ${f} AS INTEGER), ${iv.s} ${f})`, t: 'interval' }
+    }
+    return null
   }
+
+  /** extract(epoch from interval): seconds, with 30-day months as Postgres counts them. */
+  intervalEpoch(iv: SqlArg): string {
+    const p = this.ivParts(iv)
+    return `((${p.m}) * 2592000 + (${p.d}) * 86400 + (${p.s}))`
+  }
+
+  /** A cast SQLite cannot do itself (text → interval), per distinct value in JavaScript. */
+  private lookupCast(a: SqlArg, to: string): SqlArg {
+    if (!this.currentScope) throw new NotSupported(`a cast to ${to} on a column`)
+    return this.lookup(this.currentScope, [a], to, (vals) => ({ t: to, v: vals[0].v === null ? null : cast(vals[0].v, vals[0].t === 'unknown' ? 'text' : vals[0].t, to) }))
+  }
+
+  private currentScope: QScope | null = null
 
   castSql(a: SqlArg, to: string): SqlArg {
     if (a.c) {
@@ -1089,11 +1142,8 @@ export class Compiler implements SqlHelp {
         if (from === 'timestamptz' || from === 'timestamp') return { sql: `substr(${x}, 1, 10)`, t: to }
         return { sql: `date(${x})`, t: to }
       case 'time': return { sql: `substr(${x}, 12, 8)`, t: to }
-      case 'interval': {
-        const m = /^\((.+) \|\| ' (\w+)'\)$/.exec(x)
-        if (m) return { sql: `((${m[1]}) || ' ${m[2]}')`, t: 'interval' }
-        throw new NotSupported('an interval from a column')
-      }
+      case 'interval':
+        return this.lookupCast(a, 'interval')
       case 'uuid': return { sql: `lower(${x})`, t: to }
       default:
         if (isArrayType(to)) {
@@ -1117,15 +1167,21 @@ export class Compiler implements SqlHelp {
     const builtin = !e.schema || e.schema === 'pg_catalog'
     if (e.over) return this.windowCall(e, scope)
     if (builtin && aggregates.has(name)) return this.aggregate(e, scope)
+    if (builtin && name === 'make_interval') {
+      const order = ['years', 'months', 'weeks', 'days', 'hours', 'mins', 'secs']
+      const parts: Record<string, string> = {}
+      e.args.forEach((x, i) => {
+        parts[e.names?.[i] ?? order[i]] = `coalesce(${this.expr(x, scope).sql}, 0)`
+      })
+      const g = (k: string) => parts[k] ?? '0'
+      return { sql: `json_array(${g('years')} * 12 + ${g('months')}, ${g('weeks')} * 7 + ${g('days')}, ${g('hours')} * 3600 + ${g('mins')} * 60 + ${g('secs')})`, t: 'interval' }
+    }
     if (builtin && builtins[name]) {
       const b = builtins[name]
       const args = e.args.map((x) => this.expr(x, scope))
       if (!b.sql) {
-        if (args.every((x) => x.c) && b.js) {
-          const v = this.evaluator.eval({ ...e, args: args.map((x) => ({ k: 'value', v: x.c!.v, type: x.c!.t })) })
-          return { sql: this.bind(v.v, v.t), t: v.t, c: v }
-        }
-        throw new NotSupported(`${name}() on a column`)
+        const rt = b.ret(args.map((x) => x.t), e.args)
+        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }))
       }
       try {
         return { sql: b.sql(args, this), t: b.ret(args.map((x) => x.t), e.args) }
@@ -1138,7 +1194,12 @@ export class Compiler implements SqlHelp {
     // a user function with per-row arguments: inline its SQL body
     const args = e.args.map((x) => this.expr(x, scope))
     const inline = this.engine.inline(name, args.map((x) => x.t))
-    if (!inline) throw new NotSupported(`function ${name} with per-row arguments`)
+    if (!inline) {
+      const rt = this.engine.returnType(name, args.map((x) => x.t), e.schema)
+      if (!rt) throw new DbError('42883', `function ${name}(${args.map((x) => x.t).join(', ')}) does not exist`)
+      if (rt.startsWith('setof ')) throw new NotSupported(`set-returning function ${name} with per-row arguments`)
+      return this.lookup(scope, args, rt, (vals) => this.engine.call(name, vals, e.names, e.schema))
+    }
     const frag = new Map<string, SqlArg>()
     inline.params.forEach((p, i) => {
       const a = args[i] ?? { sql: 'NULL', t: inline.types[i] }
@@ -1155,6 +1216,52 @@ export class Compiler implements SqlHelp {
       this.fragments.pop()
       if (inline.bypass) this.bypass--
     }
+  }
+
+  /**
+   * A per-row value SQLite cannot compute (a PL/pgSQL function, a regular expression):
+   * computed in JavaScript for each distinct argument tuple the query's rows have,
+   * then looked up per row.
+   */
+  private lookup(scope: QScope, args: SqlArg[], t: string, compute: (vals: Typed[]) => Typed): SqlArg {
+    const level = this.sourceLevel(scope)
+    if (!level) throw new NotSupported('a per-row function outside a query with FROM')
+    const cols = args.map((a, i) => `${a.sql} AS "a${i}"`)
+    // The query's own FROM; when the arguments use an outer query's columns too, those FROMs as well.
+    let rows: Row[] | null = null
+    const froms: string[] = []
+    const ctes: string[] = []
+    let recursive = false
+    for (let s: QScope | null = scope; s; s = s.parent) {
+      ctes.unshift(...s.cteSql)
+      recursive ||= s.recursive
+    }
+    const withSql = ctes.length ? `WITH ${recursive ? 'RECURSIVE ' : ''}${ctes.join(', ')} ` : ''
+    for (let s: QScope | null = level; s && !rows; s = s.parent) {
+      if (!s.fromSql.length) continue
+      froms.unshift(s.fromSql.join(', '))
+      try {
+        rows = runSql(this.engine, `${withSql}SELECT DISTINCT ${cols.join(', ')} FROM ${froms.join(', ')}`, [...this.params])
+      } catch (e) {
+        if (!(e instanceof DbError && e.code === '42703')) throw e
+      }
+    }
+    if (!rows) throw new NotSupported('a per-row function on columns SQLite cannot reach')
+    const map = rows.map((r) => {
+      const raw = args.map((_, i) => r[`a${i}`] ?? null)
+      const vals = args.map((a, i) => ({ t: a.t, v: decodeSql(raw[i], a.t) }))
+      const result = compute(vals)
+      return [...raw, encodeSql(result.v, result.t)]
+    })
+    const m = this.bind(map, 'jsonb')
+    const conds = args.map((a, i) => `json_extract("_m".value, '$[${i}]') IS ${a.sql}`).join(' AND ')
+    return { sql: `(SELECT json_extract("_m".value, '$[${args.length}]') FROM json_each(${m}) AS "_m" WHERE ${conds} LIMIT 1)`, t }
+  }
+
+  /** The innermost query level that has FROM items. */
+  private sourceLevel(scope: QScope): QScope | null {
+    for (let s: QScope | null = scope; s; s = s.parent) if (s.fromSql.length) return s
+    return null
   }
 
   private aggregate(e: CallExpr, scope: QScope): SqlArg {

@@ -16,10 +16,27 @@ export function secureSql(sql: string, engine: Engine): string {
   return `WITH ${ctes.join(', ')} ${sql}`
 }
 
+/** The highest ?N a statement uses (SQLite rejects extra bindings). */
+function paramCount(sql: string): number {
+  let max = 0
+  let quote = false
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i]
+    if (c === "'") quote = !quote
+    else if (!quote && c === '?') {
+      let j = i + 1
+      while (j < sql.length && sql[j] >= '0' && sql[j] <= '9') j++
+      if (j > i + 1) max = Math.max(max, Number(sql.slice(i + 1, j)))
+      i = j - 1
+    }
+  }
+  return max
+}
+
 export function runSql(engine: Engine, sql: string, params: SqlValue[]): Row[] {
   const text = secureSql(sql, engine)
   try {
-    return engine.sql.all(text, params)
+    return engine.sql.all(text, params.slice(0, paramCount(text)))
   } catch (e) {
     // Internal errors keep the statement for whoever debugs them (tests, PGENGINE_DEBUG).
     if (debug && e instanceof DbError && !['P0001', '23505', '23503', '23514', '23502', '42501'].includes(e.code)) throw new DbError(e.code, `${e.message}: ${e.details}\n${text}\n${JSON.stringify(params).slice(0, 500)}`)

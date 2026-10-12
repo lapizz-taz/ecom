@@ -24,7 +24,8 @@ export function encodeSql(v: unknown, t: string): SqlValue {
   if (typeof v === 'boolean') return v ? 1 : 0
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string') return v
-  if (v instanceof Interval) return v.toString()
+  // intervals travel through SQLite as [months, days, seconds] (see compile.ts)
+  if (v instanceof Interval) return JSON.stringify([v.months, v.days, v.ms / 1000])
   if (v instanceof Uint8Array) return v
   if (v instanceof PgRow) return JSON.stringify(v.plain())
   if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(plainValue(v))
@@ -51,8 +52,15 @@ export function decodeSql(raw: unknown, t: string): unknown {
     case 'jsonb':
       if (typeof raw === 'string') return parseJson(raw)
       return raw
-    case 'interval':
-      return raw instanceof Interval ? raw : parseInterval(String(raw))
+    case 'interval': {
+      if (raw instanceof Interval) return raw
+      const text = String(raw)
+      if (text.startsWith('[')) {
+        const [m, d, secs] = JSON.parse(text) as number[]
+        return new Interval(Math.trunc(m ?? 0), Math.trunc(d ?? 0), Math.round((secs ?? 0) * 1000))
+      }
+      return parseInterval(text)
+    }
     case 'bytea':
       return raw
     case 'text': case 'uuid': case 'unknown':

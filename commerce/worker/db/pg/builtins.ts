@@ -771,10 +771,17 @@ export const builtins: Record<string, Builtin> = {
       const field = String(a[0].c?.v ?? '').toLowerCase()
       const x = a[1].sql
       const fmt: Record<string, string> = { year: '%Y', month: '%m', day: '%d', hour: '%H', minute: '%M', dow: '%w', doy: '%j' }
-      if (field === 'epoch') {
-        if (a[1].t === 'interval') throw new Error('extract(epoch from interval) on a column')
-        return `(julianday(${x}) - 2440587.5) * 86400.0`
+      if (a[1].t === 'interval') {
+        const iv = (i: number) => `(${x} ->> ${i})`
+        if (field === 'epoch') return `(${iv(0)} * 2592000 + ${iv(1)} * 86400 + ${iv(2)})`
+        if (field === 'day' || field === 'days') return iv(1)
+        if (field === 'hour') return `CAST(${iv(2)} / 3600 AS INTEGER)`
+        if (field === 'minute') return `CAST((${iv(2)} % 3600) / 60 AS INTEGER)`
+        if (field === 'month') return `(${iv(0)} % 12)`
+        if (field === 'year') return `CAST(${iv(0)} / 12 AS INTEGER)`
+        throw new Error(`extract(${field} from interval) on a column`)
       }
+      if (field === 'epoch') return `(julianday(${x}) - 2440587.5) * 86400.0`
       if (field === 'isodow') return `(CASE CAST(strftime('%w', ${x}) AS INTEGER) WHEN 0 THEN 7 ELSE CAST(strftime('%w', ${x}) AS INTEGER) END)`
       if (field === 'second') return `CAST(strftime('%f', ${x}) AS REAL)`
       if (field === 'quarter') return `((CAST(strftime('%m', ${x}) AS INTEGER) + 2) / 3)`

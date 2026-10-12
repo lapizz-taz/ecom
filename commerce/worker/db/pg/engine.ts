@@ -230,7 +230,14 @@ export class PgEngine implements Engine {
     if (f.definer) this.role = f.owner === 'app_owner' ? 'app_owner' : 'service_role'
     try {
       const body = bodyOf(f)
-      if (body.sql) return this.runSqlFunction(f, body.sql, values)
+      if (body.sql) {
+        try {
+          return this.runSqlFunction(f, body.sql, values)
+        } catch (e) {
+          if (e instanceof NotSupported && !e.message.includes(' [in ')) throw new NotSupported(`${e.message} [in ${f.name}]`)
+          throw e
+        }
+      }
       const call = new PlCall(this, {
         name: f.name,
         params: f.ins.map((p, i) => ({ name: p.name, type: p.type, value: values[i]?.v ?? null })),
@@ -239,7 +246,12 @@ export class PgEngine implements Engine {
         set: f.set,
         trigger,
       })
-      call.run(body.pl!)
+      try {
+        call.run(body.pl!)
+      } catch (e) {
+        if (e instanceof NotSupported && !e.message.includes(' [in ')) throw new NotSupported(`${e.message} [in ${f.name}]`)
+        throw e
+      }
       if (f.set) return { t: `setof ${f.ret}`, v: call.results }
       if (call.returnValue) return call.returnValue
       if (call.spec.outs.length) return call.outResult()
@@ -260,6 +272,16 @@ export class PgEngine implements Engine {
         if (parts.length === 2 && parts[0] === f.name) {
           const i = f.ins.findIndex((p) => p.name === parts[1])
           if (i >= 0) return values[i]
+        }
+        if (parts.length === 2) {
+          // a field of a composite parameter (p_channel.settings)
+          const i = f.ins.findIndex((p) => p.name === parts[0])
+          const row = i >= 0 ? values[i]?.v : undefined
+          if (row instanceof PgRow) {
+            if (!Object.hasOwn(row.values, parts[1])) throw new DbError('42703', `column ${parts.join('.')} does not exist`)
+            return { t: row.types[parts[1]] ?? 'unknown', v: row.values[parts[1]] }
+          }
+          if (i >= 0 && row === null && isTableType(f.ins[i].type)) return { t: columnType(tableMeta(f.ins[i].type)!.columns[parts[1]]), v: null }
         }
         return null
       },

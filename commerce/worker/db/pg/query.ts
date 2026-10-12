@@ -27,13 +27,39 @@ export interface ResultSet {
 
 const qi = quoteId
 
-export function execStatement(engine: Engine, st: Statement, vars: Vars, params: Typed[] = []): ResultSet {
+export function execStatement(engine: Engine, st0: Statement, vars: Vars, params: Typed[] = []): ResultSet {
+  const st = materializeWith(engine, st0, vars, params)
   switch (st.k) {
     case 'insert': return execInsert(engine, st, vars, params)
     case 'update': return execUpdate(engine, st, vars, params)
     case 'delete': return execDelete(engine, st, vars, params)
     default: return execQuery(engine, st, vars, params)
   }
+}
+
+/**
+ * WITH x AS (INSERT/UPDATE/DELETE … RETURNING …): those statements run first, in
+ * order, and the main statement reads their RETURNING rows as constants.
+ */
+function materializeWith(engine: Engine, st: Statement, vars: Vars, params: Typed[]): Statement {
+  const w = (st as Select).with
+  if (!w || !w.ctes.some((c) => c.q.k === 'insert' || c.q.k === 'update' || c.q.k === 'delete')) return st
+  const ctes: NonNullable<Select['with']>['ctes'] = []
+  for (const c of w.ctes) {
+    if (c.q.k !== 'insert' && c.q.k !== 'update' && c.q.k !== 'delete') {
+      ctes.push(c)
+      continue
+    }
+    const inner = ctes.length ? { ...c.q, with: { recursive: w.recursive, ctes: [...ctes] } } : c.q
+    const res = execStatement(engine, inner, vars, params)
+    const names = res.cols.map((col, i) => c.cols?.[i] ?? col.name)
+    const q: Select = res.rows.length
+      ? { k: 'select', items: [{ e: { k: 'star' } }], from: [{ k: 'subq', alias: '_dml', cols: names, lateral: false,
+        q: { k: 'values', rows: res.rows.map((r) => r.map((v, i) => ({ k: 'value', v, type: res.cols[i].t }) as Expr)), orderBy: [] } }], groupBy: [], orderBy: [] }
+      : { k: 'select', items: res.cols.map((col, i) => ({ e: { k: 'value', v: null, type: col.t } as Expr, alias: names[i] })), from: [], where: { k: 'lit', v: false, type: 'bool' }, groupBy: [], orderBy: [] }
+    ctes.push({ name: c.name, cols: names, q })
+  }
+  return { ...st, with: { recursive: w.recursive, ctes } } as Statement
 }
 
 /** A query without FROM computed in JavaScript (the usual `SELECT f(x)` / `SELECT a, b INTO …`). */
@@ -254,11 +280,9 @@ function assign(cols: string[], v: Typed, set: Values, colTypes: Record<string, 
 function findConflict(engine: Engine, st: Insert, t: TableMeta, values: Values): Row | null {
   const c = st.conflict!
   let candidates: Array<{ cols: string[]; where?: string }>
+  if (c.target && c.target.some((e) => e.k !== 'ref')) return findConflictByExpr(engine, st, t, values)
   if (c.target) {
-    const cols = c.target.map((e) => {
-      if (e.k !== 'ref') throw new NotSupported('ON CONFLICT on an expression')
-      return e.parts[e.parts.length - 1]
-    })
+    const cols = c.target.map((e) => (e as { parts: string[] }).parts[(e as { parts: string[] }).parts.length - 1])
     const partial = t.partialUnique?.find((p) => p.columns.join(',') === cols.join(','))
     candidates = [{ cols, where: partial && c.where ? partial.where : partial?.where }]
   } else if (c.constraint) {
@@ -288,6 +312,34 @@ function findConflict(engine: Engine, st: Insert, t: TableMeta, values: Values):
   }
   return null
 }
+
+/** ON CONFLICT (a, lower(b)): the existing row whose target expressions equal the new row's. */
+function findConflictByExpr(engine: Engine, st: Insert, t: TableMeta, values: Values): Row | null {
+  const newRow = tableRow(st.table, values)
+  const ev = new Evaluator(engine, new RowVars(new Map([[st.table, newRow]]), NO_ROW_VARS, newRow))
+  const conds: Expr[] = []
+  for (const e of st.conflict!.target!) {
+    const v = ev.eval(e)
+    if (v.v === null) return null
+    conds.push({ k: 'bin', op: '=', l: e, r: { k: 'value', v: v.v, type: v.t } })
+  }
+  const where = conds.reduce((a, b) => ({ k: 'bin', op: 'and', l: a, r: b }) as Expr)
+  const saved = engine.role
+  engine.role = 'service_role'
+  try {
+    const c = new Compiler(engine, NO_ROW_VARS)
+    const q: Select = { k: 'select', items: t.pk.map((p) => ({ e: { k: 'ref', parts: [st.table, p] } as Expr })), from: [{ k: 'table', name: st.table }], where, groupBy: [], orderBy: [], limit: { k: 'lit', v: 1, type: 'int' } }
+    const compiled = c.select(q, null, true)
+    const hit = runSql(engine, compiled.sql, c.params)[0]
+    if (!hit) return null
+    const key = t.pk.map((_, i) => hit[`c${i}`] as SqlValue)
+    return engine.sql.all(`SELECT * FROM main.${qi(st.table)} WHERE ${t.pk.map((p) => `${qi(p)} = ?`).join(' AND ')}`, key)[0] ?? null
+  } finally {
+    engine.role = saved
+  }
+}
+
+const NO_ROW_VARS: Vars = { lookup: () => null }
 
 function pickRows(engine: Engine, name: string, alias: string, from: Select['from'], where: Expr | undefined, extra: Expr[], vars: Vars, params: Typed[], withClause?: Select['with']): { keys: Key[]; values: Typed[][] } {
   const t = mustTable(name)
@@ -338,16 +390,31 @@ function execUpdate(engine: Engine, st: Update, vars: Vars, params: Typed[]): Re
     }
   }
   for (const [c] of targets) if (!Object.hasOwn(colTypes, c)) throw new DbError('42703', `column "${c}" of relation "${st.table}" does not exist`)
-  const picked = pickRows(engine, st.table, alias, st.from, st.where, exprs, vars, params, st.with)
   const w = env(engine)
   const done: Key[] = []
-  picked.keys.forEach((key, i) => {
-    const set: Values = {}
-    targets.forEach(([c], j) => {
-      set[c] = forColumn(picked.values[i][j], colTypes[c])
+  if (!st.from.length) {
+    // New values per row in JavaScript, from the row as it was (Postgres semantics, any function).
+    const cols = Object.keys(t.columns)
+    const picked = pickRows(engine, st.table, alias, [], st.where, cols.map((c) => ({ k: 'ref', parts: [alias, c] }) as Expr), vars, params, st.with)
+    picked.keys.forEach((key, i) => {
+      const row = new PgRow(Object.fromEntries(cols.map((c, j) => [c, picked.values[i][j].v])), Object.fromEntries(cols.map((c, j) => [c, picked.values[i][j].t])))
+      const ev = new Evaluator(engine, new RowVars(new Map([[alias, row]]), vars, row), params)
+      const set: Values = {}
+      targets.forEach(([c], j) => {
+        set[c] = forColumn(ev.eval(exprs[j]), colTypes[c])
+      })
+      done.push(...update(w, st.table, set, { keys: [key] }))
     })
-    done.push(...update(w, st.table, set, { keys: [key] }))
-  })
+  } else {
+    const picked = pickRows(engine, st.table, alias, st.from, st.where, exprs, vars, params, st.with)
+    picked.keys.forEach((key, i) => {
+      const set: Values = {}
+      targets.forEach(([c], j) => {
+        set[c] = forColumn(picked.values[i][j], colTypes[c])
+      })
+      done.push(...update(w, st.table, set, { keys: [key] }))
+    })
+  }
   engine.ctx.reset()
   if (!st.returning) return { cols: [], rows: [], count: done.length, command: 'UPDATE' }
   const ret = returning(engine, st.returning, alias, readRows(engine, st.table, done), vars, params)
