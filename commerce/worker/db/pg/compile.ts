@@ -545,8 +545,11 @@ export class Compiler implements SqlHelp {
   /** LATERAL (single-row query) as one correlated scalar sub-query per column. */
   private lateralColumns(q: Query, alias: string, names: string[] | undefined, scope: QScope, cross: boolean): string {
     const s = q as Select
-    const sub = this.query(q, scope)
-    const cols: Col[] = sub.cols.map((c, i) => ({ name: names?.[i] ?? c.name, t: c.t, sql: `(SELECT "_l".${qi(c.name)} FROM (${sub.sql}) AS "_l" LIMIT 1)` }))
+    // positional names inside, so unnamed or repeated items (two "?column?") stay apart
+    const positional = q.k === 'select' && s.items.every((it) => it.e.k !== 'star')
+    const own = positional ? s.items.map((it) => it.alias ?? columnName(it.e)) : null
+    const sub = this.query(positional ? { ...s, items: s.items.map((it, i) => ({ ...it, alias: `__l${i}` })) } : q, scope)
+    const cols: Col[] = sub.cols.map((c, i) => ({ name: names?.[i] ?? own?.[i] ?? c.name, t: c.t, s: c.s, sql: `(SELECT "_l".${qi(c.name)} FROM (${sub.sql}) AS "_l" LIMIT 1)` }))
     if (cross && s.from.length && !(s.items.every((it) => hasAggregate(it.e)))) scope.extraWhere.push(`EXISTS (${sub.sql})`)
     scope.sources.push({ alias, cols, whole: this.wholeRow(cols) })
     return `(SELECT 1) AS ${qi(alias)}`
@@ -558,10 +561,13 @@ export class Compiler implements SqlHelp {
    * rows travel as a JSON array built by a correlated scalar sub-query.
    */
   private lateralRows(q: Query, alias: string, names: string[] | undefined, scope: QScope): string {
-    const sub = this.query(q, scope)
+    const s = q as Select
+    const positional = q.k === 'select' && s.items.every((it) => it.e.k !== 'star')
+    const own = positional ? s.items.map((it) => it.alias ?? columnName(it.e)) : null
+    const sub = this.query(positional ? { ...s, items: s.items.map((it, i) => ({ ...it, alias: `__l${i}` })) } : q, scope)
     const a = qi(alias)
     const obj = `json_object(${sub.cols.map((c) => `${str(c.name)}, ${this.json({ sql: `"_lr".${qi(c.name)}`, t: c.t })}`).join(', ')})`
-    const cols: Col[] = sub.cols.map((c, i) => ({ name: names?.[i] ?? c.name, t: c.t, sql: jsonCell(`${a}.value`, c.name, c.t, false) }))
+    const cols: Col[] = sub.cols.map((c, i) => ({ name: names?.[i] ?? own?.[i] ?? c.name, t: c.t, s: c.s, sql: jsonCell(`${a}.value`, c.name, c.t, false) }))
     scope.sources.push({ alias, cols, whole: this.wholeRow(cols) })
     return `json_each((SELECT json_group_array(${obj}) FROM (${sub.sql}) AS "_lr")) AS ${a}`
   }
