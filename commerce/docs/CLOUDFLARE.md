@@ -140,8 +140,8 @@ template "Redirect from WWW to root"** → Deploy.
      Settings → Environment Variables: `VITE_SUPABASE_URL`,
      `VITE_SUPABASE_ANON_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_SUPER_ADMIN_PATH`.
 4. **Deploy** (2–3 minutes). This deploy also puts the Worker on
-   `fullfilio.com/*` (and every other hostname of the zone): from now on
-   https://fullfilio.com shows Fullfilio.
+   `fullfilio.com/*` and `*.fullfilio.com/*`: from now on https://fullfilio.com
+   shows Fullfilio.
 
 ### 4. Secrets of the Worker
 
@@ -232,8 +232,10 @@ deployed), so this can be done calmly over a few days:
 3. Worker secrets: `CF_SAAS_API_TOKEN` (the token) and `CF_ZONE_ID` (fullfilio.com
    → Overview, right column "Zone ID").
 
-The Worker route `*/*` (in `wrangler.jsonc`) already sends merchant domains to
-the Worker. Merchants add their domain in **Settings → Domain**: a subdomain
+Then in `wrangler.jsonc` replace the two routes with
+`{ "pattern": "*/*", "zone_name": "fullfilio.com" }` and push (or ask Claude):
+that route sends merchants' domains to the Worker (Cloudflare refuses it until
+Cloudflare for SaaS is enabled). Merchants add their domain in **Settings → Domain**: a subdomain
 (`shop.theirbrand.com` / `www.theirbrand.com`) gets a CNAME to
 `stores.fullfilio.com`. A bare root domain (`theirbrand.com`) works only where
 their DNS provider allows a CNAME at the root (ALIAS / ANAME / CNAME
@@ -268,7 +270,7 @@ pointing things at Vercel/Supabase again:
 3. If you ran step 12: run `deploy/cloudflare/cron-to-supabase.sql`.
 4. Shopify / WooCommerce / couriers: **Fix webhooks** / **Connect plugin** from the Vercel site.
 5. fullfilio.com itself: Workers & Pages → fullfilio → Settings → Domains &
-   Routes → remove the `*/*` route (fullfilio.com then shows what its old DNS
+   Routes → remove the fullfilio.com routes (fullfilio.com then shows what its old DNS
    records point to). Files uploaded to R2 stay in the bucket; don't delete it.
 
 ## Local development
