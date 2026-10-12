@@ -5,7 +5,7 @@ export function Placeholder({ label = "Placeholder", className = "", show = true
   if (!site.showPlaceholderBadges || !show) return null;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border border-dashed border-amber-500 bg-amber-50 px-2 py-0.5 align-middle font-mono text-[11px] font-medium tracking-wide text-amber-800 uppercase ${className}`}
+      className={`inline-flex items-center gap-1.5 align-middle text-[11px] font-medium tracking-normal text-amber-700 ${className}`}
       title="Replace this with real content before launch"
     >
       <span className="size-1.5 rounded-full bg-amber-500" aria-hidden="true" />

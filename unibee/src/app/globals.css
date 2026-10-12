@@ -79,8 +79,8 @@
 
 @layer components {
   /* Type scale (mobile → desktop): large, medium weight, tight tracking */
-  .h1 { @apply font-heading text-[36px] leading-[1.08] font-semibold tracking-[-0.035em] md:text-[52px] lg:text-[64px] lg:leading-[1.04]; }
-  .h2 { @apply font-heading text-[28px] leading-[1.12] font-semibold tracking-[-0.03em] md:text-[36px] lg:text-[44px]; }
+  .h1 { @apply font-heading text-[36px] leading-[1.08] font-medium tracking-[-0.035em] md:text-[52px] lg:text-[60px] lg:leading-[1.05]; }
+  .h2 { @apply font-heading text-[28px] leading-[1.15] font-medium tracking-[-0.03em] md:text-[34px] lg:text-[40px]; }
   .h3 { @apply font-heading text-[18px] leading-[1.35] font-semibold tracking-[-0.015em]; }
   .lead { @apply text-[17px] leading-[1.6] text-muted md:text-[18px]; }
   .eyebrow { @apply inline-flex items-center gap-2 font-mono text-[12px] font-medium text-faint; }
@@ -143,9 +143,6 @@
 .marquee:focus-within .marquee-track,
 .marquee[data-paused="true"] .marquee-track { animation-play-state: paused; }
 
-/* Line-art illustrations */
-.lineart { stroke: #b7bbc1; fill: none; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.lineart-accent { stroke: var(--color-brand); }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

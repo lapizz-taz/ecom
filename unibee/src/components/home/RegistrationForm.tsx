@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, GraduationCap, Loader2, Lock, RotateCcw, School, X,
+  AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, RotateCcw, X,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { SocialIcon } from "@/components/ui/SocialIcon";
@@ -315,7 +315,7 @@ export function RegistrationForm() {
               Step {step + 1} of {STEPS.length}
             </span>
             <span className="flex items-center gap-1.5 text-muted">
-              <Lock className="size-3.5" aria-hidden="true" /> Saved on this device
+              Saved on this device
             </span>
           </div>
           <ol className="mt-3 grid grid-cols-3 gap-2" aria-label="Form progress">
@@ -345,8 +345,7 @@ export function RegistrationForm() {
           {values.university && (
             <div className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[14px]">
               <span className="flex items-center gap-2 text-ink-soft">
-                <School className="size-4 text-brand-dark" aria-hidden="true" />
-                <span>
+                                <span>
                   Applying for: <strong className="text-ink">{values.university}</strong>
                 </span>
               </span>
@@ -406,9 +405,9 @@ export function RegistrationForm() {
           {step === 1 && (
             <>
               {(["ssc", "hsc"] as const).map((lvl) => (
-                <div key={lvl} className="rounded-[var(--radius-card)] border border-line p-4 sm:p-5">
+                <div key={lvl} className="border-t border-line pt-5">
                   <p className="mb-4 flex items-center gap-2 text-[15px] font-semibold">
-                    <GraduationCap className="size-5 text-brand-dark" aria-hidden="true" /> {lvl.toUpperCase()} (or equivalent)
+                    {lvl.toUpperCase()} <span className="font-normal text-muted">(or equivalent)</span>
                   </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
@@ -449,7 +448,7 @@ export function RegistrationForm() {
                 />
               </Fieldset>
 
-              <div className="rounded-[var(--radius-card)] border border-line p-4 sm:p-5">
+              <div className="border-t border-line pt-5">
                 <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[15px] font-medium text-ink">
                   <input type="checkbox" checked={values.hasBachelor} onChange={(e) => set("hasBachelor", e.target.checked)} className="size-5 shrink-0 rounded accent-brand-dark" />
                   I have a bachelor&apos;s degree <span className="font-normal text-muted">(optional, for master&apos;s applicants)</span>

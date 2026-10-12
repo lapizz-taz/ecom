@@ -12,8 +12,7 @@ export function CtaBanner({
   return (
     <section className="border-t border-line bg-white">
       <Reveal className="container-page py-24 text-center md:py-32">
-        <span className="mx-auto mb-6 block size-2 rounded-full bg-brand" aria-hidden="true" />
-        <h2 className="h2 mx-auto max-w-[640px] md:text-[52px] lg:text-[56px]">{title}</h2>
+        <h2 className="h2 mx-auto max-w-[600px] md:text-[44px] lg:text-[48px]">{title}</h2>
         <p className="mx-auto mt-4 max-w-[480px] text-[17px] text-muted">{text}</p>
         <div className="mt-8 flex flex-col justify-center gap-2.5 sm:flex-row">
           <a href={page("/#register")} className="btn btn-primary min-h-12 px-6">

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { ArrowRight, Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SectionIntro } from "@/components/ui/SectionIntro";
-import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/ui/Reveal";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { VideoFacade } from "@/components/english/VideoFacade";
@@ -24,7 +23,7 @@ export default function EnglishPrepPage() {
 
   return (
     <>
-      <PageHeader eyebrow={site.page3.name} title={ep.title} subtitle={ep.subtitle}>
+      <PageHeader title={ep.title} subtitle={ep.subtitle}>
         <div className="mt-8 flex flex-col gap-2.5 sm:flex-row">
           <a href={page("/#register")} className="btn btn-primary min-h-12 px-6">
             Join a Class <ArrowRight className="size-4" aria-hidden="true" />
@@ -54,14 +53,11 @@ export default function EnglishPrepPage() {
       {/* What you'll learn */}
       <section aria-labelledby="learn-title" className="section border-t border-line bg-white">
         <div className="container-page">
-          <SectionIntro id="learn-title" title="What you'll learn" text="All four skills, with exam strategies that actually move your score." label="1.0  The course" />
-          <ul className="mt-14 grid gap-px border-y border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+          <SectionIntro id="learn-title" title="What you'll learn" text="All four skills, with exam strategies that actually move your score." />
+          <ul className="mt-14 grid gap-x-10 sm:grid-cols-2 lg:grid-cols-4">
             {ep.learn.map((l, i) => (
-              <Reveal as="li" key={l.title} delay={i * 60} className="bg-white py-8 sm:px-6 lg:px-8 lg:first:pl-0">
-                <span className="grid size-10 place-items-center rounded-[10px] bg-surface text-ink-soft">
-                  <Icon name={l.icon} className="size-5" />
-                </span>
-                <h3 className="mt-5 text-[16px] font-medium text-ink">{l.title}</h3>
+              <Reveal as="li" key={l.title} delay={i * 60} className="border-t border-line py-7">
+                <h3 className="text-[16px] font-medium text-ink">{l.title}</h3>
                 <p className="mt-1.5 text-[15px] leading-relaxed text-muted">{l.text}</p>
               </Reveal>
             ))}
@@ -70,9 +66,7 @@ export default function EnglishPrepPage() {
           <Reveal as="dl" className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {ep.format.map((f) => (
               <div key={f.label} className="flex flex-col gap-1">
-                <dt className="flex items-center gap-2 font-mono text-[12px] text-faint">
-                  <Icon name={f.icon} className="size-3.5" /> {f.label}
-                </dt>
+                <dt className="text-[13px] text-muted">{f.label}</dt>
                 <dd className="text-[15px] font-medium text-ink">{f.value}</dd>
               </div>
             ))}
@@ -95,7 +89,7 @@ export default function EnglishPrepPage() {
             {ep.placeholder && <Placeholder label="Instructor profile" />}
           </Reveal>
           <Reveal>
-            <p className="eyebrow">2.0  Meet your instructor</p>
+            <p className="text-[14px] text-muted">Meet your instructor</p>
             <h2 id="instructor-title" className="h2 mt-3">
               {ins.name}
             </h2>
@@ -104,9 +98,7 @@ export default function EnglishPrepPage() {
             <ul className="mt-6 max-w-[620px] border-t border-line">
               {ins.qualifications.map((q) => (
                 <li key={q} className="flex items-center gap-3 border-b border-line py-3 text-[15px] text-ink">
-                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-ink">
-                    <Check className="size-3 text-white" strokeWidth={3.5} aria-hidden="true" />
-                  </span>
+                  <Check className="size-4 shrink-0 text-faint" aria-hidden="true" />
                   {q}
                 </li>
               ))}

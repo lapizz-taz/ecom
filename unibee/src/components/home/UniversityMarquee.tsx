@@ -59,17 +59,17 @@ export function UniversityMarquee() {
             type="button"
             onClick={() => open(u)}
             tabIndex={copy ? -1 : undefined}
-            className="group flex h-[72px] w-[236px] items-center gap-3 rounded-[var(--radius-card)] px-3 text-left transition duration-300 hover:bg-surface"
+            className="group flex h-[64px] w-[220px] items-center gap-3 rounded-[var(--radius-card)] px-3 text-left transition duration-300"
             aria-label={copy ? undefined : `${u.name}, ${u.city}. View details`}
           >
-            <span className="grayscale transition duration-300 group-hover:grayscale-0 group-focus-visible:grayscale-0">
-              <UniversityLogo u={u} />
-            </span>
-            <span className="min-w-0">
-              <span className="line-clamp-2 text-[14px] leading-snug font-medium text-muted transition group-hover:text-ink">{u.name}</span>
-              <span className="mt-0.5 flex items-center gap-1 text-[13px] text-muted">
-                <MapPin className="size-3.5" aria-hidden="true" /> {u.city}
+            {u.logo && (
+              <span className="grayscale transition duration-300 group-hover:grayscale-0 group-focus-visible:grayscale-0">
+                <UniversityLogo u={u} />
               </span>
+            )}
+            <span className="min-w-0">
+              <span className="line-clamp-2 text-[15px] leading-snug font-medium text-faint transition group-hover:text-ink">{u.name}</span>
+              <span className="mt-0.5 block text-[13px] text-faint">{u.city}</span>
             </span>
           </button>
         </li>
@@ -95,7 +95,6 @@ export function UniversityMarquee() {
           {list(1)}
         </div>
       </div>
-      <p className="container-page mt-6 font-mono text-[12px] text-faint">Tap a university to see programs, fees and requirements →</p>
 
       <Modal open={!!selected} onClose={close} labelledBy="uni-title">
         {selected && <UniversityDetails u={selected} onApply={() => { const u = selected; close(); requestAnimationFrame(() => applyWith(u)); }} />}

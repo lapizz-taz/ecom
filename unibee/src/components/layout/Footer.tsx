@@ -1,5 +1,4 @@
-import { LogoMark, Logo } from "@/components/brand/Logo";
-import { SocialIcon } from "@/components/ui/SocialIcon";
+import { LogoMark } from "@/components/brand/Logo";
 import { mapsUrl, site, whatsappUrl } from "@/content/site";
 import { page } from "@/lib/links";
 import { socialLinks } from "@/components/layout/social-links";
@@ -68,31 +67,11 @@ export function Footer() {
       </div>
 
       <div className="container-page flex flex-col gap-4 border-t border-line py-6 text-[13px] text-faint sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <Logo className="h-4 w-auto text-faint" title="UniBee" />
-          <p>© {year} UniBee. All rights reserved.</p>
-        </div>
+        <p>© {year} UniBee. All rights reserved.</p>
         <div className="flex items-center gap-5">
           <a href={page("/privacy")} className="hover:text-ink">
             Privacy Policy
           </a>
-          <ul className="flex items-center gap-1">
-            {socialLinks()
-              .filter((s) => s.network !== "whatsapp")
-              .map((s) => (
-                <li key={s.network}>
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`UniBee on ${s.label} (opens in a new tab)`}
-                    className="grid size-9 place-items-center rounded-full text-faint transition hover:bg-surface hover:text-ink"
-                  >
-                    <SocialIcon network={s.network} className="size-4" />
-                  </a>
-                </li>
-              ))}
-          </ul>
         </div>
       </div>
     </footer>

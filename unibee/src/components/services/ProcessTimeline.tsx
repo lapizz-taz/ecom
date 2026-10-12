@@ -1,4 +1,3 @@
-import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/ui/Reveal";
 import { processSteps } from "@/content/process";
 
@@ -23,13 +22,10 @@ export function ProcessTimeline() {
             />
             {/* the dot */}
             <span
-              className={`absolute top-0 left-0 size-[11px] rounded-full ring-4 ring-white ${i === 0 ? "bg-brand shadow-[0_0_0_6px_rgba(255,51,51,0.15)]" : "bg-line-strong"}`}
+              className={`absolute top-0 left-0 size-[11px] rounded-full ring-4 ring-white ${i === 0 ? "bg-brand" : "bg-line-strong"}`}
               aria-hidden="true"
             />
-            <p className="flex items-center gap-2 font-mono text-[12px] text-faint">
-              <Icon name={s.icon} className="size-3.5" />
-              Step {String(i + 1).padStart(2, "0")}
-            </p>
+            <p className="font-mono text-[12px] text-faint">Step {String(i + 1).padStart(2, "0")}</p>
             <h3 className="mt-2 text-[15px] font-medium text-ink">{s.title}</h3>
             <p className="mt-1 text-[14px] leading-relaxed text-muted">{s.text}</p>
             <p className="mt-3 font-mono text-[12px] text-faint">{s.time}</p>
