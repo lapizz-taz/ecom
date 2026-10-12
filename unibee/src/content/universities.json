@@ -1,0 +1,178 @@
+[
+  {
+    "slug": "vilnius-university",
+    "name": "Vilnius University",
+    "shortName": "VU",
+    "city": "Vilnius",
+    "logo": "",
+    "color": "#7A1F3D",
+    "about": "Lithuania's oldest and largest university, founded in 1579. Known for strong research and a wide choice of English-taught programmes in the heart of the capital.",
+    "programs": {
+      "bachelor": ["Business Analytics", "Computer Science", "Economics", "International Relations"],
+      "master": ["Data Science", "Finance", "Biotechnology", "Global Politics"]
+    },
+    "tuition": "€3,500 – €6,500 per year",
+    "intakes": ["September"],
+    "requirements": {
+      "academic": "HSC (or equivalent) with good grades in subjects related to the programme. A bachelor's degree for master's programmes.",
+      "english": "IELTS 6.0–6.5 / TOEFL iBT 80+ / PTE or Duolingo accepted for some programmes."
+    },
+    "deadline": "Usually in spring for September intake",
+    "website": "https://www.vu.lt/en/",
+    "placeholder": true
+  },
+  {
+    "slug": "ktu",
+    "name": "Kaunas University of Technology (KTU)",
+    "shortName": "KTU",
+    "city": "Kaunas",
+    "logo": "",
+    "color": "#1F4E8C",
+    "about": "One of the largest technical universities in the Baltic states, with a modern campus and strong links to industry and tech companies.",
+    "programs": {
+      "bachelor": ["Software Systems", "Mechanical Engineering", "Business Management", "Electrical Engineering"],
+      "master": ["Artificial Intelligence", "Renewable Energy", "Digital Marketing", "Civil Engineering"]
+    },
+    "tuition": "€3,500 – €5,500 per year",
+    "intakes": ["September", "February (selected programmes)"],
+    "requirements": {
+      "academic": "HSC (or equivalent) with Mathematics for engineering programmes. A related bachelor's degree for master's.",
+      "english": "IELTS 5.5–6.0 / TOEFL iBT 65+ / MOI may be accepted."
+    },
+    "deadline": "Usually late spring for September intake",
+    "website": "https://en.ktu.edu/",
+    "placeholder": true
+  },
+  {
+    "slug": "vilnius-tech",
+    "name": "VILNIUS TECH",
+    "shortName": "VILNIUS TECH",
+    "city": "Vilnius",
+    "logo": "",
+    "color": "#004B87",
+    "about": "Vilnius Gediminas Technical University: a leading university of technology and creative industries in Vilnius, popular for engineering, IT, architecture and aviation.",
+    "programs": {
+      "bachelor": ["Information Systems Engineering", "Civil Engineering", "Aviation Management", "Architecture"],
+      "master": ["Cybersecurity", "Construction Management", "Logistics", "Industrial Engineering"]
+    },
+    "tuition": "€3,500 – €7,000 per year",
+    "intakes": ["September"],
+    "requirements": {
+      "academic": "HSC (or equivalent) with Mathematics for most programmes. A related bachelor's degree for master's.",
+      "english": "IELTS 5.5–6.0 / TOEFL iBT 65+ / PTE or Duolingo accepted for some programmes."
+    },
+    "deadline": "Usually in spring for September intake",
+    "website": "https://vilniustech.lt/",
+    "placeholder": true
+  },
+  {
+    "slug": "vytautas-magnus-university",
+    "name": "Vytautas Magnus University",
+    "shortName": "VMU",
+    "city": "Kaunas",
+    "logo": "",
+    "color": "#00703C",
+    "about": "A liberal-arts style university in Kaunas that lets students mix subjects and build a flexible study path.",
+    "programs": {
+      "bachelor": ["Business Administration", "Psychology", "Informatics", "Political Science"],
+      "master": ["Management", "Public Health", "Applied Informatics", "Agricultural Sciences"]
+    },
+    "tuition": "€3,000 – €5,500 per year",
+    "intakes": ["September", "February (selected programmes)"],
+    "requirements": {
+      "academic": "HSC (or equivalent). A bachelor's degree for master's programmes.",
+      "english": "IELTS 5.5–6.0 / TOEFL iBT 65+ / Duolingo or MOI may be accepted."
+    },
+    "deadline": "Usually in summer for September intake",
+    "website": "https://www.vdu.lt/en/",
+    "placeholder": true
+  },
+  {
+    "slug": "mykolas-romeris-university",
+    "name": "Mykolas Romeris University",
+    "shortName": "MRU",
+    "city": "Vilnius",
+    "logo": "",
+    "color": "#8C1D2F",
+    "about": "A social-sciences focused university in Vilnius, known for law, public administration, psychology and business programmes.",
+    "programs": {
+      "bachelor": ["International Law", "Psychology", "Financial Economics", "Digital Communication"],
+      "master": ["International Business Law", "Public Administration", "Human Resource Management"]
+    },
+    "tuition": "€3,000 – €5,000 per year",
+    "intakes": ["September", "February (selected programmes)"],
+    "requirements": {
+      "academic": "HSC (or equivalent). A bachelor's degree for master's programmes.",
+      "english": "IELTS 5.5+ / TOEFL iBT 65+ / MOI may be accepted."
+    },
+    "deadline": "Usually in summer for September intake",
+    "website": "https://www.mruni.eu/en/",
+    "placeholder": true
+  },
+  {
+    "slug": "ism",
+    "name": "ISM University of Management and Economics",
+    "shortName": "ISM",
+    "city": "Vilnius",
+    "logo": "",
+    "color": "#C8102E",
+    "about": "A private business school in Vilnius with small classes, close links to employers and internationally recognised programmes.",
+    "programs": {
+      "bachelor": ["International Business & Communication", "Economics & Data Analytics", "Finance"],
+      "master": ["Management & Leadership", "Financial Economics", "Business Analytics"]
+    },
+    "tuition": "€6,000 – €8,500 per year",
+    "intakes": ["September"],
+    "requirements": {
+      "academic": "HSC (or equivalent) with good results. A bachelor's degree for master's programmes.",
+      "english": "IELTS 6.0+ / TOEFL iBT 80+ / internal English test may be available."
+    },
+    "deadline": "Usually in spring for September intake",
+    "website": "https://www.ism.lt/en/",
+    "placeholder": true
+  },
+  {
+    "slug": "klaipeda-university",
+    "name": "Klaipėda University",
+    "shortName": "KU",
+    "city": "Klaipėda",
+    "logo": "",
+    "color": "#005F8F",
+    "about": "A seaside university in Lithuania's port city, strong in marine sciences, maritime engineering and business.",
+    "programs": {
+      "bachelor": ["Business Logistics", "Marine Engineering", "Informatics", "Recreation & Tourism"],
+      "master": ["Maritime Transport", "Ecology & Environmental Sciences", "Business Management"]
+    },
+    "tuition": "€2,500 – €4,500 per year",
+    "intakes": ["September", "February (selected programmes)"],
+    "requirements": {
+      "academic": "HSC (or equivalent). A bachelor's degree for master's programmes.",
+      "english": "IELTS 5.5+ / TOEFL iBT 65+ / MOI may be accepted."
+    },
+    "deadline": "Usually in summer for September intake",
+    "website": "https://www.ku.lt/en/",
+    "placeholder": true
+  },
+  {
+    "slug": "vilnius-university-of-applied-sciences",
+    "name": "Vilnius University of Applied Sciences",
+    "shortName": "VIKO",
+    "city": "Vilnius",
+    "logo": "",
+    "color": "#E87722",
+    "about": "A practical, career-focused higher education institution in Vilnius offering professional bachelor's programmes with lots of hands-on training.",
+    "programs": {
+      "bachelor": ["Software Development", "Business Management", "Hospitality Management", "Electronics Engineering"],
+      "master": ["Not usually offered (professional bachelor's only)"]
+    },
+    "tuition": "€2,500 – €4,000 per year",
+    "intakes": ["September", "February (selected programmes)"],
+    "requirements": {
+      "academic": "HSC (or equivalent).",
+      "english": "IELTS 5.5+ / B2 level / MOI may be accepted."
+    },
+    "deadline": "Usually in summer for September intake",
+    "website": "https://www.viko.lt/en/",
+    "placeholder": true
+  }
+]
