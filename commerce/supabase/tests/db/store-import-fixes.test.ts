@@ -253,4 +253,27 @@ describe('store order import fixes', () => {
         await db.query(`rollback to savepoint s`)
       }
     }))
+
+  it('store orders from the same phone merge even when the district differs or cannot be read, keeping each store tax', () =>
+    inTx(async (db) => {
+      const { c } = await syncedStore(db, 'samephone.myshopify.com')
+      const phone = '01712000830'
+      // Shopify 2,099 + tax 104.85 (Dhaka), then the same customer again with an address we cannot read (+ tax 44.95).
+      const a = await ingest(db, c, order({ external_id: '7801', number: '#7801', customer: { name: 'Rina Akter', phone, email: null },
+        shipping_price: 200, total: 2203.85, discount_total: 0 }))
+      const b = await ingest(db, c, order({ external_id: '7802', number: '#7802', customer: { name: 'Rina Akter', phone, email: null },
+        shipping: { address: 'idk', city: 'asdas', state: null, postal_code: null, district_hint: 'asdas' },
+        shipping_price: 200, total: 2143.95, discount_total: 0 }))
+      expect(a.status).toBe('IMPORTED')
+      expect(b.status).toBe('IMPORTED')
+      expect((b as any).merged_into).toBe((a as any).order_number)
+      await asSystem(db)
+      const kept = await value<Record<string, any>>(db, `select to_jsonb(o) from public.orders o where id = $1`, [a.order_id])
+      expect(kept.merged_count).toBe(1)
+      expect(kept.shipping_district).toBe('Dhaka')
+      // Products 1,899 × 2 + one delivery 200 + both store taxes.
+      expect(num(kept.tax_amount)).toBe(149.8)
+      expect(num(kept.total_amount)).toBe(3798 + 200 + 149.8)
+      expect(kept.customer_note).toMatch(/Merged order .* gave another address: idk/)
+    }))
 })

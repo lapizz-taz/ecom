@@ -95,7 +95,7 @@ describe('smart automatic merging', () => {
       expect(m).toMatchObject({ target_review_before: 'GOOD_NO_RESPONSE', source_review_status: 'PROCESSING', target_review_after: 'PROCESSING' })
     }))
 
-  it('follows the configured window, and leaves other districts, paid or approved orders alone', () =>
+  it('follows the configured window, merges across districts, and leaves paid or approved orders alone', () =>
     inTx(async (db) => {
       const v = await setup(db)
       // 12 hours apart: merged with the default 12 h window …
@@ -111,12 +111,13 @@ describe('smart automatic merging', () => {
       expect((await row(db, b2.id)).duplicate_status).toBe('SUSPECTED')
       await setSetting(db, 'orders', { auto_merge_window_hours: 12 })
 
-      // Another district: flagged, not merged.
+      // Another district: still the same customer, so merged; the other address is noted for the confirmation call.
       const c = await checkout(db, { phone: '01712345605', items: [{ variantId: v.cap, quantity: 1 }] })
       const c2 = await checkout(db, { phone: '01712345605', district: 'Chattogram', items: [{ variantId: v.cap, quantity: 1 }] },
         { idempotency_key: `k-${Date.now()}-c2` })
-      expect(c2.id).not.toBe(c.id)
-      expect(c2.merged).toBe(false)
+      expect(c2.merged).toBe(true)
+      expect(c2.id).toBe(c.id)
+      expect((await row(db, c.id)).customer_note).toMatch(/gave another address: .*Chattogram/)
 
       // Approved and already packed / ready to ship: protected — the new web order is only flagged.
       const d = await checkout(db, { phone: '01712345606', items: [{ variantId: v.cap, quantity: 1 }] })
