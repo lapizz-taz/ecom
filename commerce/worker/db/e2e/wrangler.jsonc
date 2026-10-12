@@ -1,0 +1,10 @@
+// Local-only Worker for scripts/db-e2e.mjs. Never deployed.
+{
+  "name": "fullfilio-db-e2e",
+  "main": "worker.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "DATABASE_BACKEND": "cloudflare", "SUPABASE_SERVICE_ROLE_KEY": "e2e-service-key-not-a-secret" },
+  "durable_objects": { "bindings": [{ "name": "DATABASE", "class_name": "Database" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Database"] }]
+}

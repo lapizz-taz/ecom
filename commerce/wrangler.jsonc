@@ -2,8 +2,8 @@
 //
 // One Worker serves the site from Workers Static Assets (the Vite build in
 // ./dist, free and not counted as Worker requests) and runs the backend
-// functions for the paths in run_worker_first. The database stays Supabase
-// Postgres. Secrets are never written here: set them in the dashboard
+// functions for the paths in run_worker_first. The database is Supabase Postgres
+// until DATABASE_BACKEND is "cloudflare" (worker/db). Secrets are never written here: set them in the dashboard
 // (Worker → Settings → Variables and Secrets) or with `npx wrangler secret put`.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -23,7 +23,7 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Only these paths start the Worker; every other request is a static file or the app shell.
-    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*"]
+    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*", "/rest/*", "/auth/*"]
   },
 
   "vars": {
@@ -39,8 +39,16 @@
     "CUSTOM_DOMAIN_TARGET": "stores.fullfilio.com",
     // Long-running functions stay on Supabase Edge Functions while the Worker is on
     // Workers Free (10 ms CPU, 50 outgoing requests per call). On Workers Paid set "".
-    "SUPABASE_FUNCTIONS": "channels,courier,meta-ads,ad-platforms,notifications-dispatch"
+    "SUPABASE_FUNCTIONS": "channels,courier,meta-ads,ad-platforms,notifications-dispatch",
+    // "supabase" until the switch-over; "cloudflare" serves the database from the
+    // Database Durable Object below (then SUPABASE_FUNCTIONS must be "").
+    "DATABASE_BACKEND": "supabase"
   },
+
+  // The Cloudflare database: one SQLite-backed Durable Object (worker/db). Orders, stock
+  // and money live here, never in KV.
+  "durable_objects": { "bindings": [{ "name": "DATABASE", "class_name": "Database" }] },
+  "migrations": [{ "tag": "v1-database", "new_sqlite_classes": ["Database"] }],
 
   // Public, rebuildable cache entries only (Clerk's signing keys). Never orders, stock or money.
   "kv_namespaces": [{ "binding": "CACHE", "id": "bd50f9bfc46e407097966b4317f0a33f" }],
@@ -63,7 +71,8 @@
     "staging": {
       "name": "fullfilio-staging",
       // SUPABASE_URL is set in the dashboard (it is kept across deploys).
-      "vars": { "SUPABASE_FUNCTIONS": "" },
+      "vars": { "SUPABASE_FUNCTIONS": "", "DATABASE_BACKEND": "cloudflare" },
+      "durable_objects": { "bindings": [{ "name": "DATABASE", "class_name": "Database" }] },
       "kv_namespaces": [{ "binding": "CACHE", "id": "e28a2bd7b9114f41a72f7ee9defd3b5c" }],
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "fullfilio-files-staging" }]
     }

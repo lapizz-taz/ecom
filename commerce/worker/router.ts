@@ -5,12 +5,14 @@
 //   /files/<bucket>/<path>   an uploaded file
 //   /__clerk/…               Clerk's Frontend API through our own address (clerk-proxy)
 //   /oauth/shopify/callback  Shopify's OAuth return on the app's host (channels)
+//   /rest/v1/…, /auth/v1/…   the Cloudflare database (when DATABASE_BACKEND=cloudflare; see db/gateway.ts)
 //
 // Everything else is the site itself (Workers Static Assets, single-page app).
+import { database, type DbEnv } from './db/gateway.ts'
 import { filesApi, serveFile, type FilesEnv } from './files.ts'
 import { FUNCTIONS, type Handler } from './functions.ts'
 
-export interface Env extends FilesEnv {
+export interface Env extends FilesEnv, DbEnv {
   ASSETS: Fetcher
   CACHE?: KVNamespace
   /**
@@ -90,6 +92,7 @@ export function createRouter(env: Env, fns: Record<string, Handler> = FUNCTIONS)
       return invoke('channels', inbound(req, `${url.origin}/functions/v1/channels/callback/shopify${url.search}`))
     }
     if (path.startsWith('/files/')) return serveFile(req, env)
+    if (path.startsWith('/rest/v1/') || path.startsWith('/auth/v1/')) return database(req, env)
     const fn = FUNCTION_PATH.exec(path)
     if (fn) return fn[1] === 'files' ? files(inbound(req)) : invoke(fn[1], inbound(req))
     return env.ASSETS.fetch(req)
