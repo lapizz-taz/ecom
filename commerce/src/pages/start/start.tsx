@@ -11,6 +11,7 @@ import { SignUp } from '@clerk/clerk-react'
 import { ResendConfirmation } from '@/features/auth/link-problem'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
+import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker, Steps } from '@/features/onboarding/signup-parts'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
@@ -31,6 +32,7 @@ const EMPTY: SignupBusiness = {
 export default function StartPage() {
   useAdminTheme()
   const { session, access, loading, accessLoading, usesClerk } = useAuth()
+  const linkPending = useClerkLinkPending()
   const minPassword = 8
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -137,7 +139,8 @@ export default function StartPage() {
             </p>
           </div>
           <div className="mt-6 flex justify-center">
-            <SignUp routing="hash" signInUrl="/admin/login?next=/start/finish" forceRedirectUrl="/start/finish" />
+            {linkPending ? <ClerkLinkNotice className="w-full" />
+              : <SignUp routing="hash" signInUrl="/admin/login?next=/start/finish" forceRedirectUrl="/start/finish" />}
           </div>
           <div className="mt-6"><Button type="button" variant="ghost" onClick={() => setStep(1)}><ArrowLeft /> Back</Button></div>
         </div>

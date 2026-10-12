@@ -24,6 +24,7 @@ import {
   updateOrganizationSettings, verifiedPrimaryEmail, verifySessionToken,
 } from '../_shared/clerk.ts'
 import { isCronRequest } from '../_shared/cron.ts'
+import { env } from '../_shared/env.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient } from '../_shared/supabase.ts'
@@ -83,6 +84,10 @@ export default (
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     rateLimit(`clerk-auth:${clientIp(req)}`, 30)
     const input = parse(schema, await readJson(req))
+    // Say what is missing instead of a bare "Something went wrong" (names only, never values).
+    if (!env('SUPABASE_SERVICE_ROLE_KEY') && !env('SUPABASE_SECRET_KEY')) {
+      throw new HttpError(503, 'Sign-in is not set up on the server yet: SUPABASE_SERVICE_ROLE_KEY is missing.', 'NOT_CONFIGURED')
+    }
     const admin = adminClient()
 
     if (input.action === 'session') {

@@ -25,6 +25,10 @@ interface AuthState {
   syncClerk: () => Promise<void>
   /** A Clerk sign-in that could not be opened here (shown on the sign-in page). */
   clerkError: Error | null
+  /** Clerk has a signed-in person here, even if the account is not open (yet). */
+  clerkSignedIn: boolean
+  /** Tries to open the account again after clerkError. */
+  retryClerk: () => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -88,6 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       usesClerk,
       syncClerk: () => clerk?.sync() ?? Promise.resolve(),
       clerkError: clerk?.error ?? null,
+      clerkSignedIn: clerk?.signedIn ?? false,
+      retryClerk: () => clerk?.retry(),
     }
   }, [session, loading, userId, accessQuery.data, accessQuery.isLoading, usesClerk, clerk])
 

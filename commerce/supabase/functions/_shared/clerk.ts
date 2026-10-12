@@ -42,7 +42,7 @@ export async function clerkSecret(readVault: () => Promise<ClerkSettings> = read
   const key = env('CLERK_SECRET_KEY')
   if (key) return key
   const { secretKey } = await vaultSettings(readVault)
-  if (!secretKey) throw new HttpError(503, 'Sign-in is not set up yet', 'NOT_CONFIGURED')
+  if (!secretKey) throw new HttpError(503, 'Sign-in is not set up on the server yet: CLERK_SECRET_KEY is missing.', 'NOT_CONFIGURED')
   return secretKey
 }
 
@@ -135,7 +135,9 @@ export async function verifySessionToken(token: string, f: Fetch = fetch, now = 
   }
   if (header.alg !== 'RS256' || !header.kid) throw new HttpError(401, 'Sign in again', 'INVALID_TOKEN')
   const jwk = await signingKey(header.kid, f)
-  if (!jwk) throw new HttpError(401, 'Sign in again', 'INVALID_TOKEN')
+  // Not among the current keys of the Clerk instance whose secret key this server has: most
+  // often that key belongs to another instance (e.g. development keys on the live site).
+  if (!jwk) throw new HttpError(401, 'The server\'s sign-in key belongs to a different Clerk instance than this site. Update CLERK_SECRET_KEY on the server.', 'CLERK_KEY_MISMATCH')
   const key = await crypto.subtle.importKey('jwk', { ...jwk, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify'])
   const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`))
   if (!ok) throw new HttpError(401, 'Sign in again', 'INVALID_TOKEN')

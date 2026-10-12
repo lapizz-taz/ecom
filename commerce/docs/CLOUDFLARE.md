@@ -152,7 +152,7 @@ they apply.
 | Name | Value |
 | --- | --- |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API Keys → *Legacy API keys* → `service_role` → Reveal → copy (secret; never put it anywhere else) |
-| `CLERK_SECRET_KEY` | Clerk → API Keys → Secret key |
+| `CLERK_SECRET_KEY` | Clerk → the **fullfilio.com production instance** → API Keys → Secret key (`sk_live_…`). It must be the same instance as the site's publishable key (`clerk.fullfilio.com`); a development key (`sk_test_…`) or another instance's key cannot check fullfilio.com sign-ins |
 
 Optional: `CLERK_WEBHOOK_SECRET` (Clerk → Webhooks → endpoint → Signing
 secret), `FILES_SIGNING_KEY` (otherwise derived from the service key),
@@ -188,6 +188,13 @@ sign-ins. Do it at a quiet hour.
 3. Clerk → **Webhooks**: endpoint `https://fullfilio.com/functions/v1/clerk-webhook`.
 4. Cloudflare → fullfilio → **Deployments → Retry deployment** (the publishable key is built into the site).
 5. Sign in at https://fullfilio.com/admin/login with your Super Admin account.
+
+If the sign-in page says **"Your account could not be opened"**, the reason
+under it names what the server is missing: `SUPABASE_SERVICE_ROLE_KEY` or
+`CLERK_SECRET_KEY` not set, or a `CLERK_SECRET_KEY` from a different Clerk
+instance than the site. Fix the secret (step 4), retry the deployment, then
+press **Try again**. (Before this message existed, the same problem made the
+page reload over and over until it showed "Too many requests".)
 
 ### 7. Supabase sign-in links
 

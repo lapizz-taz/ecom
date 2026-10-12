@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { LinkErrorNotice, ResendConfirmation, useAuthLinkError } from '@/features/auth/link-problem'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
+import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker } from '@/features/onboarding/signup-parts'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
@@ -23,6 +24,7 @@ export default function StartFinishPage() {
   useAdminTheme()
   const linkError = useAuthLinkError()
   const { session, user, access, loading, accessLoading, usesClerk } = useAuth()
+  const linkPending = useClerkLinkPending()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const options = useQuery({ queryKey: ['signup-options'], queryFn: signupOptions, staleTime: 5 * 60_000, enabled: Boolean(session) })
@@ -56,7 +58,7 @@ export default function StartFinishPage() {
     setBusiness({ ...business, plan_code: o.plans.find((p) => p.code === o.default_plan)?.code ?? o.plans[0]?.code ?? '' })
   }, [options.data, business])
 
-  if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
+  if (!linkPending && (loading || (session && accessLoading))) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
   if (access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
   if (!session) {
     return (
@@ -70,8 +72,9 @@ export default function StartFinishPage() {
           </div>
         )}
         <div className="mt-8 flex justify-center">
-          {usesClerk ? <SignIn routing="hash" signUpUrl="/start" forceRedirectUrl="/start/finish" />
-            : <SignInForm onDone={() => undefined} forgotPath="/admin/forgot-password" />}
+          {linkPending ? <ClerkLinkNotice className="w-full" />
+            : usesClerk ? <SignIn routing="hash" signUpUrl="/start" forceRedirectUrl="/start/finish" />
+              : <SignInForm onDone={() => undefined} forgotPath="/admin/forgot-password" />}
         </div>
       </AuthShell>
     )

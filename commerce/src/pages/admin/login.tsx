@@ -5,12 +5,14 @@ import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
+import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { SignInForm } from '@/pages/storefront/login'
 
 export default function AdminLoginPage() {
   useAdminTheme()
   const { session, access, loading, accessLoading, clerkError, signOut, usesClerk } = useAuth()
+  const linkPending = useClerkLinkPending()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next') ?? '/admin'
@@ -27,21 +29,25 @@ export default function AdminLoginPage() {
   )
 
   // Clerk's own sign-in box: password, a code by e-mail, Google, "Forgot password?" and sign-up.
+  // Not while Clerk is already signed in here: the box would send the browser straight back.
   if (usesClerk) {
     return (
       <AuthShell>
-        {clerkError && (
-          <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert">
-            <p className="text-destructive">{clerkError.message}</p>
-            <button type="button" className="mt-1 text-xs font-medium underline underline-offset-4" onClick={() => void signOut()}>Sign out and try another account</button>
-          </div>
+        {linkPending ? <ClerkLinkNotice /> : (
+          <>
+            {clerkError && (
+              <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert">
+                <p className="text-destructive">{clerkError.message}</p>
+              </div>
+            )}
+            {loading || (session && accessLoading) ? <div className="flex justify-center"><Spinner className="size-5" /></div>
+              : noBusiness || (
+                <div className="flex justify-center">
+                  <SignIn routing="hash" signUpUrl="/start" fallbackRedirectUrl={next} />
+                </div>
+              )}
+          </>
         )}
-        {loading || (session && accessLoading) ? <div className="flex justify-center"><Spinner className="size-5" /></div>
-          : noBusiness || (
-            <div className="flex justify-center">
-              <SignIn routing="hash" signUpUrl="/start" fallbackRedirectUrl={next} />
-            </div>
-          )}
       </AuthShell>
     )
   }
