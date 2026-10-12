@@ -25,46 +25,46 @@ Other commands: `npm run build` (production build) · `npm test` (validation tes
 
 ---
 
-## Where to edit things (no layout code needed)
+## Editing the website: the CMS
 
-All editable content lives in **`src/content/`**:
+Log in at **`/admin`** and open the **Website content** tab. Everything on the site can be edited there, with no code:
+
+| Section | What you can change |
+| --- | --- |
+| General | Business name, tagline, Google/link-preview description, footer text, Page 3 name, the "New" announcement above the hero, placeholder tags on/off |
+| Contact & social | Phone, WhatsApp number + pre-filled message, email, address, map location, office hours, social media links |
+| Home hero | Headline, text, trust line, cover photos (computer + phone), photo description |
+| Universities | Add / remove / reorder / duplicate; name, city, logo upload, about, programs, fees, intakes, requirements, deadline, website, "to be confirmed" flag |
+| Services | Service cards (icon, title, description) |
+| Process | Timeline steps (title, text, time, icon) and the documents checklist |
+| English Prep | Header, "what you'll learn", class details, instructor (photo, bio, qualifications, stats), YouTube video |
+| Version history | Every save is kept: load an earlier version and save it to roll back |
+
+Press **Save changes** (or Ctrl/Cmd + S). The live site updates within a few seconds; no redeploy needed. The editor warns you before leaving with unsaved changes.
+
+**How it works:** content is stored in Supabase (table `site_content`, with every save copied to `site_content_history`), and uploaded images go to the public Supabase Storage bucket `site-media`. Pages are pre-rendered for speed and refreshed the moment you save. Until the first save, the site shows the starting content from `src/content/` (the files listed below).
+
+**CMS setup (one time):** run [`docs/supabase-schema.sql`](docs/supabase-schema.sql) in Supabase → SQL Editor (creates the tables and the image bucket), then set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel. Without Supabase the CMS opens read-only. On your own computer it saves to `.data/` so you can try it straight away.
+
+**Safety:** only logged-in admins can save or upload; requests from other websites are refused; links must be `http(s)`; uploads must be real JPG/PNG/WebP/AVIF images up to 5 MB (SVG isn't accepted because it can carry scripts); all text is trimmed to sensible lengths.
+
+### Starting content (developers)
+
+The defaults live in **`src/content/`** and are only used until something is saved in the CMS:
 
 | What | File |
 | --- | --- |
-| Contact details, social links, office hours, map, announcement bar, Page 3 name | `src/content/site.ts` |
+| Contact details, social links, names | `src/content/site.ts` |
 | Partner universities | `src/content/universities.json` |
 | Service cards | `src/content/services.ts` |
-| "How it works" steps + documents checklist | `src/content/process.ts` |
-| English Prep page (course, schedule, instructor, video) | `src/content/english-prep.ts` |
+| "How it works" steps + documents | `src/content/process.ts` |
+| English Prep page | `src/content/english-prep.ts` |
 
 ### (a) Add, edit or remove a university
 
-Open `src/content/universities.json`. Each university is one block `{ ... }` in the list:
+In the CMS: **Website content → Universities**. Click **Add university**, fill in the fields, upload the logo and press **Save changes**. Use the arrows to change the order (the banner follows this order), the copy icon to duplicate, and the bin to delete.
 
-```json
-{
-  "slug": "vilnius-university",          // short id, lowercase-with-dashes, must be unique
-  "name": "Vilnius University",
-  "shortName": "VU",                     // shown on the placeholder logo tile
-  "city": "Vilnius",
-  "logo": "/universities/vu.svg",        // put the file in public/universities/ ("" = monogram tile)
-  "color": "#7A1F3D",                    // colour of the monogram tile
-  "about": "2–3 lines about the university.",
-  "programs": { "bachelor": ["..."], "master": ["..."] },
-  "tuition": "€3,500 – €6,500 per year",
-  "intakes": ["September", "February"],
-  "requirements": { "academic": "...", "english": "..." },
-  "deadline": "15 June",
-  "website": "https://www.vu.lt/en/",
-  "placeholder": false                   // remove or set false once details are confirmed
-}
-```
-
-- **Add:** copy a whole block, paste it after a comma, and change the values.
-- **Remove:** delete the block (and the comma before it).
-- **Order:** the banner shows universities in the order of this file.
-- Logos: SVG or PNG with a transparent background, ideally ~300px wide. They appear greyscale and turn full colour on hover automatically.
-- "Apply with UniBee" in the pop-up pre-fills the form comments with the university name. You can also link straight to it: `https://your-domain.com/?university=vilnius-university#register`.
+Tip: you can link straight to the form with a university pre-selected: `https://your-domain.com/?university=vilnius-university#register` (the last part of the link is the university's name in lowercase with dashes).
 
 ### (b) View form submissions
 
@@ -95,23 +95,11 @@ Create a free account at resend.com, verify your domain, and set `RESEND_API_KEY
 
 ### (c) Change contact details and social links
 
-Open `src/content/site.ts`:
-
-- `contact.phone` / `phoneDisplay`: the number for calls (link format / how it's shown).
-- `contact.whatsapp`: digits only with country code, e.g. `8801712345678`. Every WhatsApp button on the site (floating button, hero, footer, thank-you screen) uses this.
-- `contact.whatsappMessage`: the pre-filled chat message.
-- `contact.email`, `contact.address`, `contact.hours`.
-- `contact.mapsQuery`: what Google Maps searches for (your full address or exact business name). It controls both the embedded map and the "open in Maps" link.
-- `socials`: change each URL. Delete a line to hide that icon. The WhatsApp entry fills itself in.
-- `page3.name`: rename the "English Prep" page (menu, footer and title follow).
-- `announcement.text`: the slim bar above the header. Set it to `""` to hide it.
-- `showPlaceholderBadges`: set to `false` to hide all amber "Placeholder" tags at once.
+In the CMS: **Website content → Contact & social**. The WhatsApp number you enter there is used by every WhatsApp button on the site (floating button, hero, footer, thank-you screen). Leave a social link empty to hide that icon.
 
 ### Photos
 
-- Hero cover photo: replace `public/images/hero-mobile.webp` (portrait, ~800×1000) and `public/images/hero-desktop.webp` (landscape, ~2000×900). Then set `placeholder: false` in `src/components/home/Hero.tsx`. The current photo is your Vilnius banner with the text removed, used only as a stand-in.
-- Share image (Facebook/WhatsApp link previews): `public/images/og-image.png` (1200×630).
-- Logo files are traced from your original artwork: `public/brand/`. To regenerate from a better master file: `node scripts/make-brand-assets.mjs path/to/logo.png`.
+Upload them in the CMS (Home hero, university logos, instructor photo). For the hero use one landscape photo (about 2000×900) and one portrait crop for phones (about 800×1000), then switch off "Mark photo as placeholder". The share image for Facebook/WhatsApp link previews is `public/images/og-image.png` (1200×630). Logo files are traced from your original artwork in `public/brand/` (regenerate with `node scripts/make-brand-assets.mjs path/to/logo.png`).
 
 ---
 

@@ -34,3 +34,25 @@ export function verifySession(value: string | undefined, now = Date.now()): bool
   if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
   return Number(exp) * 1000 > now;
 }
+
+/** Reads and verifies the admin cookie from a request. */
+export function isAdminRequest(req: Request): boolean {
+  const cookie = req.headers.get("cookie") || "";
+  const value = cookie
+    .split(/;\s*/)
+    .find((c) => c.startsWith(`${ADMIN_COOKIE}=`))
+    ?.slice(ADMIN_COOKIE.length + 1);
+  return verifySession(value ? decodeURIComponent(value) : undefined);
+}
+
+/** Blocks cross-site form posts (CSRF): the Origin header must match this site. */
+export function isSameOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return true; // same-origin fetches from older browsers may omit it; the cookie is SameSite=Lax anyway
+  try {
+    const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}

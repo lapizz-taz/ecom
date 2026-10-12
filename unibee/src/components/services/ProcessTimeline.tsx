@@ -1,11 +1,11 @@
 import { Reveal } from "@/components/ui/Reveal";
-import { processSteps } from "@/content/process";
+import type { SiteContent } from "@/lib/content/types";
 
 /**
  * Changelog-style timeline: a thin line with dots.
  * Vertical on phones and tablets; two horizontal rows of five on desktop.
  */
-export function ProcessTimeline() {
+export function ProcessTimeline({ steps: processSteps }: { steps: SiteContent["process"]["steps"] }) {
   return (
     <ol className="mt-14 grid gap-y-0 md:mt-20 lg:grid-cols-5 lg:gap-x-8 lg:gap-y-16">
       {processSteps.map((s, i) => {

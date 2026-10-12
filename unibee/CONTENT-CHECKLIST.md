@@ -47,7 +47,7 @@ The 8 universities shown are samples. For each real partner, send:
 - [ ] Anything else from the voice notes for this page
 
 ## 6. Registration data & tracking
-- [ ] Choose where submissions are saved: **Google Sheet** or **Supabase** (or both)
+- [ ] Create a free **Supabase** project (needed for the CMS; registrations can be saved there too, and/or in a Google Sheet)
 - [ ] Admin page password (we'll set it privately in Vercel; don't send it by email)
 - [ ] Google Analytics 4 Measurement ID (G-XXXXXXX), if you have one
 - [ ] Meta Pixel ID, if you run Facebook/Instagram ads

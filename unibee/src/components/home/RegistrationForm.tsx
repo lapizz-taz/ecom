@@ -6,8 +6,8 @@ import {
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { SocialIcon } from "@/components/ui/SocialIcon";
 import { Flag } from "@/components/ui/Flag";
-import { universities } from "@/content/universities";
-import { whatsappUrl } from "@/content/site";
+import { useContent } from "@/components/content/ContentProvider";
+import { whatsappUrl as buildWhatsappUrl } from "@/lib/content/helpers";
 import { trackLead, trackWhatsAppClick } from "@/lib/analytics";
 import { IS_PREVIEW } from "@/lib/links";
 import {
@@ -65,6 +65,9 @@ function Fieldset({ legend, children, required, error, name }: { legend: ReactNo
 /* ───────────────────────── the form ───────────────────────── */
 
 export function RegistrationForm() {
+  const content = useContent();
+  const { universities } = content;
+  const whatsappUrl = (message?: string) => buildWhatsappUrl(content, message);
   const [values, setValues] = useState<RegistrationValues>(emptyValues);
   const [touched, setTouched] = useState<Set<FieldName>>(new Set());
   const [step, setStep] = useState(0);

@@ -1,6 +1,7 @@
 /**
  * ─────────────────────────────────────────────────────────────
- *  SITE SETTINGS: edit contact details, social links and names here.
+ *  STARTING CONTENT: what the site shows until something is saved in the
+ *  CMS (/admin/content). After that, edit everything in the CMS instead.
  *  Anything marked REPLACE is a placeholder you still need to send.
  * ─────────────────────────────────────────────────────────────
  */
@@ -44,7 +45,7 @@ export const site = {
   ] as const,
 
   /** Page 3: rename here and the menu, footer and page title all follow. */
-  page3: { name: "English Prep", href: "/english-prep" },
+  page3: { name: "English Prep" },
 
   /** Intake announcement shown in the slim bar above the header. Set text to "" to hide. */
   announcement: {
@@ -53,26 +54,9 @@ export const site = {
   },
 };
 
-export type SocialNetwork = (typeof site.socials)[number]["network"];
-
-export const nav = [
-  { label: "Home", href: "/" },
-  { label: "Our Services", href: "/services" },
-  { label: site.page3.name, href: site.page3.href },
-  { label: "Contact", href: "/#contact" },
-];
-
 /** Site URL used for SEO tags, sitemap and share images. */
 export const siteUrl = (
   process.env.NEXT_PUBLIC_SITE_URL ||
   (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "") ||
   "http://localhost:3000"
 ).replace(/\/$/, "");
-
-export const whatsappUrl = (message: string = site.contact.whatsappMessage) =>
-  `https://wa.me/${site.contact.whatsapp}?text=${encodeURIComponent(message)}`;
-
-export const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.contact.mapsQuery)}`;
-export const mapsEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(site.contact.mapsQuery)}&output=embed`;
-
-export const isPlaceholder = (value: string) => /REPLACE/i.test(value);

@@ -32,3 +32,27 @@ create index if not exists registrations_created_at_idx on public.registrations 
 
 -- Lock the table down: only the server (service role key) can read/write.
 alter table public.registrations enable row level security;
+
+-- ─────────────────────────────────────────────────────────────
+-- CMS (Website content editor at /admin/content)
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.site_content (
+  id          text primary key,            -- always 'main'
+  data        jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+create table if not exists public.site_content_history (
+  id        bigserial primary key,
+  data      jsonb not null,
+  saved_at  timestamptz not null default now()
+);
+create index if not exists site_content_history_saved_at_idx on public.site_content_history (saved_at desc);
+
+alter table public.site_content enable row level security;
+alter table public.site_content_history enable row level security;
+
+-- Public bucket for images uploaded in the CMS (logos, hero photos, instructor photo).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('site-media', 'site-media', true, 5242880, array['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+on conflict (id) do nothing;

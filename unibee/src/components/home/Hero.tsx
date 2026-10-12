@@ -3,36 +3,41 @@ import { ArrowRight } from "lucide-react";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { WhatsAppLink } from "@/components/home/WhatsAppLink";
 import { asset, page } from "@/lib/links";
+import type { SiteContent } from "@/lib/content/types";
 
 /**
- * Full-width cover photo with the headline on top.
+ * Full-width cover photo with the headline on top. Text and photos come from the CMS (Home hero).
  * Art direction: a portrait crop on phones, the wide shot on larger screens.
- * REPLACE: put your photos in /public/images (hero-mobile.webp ≈ 800×1000, hero-desktop.webp ≈ 2000×900),
- * then set `placeholder: false`.
+ * Built-in photos (paths in /public) are resized by Next.js; uploaded photos are used as-is.
  */
-const HERO = {
-  mobile: { src: "/images/hero-mobile.webp", width: 640, height: 750 },
-  desktop: { src: "/images/hero-desktop.webp", width: 2000, height: 750 },
-  alt: "Sunrise over Vilnius old town, Lithuania, with a hot-air balloon above the rooftops",
-  placeholder: true,
-};
+/** Uploaded images (Supabase URL, or /media/ locally) are served as-is. */
+const isUploaded = (src: string) => /^https?:\/\//.test(src) || src.startsWith("/media/");
 
-export function Hero() {
-  const common = { alt: HERO.alt, sizes: "100vw", priority: true, quality: 75 } as const;
-  const {
-    props: { srcSet: desktopSet },
-  } = getImageProps({ ...common, ...HERO.desktop, src: asset(HERO.desktop.src) });
-  const {
-    props: { srcSet: mobileSet, ...img },
-  } = getImageProps({ ...common, ...HERO.mobile, src: asset(HERO.mobile.src) });
+function heroSources(src: string, width: number, height: number, alt: string) {
+  const { props } = getImageProps({
+    src: isUploaded(src) ? src : asset(src),
+    width,
+    height,
+    alt,
+    sizes: "100vw",
+    priority: true,
+    quality: 75,
+    unoptimized: isUploaded(src),
+  });
+  return props;
+}
+
+export function Hero({ hero, announcement }: { hero: SiteContent["hero"]; announcement?: SiteContent["general"]["announcement"] }) {
+  const { srcSet: desktopSet, src: desktopSrc } = heroSources(hero.imageDesktop, 2000, 750, hero.imageAlt);
+  const { srcSet: mobileSet, src: mobileSrc, ...img } = heroSources(hero.imageMobile, 640, 750, hero.imageAlt);
 
   return (
     <section aria-labelledby="hero-title" className="relative isolate overflow-hidden bg-night text-white">
       <picture>
-        <source media="(min-width: 768px)" srcSet={desktopSet} />
-        <source media="(max-width: 767px)" srcSet={mobileSet} />
+        <source media="(min-width: 768px)" srcSet={desktopSet || desktopSrc} />
+        <source media="(max-width: 767px)" srcSet={mobileSet || mobileSrc} />
         {/* eslint-disable-next-line jsx-a11y/alt-text */}
-        <img {...img} className="absolute inset-0 -z-20 size-full object-cover object-[50%_35%]" fetchPriority="high" />
+        <img {...img} src={mobileSrc} className="absolute inset-0 -z-20 size-full object-cover object-[50%_35%]" fetchPriority="high" />
       </picture>
       {/* Dark fade (black → transparent) keeps the white text readable */}
       <div
@@ -40,7 +45,7 @@ export function Hero() {
         aria-hidden="true"
       />
 
-      {HERO.placeholder && (
+      {hero.placeholder && (
         <div className="absolute top-4 right-4 rounded-full bg-white/90 px-2.5 py-1">
           <Placeholder label="Placeholder photo" />
         </div>
@@ -48,12 +53,21 @@ export function Hero() {
 
       <div className="container-page flex min-h-[calc(100svh-64px)] flex-col justify-end pt-24 pb-24 md:min-h-[620px] md:justify-center md:py-28 lg:min-h-[680px]">
         <div className="max-w-[620px]">
+          {announcement?.text && (
+            <a
+              href={page("/#register")}
+              className="mb-5 inline-flex max-w-full items-center gap-2 rounded-full bg-white/15 py-1 pr-3 pl-1 text-[13px] text-white ring-1 ring-white/25 backdrop-blur-sm transition hover:bg-white/25"
+            >
+              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-ink">New</span>
+              <span className="truncate">{announcement.text}</span>
+              {announcement.linkText && <span className="hidden shrink-0 font-medium sm:inline">{announcement.linkText} →</span>}
+            </a>
+          )}
           <h1 id="hero-title" className="h1 text-white">
-            Study in Lithuania <br className="hidden sm:block" />
-            with UniBee
+            {hero.title}
           </h1>
           <p className="mt-5 max-w-[500px] text-[17px] leading-[1.55] text-white/85 md:text-[18px]">
-            From choosing the right university to getting your visa, we handle your full journey to Europe.
+            {hero.subtitle}
           </p>
 
           <div className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:items-center">
@@ -68,7 +82,7 @@ export function Hero() {
             </WhatsAppLink>
           </div>
 
-          <p className="mt-6 text-[13px] text-white/80">Free profile assessment · Fast response · Trusted by students across Bangladesh</p>
+          {hero.trustLine && <p className="mt-6 text-[13px] text-white/80">{hero.trustLine}</p>}
         </div>
       </div>
     </section>

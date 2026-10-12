@@ -1,8 +1,11 @@
-import { site } from "@/content/site";
+"use client";
 
-/** Small amber tag marking content that still needs real information. */
+import { useContent } from "@/components/content/ContentProvider";
+
+/** Small amber tag marking content that still needs real information (toggle in the CMS → General). */
 export function Placeholder({ label = "Placeholder", className = "", show = true }: { label?: string; className?: string; show?: boolean }) {
-  if (!site.showPlaceholderBadges || !show) return null;
+  const { general } = useContent();
+  if (!general.showPlaceholderBadges || !show) return null;
   return (
     <span
       className={`inline-flex items-center gap-1.5 align-middle text-[11px] font-medium tracking-normal text-amber-700 ${className}`}

@@ -4,7 +4,7 @@ import { UniversityMarquee } from "@/components/home/UniversityMarquee";
 import { RegisterSection } from "@/components/home/RegisterSection";
 import { StayConnected } from "@/components/home/StayConnected";
 import { Placeholder } from "@/components/ui/Placeholder";
-import { universities } from "@/content/universities";
+import { getContent } from "@/lib/server/content-store";
 
 export const metadata: Metadata = {
   title: { absolute: "UniBee | Study in Lithuania from Bangladesh" },
@@ -14,11 +14,14 @@ export const metadata: Metadata = {
   openGraph: { title: "UniBee | Study in Lithuania from Bangladesh", url: "/" },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const content = await getContent();
+  const { universities } = content;
   return (
     <>
-      <Hero />
+      <Hero hero={content.hero} announcement={content.general.announcement} />
 
+      {universities.length > 0 && (
       <section aria-labelledby="unis-title" className="bg-white pt-16 pb-16 md:pt-24 md:pb-24">
         <div className="container-page mb-8 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <h2 id="unis-title" className="text-[15px] font-medium text-ink">
@@ -29,9 +32,10 @@ export default function HomePage() {
         </div>
         <UniversityMarquee />
       </section>
+      )}
 
       <RegisterSection />
-      <StayConnected />
+      <StayConnected content={content} />
     </>
   );
 }

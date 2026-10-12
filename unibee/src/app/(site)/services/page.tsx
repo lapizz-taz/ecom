@@ -7,8 +7,7 @@ import { Reveal } from "@/components/ui/Reveal";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { ProcessTimeline } from "@/components/services/ProcessTimeline";
 import { CtaBanner } from "@/components/services/CtaBanner";
-import { services, servicesPlaceholder } from "@/content/services";
-import { documentsNeeded, processPlaceholder } from "@/content/process";
+import { getContent } from "@/lib/server/content-store";
 
 export const metadata: Metadata = {
   title: "Our Services: Lithuania Admission, File Processing & Visa",
@@ -18,7 +17,12 @@ export const metadata: Metadata = {
   openGraph: { title: "Our Services | UniBee", url: "/services" },
 };
 
-export default function ServicesPage() {
+export default async function ServicesPage() {
+  const content = await getContent();
+  const services = content.services.items;
+  const servicesPlaceholder = content.services.placeholder;
+  const documentsNeeded = content.process.documents;
+  const processPlaceholder = content.process.placeholder;
   return (
     <>
       <PageHeader title="Our Services" subtitle="Everything you need to study in Lithuania, under one roof.">
@@ -52,7 +56,7 @@ export default function ServicesPage() {
             text="From your first message to landing in Lithuania, here's exactly what happens and roughly how long each step takes."
             badge={processPlaceholder ? <Placeholder label="Confirm steps & times" /> : null}
           />
-          <ProcessTimeline />
+          <ProcessTimeline steps={content.process.steps} />
         </div>
       </section>
 

@@ -5,12 +5,15 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { useFocusTrap, useScrollLock } from "@/components/ui/Modal";
-import { nav, whatsappUrl } from "@/content/site";
+import { useContent } from "@/components/content/ContentProvider";
+import { navItems, whatsappUrl } from "@/lib/content/helpers";
 import { isActive, page } from "@/lib/links";
 import { trackWhatsAppClick } from "@/lib/analytics";
 
 export function Header() {
   const pathname = usePathname() || "/";
+  const content = useContent();
+  const nav = navItems(content);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -116,7 +119,7 @@ export function Header() {
               Register Now
             </a>
             <a
-              href={whatsappUrl()}
+              href={whatsappUrl(content)}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => trackWhatsAppClick("mobile-menu")}

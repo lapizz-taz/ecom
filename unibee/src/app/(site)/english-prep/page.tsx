@@ -8,28 +8,33 @@ import { Reveal } from "@/components/ui/Reveal";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { VideoFacade } from "@/components/classic/VideoFacade";
 import { CtaBanner } from "@/components/classic/CtaBanner";
-import { englishPrep as ep } from "@/content/english-prep";
-import { isPlaceholder, site } from "@/content/site";
+import { getContent } from "@/lib/server/content-store";
+import { isPlaceholder, PAGE3_HREF } from "@/lib/content/helpers";
 import { asset, page } from "@/lib/links";
 
 // This page keeps the first-version ("classic") design: Poppins headings, soft cards with red icons,
 // and a red call-to-action banner. The `classic` class in globals.css scopes those styles here.
 const poppins = Poppins({ subsets: ["latin"], weight: ["600", "700"], display: "swap", variable: "--font-poppins" });
 
-export const metadata: Metadata = {
-  title: `${site.page3.name}: PTE & IELTS Classes`,
-  description: "PTE and IELTS preparation classes in Dhaka and online. Small batches, exam strategies and mock tests to reach the score you need for Lithuania.",
-  alternates: { canonical: site.page3.href },
-  openGraph: { title: `${site.page3.name} | UniBee`, url: site.page3.href },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { general } = await getContent();
+  return {
+    title: `${general.page3Name}: PTE & IELTS Classes`,
+    description: "PTE and IELTS preparation classes in Dhaka and online. Small batches, exam strategies and mock tests to reach the score you need for Lithuania.",
+    alternates: { canonical: PAGE3_HREF },
+    openGraph: { title: `${general.page3Name} | UniBee`, url: PAGE3_HREF },
+  };
+}
 
-export default function EnglishPrepPage() {
+export default async function EnglishPrepPage() {
+  const content = await getContent();
+  const ep = content.englishPrep;
   const ins = ep.instructor;
   const initials = isPlaceholder(ins.name) ? "UB" : ins.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2);
 
   return (
     <div className={`classic ${poppins.variable}`}>
-      <PageHeader eyebrow={site.page3.name} title={ep.title} subtitle={ep.subtitle}>
+      <PageHeader eyebrow={content.general.page3Name} title={ep.title} subtitle={ep.subtitle}>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a href={page("/#register")} className="btn btn-primary w-full sm:w-auto">
             Join a Class <ArrowRight className="size-5" aria-hidden="true" />
@@ -80,7 +85,7 @@ export default function EnglishPrepPage() {
             <div className="flex flex-col items-center text-center lg:w-56">
               {ins.photo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={asset(ins.photo)} alt={ins.name} className="size-40 rounded-full object-cover ring-4 ring-brand-tint" loading="lazy" />
+                <img src={ins.photo.startsWith("/") ? asset(ins.photo) : ins.photo} alt={ins.name} className="size-40 rounded-full object-cover ring-4 ring-brand-tint" loading="lazy" />
               ) : (
                 <span className="grid size-40 place-items-center rounded-full bg-brand-tint font-heading text-[44px] font-bold text-brand-dark ring-4 ring-white" aria-hidden="true">
                   {initials}

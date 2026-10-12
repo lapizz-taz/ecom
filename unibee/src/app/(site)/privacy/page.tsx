@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Placeholder } from "@/components/ui/Placeholder";
-import { site } from "@/content/site";
+import { getContent } from "@/lib/server/content-store";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 const updated = "REPLACE: date you publish this policy";
 
-export default function PrivacyPage() {
-  const c = site.contact;
+export default async function PrivacyPage() {
+  const c = (await getContent()).contact;
   const sections: { title: string; body: React.ReactNode }[] = [
     {
       title: "Who we are",

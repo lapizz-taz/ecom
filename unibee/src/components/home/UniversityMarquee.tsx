@@ -4,7 +4,8 @@ import { ArrowRight, Calendar, ExternalLink, GraduationCap, Info, MapPin, Wallet
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Placeholder } from "@/components/ui/Placeholder";
-import { universities, type University } from "@/content/universities";
+import { useContent } from "@/components/content/ContentProvider";
+import type { University } from "@/lib/content/types";
 import { asset, page } from "@/lib/links";
 import { trackEvent } from "@/lib/analytics";
 
@@ -31,6 +32,7 @@ function applyWith(u: University) {
 }
 
 export function UniversityMarquee() {
+  const { universities } = useContent();
   const [selected, setSelected] = useState<University | null>(null);
   const [paused, setPaused] = useState(false);
   const resumeTimer = useRef<number | undefined>(undefined);
@@ -128,7 +130,7 @@ function UniversityDetails({ u, onApply }: { u: University; onApply: () => void 
           <p className="flex gap-2 rounded-[var(--radius-card)] border border-dashed border-amber-400 bg-amber-50 p-3 text-[14px] text-amber-900">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <span>
-              <Placeholder label="To be confirmed" className="mr-1" /> Sample details for the preview. UniBee will confirm fees, intakes and deadlines.
+              <Placeholder label="To be confirmed" className="mr-1" /> These details are still being confirmed. Ask us on WhatsApp for the latest fees, intakes and deadlines.
             </span>
           </p>
         )}

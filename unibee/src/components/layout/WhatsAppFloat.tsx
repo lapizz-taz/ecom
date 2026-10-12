@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { SocialIcon } from "@/components/ui/SocialIcon";
-import { whatsappUrl } from "@/content/site";
+import { useContent } from "@/components/content/ContentProvider";
+import { whatsappUrl } from "@/lib/content/helpers";
 import { trackWhatsAppClick } from "@/lib/analytics";
 
 /**
@@ -11,6 +12,7 @@ import { trackWhatsAppClick } from "@/lib/analytics";
  */
 export function WhatsAppFloat() {
   const [hidden, setHidden] = useState(false);
+  const content = useContent();
 
   useEffect(() => {
     const form = document.getElementById("register");
@@ -32,7 +34,7 @@ export function WhatsAppFloat() {
 
   return (
     <a
-      href={whatsappUrl()}
+      href={whatsappUrl(content)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => trackWhatsAppClick("floating-button")}

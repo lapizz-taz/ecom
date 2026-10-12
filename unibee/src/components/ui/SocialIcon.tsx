@@ -1,5 +1,5 @@
 import { BRAND_PATHS } from "./brand-paths";
-import type { SocialNetwork } from "@/content/site";
+import type { SocialNetwork } from "@/lib/content/types";
 
 export function SocialIcon({ network, className = "size-5" }: { network: SocialNetwork; className?: string }) {
   return (

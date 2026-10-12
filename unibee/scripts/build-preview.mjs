@@ -27,7 +27,7 @@ fs.cpSync(root, tmp, {
     const rel = path.relative(root, src);
     if (!rel) return true;
     if (skip.has(rel.split(path.sep)[0])) return false;
-    return !/^src[\\/]app[\\/](api|admin)([\\/]|$)/.test(rel); // server-only parts
+    return !/^src[\\/]app[\\/](api|admin|media)([\\/]|$)/.test(rel); // server-only parts
   },
 });
 fs.symlinkSync(path.join(root, "node_modules"), path.join(tmp, "node_modules"), "dir");

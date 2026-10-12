@@ -1,8 +1,7 @@
 "use client";
 
-import { ChevronDown, Download, LogOut, RefreshCw, Search } from "lucide-react";
+import { ChevronDown, Download, Search } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
-import { Logo } from "@/components/brand/Logo";
 import { COLUMNS, ENGLISH_TESTS, STUDY_LEVELS, type RegistrationRecord } from "@/lib/registration";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -60,33 +59,10 @@ export function AdminTable({ rows, source, loadError, emailOn }: { rows: Registr
     URL.revokeObjectURL(url);
   };
 
-  const logout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" });
-    window.location.reload();
-  };
-
   const today = rows.filter((r) => new Date(r.created_at).toDateString() === new Date().toDateString()).length;
 
   return (
-    <div className="min-h-svh bg-surface">
-      <header className="border-b border-line bg-white">
-        <div className="container-page flex h-16 items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Logo className="h-7 w-auto text-brand" />
-            <span className="hidden h-5 w-px bg-line sm:block" />
-            <span className="hidden text-[15px] font-semibold text-ink sm:block">Registrations</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => window.location.reload()} className="btn min-h-10 px-3 text-[14px] text-ink-soft ring-1 ring-line hover:bg-surface" aria-label="Refresh">
-              <RefreshCw className="size-4" aria-hidden="true" />
-            </button>
-            <button type="button" onClick={logout} className="btn min-h-10 px-4 text-[14px] text-ink-soft ring-1 ring-line hover:bg-surface">
-              <LogOut className="size-4" aria-hidden="true" /> Log out
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <div>
       <main className="container-page py-8">
         <div className="grid gap-3 sm:grid-cols-3">
           {[

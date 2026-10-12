@@ -6,6 +6,7 @@ import { listRegistrations } from "@/lib/server/storage";
 import { emailConfigured } from "@/lib/server/email";
 import { AdminLogin } from "./AdminLogin";
 import { AdminTable } from "./AdminTable";
+import { AdminShell } from "./AdminShell";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Registrations", robots: { index: false, follow: false } };
@@ -35,5 +36,9 @@ export default async function AdminPage() {
     loadError = "Couldn't load registrations from storage. Check the storage settings and try again.";
   }
 
-  return <AdminTable rows={rows} source={source} loadError={loadError} emailOn={emailConfigured()} />;
+  return (
+    <AdminShell active="registrations">
+      <AdminTable rows={rows} source={source} loadError={loadError} emailOn={emailConfigured()} />
+    </AdminShell>
+  );
 }

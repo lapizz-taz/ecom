@@ -1,19 +1,19 @@
 import { LogoMark } from "@/components/brand/Logo";
-import { mapsUrl, site, whatsappUrl } from "@/content/site";
 import { page } from "@/lib/links";
-import { socialLinks } from "@/components/layout/social-links";
+import { mapsUrl, PAGE3_HREF, socialLinks, whatsappUrl } from "@/lib/content/helpers";
+import type { SiteContent } from "@/lib/content/types";
 
 /** Quiet white footer: mark on the left, link columns, small legal row. */
-export function Footer() {
+export function Footer({ content }: { content: SiteContent }) {
   const year = new Date().getFullYear();
-  const c = site.contact;
+  const c = content.contact;
   const columns: { title: string; links: { label: string; href: string; external?: boolean }[] }[] = [
     {
       title: "UniBee",
       links: [
         { label: "Home", href: page("/") },
         { label: "Our Services", href: page("/services") },
-        { label: site.page3.name, href: page(site.page3.href) },
+        { label: content.general.page3Name, href: page(PAGE3_HREF) },
         { label: "Register", href: page("/#register") },
       ],
     },
@@ -21,14 +21,14 @@ export function Footer() {
       title: "Contact",
       links: [
         { label: c.phoneDisplay, href: `tel:${c.phone}` },
-        { label: "WhatsApp", href: whatsappUrl(), external: true },
+        { label: "WhatsApp", href: whatsappUrl(content), external: true },
         { label: c.email, href: `mailto:${c.email}` },
-        { label: "Office location", href: mapsUrl, external: true },
+        { label: "Office location", href: mapsUrl(content), external: true },
       ],
     },
     {
       title: "Follow",
-      links: socialLinks().map((s) => ({ label: s.label, href: s.url, external: true })),
+      links: socialLinks(content).map((s) => ({ label: s.label, href: s.url, external: true })),
     },
   ];
 
@@ -40,7 +40,7 @@ export function Footer() {
             <LogoMark className="h-7 w-auto text-brand" />
             <span className="sr-only">UniBee</span>
           </a>
-          <p className="max-w-[260px] text-[14px] leading-relaxed text-muted">{site.footerBlurb}</p>
+          <p className="max-w-[260px] text-[14px] leading-relaxed text-muted">{content.general.footerBlurb}</p>
           <p className="text-[13px] text-faint">{c.hours}</p>
         </div>
 

@@ -5,8 +5,8 @@ import { Placeholder } from "@/components/ui/Placeholder";
 import { Reveal } from "@/components/ui/Reveal";
 import { WhatsAppLink } from "@/components/home/WhatsAppLink";
 import { MapEmbed } from "@/components/home/MapEmbed";
-import { socialLinks } from "@/components/layout/social-links";
-import { isPlaceholder, mapsUrl, site } from "@/content/site";
+import { isPlaceholder, mapsUrl, socialLinks } from "@/lib/content/helpers";
+import type { SiteContent } from "@/lib/content/types";
 
 function Row({ label, value, action }: { label: string; value: ReactNode; action?: boolean }) {
   return (
@@ -18,8 +18,8 @@ function Row({ label, value, action }: { label: string; value: ReactNode; action
   );
 }
 
-export function StayConnected() {
-  const c = site.contact;
+export function StayConnected({ content }: { content: SiteContent }) {
+  const c = content.contact;
   const contactPlaceholder = [c.phone, c.whatsapp, c.email, c.address].some(isPlaceholder);
 
   return (
@@ -51,7 +51,7 @@ export function StayConnected() {
                 </a>
               </li>
               <li>
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer">
+                <a href={mapsUrl(content)} target="_blank" rel="noopener noreferrer">
                   <Row label="Office" value={c.address} action />
                 </a>
               </li>
@@ -61,7 +61,7 @@ export function StayConnected() {
             </ul>
 
             <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-1" aria-label="Social media">
-              {socialLinks().map((s) => (
+              {socialLinks(content).map((s) => (
                 <li key={s.network}>
                   <a
                     href={s.url}

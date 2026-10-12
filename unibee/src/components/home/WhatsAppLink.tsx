@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { whatsappUrl } from "@/content/site";
+import { useContent } from "@/components/content/ContentProvider";
+import { whatsappUrl } from "@/lib/content/helpers";
 import { trackWhatsAppClick } from "@/lib/analytics";
 
 /** WhatsApp chat link that also records a "Contact" event for analytics. */
@@ -18,9 +19,10 @@ export function WhatsAppLink({
   children: ReactNode;
   ariaLabel?: string;
 }) {
+  const content = useContent();
   return (
     <a
-      href={whatsappUrl(message)}
+      href={whatsappUrl(content, message)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => trackWhatsAppClick(location)}

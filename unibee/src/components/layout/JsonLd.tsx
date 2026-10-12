@@ -1,10 +1,13 @@
-import { site, siteUrl } from "@/content/site";
-import { socialLinks } from "./social-links";
+import { siteUrl } from "@/content/site";
+import { socialLinks } from "@/lib/content/helpers";
+import { getContent } from "@/lib/server/content-store";
 
 /** Organization + LocalBusiness structured data (helps Google show your business details). */
-export function JsonLd() {
-  const c = site.contact;
-  const sameAs = socialLinks()
+export async function JsonLd() {
+  const content = await getContent();
+  const site = content.general;
+  const c = content.contact;
+  const sameAs = socialLinks(content)
     .filter((s) => s.network !== "whatsapp")
     .map((s) => s.url);
   const data = {
