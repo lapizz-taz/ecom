@@ -15,7 +15,7 @@ import { Evaluator } from './evaluate.ts'
 import { runSql } from './run.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
-import { addInterval as addIv, cast, Interval, isEnum, isTableType, zoneOffset } from './values.ts'
+import { addInterval as addIv, cast, Interval, isEnum, isTableType, PgRow, zoneOffset } from './values.ts'
 
 export interface OutCol {
   name: string
@@ -168,12 +168,15 @@ export class Compiler implements SqlHelp {
   /** Inside an inlined SECURITY DEFINER function owned by postgres: tables without row security. */
   private bypass = 0
 
-  constructor(readonly engine: Engine, readonly vars: Vars, readonly stmtParams: Typed[] = []) {
+  constructor(readonly engine: Engine, readonly vars: Vars, readonly stmtParams: Typed[] = [], readonly opts: { literal?: boolean } = {}) {
     this.evaluator = new Evaluator(engine, vars, stmtParams)
   }
 
   bind(v: unknown, t: string): string {
-    this.params.push(encodeSql(v, t))
+    const raw = encodeSql(v, t)
+    // Views are inlined into other statements as text: constants are written out.
+    if (this.opts.literal) return sqlLiteral(raw)
+    this.params.push(raw)
     return `?${this.params.length}`
   }
 
@@ -352,6 +355,7 @@ export class Compiler implements SqlHelp {
       case 'table': return this.tableSource(f, scope)
       case 'subq': {
         if (f.lateral && this.singleRow(f.q)) return this.lateralColumns(f.q, f.alias ?? '_lateral', f.cols, scope, false)
+        if (f.lateral) return this.lateralRows(f.q, f.alias ?? '_lateral', f.cols, scope)
         // (a plain sub-query cannot use its siblings' columns, but it sees the WITH queries)
         const c = this.query(f.q, scope)
         const alias = f.alias ?? `_sub${++this.cteCount}`
@@ -437,19 +441,25 @@ export class Compiler implements SqlHelp {
   /** LATERAL (single-row query) as one correlated scalar sub-query per column. */
   private lateralColumns(q: Query, alias: string, names: string[] | undefined, scope: QScope, cross: boolean): string {
     const s = q as Select
-    const cols: Col[] = []
-    const items: SelItem[] = s.items.flatMap((it) => (it.e.k === 'star' ? [] : [it]))
-    items.forEach((it, i) => {
-      const one: Select = { ...s, items: [{ e: it.e, alias: 'v' }] }
-      const c = this.select(one, scope)
-      cols.push({ name: names?.[i] ?? it.alias ?? columnName(it.e), t: c.cols[0].t, sql: `(${c.sql})` })
-    })
-    if (cross && s.from.length && !(s.items.every((it) => hasAggregate(it.e)))) {
-      const probe = this.select({ ...s, items: [{ e: { k: 'lit', v: 1, type: 'int' } }] }, scope)
-      scope.extraWhere.push(`EXISTS (${probe.sql})`)
-    }
+    const sub = this.query(q, scope)
+    const cols: Col[] = sub.cols.map((c, i) => ({ name: names?.[i] ?? c.name, t: c.t, sql: `(SELECT "_l".${qi(c.name)} FROM (${sub.sql}) AS "_l" LIMIT 1)` }))
+    if (cross && s.from.length && !(s.items.every((it) => hasAggregate(it.e)))) scope.extraWhere.push(`EXISTS (${sub.sql})`)
     scope.sources.push({ alias, cols, whole: this.wholeRow(cols) })
     return `(SELECT 1) AS ${qi(alias)}`
+  }
+
+  /**
+   * LATERAL (query returning several rows): SQLite cannot correlate a FROM sub-query,
+   * but a table-valued function's argument may use the columns to its left, so the
+   * rows travel as a JSON array built by a correlated scalar sub-query.
+   */
+  private lateralRows(q: Query, alias: string, names: string[] | undefined, scope: QScope): string {
+    const sub = this.query(q, scope)
+    const a = qi(alias)
+    const obj = `json_object(${sub.cols.map((c) => `${str(c.name)}, ${this.json({ sql: `"_lr".${qi(c.name)}`, t: c.t })}`).join(', ')})`
+    const cols: Col[] = sub.cols.map((c, i) => ({ name: names?.[i] ?? c.name, t: c.t, sql: jsonCell(`${a}.value`, c.name, c.t, false) }))
+    scope.sources.push({ alias, cols, whole: this.wholeRow(cols) })
+    return `json_each((SELECT json_group_array(${obj}) FROM (${sub.sql}) AS "_lr")) AS ${a}`
   }
 
   private funcSource(f: Extract<FromItem, { k: 'func' }>, scope: QScope): string {
@@ -598,7 +608,9 @@ export class Compiler implements SqlHelp {
       if (!ok) return false
       switch (x.k) {
         case 'ref':
-          if (this.findColumn(x.parts, scope) || this.fragment(x.parts) || this.wholeSource(x.parts, scope)) ok = false
+          // columns win over an inlined function's parameters, as in Postgres
+          if (this.findColumn(x.parts, scope) || this.wholeSource(x.parts, scope)) ok = false
+          else if (x.parts.length <= 2 && this.fragment(x.parts.slice(0, 1))) ok = false
           return false
         case 'param':
           if (this.fragment([`$${x.n}`])) ok = false
@@ -689,6 +701,30 @@ export class Compiler implements SqlHelp {
     return null
   }
 
+  /** p.col where p is a composite parameter of an inlined SQL function. */
+  private fragmentField(parts: string[]): SqlArg | null {
+    if (parts.length !== 2) return null
+    const frag = this.fragment([parts[0]])
+    if (!frag) return null
+    const name = parts[1]
+    if (frag.c) {
+      const row = frag.c.v
+      if (row === null) return { sql: 'NULL', t: 'unknown', c: { t: 'unknown', v: null } }
+      if (row instanceof PgRow) {
+        const t = row.types[name] ?? 'unknown'
+        const v = row.values[name] ?? null
+        return { sql: this.bind(v, t), t, c: { t, v } }
+      }
+    }
+    if (frag.cols?.[name]) return { ...frag.cols[name] }
+    const meta = isTableType(frag.t) ? tableMeta(frag.t) ?? viewMeta(frag.t) : undefined
+    const col = meta?.columns[name]
+    if (meta && !col) throw new DbError('42703', `column ${parts.join('.')} does not exist`)
+    const t = col ? columnType(col) : 'unknown'
+    const path = `'$."${name.replaceAll("'", "''")}"'`
+    return { sql: t === 'jsonb' || isArrayType(t) ? `(${frag.sql} -> ${path})` : `json_extract(${frag.sql}, ${path})`, t }
+  }
+
   expr(e: Expr, scope: QScope): SqlArg {
     const folded = this.fold(e, scope)
     if (folded) return folded
@@ -713,12 +749,14 @@ export class Compiler implements SqlHelp {
         return { sql: this.bind(v.v, v.t), t: v.t, c: v }
       }
       case 'ref': {
-        const frag = this.fragment(e.parts)
-        if (frag) return frag
         const col = this.findColumn(e.parts, scope)
         if (col) return { sql: col.sql, t: col.t }
+        const frag = this.fragment(e.parts)
+        if (frag) return frag
+        const field = this.fragmentField(e.parts)
+        if (field) return field
         const whole = this.wholeSource(e.parts, scope)
-        if (whole?.whole) return { sql: whole.whole.sql, t: whole.whole.t }
+        if (whole?.whole) return { sql: whole.whole.sql, t: whole.whole.t, cols: Object.fromEntries(whole.cols.map((c) => [c.name, { sql: c.sql, t: c.t }])) }
         const v = this.vars.lookup(e.parts)
         if (v) return { sql: this.bind(v.v, v.t), t: v.t, c: v }
         throw new DbError('42703', `column "${e.parts.join('.')}" does not exist`)
@@ -1347,6 +1385,14 @@ export class Compiler implements SqlHelp {
 
 // ---------------------------------------------------------------- helpers
 
+function sqlLiteral(v: SqlValue): string {
+  if (v === null) return 'NULL'
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : v > 0 ? '9e999' : '-9e999'
+  if (typeof v === 'string') return `'${v.replaceAll("'", "''")}'`
+  const bytes = v instanceof Uint8Array ? v : new Uint8Array(v)
+  return `X'${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}'`
+}
+
 /** jsonb || jsonb in SQLite: objects merge (right wins, one level), anything else concatenates as arrays. */
 function jsonConcatSql(l: string, r: string): string {
   const v = (alias: string) => `(CASE ${alias}.type WHEN 'true' THEN json('true') WHEN 'false' THEN json('false') WHEN 'null' THEN json('null') ELSE ${alias}.value END)`
@@ -1371,8 +1417,9 @@ function encodeJsonCell(v: unknown, t: string): unknown {
 }
 
 /** Reads a cell back out of the json_each row (JSON values were wrapped as {j: …}). */
-function jsonCell(row: string, key: string, t: string): string {
+function jsonCell(row: string, key: string, t: string, wrapped = true): string {
   const path = `'$."${key.replaceAll("'", "''").replaceAll('"', '\\"')}"'`
+  if ((t === 'jsonb' || isArrayType(t)) && !wrapped) return `(${row} -> ${path})`
   if (t === 'jsonb' || isArrayType(t)) return `coalesce((${row} -> ${path}) -> '$.j', CASE WHEN json_type(${row}, ${path}) = 'object' OR json_type(${row}, ${path}) = 'array' THEN ${row} -> ${path} END)`
   if (t === 'bool') return `json_extract(${row}, ${path})`
   return `json_extract(${row}, ${path})`

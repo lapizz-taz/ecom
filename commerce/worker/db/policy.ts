@@ -98,6 +98,13 @@ export function requireGrant(name: string, ctx: Context, privilege: 'select' | '
   if (!(grants![role as 'anon' | 'authenticated'] ?? []).includes(privilege)) permissionDenied(`table ${name}`)
 }
 
+let viewCompiler: ((name: string, ctx: Context, role: DbRole) => string | undefined) | null = null
+
+/** Views kept in Postgres SQL are compiled to SQLite by the engine (pg/engine.ts). */
+export function setViewCompiler(fn: (name: string, ctx: Context, role: DbRole) => string | undefined): void {
+  viewCompiler = fn
+}
+
 /** Names of tables and views mentioned in some SQL (over-inclusion is harmless). */
 export function mentioned(sql: string): Set<string> {
   const names = new Set<string>()
@@ -124,7 +131,7 @@ export function shadow(sql: string, ctx: Context, role = roleOf(ctx)): string[] 
     active.add(name)
     const v = view(name)
     if (v) {
-      const body = v.sql ?? handViews[name]
+      const body = v.sql ?? handViews[name] ?? viewCompiler?.(name, ctx, role)
       if (!body) throw new DbError('0A000', `NOT_PORTED: view ${name} is not available on the Cloudflare database yet`)
       for (const dep of mentioned(body)) if (dep !== name) visit(dep)
       ctes.push(`${quoteId(name)} AS NOT MATERIALIZED (${fill(body, ctx)})`)

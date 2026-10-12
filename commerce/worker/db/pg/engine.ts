@@ -6,13 +6,15 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '../context.ts'
 import { DbError } from '../errors.ts'
 import functionSources from '../generated/functions.json'
-import { table as tableMeta, type TriggerMeta } from '../meta.ts'
+import { table as tableMeta, view, type TriggerMeta } from '../meta.ts'
+import { setViewCompiler } from '../policy.ts'
 import type { DbRole } from '../policy.ts'
 import type { Sql } from '../sql.ts'
 import { setTriggerFallback, type TriggerImpl, type Values } from '../writer.ts'
-import type { Expr, Select, Statement } from './ast.ts'
+import type { Expr, Query, Select, Statement } from './ast.ts'
 import { columnType, setRowTypes } from './bridge.ts'
 import { setFunctionGrants } from './builtins.ts'
+import { Compiler } from './compile.ts'
 import { Evaluator } from './evaluate.ts'
 import { lex } from './lex.ts'
 import { Parser } from './parse.ts'
@@ -421,6 +423,32 @@ function whenHolds(engine: PgEngine, when: string, newRow: PgRow | null, oldRow:
 }
 
 setTriggerFallback(interpretedTrigger)
+
+// Views whose Postgres definition the converter could not translate: compiled per request.
+const viewAsts = new Map<string, Query>()
+const compiledViews = new WeakMap<Context, Map<string, string>>()
+setViewCompiler((name, ctx, role) => {
+  const pg = view(name)?.pg
+  if (!pg) return undefined
+  let perCtx = compiledViews.get(ctx)
+  if (!perCtx) {
+    perCtx = new Map()
+    compiledViews.set(ctx, perCtx)
+  }
+  const key = `${role}:${name}`
+  const done = perCtx.get(key)
+  if (done) return done
+  let ast = viewAsts.get(name)
+  if (!ast) {
+    const text = pg.trim().replace(/;$/, '')
+    ast = new Parser(lex(text), text).query()
+    viewAsts.set(name, ast)
+  }
+  const engine = new PgEngine(ctx.sql, ctx, role)
+  const sql = new Compiler(engine, NO_VARS, [], { literal: true }).query(ast, null).sql
+  perCtx.set(key, sql)
+  return sql
+})
 
 /** Raised by the engine for constructs it cannot run; surfaced as feature_not_supported. */
 export function asDbError(e: unknown): unknown {

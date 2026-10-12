@@ -17,6 +17,8 @@ export interface SqlArg {
   t: string
   /** Set when the argument is a constant (its value). */
   c?: Typed
+  /** A whole row from a FROM item: its columns. */
+  cols?: Record<string, { sql: string; t: string }>
 }
 
 export interface SqlHelp {
