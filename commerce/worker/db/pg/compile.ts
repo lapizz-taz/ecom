@@ -1236,6 +1236,11 @@ export class Compiler implements SqlHelp {
       const diff = `(julianday(${l.sql}) - julianday(${r.sql}))`
       return { sql: `json_array(0, CAST(${diff} AS INTEGER), (${diff} - CAST(${diff} AS INTEGER)) * 86400)`, t: 'interval' }
     }
+    // date + time of day: that moment (a timestamp without time zone)
+    if (op === '+' && ((l.t === 'date' && r.t === 'time') || (l.t === 'time' && r.t === 'date'))) {
+      const [d, tm] = l.t === 'date' ? [l, r] : [r, l]
+      return { sql: `strftime('%Y-%m-%dT%H:%M:%f', ${d.sql} || ' ' || ${tm.sql})`, t: 'timestamp' }
+    }
     if (l.t === 'date' && (r.t === 'int' || r.c?.t === 'int') && (op === '+' || op === '-')) {
       return { sql: `date(${l.sql}, (${op === '-' ? '-' : ''}(${r.sql})) || ' days')`, t: 'date' }
     }

@@ -159,6 +159,19 @@ export function extract(field: string, v: unknown, t: string): number | null {
       default: return err('22023', `interval units "${field}" not supported`)
     }
   }
+  if (t === 'time') {
+    // a time of day: seconds since midnight for epoch
+    const [h = 0, m = 0, s = 0] = String(v).split(':').map(Number)
+    switch (f) {
+      case 'epoch': return h * 3600 + m * 60 + s
+      case 'hour': return h
+      case 'minute': return m
+      case 'second': return s
+      case 'millisecond': return s * 1000
+      case 'microsecond': return s * 1_000_000
+      default: return err('22023', `"time" units "${field}" not recognized`)
+    }
+  }
   const ms = msOf(v, t)
   const d = new Date(ms)
   switch (f) {
@@ -851,6 +864,13 @@ export const builtins: Record<string, Builtin> = {
         if (field === 'month') return `(${iv(0)} % 12)`
         if (field === 'year') return `CAST(${iv(0)} / 12 AS INTEGER)`
         throw new Error(`extract(${field} from interval) on a column`)
+      }
+      if (a[1].t === 'time') {
+        // seconds since midnight (SQLite reads a bare time as one on 2000-01-01)
+        if (field === 'epoch') return `((julianday(${x}) - julianday('00:00:00')) * 86400.0)`
+        if (field === 'hour') return `CAST(strftime('%H', ${x}) AS INTEGER)`
+        if (field === 'minute') return `CAST(strftime('%M', ${x}) AS INTEGER)`
+        if (field === 'second') return `CAST(strftime('%f', ${x}) AS REAL)`
       }
       if (field === 'epoch') return `(julianday(${x}) - 2440587.5) * 86400.0`
       if (field === 'isodow') return `(CASE CAST(strftime('%w', ${x}) AS INTEGER) WHEN 0 THEN 7 ELSE CAST(strftime('%w', ${x}) AS INTEGER) END)`
