@@ -13,13 +13,17 @@ import type { Decl, Handler, PlStmt } from './plparse.ts'
 import { execStatement, type ResultSet } from './query.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
-import { cast, guessType, isTableType, PgRow, toText } from './values.ts'
+import { cast, castScale, guessType, isTableType, PgRow, roundScale, toText } from './values.ts'
 
 export interface Variable {
   type: string
   value: unknown
   constant?: boolean
   notNull?: boolean
+  /** Declared numeric(p, s) scale (values are rounded to it), or FLOAT. */
+  scale?: number
+  /** The display scale of the current numeric value. */
+  s?: number
 }
 
 interface Frame {
@@ -74,11 +78,13 @@ function matches(conditions: string[], code: string): boolean {
 export function rowOf(res: ResultSet, i: number): PgRow {
   const values: Record<string, unknown> = {}
   const types: Record<string, string> = {}
+  const scales: Record<string, number | undefined> = {}
   res.cols.forEach((c, j) => {
     values[c.name] = res.rows[i]?.[j] ?? null
     types[c.name] = c.t
+    if (c.s !== undefined) scales[c.name] = c.s
   })
-  return new PgRow(values, types)
+  return new PgRow(values, types, scales)
 }
 
 /** A row value converted to a table's row type: by name when the names match, else by position. */
@@ -108,7 +114,7 @@ export function toRowType(row: PgRow, table: string): PgRow {
 export interface CallSpec {
   name: string
   /** Parameters in order: name (or null) and type. */
-  params: Array<{ name: string | null; type: string; value: unknown }>
+  params: Array<{ name: string | null; type: string; value: unknown; s?: number }>
   /** OUT / TABLE parameters (become variables; the result is built from them). */
   outs: Array<{ name: string; type: string }>
   returns: string
@@ -171,14 +177,15 @@ export class PlCall implements Vars {
 
   private typedOf(v: Variable): Typed {
     if (v.value instanceof PgRow) return { t: isTableType(v.type) ? v.type : 'record', v: v.value }
-    return { t: v.type, v: v.value }
+    return { t: v.type, v: v.value, s: v.s }
   }
 
   private field(v: Variable, name: string, field: string): Typed {
     const row = v.value
     if (row instanceof PgRow) {
       if (!Object.hasOwn(row.values, field)) throw new DbError('42703', `record "${name}" has no field "${field}"`)
-      return { t: row.types[field] ?? guessType(row.values[field]), v: row.values[field] }
+      const s = row.scales[field] ?? (isTableType(v.type) ? tableMeta(v.type)?.columns[field]?.scale : undefined)
+      return { t: row.types[field] ?? guessType(row.values[field]), v: row.values[field], s }
     }
     if (isTableType(v.type)) {
       const meta = tableMeta(v.type)
@@ -229,9 +236,11 @@ export class PlCall implements Vars {
       if (!Object.hasOwn(row.types, field) && !Object.hasOwn(row.values, field)) throw new DbError('42703', `record "${parts[0]}" has no field "${field}"`)
       const ft = row.types[field] ?? value.t
       row.values[field] = convert(value, ft)
+      if (ft === 'numeric') row.scales[field] = castScale(value, undefined)
       return
     }
     v.value = this.coerceVar(v, value)
+    v.s = v.type === 'numeric' && v.value !== null ? castScale(value, v.scale) : undefined
   }
 
   private coerceVar(v: Variable, value: Typed): unknown {
@@ -248,7 +257,9 @@ export class PlCall implements Vars {
       if (value.t === 'jsonb' && value.v && typeof value.v === 'object') return toRowType(new PgRow(value.v as Record<string, unknown>, {}), v.type)
       throw new DbError('42804', `cannot assign ${value.t} to a ${v.type} variable`)
     }
-    return convert(value, v.type)
+    const out = convert(value, v.type)
+    // numeric(p, s) variables round to their scale
+    return v.type === 'numeric' && v.scale !== undefined && typeof out === 'number' ? roundScale(out, v.scale) : out
   }
 
   // ---------------------------------------------------------------- running
@@ -256,7 +267,7 @@ export class PlCall implements Vars {
   run(body: PlStmt): void {
     const top: Frame = { label: this.spec.name, vars: new Map() }
     this.spec.params.forEach((p, i) => {
-      const variable: Variable = { type: p.type, value: p.value }
+      const variable: Variable = { type: p.type, value: p.value, s: p.type === 'numeric' ? p.s : undefined }
       if (p.name) top.vars.set(p.name, variable)
       top.vars.set(`$${i + 1}`, variable)
     })
@@ -514,7 +525,7 @@ export class PlCall implements Vars {
       if (v.v instanceof PgRow) return { t: ret, v: toRowType(v.v, ret) }
       return v
     }
-    return { t: ret, v: convert(v, ret) }
+    return { t: ret, v: convert(v, ret), s: ret === 'numeric' ? castScale(v, undefined) : undefined }
   }
 
   private intoTargets(targets: Expr[], res: ResultSet, i: number): void {
@@ -539,7 +550,7 @@ export class PlCall implements Vars {
     }
     targets.forEach((t, j) => {
       const value = row ? row[j] ?? null : null
-      this.assign(t, { t: res.cols[j]?.t ?? 'unknown', v: value })
+      this.assign(t, { t: res.cols[j]?.t ?? 'unknown', v: value, s: res.cols[j]?.s })
     })
   }
 
@@ -582,6 +593,7 @@ export class PlCall implements Vars {
       return
     }
     let type: string
+    let scale = d.type.scale
     if (d.type.pct === 'rowtype') type = d.type.name
     else if (d.type.pct === 'type') {
       if (d.type.column) {
@@ -589,13 +601,15 @@ export class PlCall implements Vars {
         const col = meta?.columns[d.type.column]
         if (!col) throw new DbError('42703', `column ${d.type.name}.${d.type.column} does not exist`)
         type = columnType(col)
+        scale = col.scale
       } else type = this.find(d.type.name)?.type ?? 'text'
     } else type = d.type.array ? `${d.type.name}[]` : d.type.name
-    const v: Variable = { type, value: null, notNull: d.notNull }
+    const v: Variable = { type, value: null, notNull: d.notNull, scale: type === 'numeric' ? scale : undefined }
     frame.vars.set(d.name, v)
     if (d.default) {
       const x = this.ev.eval(d.default)
       v.value = this.coerceVar(v, x)
+      v.s = type === 'numeric' && v.value !== null ? castScale(x, v.scale) : undefined
     } else if (d.notNull) throw new DbError('22004', `variable "${d.name}" must have a default value, since it's declared NOT NULL`)
     v.constant = d.constant
   }
@@ -632,7 +646,7 @@ export class PlCall implements Vars {
         if (m === '%%') return '%'
         const a = args[i++]
         if (!a) throw new DbError('42601', 'too few parameters specified for RAISE')
-        return a.v === null ? '<NULL>' : toText(a.v, a.t === 'unknown' ? 'text' : a.t)
+        return a.v === null ? '<NULL>' : toText(a.v, a.t === 'unknown' ? 'text' : a.t, a.s)
       })
     }
     let code = s.sqlstate ?? (s.condition ? sqlstateOf(s.condition) : 'P0001')
@@ -640,7 +654,7 @@ export class PlCall implements Vars {
     let hint: string | null = null
     for (const o of s.options) {
       const v = this.ev.eval(o.e)
-      const text = v.v === null ? null : toText(v.v, v.t === 'unknown' ? 'text' : v.t)
+      const text = v.v === null ? null : toText(v.v, v.t === 'unknown' ? 'text' : v.t, v.s)
       switch (o.name) {
         case 'message': message = text; break
         case 'errcode': code = sqlstateOf(text ?? 'P0001'); break

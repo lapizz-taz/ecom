@@ -9,17 +9,25 @@ import { table as tableMeta, view as viewMeta } from '../meta.ts'
 import { requireGrant } from '../policy.ts'
 import type { CallExpr, Expr, FromItem, OrderItem, Query, Select, SelItem, Values } from './ast.ts'
 import { columnType, decodeSql, encodeSql } from './bridge.ts'
-import { aggregates, aggregateType, builtins, textSql, windowFunctions, windowType, type SqlArg, type SqlHelp } from './builtins.ts'
+import { aggregates, aggregateType, builtins, numericTextSql, textSql, windowFunctions, windowType, type SqlArg, type SqlHelp } from './builtins.ts'
 import type { Row } from '../sql.ts'
 import { Evaluator } from './evaluate.ts'
 import { runSql } from './run.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
-import { addInterval as addIv, cast, Interval, isEnum, isTableType, PgRow, zoneOffset } from './values.ts'
+import { addInterval as addIv, arithScale, cast, castScale, castTyped, Interval, isEnum, isTableType, PgRow, scaleOf, zoneOffset } from './values.ts'
+
+/** The widest display scale among numeric values (a CASE or VALUES column takes it). */
+function widestScale(xs: Array<{ t?: string; s?: number }>): number | undefined {
+  const known = xs.map((x) => (x.t === 'int' ? 0 : x.s)).filter((s): s is number => s !== undefined)
+  return known.length ? Math.max(...known) : undefined
+}
 
 export interface OutCol {
   name: string
   t: string
+  /** A numeric's display scale (see Typed.s). */
+  s?: number
 }
 
 export interface Compiled {
@@ -31,6 +39,7 @@ interface Col {
   name: string
   t: string
   sql: string
+  s?: number
 }
 
 interface Source {
@@ -193,7 +202,7 @@ export class Compiler implements SqlHelp {
       const withSql = q.with ? this.withClause(q.with, scope) : ''
       const l = this.member(q.l, scope, top)
       const r = this.member(q.r, scope, top)
-      const cols = l.cols.map((c, i) => ({ name: c.name, t: c.t === 'unknown' ? r.cols[i]?.t ?? 'text' : c.t }))
+      const cols = l.cols.map((c, i) => ({ name: c.name, t: c.t === 'unknown' ? r.cols[i]?.t ?? 'text' : c.t, s: widestScale([c, r.cols[i] ?? {}]) }))
       let sql = `${l.sql} ${q.op.toUpperCase()}${q.all ? ' ALL' : ''} ${r.sql}`
       if (q.orderBy.length) {
         sql += ` ORDER BY ${q.orderBy.map((o) => {
@@ -227,7 +236,7 @@ export class Compiler implements SqlHelp {
   private values(q: Values, parent: QScope | null, top: boolean): Compiled {
     const scope = new QScope(parent)
     const rows = q.rows.map((r) => r.map((e) => this.expr(e, scope)))
-    const cols = rows[0].map((_a, i) => ({ name: `column${i + 1}`, t: rows.map((r) => r[i].t).find((t) => t !== 'unknown') ?? 'text' }))
+    const cols = rows[0].map((_a, i) => ({ name: `column${i + 1}`, t: rows.map((r) => r[i].t).find((t) => t !== 'unknown') ?? 'text', s: widestScale(rows.map((r) => r[i])) }))
     const body = `SELECT ${rows[0].map((a, i) => `${a.sql} AS ${top ? qi(`c${i}`) : qi(cols[i].name)}`).join(', ')}${
       rows.slice(1).map((r) => ` UNION ALL SELECT ${r.map((a) => a.sql).join(', ')}`).join('')}`
     return { sql: body + this.limitSql(q.limit, q.offset, scope), cols }
@@ -300,17 +309,17 @@ export class Compiler implements SqlHelp {
       scope.groupSql = plain ? q.groupBy.map((g) => this.expr(g, scope).sql).join(', ') : null
     }
     // select list, with * expanded
-    const items: Array<{ sql: string; t: string; name: string }> = []
+    const items: Array<{ sql: string; t: string; name: string; s?: number }> = []
     for (const it of q.items) {
       if (it.e.k === 'star') {
         const star = it.e
         const srcs = star.table ? scope.sources.filter((s) => s.alias === star.table!.split('.').pop()) : scope.sources
         if (star.table && !srcs.length) throw new DbError('42P01', `missing FROM-clause entry for table "${star.table}"`)
-        for (const s of srcs) for (const c of s.cols) items.push({ sql: c.sql, t: c.t, name: c.name })
+        for (const s of srcs) for (const c of s.cols) items.push({ sql: c.sql, t: c.t, name: c.name, s: c.s })
         continue
       }
       const a = this.expr(it.e, scope)
-      items.push({ sql: a.sql, t: a.t === 'unknown' ? 'text' : a.t, name: it.alias ?? columnName(it.e) })
+      items.push({ sql: a.sql, t: a.t === 'unknown' ? 'text' : a.t, name: it.alias ?? columnName(it.e), s: a.t === 'numeric' ? a.s : undefined })
     }
     const outName = (i: number) => (top ? qi(`c${i}`) : qi(items[i].name))
     const groupBy = q.groupBy.map((g) => this.groupItem(g, scope, q.items, items))
@@ -342,7 +351,7 @@ export class Compiler implements SqlHelp {
         orderBy.length ? ` ORDER BY ${orderBy.map((o) => `${o.ref ?? o.expr}${o.dir}`).join(', ')}` : ''}`
     }
     sql += this.limitSql(q.limit, q.offset, scope)
-    return { sql: withSql + sql, cols: items.map((it) => ({ name: it.name, t: it.t })) }
+    return { sql: withSql + sql, cols: items.map((it) => ({ name: it.name, t: it.t, s: it.s })) }
   }
 
   /** The alias of the leftmost base table of a FROM item (for ORDER BY tie-breaks). */
@@ -394,7 +403,7 @@ export class Compiler implements SqlHelp {
         // rename through a wrapper when the alias gives column names
         const sql = f.cols ? `(SELECT * FROM (${c.sql})) AS ${qi(alias)}` : `(${c.sql}) AS ${qi(alias)}`
         const inner = f.cols ? `(SELECT ${c.cols.map((col, i) => `${qi(col.name)} AS ${qi(names[i])}`).join(', ')} FROM (${c.sql})) AS ${qi(alias)}` : sql
-        this.addSource(scope, alias, c.cols.map((col, i) => ({ name: names[i], t: col.t })))
+        this.addSource(scope, alias, c.cols.map((col, i) => ({ name: names[i], t: col.t, s: col.s })))
         return inner
       }
       case 'func': return this.funcSource(f, scope)
@@ -411,7 +420,7 @@ export class Compiler implements SqlHelp {
 
   private addSource(scope: QScope, alias: string, cols: OutCol[], table?: string): void {
     const a = qi(alias)
-    const columns = cols.map((c) => ({ name: c.name, t: c.t, sql: `${a}.${qi(c.name)}` }))
+    const columns = cols.map((c) => ({ name: c.name, t: c.t, sql: `${a}.${qi(c.name)}`, s: c.s }))
     scope.sources.push({ alias, cols: columns, whole: this.wholeRow(columns, table) })
   }
 
@@ -423,7 +432,7 @@ export class Compiler implements SqlHelp {
     const alias = f.alias ?? f.name
     const cte = !f.schema ? scope.cte(f.name) : undefined
     if (cte) {
-      this.addSource(scope, alias, cte.cols.map((c, i) => ({ name: f.cols?.[i] ?? c.name, t: c.t })))
+      this.addSource(scope, alias, cte.cols.map((c, i) => ({ name: f.cols?.[i] ?? c.name, t: c.t, s: c.s })))
       if (f.cols) {
         const src = scope.sources[scope.sources.length - 1]
         src.cols = src.cols.map((c, i) => ({ ...c, sql: `${qi(alias)}.${qi(cte.cols[i].name)}` }))
@@ -452,7 +461,7 @@ export class Compiler implements SqlHelp {
     if (!meta) throw new DbError('42P01', `relation "${f.name}" does not exist`)
     if (this.engine.role === 'anon' || this.engine.role === 'authenticated') requireGrant(f.name, this.engine.ctx, 'select')
     const names = Object.keys(meta.columns)
-    this.addSource(scope, alias, names.map((n, i) => ({ name: f.cols?.[i] ?? n, t: columnType(meta.columns[n]) })), f.name)
+    this.addSource(scope, alias, names.map((n, i) => ({ name: f.cols?.[i] ?? n, t: columnType(meta.columns[n]), s: meta.columns[n].scale })), f.name)
     if (f.cols) {
       const src = scope.sources[scope.sources.length - 1]
       src.cols = src.cols.map((c, i) => ({ ...c, sql: `${qi(alias)}.${qi(names[i])}` }))
@@ -538,7 +547,7 @@ export class Compiler implements SqlHelp {
         return this.lateralColumns(inline.q, alias, names, scope, true)
       }
       const c = this.query(inline.q, scope)
-      this.addSource(scope, alias, c.cols.map((col, i) => ({ name: f.cols?.[i] ?? col.name, t: col.t })))
+      this.addSource(scope, alias, c.cols.map((col, i) => ({ name: f.cols?.[i] ?? col.name, t: col.t, s: col.s })))
       return `(${c.sql}) AS ${a}`
     } finally {
       this.fragments.pop()
@@ -616,7 +625,7 @@ export class Compiler implements SqlHelp {
         const t = args[0].t
         const meta = tableMeta(t) ?? viewMeta(t)
         if (!meta) throw new NotSupported(`${name} of ${t}`)
-        const cols = Object.entries(meta.columns).map(([n, c]) => ({ name: n, t: columnType(c), sql: jsonCell(`${a}.value`, n, columnType(c)) }))
+        const cols = Object.entries(meta.columns).map(([n, c]) => ({ name: n, t: columnType(c), sql: jsonCell(`${a}.value`, n, columnType(c)), s: c.scale }))
         scope.sources.push({ alias, cols, whole: { sql: `${a}.value`, t } })
         return name.endsWith('recordset') ? `json_each(${args[1].sql}) AS ${a}` : `json_each(json_array(json(${args[1].sql}))) AS ${a}`
       }
@@ -680,7 +689,7 @@ export class Compiler implements SqlHelp {
       if (err instanceof NotSupported) return null
       throw err
     }
-    return { sql: this.bind(v.v, v.t), t: v.t, c: v }
+    return { sql: this.bind(v.v, v.t), t: v.t, c: v, s: v.s }
   }
 
   private findColumn(parts: string[], scope: QScope): Col | null {
@@ -768,7 +777,7 @@ export class Compiler implements SqlHelp {
       case 'lit':
         if (e.v === null) return { sql: 'NULL', t: 'unknown', c: { t: 'unknown', v: null } }
         if (typeof e.v === 'boolean') return { sql: e.v ? '1' : '0', t: 'bool', c: { t: 'bool', v: e.v } }
-        if (typeof e.v === 'number') return { sql: String(e.v), t: e.type === 'int' ? 'int' : 'numeric', c: { t: e.type, v: e.v } }
+        if (typeof e.v === 'number') return e.type === 'int' ? { sql: String(e.v), t: 'int', c: { t: 'int', v: e.v } } : { sql: String(e.v), t: 'numeric', c: { t: 'numeric', v: e.v, s: e.s }, s: e.s }
         return { sql: str(e.v), t: 'unknown', c: { t: 'unknown', v: e.v } }
       case 'value':
         return { sql: this.bind(e.v, e.type), t: e.type, c: { t: e.type, v: e.v } }
@@ -777,11 +786,11 @@ export class Compiler implements SqlHelp {
         if (frag) return frag
         const v = this.vars.lookup([`$${e.n}`]) ?? this.stmtParams[e.n - 1]
         if (!v) throw new DbError('42P02', `there is no parameter $${e.n}`)
-        return { sql: this.bind(v.v, v.t), t: v.t, c: v }
+        return { sql: this.bind(v.v, v.t), t: v.t, c: v, s: v.s }
       }
       case 'ref': {
         const col = this.findColumn(e.parts, scope)
-        if (col) return { sql: col.sql, t: col.t }
+        if (col) return { sql: col.sql, t: col.t, s: col.s }
         const frag = this.fragment(e.parts)
         if (frag) return frag
         const field = this.fragmentField(e.parts)
@@ -789,7 +798,7 @@ export class Compiler implements SqlHelp {
         const whole = this.wholeSource(e.parts, scope)
         if (whole?.whole) return { sql: whole.whole.sql, t: whole.whole.t, cols: Object.fromEntries(whole.cols.map((c) => [c.name, { sql: c.sql, t: c.t }])) }
         const v = this.vars.lookup(e.parts)
-        if (v) return { sql: this.bind(v.v, v.t), t: v.t, c: v }
+        if (v) return { sql: this.bind(v.v, v.t), t: v.t, c: v, s: v.s }
         throw new DbError('42703', `column "${e.parts.join('.')}" does not exist`)
       }
       case 'star':
@@ -801,7 +810,7 @@ export class Compiler implements SqlHelp {
         if (e.op === 'not') return { sql: `(NOT ${x.sql})`, t: 'bool' }
         if (e.op === '-') {
           if (x.t === 'interval') throw new NotSupported('negating an interval from a column')
-          return { sql: `(-${x.sql})`, t: x.t }
+          return { sql: `(-${x.sql})`, t: x.t, s: x.s }
         }
         return x
       }
@@ -846,16 +855,17 @@ export class Compiler implements SqlHelp {
         return {
           sql: `(CASE${subject ? ` ${subject.sql}` : ''} ${whens.map((w) => `WHEN ${w.when.sql} THEN ${conv(w.then).sql}`).join(' ')}${els ? ` ELSE ${conv(els).sql}` : ''} END)`,
           t,
+          s: t === 'numeric' ? widestScale([...whens.map((w) => w.then), ...(els ? [els] : [])]) : undefined,
         }
       }
-      case 'cast': return this.castSql(this.expr(e.e, scope), e.type.array ? `${e.type.name}[]` : e.type.name)
+      case 'cast': return this.castSql(this.expr(e.e, scope), e.type.array ? `${e.type.name}[]` : e.type.name, e.type.scale)
       case 'exists': {
         const sub = this.query(e.q, scope)
         return { sql: `EXISTS (${sub.sql})`, t: 'bool' }
       }
       case 'sub': {
         const sub = this.query(e.q, scope)
-        return { sql: `(${sub.sql})`, t: sub.cols[0]?.t ?? 'unknown' }
+        return { sql: `(${sub.sql})`, t: sub.cols[0]?.t ?? 'unknown', s: sub.cols[0]?.s }
       }
       case 'arraysub': {
         const sub = this.query(e.q, scope)
@@ -1109,14 +1119,15 @@ export class Compiler implements SqlHelp {
     if (iv) return iv
     if (l.t === 'interval' || r.t === 'interval') throw new NotSupported('interval arithmetic on columns')
     const t = l.t === 'int' && r.t === 'int' ? 'int' : l.t === 'int' && r.t === 'unknown' ? 'int' : 'numeric'
+    const s = t === 'numeric' ? arithScale(op, scaleOf(l), scaleOf(r)) : undefined
     if (op === '/') {
       if (t === 'int') return { sql: `(${l.sql} / ${r.sql})`, t }
       return { sql: `(CAST(${l.sql} AS REAL) / ${r.sql})`, t }
     }
     if (op === '^') return { sql: `power(${l.sql}, ${r.sql})`, t: 'numeric' }
-    if (op === '%') return { sql: `(${l.sql} % ${r.sql})`, t }
+    if (op === '%') return { sql: `(${l.sql} % ${r.sql})`, t, s }
     if (!['+', '-', '*'].includes(op)) throw new NotSupported(`operator ${op}`)
-    return { sql: `(${l.sql} ${op} ${r.sql})`, t }
+    return { sql: `(${l.sql} ${op} ${r.sql})`, t, s }
   }
 
   /** An interval's parts in SQL: months, days, seconds (constants inline, else read from the [m, d, s] triple). */
@@ -1182,24 +1193,30 @@ export class Compiler implements SqlHelp {
 
   private currentScope: QScope | null = null
 
-  castSql(a: SqlArg, to: string): SqlArg {
+  castSql(a: SqlArg, to: string, scale?: number): SqlArg {
     if (a.c) {
-      const v = cast(a.c.v, a.t, to)
-      return { sql: this.bind(v, to), t: to, c: { t: to, v } }
+      const v = castTyped({ ...a.c, t: a.t, s: a.c.s ?? a.s }, to, scale)
+      return { sql: this.bind(v.v, to), t: to, c: v, s: v.s }
     }
     const from = a.t
+    if (to === 'numeric') {
+      // numeric(p, s) rounds; plain numeric keeps the value's scale (integers have none)
+      const s = castScale({ t: from, v: null, s: a.s }, scale)
+      const real = from === 'numeric' ? a.sql : `CAST(${a.sql} AS REAL)`
+      return { sql: scale !== undefined && scale >= 0 ? `round(${real}, ${scale})` : real, t: 'numeric', s }
+    }
     if (from === to) return a
     const x = a.sql
     switch (to) {
       case 'text':
         if (from === 'bool') return { sql: textSql(a), t: 'text' }
-        if (from === 'int' || from === 'numeric') return { sql: `CAST(${x} AS TEXT)`, t: 'text' }
+        if (from === 'numeric') return { sql: numericTextSql(x, a.s), t: 'text' }
+        if (from === 'int') return { sql: `CAST(${x} AS TEXT)`, t: 'text' }
         return { sql: x, t: 'text' }
       case 'int':
         if (from === 'numeric') return { sql: `CAST(round(${x}) AS INTEGER)`, t: 'int' }
         if (from === 'bool') return { sql: x, t: 'int' }
         return { sql: `CAST(${x} AS INTEGER)`, t: 'int' }
-      case 'numeric': return { sql: `CAST(${x} AS REAL)`, t: 'numeric' }
       case 'bool':
         if (from === 'int' || from === 'numeric') return { sql: `((${x}) <> 0)`, t: 'bool' }
         return { sql: `(CASE WHEN ${x} IS NULL THEN NULL WHEN lower(CAST(${x} AS TEXT)) IN ('t', 'true', 'y', 'yes', 'on', '1') THEN 1 WHEN lower(CAST(${x} AS TEXT)) IN ('f', 'false', 'n', 'no', 'off', '0') THEN 0 END)`, t: 'bool' }
@@ -1255,20 +1272,21 @@ export class Compiler implements SqlHelp {
     if (builtin && builtins[name]) {
       const b = builtins[name]
       const args = e.args.map((x) => this.expr(x, scope))
-      if (!b.sql) {
-        const rt = b.ret(args.map((x) => x.t), e.args)
-        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }), e.args.some((x) => hasAggregate(x)))
-      }
+      const scaleFor = (rt: string, xs: SqlArg[]) => (rt === 'numeric' ? b.scale?.(xs.map(scaleOf), xs.map((a) => (a.c ? { v: a.c.v } : undefined))) : undefined)
+      const perRow = (rt: string): SqlArg => ({
+        ...this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t, s: x.s })) }), e.args.some((x) => hasAggregate(x))),
+        s: scaleFor(rt, args),
+      })
+      if (!b.sql) return perRow(b.ret(args.map((x) => x.t), e.args))
       try {
         const rt = b.ret(args.map((x) => x.t), e.args)
         // literals take the type of the other arguments (coalesce(tags, '{}'))
         const conv = ['coalesce', 'nullif', 'greatest', 'least'].includes(name) ? args.map((a) => (a.c && a.t === 'unknown' ? this.coerceTo(a, rt) : a)) : args
-        return { sql: b.sql(conv, this), t: rt }
+        return { sql: b.sql(conv, this), t: rt, s: scaleFor(rt, conv) }
       } catch (err) {
         if (err instanceof DbError) throw err
         // SQLite has no form of it: per distinct argument in JavaScript
-        const rt = b.ret(args.map((x) => x.t), e.args)
-        return this.lookup(scope, args, rt, (vals) => this.evaluator.eval({ ...e, args: vals.map((x) => ({ k: 'value', v: x.v, type: x.t })) }), e.args.some((x) => hasAggregate(x)))
+        return perRow(b.ret(args.map((x) => x.t), e.args))
       }
     }
     if (builtin && SRF.has(name)) throw new NotSupported(`set-returning ${name}() in a select list`)
@@ -1292,7 +1310,7 @@ export class Compiler implements SqlHelp {
     try {
       const c = this.select(inline.q, scope)
       const rt = this.engine.returnType(name, args.map((x) => x.t), e.schema) ?? c.cols[0]?.t ?? 'unknown'
-      return { sql: `(${c.sql})`, t: rt.startsWith('setof ') ? rt.slice(6) : rt }
+      return { sql: `(${c.sql})`, t: rt.startsWith('setof ') ? rt.slice(6) : rt, s: rt === 'numeric' ? c.cols[0]?.s : undefined }
     } finally {
       this.fragments.pop()
       if (inline.bypass) this.bypass--
@@ -1337,7 +1355,7 @@ export class Compiler implements SqlHelp {
     if (!rows) throw new NotSupported('a per-row function on columns SQLite cannot reach')
     const map: Record<string, unknown> = {}
     for (const r of rows) {
-      const vals = args.map((a, i) => ({ t: a.t, v: decodeSql(r[`a${i}`] ?? null, a.t) }))
+      const vals = args.map((a, i) => ({ t: a.t, v: decodeSql(r[`a${i}`] ?? null, a.t), s: a.s }))
       const result = compute(vals)
       map[String(r.__k)] = encodeSql(result.v, result.t)
     }
@@ -1379,8 +1397,8 @@ export class Compiler implements SqlHelp {
       }
       default: throw new NotSupported(`aggregate ${name}`)
     }
-    if (name === 'sum' && t === 'numeric') sql = `${sql}`
-    return { sql, t }
+    // sum, min and max keep the values' display scale (sum of numeric(12,2) prints 990.00)
+    return { sql, t, s: t === 'numeric' && ['sum', 'min', 'max'].includes(name) ? args[0]?.s : undefined }
   }
 
   private windowCall(e: CallExpr, scope: QScope): SqlArg {
@@ -1431,11 +1449,12 @@ function sqlLiteral(v: SqlValue): string {
 
 /** jsonb || jsonb in SQLite: objects merge (right wins, one level), anything else concatenates as arrays. */
 function jsonConcatSql(l: string, r: string): string {
-  const v = (alias: string) => `(CASE ${alias}.type WHEN 'true' THEN json('true') WHEN 'false' THEN json('false') WHEN 'null' THEN json('null') ELSE ${alias}.value END)`
-  const merge = `(SELECT json_group_object(k, v) FROM (SELECT "_l".key AS k, ${v('"_l"')} AS v, 0 AS s, "_l".id AS o FROM json_each(${l}) AS "_l" WHERE "_l".key NOT IN (SELECT key FROM json_each(${r}))
+  // each element as JSON text, parsed again where it is aggregated (SQLite forgets a value is JSON once it leaves a sub-query)
+  const v = (alias: string) => `(CASE ${alias}.type WHEN 'text' THEN json_quote(${alias}.value) WHEN 'true' THEN 'true' WHEN 'false' THEN 'false' WHEN 'null' THEN 'null' ELSE CAST(${alias}.value AS TEXT) END)`
+  const merge = `(SELECT json_group_object(k, json(v)) FROM (SELECT "_l".key AS k, ${v('"_l"')} AS v, 0 AS s, "_l".id AS o FROM json_each(${l}) AS "_l" WHERE "_l".key NOT IN (SELECT key FROM json_each(${r}))
     UNION ALL SELECT "_r".key, ${v('"_r"')}, 1, "_r".id FROM json_each(${r}) AS "_r" ORDER BY s, o))`
   const arr = (x: string) => `(CASE json_type(${x}) WHEN 'array' THEN ${x} ELSE json_array(json(${x})) END)`
-  const cat = `(SELECT json_group_array(v) FROM (SELECT ${v('"_l"')} AS v, 0 AS s, "_l".id AS o FROM json_each(${arr(l)}) AS "_l" UNION ALL SELECT ${v('"_r"')}, 1, "_r".id FROM json_each(${arr(r)}) AS "_r" ORDER BY s, o))`
+  const cat = `(SELECT json_group_array(json(v)) FROM (SELECT ${v('"_l"')} AS v, 0 AS s, "_l".id AS o FROM json_each(${arr(l)}) AS "_l" UNION ALL SELECT ${v('"_r"')}, 1, "_r".id FROM json_each(${arr(r)}) AS "_r" ORDER BY s, o))`
   return `(CASE WHEN ${l} IS NULL OR ${r} IS NULL THEN NULL WHEN json_type(${l}) = 'object' AND json_type(${r}) = 'object' THEN ${merge} ELSE ${cat} END)`
 }
 

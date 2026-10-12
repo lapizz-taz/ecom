@@ -9,10 +9,12 @@ export interface TypeName {
   pct?: 'rowtype' | 'type'
   /** The column of a %type reference. */
   column?: string
+  /** numeric(p, s): the scale values are rounded to; float types: FLOAT. */
+  scale?: number
 }
 
 export type Expr =
-  | { k: 'lit'; v: string | number | boolean | null; type: 'unknown' | 'int' | 'numeric' | 'bool' | 'null' }
+  | { k: 'lit'; v: string | number | boolean | null; type: 'unknown' | 'int' | 'numeric' | 'bool' | 'null'; s?: number }
   | { k: 'param'; n: number }
   | { k: 'ref'; parts: string[] }
   | { k: 'star'; table?: string }
@@ -37,7 +39,7 @@ export type Expr =
   | { k: 'attz'; e: Expr; zone: Expr }
   | { k: 'default' }
   /** A value already computed (constant folding, PL/pgSQL variables). */
-  | { k: 'value'; v: unknown; type: string }
+  | { k: 'value'; v: unknown; type: string; s?: number }
   /** A placeholder for an argument quantifier while parsing (x = ANY(…)). */
   | { k: 'quantarg'; quant: 'any' | 'all'; e?: Expr; q?: Query }
 

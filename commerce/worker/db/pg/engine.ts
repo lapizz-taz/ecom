@@ -23,7 +23,7 @@ import { convert, PlCall, rowOf, toRowType, type Variable } from './plpgsql.ts'
 import { execStatement, tableRow } from './query.ts'
 import { NotSupported, NO_VARS, type Engine, type Inline, type Typed, type Vars } from './runtime.ts'
 import { normType } from './types.ts'
-import { cast, isTableType, JNULL, PgRow, plainValue } from './values.ts'
+import { cast, castScale, isTableType, JNULL, PgRow, plainValue } from './values.ts'
 
 interface RawFn {
   lang: 'sql' | 'plpgsql'
@@ -218,7 +218,7 @@ export class PgEngine implements Engine {
       }
       if (a.v === null) return { t: p.type, v: null }
       try {
-        return { t: p.type, v: convert(a, p.type) }
+        return { t: p.type, v: convert(a, p.type), s: p.type === 'numeric' ? castScale(a, undefined) : undefined }
       } catch (e) {
         if (e instanceof DbError) throw e
         throw e
@@ -248,7 +248,7 @@ export class PgEngine implements Engine {
       }
       const call = new PlCall(this, {
         name: f.name,
-        params: f.ins.map((p, i) => ({ name: p.name, type: p.type, value: values[i]?.v ?? null })),
+        params: f.ins.map((p, i) => ({ name: p.name, type: p.type, value: values[i]?.v ?? null, s: values[i]?.s })),
         outs: f.outs.filter((o) => !f.ins.some((p) => p.name === o.name) || true).filter((o) => f.args.some((a) => a.name === o.name && a.mode !== 'i')),
         returns: f.ret,
         set: f.set,
@@ -322,8 +322,9 @@ export class PgEngine implements Engine {
       return convert({ t: last!.cols[0]?.t ?? 'unknown', v: last!.rows[i][0] ?? null }, ret)
     }
     if (f.set) return { t: `setof ${ret}`, v: last.rows.map((_, i) => value(i)) }
-    if (!last.rows.length) return { t: composite && f.outs.length > 1 ? 'record' : ret, v: null }
-    return { t: composite && f.outs.length > 1 ? 'record' : ret, v: value(0) }
+    const s = ret === 'numeric' && !composite ? castScale({ t: last.cols[0]?.t ?? 'unknown', v: null, s: last.cols[0]?.s }, undefined) : undefined
+    if (!last.rows.length) return { t: composite && f.outs.length > 1 ? 'record' : ret, v: null, s }
+    return { t: composite && f.outs.length > 1 ? 'record' : ret, v: value(0), s }
   }
 
   // ---------------------------------------------------------------- auth.* and vault.*

@@ -7,9 +7,9 @@ import type { CallExpr, Expr, Select } from './ast.ts'
 import { decodeSql } from './bridge.ts'
 import { aggregates, builtins, jsonConcat, jsonContains, jsonDelete, jsonGet, jsonGetText, jsonHasKey, jsonPath, likeRegex, msOf, fromMs, pgRegex, windowFunctions } from './builtins.ts'
 import { runSql } from './run.ts'
-import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
+import { FLOAT, NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
-import { addInterval, cast, cleanNumber, compare, err, guessType, Interval, isEnum, isTableType, JNULL, localToTz, PgRow, tzToLocal } from './values.ts'
+import { addInterval, arithScale, cast, castTyped, cleanNumber, compare, divScale, err, guessType, Interval, isEnum, isTableType, JNULL, localToTz, PgRow, scaleOf, tzToLocal } from './values.ts'
 
 const T = (t: string, v: unknown): Typed => ({ t, v })
 const NULLT: Typed = { t: 'unknown', v: null }
@@ -59,10 +59,10 @@ export class Evaluator {
       case 'lit':
         if (e.v === null) return NULLT
         if (typeof e.v === 'boolean') return BOOL(e.v)
-        if (typeof e.v === 'number') return T(e.type === 'int' ? 'int' : 'numeric', e.v)
+        if (typeof e.v === 'number') return e.type === 'int' ? T('int', e.v) : { t: 'numeric', v: e.v, s: e.s }
         return T('unknown', e.v)
       case 'value':
-        return T(e.type, e.v)
+        return { t: e.type, v: e.v, s: e.s }
       case 'param': {
         const v = this.vars.lookup([`$${e.n}`]) ?? this.params[e.n - 1]
         if (!v) throw new DbError('42P02', `there is no parameter $${e.n}`)
@@ -87,7 +87,7 @@ export class Evaluator {
         const x = this.eval(e.e)
         if (x.v === null) return x
         if (x.v instanceof Interval) return T('interval', x.v.negate())
-        return T(x.t === 'unknown' ? 'numeric' : x.t, -Number(x.v))
+        return { t: x.t === 'unknown' ? 'numeric' : x.t, v: -Number(x.v), s: x.s }
       }
       case 'is': {
         const x = this.eval(e.e)
@@ -167,8 +167,7 @@ export class Evaluator {
       case 'cast': {
         const x = this.eval(e.e)
         const to = e.type.array ? `${e.type.name}[]` : e.type.name
-        if (x.v === null) return T(to, null)
-        return T(to, cast(x.v, x.t, to))
+        return castTyped(x, to, e.type.scale)
       }
       case 'exists': case 'sub': case 'arraysub':
         return this.viaSql(e)
@@ -234,7 +233,7 @@ export class Evaluator {
   }
 
   private text(x: Typed): string {
-    return x.t === 'unknown' || typeof x.v === 'string' ? String(x.v) : (cast(x.v, x.t, 'text') as string)
+    return x.t === 'unknown' || typeof x.v === 'string' ? String(x.v) : (cast(x.v, x.t, 'text', x.s) as string)
   }
 
   /** Runs the expression in SQLite (it reads tables). */
@@ -248,9 +247,9 @@ export class Evaluator {
     const c = new Compiler(this.engine, this.vars, this.params)
     const compiled = c.select(sel, null, true)
     const rows = runSql(this.engine, compiled.sql, c.params)
-    const t = compiled.cols[0].t
-    if (!rows.length) return T(t, null)
-    return T(t, decodeSql(Object.values(rows[0])[0], t))
+    const { t, s } = compiled.cols[0]
+    if (!rows.length) return { t, v: null, s }
+    return { t, v: decodeSql(Object.values(rows[0])[0], t), s }
   }
 
   // ---------------------------------------------------------------- operators
@@ -409,7 +408,11 @@ export class Evaluator {
       case '^': r = x ** y; break
       default: throw new NotSupported(`operator ${op}`)
     }
-    return T(resultType, intOp ? r : cleanNumber(r))
+    if (intOp) return T(resultType, r)
+    const sa = scaleOf(a.t === 'unknown' ? { t: 'numeric', s: undefined } : a)
+    const sb = scaleOf(b.t === 'unknown' ? { t: 'numeric', s: undefined } : b)
+    const s = op === '/' && sa !== FLOAT && sb !== FLOAT ? divScale(x, y, sa ?? 0, sb ?? 0) : arithScale(op, sa, sb)
+    return { t: resultType, v: cleanNumber(r), s }
   }
 
   private arithType(op: string, a: string, b: string): string {
@@ -512,7 +515,7 @@ export class Evaluator {
           }
           if (!best) return T(t, null)
           const rt = e.args.length ? this.commonOf([best.t, t]) : best.t
-          return T(rt, rt === best.t ? best.v : coerce(best, rt))
+          return rt === best.t ? best : { t: rt, v: coerce(best, rt), s: scaleOf(best) }
         }
         case 'set_config': {
           const [k, v] = e.args.map((x) => this.eval(x))
@@ -552,8 +555,10 @@ export class Evaluator {
         const rt = b.ret(types, e.args)
         if (b.strict !== false && args.some((x) => x.v === null)) return T(rt, null)
         if (!b.js) return this.viaSql({ ...e, args: args.map((x) => ({ k: 'value', v: x.v, type: x.t })) })
-        const v = b.js(args.map((x) => x.v), types, { engine: this.engine, names: e.names, exprs: e.args })
-        return T(rt, v === undefined ? null : v)
+        const scales = args.map((x) => x.s)
+        const v = b.js(args.map((x) => x.v), types, { engine: this.engine, names: e.names, exprs: e.args, scales })
+        const s = rt === 'numeric' ? b.scale?.(args.map(scaleOf), args.map((x) => ({ v: x.v }))) : undefined
+        return { t: rt, v: v === undefined ? null : v, s }
       }
       if (aggregates.has(name)) return this.viaSql(e)
       if (schema === 'pg_catalog' || schema === 'extensions') throw new DbError('42883', `function ${name} does not exist`)

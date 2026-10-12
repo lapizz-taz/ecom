@@ -9,7 +9,12 @@ import type { Select } from './ast.ts'
 export interface Typed {
   t: string
   v: unknown
+  /** A numeric's display scale: the decimals Postgres prints (990.00 has 2). FLOAT for float8. */
+  s?: number
 }
+
+/** The scale marking a float8 (double precision) value: printed shortest, returned as a number. */
+export const FLOAT = -1
 
 export const NULL: Typed = Object.freeze({ t: 'unknown', v: null }) as Typed
 export const typed = (t: string, v: unknown): Typed => ({ t, v })

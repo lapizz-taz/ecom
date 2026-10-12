@@ -13,6 +13,7 @@
 //   NULL                null
 import { DbError } from '../errors.ts'
 import { schema } from '../meta.ts'
+import { FLOAT, type Typed } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
 
 export class Interval {
@@ -56,7 +57,12 @@ export const JNULL = Object.freeze({ toJSON: () => null, jnull: true as const })
 export const isJNull = (v: unknown): boolean => v === JNULL
 
 export class PgRow {
-  constructor(readonly values: Record<string, unknown>, readonly types: Record<string, string>) {}
+  constructor(
+    readonly values: Record<string, unknown>,
+    readonly types: Record<string, string>,
+    /** Display scales of numeric fields (see Typed.s). */
+    readonly scales: Record<string, number | undefined> = {},
+  ) {}
 
   get(name: string): unknown {
     return Object.hasOwn(this.values, name) ? this.values[name] : undefined
@@ -377,13 +383,14 @@ export function parseJson(text: string): unknown {
 // ---------------------------------------------------------------- output
 
 /** The text form of a value (Postgres output functions). */
-export function toText(v: unknown, t: string): string {
+export function toText(v: unknown, t: string, s?: number): string {
   if (v === null || v === undefined) return ''
   if (isArrayType(t) || (Array.isArray(v) && t !== 'jsonb')) return arrayText(v as unknown[], elemType(t))
   switch (t) {
     case 'bool': return v ? 'true' : 'false'
     case 'jsonb': return jsonText(v)
-    case 'numeric': case 'int': return typeof v === 'number' ? numberText(v) : String(v)
+    case 'numeric': return typeof v === 'number' ? scaledText(v, s) : String(v)
+    case 'int': return typeof v === 'number' ? numberText(v) : String(v)
     case 'interval': return v instanceof Interval ? v.toString() : String(v)
     case 'timestamptz': return String(v)
     default:
@@ -394,6 +401,84 @@ export function toText(v: unknown, t: string): string {
       if (typeof v === 'number') return numberText(v)
       return String(v)
   }
+}
+
+/** Rounds half away from zero to s decimals, as numeric(p, s) does. */
+export function roundScale(n: number, s: number): number {
+  if (!Number.isFinite(n) || s < 0 || s > 15) return n
+  const f = 10 ** s
+  return cleanNumber((Math.sign(n) * Math.round(cleanNumber(Math.abs(n) * f))) / f)
+}
+
+/** A numeric as Postgres prints it: with its display scale when known (990.00), else shortest. */
+export function scaledText(n: number, s: number | undefined): string {
+  if (s === undefined || s === FLOAT || !Number.isFinite(n)) return numberText(n)
+  if (s > 15) {
+    // beyond a double's digits: the shortest form, padded (1/3 prints 0.33333333333333300000)
+    const text = numberText(n)
+    if (/e/i.test(text)) return text
+    const decimals = text.split('.')[1]?.length ?? 0
+    return decimals >= s ? text : `${text}${decimals ? '' : '.'}${'0'.repeat(s - decimals)}`
+  }
+  return roundScale(n, s).toFixed(s)
+}
+
+/** An operand's display scale in arithmetic (integers add none). */
+export function scaleOf(x: { t: string; s?: number }): number | undefined {
+  return x.t === 'int' ? 0 : x.t === 'numeric' ? x.s : undefined
+}
+
+/** The display scale of a op b when the values are not known (a compiled query). */
+export function arithScale(op: string, sa: number | undefined, sb: number | undefined): number | undefined {
+  if (sa === FLOAT || sb === FLOAT) return FLOAT
+  if (sa === undefined || sb === undefined) return undefined
+  if (op === '+' || op === '-' || op === '%') return Math.max(sa, sb)
+  if (op === '*') return sa + sb
+  return undefined
+}
+
+/** Postgres' display scale of x / y (select_div_scale): about 16 significant digits, never fewer decimals than either side. */
+export function divScale(x: number, y: number, sa: number, sb: number): number {
+  const digits = (n: number) => {
+    const a = Math.abs(n)
+    if (a === 0 || !Number.isFinite(a)) return { w: 0, first: 0 }
+    let w = Math.floor(Math.log10(a) / 4)
+    while (10000 ** w > a) w--
+    while (10000 ** (w + 1) <= a) w++
+    return { w, first: Math.floor(cleanNumber(a / 10000 ** w)) }
+  }
+  const p = digits(x)
+  const q = digits(y)
+  let qweight = p.w - q.w
+  if (p.first <= q.first) qweight--
+  return Math.min(Math.max(16 - qweight * 4, sa, sb, 0), 1000)
+}
+
+/** The decimals a number was written with ('0.2500' → 4). */
+export function writtenScale(text: string): number | undefined {
+  const m = /^\s*[+-]?\d*(?:\.(\d*))?(?:e([+-]?\d+))?\s*$/i.exec(text)
+  return m ? Math.max(0, (m[1]?.length ?? 0) - Number(m[2] ?? 0)) : undefined
+}
+
+/** The display scale a cast gives: the target's numeric(p, s), else what the value carries. */
+export function castScale(x: { t: string; v: unknown; s?: number }, scale: number | undefined): number | undefined {
+  if (scale !== undefined) return scale
+  if (x.t === 'int') return 0
+  if (x.t === 'numeric') return x.s
+  if (typeof x.v === 'string') return writtenScale(x.v)
+  return undefined
+}
+
+/** cast() for a typed value, keeping or setting a numeric's display scale. */
+export function castTyped(x: Typed, to: string, scale?: number): Typed {
+  if (to === 'numeric') {
+    const s = castScale(x, scale)
+    if (x.v === null || x.v === undefined) return { t: to, v: null, s }
+    const n = cast(x.v, x.t, to) as number
+    return { t: to, v: scale !== undefined && scale !== FLOAT ? roundScale(n, scale) : n, s }
+  }
+  if (x.v === null || x.v === undefined) return { t: to, v: null }
+  return { t: to, v: cast(x.v, x.t, to, x.s) }
 }
 
 function numberText(n: number): string {
@@ -427,7 +512,7 @@ function toNumber(v: unknown, t: string): number {
 }
 
 /** Converts a value of type `from` to type `to` (explicit cast / assignment). */
-export function cast(v: unknown, from: string, to: string): unknown {
+export function cast(v: unknown, from: string, to: string, s?: number): unknown {
   if (v === null || v === undefined) return null
   if (from === to && !(to === 'int' && typeof v === 'number' && !Number.isInteger(v))) return v
   if (isArrayType(to)) {
@@ -442,7 +527,7 @@ export function cast(v: unknown, from: string, to: string): unknown {
   if (v === JNULL && to !== 'jsonb' && to !== 'text') return null
   switch (to) {
     case 'text': case 'unknown':
-      return toText(v, from)
+      return toText(v, from, s)
     case 'uuid': {
       const m = UUID_RE.exec(String(v).trim())
       if (!m) return invalid('uuid', v)

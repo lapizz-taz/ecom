@@ -85,7 +85,7 @@ export function execQuery(engine: Engine, q: Statement, vars: Vars, params: Type
     }
     const values = q.items.map((it) => ev.eval(it.e))
     return {
-      cols: q.items.map((it, i) => ({ name: it.alias ?? columnName(it.e), t: values[i].t === 'unknown' ? 'text' : values[i].t })),
+      cols: q.items.map((it, i) => ({ name: it.alias ?? columnName(it.e), t: values[i].t === 'unknown' ? 'text' : values[i].t, s: values[i].s })),
       rows: [values.map((v) => v.v)],
       count: 1,
       command: 'SELECT',

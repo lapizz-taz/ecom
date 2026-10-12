@@ -8,7 +8,7 @@ import { asDbError, PgEngine } from '../pg/engine.ts'
 import { lex } from '../pg/lex.ts'
 import { Parser } from '../pg/parse.ts'
 import { execStatement } from '../pg/query.ts'
-import { NO_VARS, type Typed } from '../pg/runtime.ts'
+import { FLOAT, NO_VARS, type Typed } from '../pg/runtime.ts'
 import { Interval, JNULL, PgRow, toText } from '../pg/values.ts'
 import type { DbRole } from '../policy.ts'
 import type { Sql } from '../sql.ts'
@@ -116,7 +116,7 @@ export class Session {
       const rows = res.rows.map((r) => {
         const o: Record<string, unknown> = {}
         res.cols.forEach((c, i) => {
-          o[c.name] = driverValue(r[i], c.t)
+          o[c.name] = driverValue(r[i], c.t, c.s)
         })
         return o
       })
@@ -148,10 +148,11 @@ function paramOf(v: unknown): Typed {
 }
 
 /** Values in the shape the pg driver returns them. */
-export function driverValue(v: unknown, t: string): unknown {
+export function driverValue(v: unknown, t: string, s?: number): unknown {
   if (v === null || v === undefined) return null
   if (v === JNULL) return null
-  if (t === 'numeric') return typeof v === 'number' ? String(v) : v
+  // numeric arrives as text with its display scale ('990.00'); float8 as a number
+  if (t === 'numeric') return typeof v === 'number' ? (s === FLOAT ? v : toText(v, 'numeric', s)) : v
   if (t === 'timestamptz' || t === 'timestamp') return new Date(t === 'timestamp' ? `${String(v)}Z` : String(v))
   if (t === 'date') {
     const [y, m, d] = String(v).split('-').map(Number)

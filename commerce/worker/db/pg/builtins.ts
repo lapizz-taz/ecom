@@ -19,6 +19,8 @@ export interface SqlArg {
   c?: Typed
   /** A whole row from a FROM item: its columns. */
   cols?: Record<string, { sql: string; t: string }>
+  /** A numeric's display scale (see Typed.s). */
+  s?: number
 }
 
 export interface SqlHelp {
@@ -34,6 +36,8 @@ export interface CallInfo {
   engine: Engine
   names?: Array<string | null>
   exprs: Expr[]
+  /** The arguments' display scales (numerics print with them). */
+  scales?: Array<number | undefined>
 }
 
 export interface Builtin {
@@ -46,6 +50,17 @@ export interface Builtin {
   window?: boolean
   /** A new value each call (never folded inside a multi-row query). */
   volatile?: boolean
+  /** The display scale of a numeric result, from the arguments' scales and constant values (undefined: not constant). */
+  scale?: (s: Array<number | undefined>, c: Array<{ v: unknown } | undefined>) => number | undefined
+}
+
+/** Scale of round(x, n) / trunc(x, n): n decimals (none when n is left out or negative). */
+const roundScaleOf = (s: Array<number | undefined>, c: Array<{ v: unknown } | undefined>) =>
+  s.length < 2 ? 0 : c[1] && c[1].v !== null ? Math.max(0, Number(c[1].v)) : undefined
+/** Scale of a choice between values (coalesce, greatest): the widest. */
+const widest = (s: Array<number | undefined>) => {
+  const known = s.filter((x): x is number => x !== undefined)
+  return known.length ? Math.max(...known) : undefined
 }
 
 const fixed = (t: string) => () => t
@@ -274,14 +289,24 @@ function toCharNumber(n: number, fmt: string): string {
   const dot = f.indexOf('.') >= 0 ? f.indexOf('.') : f.indexOf('D')
   const decimals = dot >= 0 ? f.slice(dot + 1).replace(/[^09]/g, '').length : 0
   const grouping = /[,G]/.test(dot >= 0 ? f.slice(0, dot) : f)
-  const intDigits = (dot >= 0 ? f.slice(0, dot) : f).replace(/[^09]/g, '').length
+  const intPattern = (dot >= 0 ? f.slice(0, dot) : f).replace(/[^09]/g, '')
+  const intDigits = intPattern.length
+  // '0' positions always print a digit; FM only drops the zeros that '9' positions allow
+  const minInt = intPattern.includes('0') ? intDigits - intPattern.indexOf('0') : 0
+  const minFrac = dot >= 0 ? f.slice(dot + 1).replace(/[^09]/g, '').lastIndexOf('0') + 1 : 0
   const abs = Math.abs(n)
   let text = abs.toFixed(decimals)
   let [ip, fp] = text.split('.')
   if (ip.length > intDigits) return '#'.repeat(f.length)
+  if (ip === '0' && minInt === 0 && fp !== undefined) ip = ''
+  ip = ip.padStart(minInt, '0')
   if (grouping) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  text = fp !== undefined ? `${ip}.${fp}` : ip
-  if (fm && fp !== undefined) text = text.replace(/0+$/, '').replace(/\.$/, '')
+  if (fm && fp !== undefined) {
+    let keep = fp.length
+    while (keep > minFrac && fp[keep - 1] === '0') keep--
+    fp = fp.slice(0, keep)
+  }
+  text = fp !== undefined ? `${ip}.${fp}` : ip // FM keeps the point: to_char(3, 'FM999.99') is '3.'
   const sign = n < 0 ? '-' : fm ? '' : ' '
   return fm ? `${sign}${text}` : `${sign}${text}`.padStart(f.length + 1)
 }
@@ -474,7 +499,7 @@ function quoteLiteral(s: string): string {
   return s.includes('\\') ? `E'${s.replaceAll('\\', '\\\\').replaceAll("'", "''")}'` : `'${s.replaceAll("'", "''")}'`
 }
 
-export function pgFormat(fmt: string, args: unknown[], types: string[]): string {
+export function pgFormat(fmt: string, args: unknown[], types: string[], scales: Array<number | undefined> = []): string {
   let out = ''
   let next = 0
   for (let i = 0; i < fmt.length; i++) {
@@ -495,11 +520,11 @@ export function pgFormat(fmt: string, args: unknown[], types: string[]): string 
     if (idx >= args.length) return err('22023', 'too few arguments for format()')
     const v = args[idx]
     let s: string
-    if (m[4] === 's') s = v === null || v === undefined ? '' : toText(v, types[idx] ?? guessType(v))
+    if (m[4] === 's') s = v === null || v === undefined ? '' : toText(v, types[idx] ?? guessType(v), scales[idx])
     else if (m[4] === 'I') {
       if (v === null) return err('22004', 'null values cannot be formatted as an SQL identifier')
       s = quoteIdent(toText(v, types[idx]))
-    } else s = v === null || v === undefined ? 'NULL' : quoteLiteral(toText(v, types[idx]))
+    } else s = v === null || v === undefined ? 'NULL' : quoteLiteral(toText(v, types[idx], scales[idx]))
     const width = m[3] ? Number(m[3]) : 0
     if (width) s = m[2] ? s.padEnd(width) : s.padStart(width)
     out += s
@@ -647,17 +672,17 @@ export const builtins: Record<string, Builtin> = {
   },
   concat: {
     ret: fixed('text'), strict: false,
-    js: (a, t) => a.map((v, i) => (v === null || v === undefined ? '' : toText(v, t[i]))).join(''),
+    js: (a, t, call) => a.map((v, i) => (v === null || v === undefined ? '' : toText(v, t[i], call.scales?.[i]))).join(''),
     sql: (a) => `(${a.map((x) => `coalesce(${textSql(x)}, '')`).join(' || ') || "''"})`,
   },
   concat_ws: {
     ret: fixed('text'), strict: false,
-    js: (a, t) => (a[0] === null ? null : a.slice(1).filter((v) => v !== null && v !== undefined).map((v, i) => toText(v, t[i + 1])).join(str(a[0]))),
+    js: (a, t, call) => (a[0] === null ? null : a.slice(1).map((v, i) => (v === null || v === undefined ? null : toText(v, t[i + 1], call.scales?.[i + 1]))).filter((v) => v !== null).join(str(a[0]))),
     sql: (a) => `(SELECT group_concat(v, ${a[0].sql}) FROM (${a.slice(1).map((x, i) => `SELECT ${i} AS k, ${textSql(x)} AS v`).join(' UNION ALL ')} ORDER BY k) WHERE v IS NOT NULL)`,
   },
   format: {
     ret: fixed('text'), strict: false,
-    js: (a, t) => (a[0] === null ? null : pgFormat(str(a[0]), a.slice(1), t.slice(1))),
+    js: (a, t, call) => (a[0] === null ? null : pgFormat(str(a[0]), a.slice(1), t.slice(1), call.scales?.slice(1))),
   },
   quote_ident: textFn((s) => quoteIdent(s)),
   quote_literal: textFn((s) => quoteLiteral(s)),
@@ -726,32 +751,34 @@ export const builtins: Record<string, Builtin> = {
   },
 
   // ---- conditionals (evaluated lazily by the evaluator; these are for SQL)
-  coalesce: { ret: same, strict: false, sql: (a) => `coalesce(${a.map((x) => x.sql).join(', ')}${a.length === 1 ? ', NULL' : ''})` },
-  nullif: { ret: (t) => t[0], strict: false, sql: (a) => `nullif(${a[0].sql}, ${a[1].sql})` },
-  greatest: { ret: same, strict: false, sql: (a) => `(SELECT max(v) FROM (${a.map((x, i) => `SELECT ${x.sql}${i ? '' : ' AS v'}`).join(' UNION ALL ')}))` },
-  least: { ret: same, strict: false, sql: (a) => `(SELECT min(v) FROM (${a.map((x, i) => `SELECT ${x.sql}${i ? '' : ' AS v'}`).join(' UNION ALL ')}))` },
+  coalesce: { ret: same, strict: false, scale: widest, sql: (a) => `coalesce(${a.map((x) => x.sql).join(', ')}${a.length === 1 ? ', NULL' : ''})` },
+  nullif: { ret: (t) => t[0], strict: false, scale: (s) => s[0], sql: (a) => `nullif(${a[0].sql}, ${a[1].sql})` },
+  greatest: { ret: same, strict: false, scale: widest, sql: (a) => `(SELECT max(v) FROM (${a.map((x, i) => `SELECT ${x.sql}${i ? '' : ' AS v'}`).join(' UNION ALL ')}))` },
+  least: { ret: same, strict: false, scale: widest, sql: (a) => `(SELECT min(v) FROM (${a.map((x, i) => `SELECT ${x.sql}${i ? '' : ' AS v'}`).join(' UNION ALL ')}))` },
   num_nonnulls: { ret: fixed('int'), strict: false, js: (a) => a.filter((v) => v !== null).length, sql: (a) => `(${a.map((x) => `(${x.sql} IS NOT NULL)`).join(' + ')})` },
   num_nulls: { ret: fixed('int'), strict: false, js: (a) => a.filter((v) => v === null).length, sql: (a) => `(${a.map((x) => `(${x.sql} IS NULL)`).join(' + ')})` },
 
   // ---- math
-  abs: { ret: numericOrInt, js: (a) => Math.abs(num(a[0])), sql: (a) => `abs(${a[0].sql})` },
+  abs: { ret: numericOrInt, scale: (s) => s[0], js: (a) => Math.abs(num(a[0])), sql: (a) => `abs(${a[0].sql})` },
   round: {
     ret: (t) => (t[0] === 'int' && t.length === 1 ? 'int' : 'numeric'),
+    scale: roundScaleOf,
     js: (a) => roundHalfAway(num(a[0]), a[1] === undefined ? 0 : num(a[1])),
     sql: (a) => `round(${a[0].sql}${a[1] ? `, ${a[1].sql}` : ''})`,
   },
   trunc: {
     ret: (t) => (t[0] === 'int' ? 'int' : 'numeric'),
+    scale: roundScaleOf,
     js: (a) => {
       const f = 10 ** (a[1] === undefined ? 0 : num(a[1]))
       return cleanNumber(Math.trunc(num(a[0]) * f) / f)
     },
     sql: (a) => (a[1] ? `(CAST((${a[0].sql}) * power(10, ${a[1].sql}) AS INTEGER) / power(10.0, ${a[1].sql}))` : `CAST(${a[0].sql} AS INTEGER)`),
   },
-  floor: { ret: numericOrInt, js: (a) => Math.floor(num(a[0])), sql: (a) => `(CAST(${a[0].sql} AS INTEGER) - ((${a[0].sql}) < CAST(${a[0].sql} AS INTEGER)))` },
-  ceil: { ret: numericOrInt, js: (a) => Math.ceil(num(a[0])), sql: (a) => `(CAST(${a[0].sql} AS INTEGER) + ((${a[0].sql}) > CAST(${a[0].sql} AS INTEGER)))` },
-  ceiling: { ret: numericOrInt, js: (a) => Math.ceil(num(a[0])), sql: (a) => `(CAST(${a[0].sql} AS INTEGER) + ((${a[0].sql}) > CAST(${a[0].sql} AS INTEGER)))` },
-  mod: { ret: numericOrInt, js: (a) => (num(a[1]) === 0 ? err('22012', 'division by zero') : num(a[0]) % num(a[1])), sql: (a) => `(${a[0].sql} % ${a[1].sql})` },
+  floor: { ret: numericOrInt, scale: () => 0, js: (a) => Math.floor(num(a[0])), sql: (a) => `(CAST(${a[0].sql} AS INTEGER) - ((${a[0].sql}) < CAST(${a[0].sql} AS INTEGER)))` },
+  ceil: { ret: numericOrInt, scale: () => 0, js: (a) => Math.ceil(num(a[0])), sql: (a) => `(CAST(${a[0].sql} AS INTEGER) + ((${a[0].sql}) > CAST(${a[0].sql} AS INTEGER)))` },
+  ceiling: { ret: numericOrInt, scale: () => 0, js: (a) => Math.ceil(num(a[0])), sql: (a) => `(CAST(${a[0].sql} AS INTEGER) + ((${a[0].sql}) > CAST(${a[0].sql} AS INTEGER)))` },
+  mod: { ret: numericOrInt, scale: widest, js: (a) => (num(a[1]) === 0 ? err('22012', 'division by zero') : num(a[0]) % num(a[1])), sql: (a) => `(${a[0].sql} % ${a[1].sql})` },
   div: { ret: fixed('numeric'), js: (a) => Math.trunc(num(a[0]) / num(a[1])), sql: (a) => `CAST((${a[0].sql}) / (${a[1].sql}) AS INTEGER)` },
   power: { ret: fixed('numeric'), js: (a) => cleanNumber(num(a[0]) ** num(a[1])) },
   pow: { ret: fixed('numeric'), js: (a) => cleanNumber(num(a[0]) ** num(a[1])) },
@@ -1084,7 +1111,14 @@ function pad(s: string, n: number, fill: string, left: boolean): string {
 /** SQL for an argument used as text (booleans as true/false). */
 export function textSql(a: SqlArg): string {
   if (a.t === 'bool') return `(CASE WHEN ${a.sql} THEN 'true' WHEN NOT ${a.sql} THEN 'false' END)`
+  if (a.t === 'numeric') return numericTextSql(a.sql, a.s)
   return a.sql
+}
+
+/** A numeric (REAL) as Postgres prints it: with its display scale when known (990.00), else shortest (5000, not 5000.0). */
+export function numericTextSql(x: string, s: number | undefined): string {
+  const fmt = s !== undefined && s >= 0 && s <= 15 ? `'%.${s}f'` : "'%.15g'"
+  return `(CASE WHEN (${x}) IS NULL THEN NULL ELSE printf(${fmt}, ${x}) END)`
 }
 
 // ---------------------------------------------------------------- aggregates and window functions

@@ -3,7 +3,10 @@
 // (plparse.ts) extends it, so INTO clauses are read here when allowed.
 import type { CallExpr, Conflict, Cte, Delete, Expr, FromItem, Insert, Into, OrderItem, Query, Select, SelItem, SetItem, SetOp, Statement, TypeName, Update, Values, WindowSpec, With } from './ast.ts'
 import { lex, SqlSyntaxError, type Tok } from './lex.ts'
+import { FLOAT } from './runtime.ts'
 import { normType } from './types.ts'
+
+const FLOAT_TYPES = new Set(['real', 'float4', 'float8', 'float', 'double precision'])
 
 // Words that end an expression or a select item instead of naming an alias.
 const RESERVED = new Set(['all', 'analyse', 'analyze', 'and', 'any', 'array', 'as', 'asc', 'asymmetric', 'both', 'case', 'cast', 'check', 'collate',
@@ -137,6 +140,7 @@ export class Parser {
     if ((first === 'timestamp' || first === 'time') && (this.isKw('with') || this.isKw('without')) && this.isKw('time', 1) && this.isKw('zone', 2)) {
       words.push(this.name(), this.name(), this.name())
     }
+    const mods: string[] = []
     if (this.isPunct('(')) {
       this.i++
       let depth = 1
@@ -145,6 +149,7 @@ export class Parser {
         if (tk.k === 'eof') this.fail('unclosed type modifier')
         if (tk.k === 'punct' && tk.v === '(') depth++
         if (tk.k === 'punct' && tk.v === ')') depth--
+        if (tk.k === 'num' && depth === 1) mods.push(tk.v)
       }
     }
     let array = 0
@@ -155,7 +160,12 @@ export class Parser {
       array++
     }
     if (this.eatKw('array')) array = Math.max(array, 1)
-    return { name: normType(words.join(' ')), array }
+    const written = words.join(' ').toLowerCase()
+    const name = normType(written)
+    // numeric(p, s) rounds to s decimals (numeric(p) to none); float types print their shortest form
+    if (name === 'numeric' && FLOAT_TYPES.has(written.replace(/^(pg_catalog)\./, ''))) return { name, array, scale: FLOAT }
+    if (name === 'numeric' && mods.length) return { name, array, scale: Number(mods[1] ?? 0) }
+    return { name, array }
   }
 
   // ---------------------------------------------------------------- expressions
@@ -170,7 +180,11 @@ export class Parser {
   }
 
   private literalNumber(v: string): Expr {
-    return /^[0-9]+$/.test(v) && v.length < 16 ? { k: 'lit', v: Number(v), type: 'int' } : { k: 'lit', v: Number(v), type: 'numeric' }
+    if (/^[0-9]+$/.test(v) && v.length < 16) return { k: 'lit', v: Number(v), type: 'int' }
+    // 1.50 keeps its two decimals when printed; 1.5e2 has none
+    const m = /^\d*(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(v)
+    const s = m ? Math.max(0, (m[1]?.length ?? 0) - Number(m[2] ?? 0)) : undefined
+    return { k: 'lit', v: Number(v), type: 'numeric', s }
   }
 
   private prefix(): Expr {
