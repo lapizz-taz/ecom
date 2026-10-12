@@ -128,6 +128,36 @@
   }
 }
 
+/* ── "Classic" look: the first-version design, used by the English Prep page ──
+   Poppins headings, soft shadowed cards, bold red buttons, pill placeholder tags. */
+.classic {
+  --font-heading: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-ink: #1a1a1a;
+  --color-ink-soft: #3f3f46;
+  --color-muted: #6b6b6b;
+  --color-surface: #f7f7f7;
+  --color-line: #e5e5e5;
+  --color-line-strong: #d4d4d8;
+  --radius-frame: 24px;
+  --shadow-card: 0 0 0 1px rgba(17, 24, 39, 0.06), 0 4px 20px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 0 0 1px rgba(17, 24, 39, 0.08), 0 12px 32px rgba(0, 0, 0, 0.1);
+  --shadow-float: 0 0 0 1px rgba(17, 24, 39, 0.08), 0 2px 2px -1px rgba(17, 24, 39, 0.04), 0 8px 8px rgba(17, 24, 39, 0.04), 0 16px 16px rgba(17, 24, 39, 0.04), 0 32px 32px rgba(17, 24, 39, 0.05);
+  --shadow-btn: 0 2px 2px -1px rgba(17, 24, 39, 0.06), 0 4px 4px -2px rgba(17, 24, 39, 0.06), 0 8px 8px rgba(17, 24, 39, 0.05), 0 16px 16px rgba(17, 24, 39, 0.04);
+
+  & .h1 { @apply text-[32px] leading-[1.12] font-bold tracking-[-0.02em] md:text-[44px] lg:text-[56px] lg:tracking-[-0.025em]; }
+  & .h2 { @apply text-[26px] leading-[1.18] font-bold tracking-[-0.015em] md:text-[34px] lg:text-[40px]; }
+  & .lead { @apply text-[17px] leading-[1.6] text-muted md:text-lg; }
+  & .eyebrow { @apply font-mono text-[12px] font-medium tracking-[0.08em] text-brand-dark uppercase; }
+  & .btn { @apply min-h-12 px-6 font-semibold hover:-translate-y-0.5; }
+  /* #FF3333 with 19px bold text = WCAG "large text" */
+  & .btn-primary { @apply bg-brand text-[19px] font-bold hover:bg-brand-dark; box-shadow: var(--shadow-btn), 0 0 0 1px var(--color-brand-dark); }
+  & .btn-secondary { @apply border-2 border-brand-dark bg-white text-[17px] text-brand-dark hover:bg-brand-tint; box-shadow: var(--shadow-btn); }
+  & .card-hover:hover { @apply -translate-y-1; }
+  & [data-placeholder] {
+    @apply rounded-full border border-dashed border-amber-500 bg-amber-50 px-2 py-0.5 font-mono tracking-wide text-amber-800 uppercase;
+  }
+}
+
 /* Scroll reveal (only hides content once JS is running) */
 .js .reveal {
   opacity: 0;
