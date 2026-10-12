@@ -2,5 +2,8 @@
 // A table whose trigger has no port here refuses writes (NOT_PORTED) instead of
 // silently skipping the rule; each module stage adds its ports.
 import type { TriggerImpl } from '../writer.ts'
+import { catalogTriggers } from './catalog.ts'
 
-export const triggers: Record<string, TriggerImpl> = {}
+export const triggers: Record<string, TriggerImpl> = {
+  ...catalogTriggers,
+}

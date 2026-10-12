@@ -30,6 +30,8 @@ export type AccessMode = 'FULL' | 'READ_ONLY' | 'BLOCKED'
 export class Context {
   /** Fixed for the whole request, like Postgres' now() inside a transaction. */
   readonly now: string
+  /** Transaction-local switches (Postgres set_config(…, true)), e.g. store_order_import. */
+  readonly flags = new Map<string, string>()
   private memo = new Map<string, unknown>()
 
   constructor(readonly sql: Sql, readonly identity: Identity, now = new Date()) {

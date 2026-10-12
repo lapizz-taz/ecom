@@ -90,6 +90,21 @@ try {
   const outsider = await call('GET', `/auth/v1/admin/users/${user.body?.id}`, { merchant: M1 })
   check('the account admin API is closed to visitors', outsider.status === 403, JSON.stringify(outsider))
 
+  const product = await call('POST', '/rest/v1/rpc/admin_save_product', { key: SERVICE, merchant: M1, body: { p_payload: {
+    name: 'E2E Shirt', price: 500, status: 'ACTIVE', variants: [{ sku: 'E2E-SHIRT', title: 'Default', initial_stock: 10 }] } } })
+  const variant = await call('GET', `/rest/v1/product_variants?select=id,inventory(on_hand,available)&product_id=eq.${product.body?.id}`, { key: SERVICE, merchant: M1 })
+  const variantId = variant.body?.[0]?.id
+  check('a product is saved with its opening stock', product.status === 200 && variant.body?.[0]?.inventory?.on_hand === 10, JSON.stringify(product.body) + JSON.stringify(variant.body))
+  const grabs = await Promise.all(Array.from({ length: 20 }, () =>
+    call('POST', '/rest/v1/rpc/adjust_stock', { key: SERVICE, merchant: M1, body: { p_variant_id: variantId, p_type: 'LOSS', p_quantity: 1, p_note: 'race' } })))
+  const won = grabs.filter((r) => r.status === 200).length
+  const refused = grabs.filter((r) => r.status === 400 && /INSUFFICIENT_STOCK/.test(r.body?.message ?? '')).length
+  const left = await call('GET', `/rest/v1/inventory?select=on_hand,available&variant_id=eq.${variantId}`, { key: SERVICE, merchant: M1 })
+  const moves = await call('HEAD', `/rest/v1/inventory_movements?variant_id=eq.${variantId}&movement_type=eq.LOSS`, { key: SERVICE, merchant: M1, prefer: 'count=exact' })
+  check('20 people taking the last 10 at once: exactly 10 succeed, stock ends at 0, one movement each',
+    won === 10 && refused === 10 && left.body?.[0]?.on_hand === 0 && moves.headers.get('content-range') === '*/10',
+    `won ${won}, refused ${refused}, left ${JSON.stringify(left.body)}, moves ${moves.headers.get('content-range')}`)
+
   const rpc = await call('POST', '/rest/v1/rpc/find_auth_user_id', { key: SERVICE, body: { p_email: 'e2e@example.com' } })
   check('server functions run (rpc)', rpc.status === 200 && rpc.body === user.body?.id, JSON.stringify(rpc))
   const rpcDenied = await call('POST', '/rest/v1/rpc/find_auth_user_id', { body: { p_email: 'e2e@example.com' } })

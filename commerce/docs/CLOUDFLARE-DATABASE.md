@@ -57,10 +57,11 @@ A table whose business trigger has no TypeScript version yet **refuses writes**
 ## Stages
 
 1. Foundation — schema, data layer, sign-in, permissions, store isolation. **Done.**
-2. Products and stock
-3. Orders and checkout
+2. Products and stock — catalog editor, quick/bulk edits, stock adjustments and
+   movements, plan limits, stock insights, store stock sync queue. **Done.**
+3. Orders and checkout (with production, which moves orders along)
 4. Couriers
-5. Payments and finance
+5. Payments and finance (with purchase orders, which post to finance)
 6. Shopify / WooCommerce sync
 7. SMS, ads, HR, phone, Super Admin
 8. Copy the data, switch over, retire Supabase (it stays read-only as the way back

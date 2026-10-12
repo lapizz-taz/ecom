@@ -10,6 +10,7 @@ import type { Context } from './context.ts'
 import { DbError, permissionDenied } from './errors.ts'
 import { quoteId } from './ident.ts'
 import { schema, table, view, type Command, type PolicyMeta } from './meta.ts'
+import { handViews } from './views.ts'
 
 /** The database role a statement runs as. */
 export type DbRole = 'anon' | 'authenticated' | 'service_role' | 'app_owner'
@@ -19,7 +20,20 @@ const roleOf = (ctx: Context): DbRole => ctx.role
 const quote = (v: string | null) => (v === null ? 'NULL' : `'${v.replaceAll("'", "''")}'`)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-/** Fills {{merchant}}, {{uid}}, {{perm:code}} … with this request's answers. */
+/** A store setting as an SQL literal ({{setting:inventory.low_stock_threshold}}); '' and missing are NULL. */
+function settingLiteral(ctx: Context, path: string): string {
+  const [key, ...rest] = path.split('.')
+  const merchant = ctx.merchantId()
+  const row = merchant ? ctx.sql.all('SELECT value FROM settings WHERE key = ? AND merchant_id = ?', [key, merchant])[0] : undefined
+  let v: unknown = row ? JSON.parse(String(row.value)) : null
+  for (const k of rest) v = v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : null
+  if (v === null || v === undefined || v === '') return 'NULL'
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL'
+  if (typeof v === 'boolean') return v ? '1' : '0'
+  return quote(typeof v === 'string' ? v : JSON.stringify(v))
+}
+
+/** Fills {{merchant}}, {{uid}}, {{perm:code}}, {{setting:key.path}} … with this request's answers. */
 export function fill(expr: string, ctx: Context): string {
   return expr.replace(/\{\{([a-z_]+)(?::([a-z_.]+))?\}\}/g, (_, name: string, arg?: string) => {
     switch (name) {
@@ -39,6 +53,7 @@ export function fill(expr: string, ctx: Context): string {
       case 'support_read_only': return ctx.supportReadOnly() ? '1' : '0'
       case 'is_system': return ctx.isSystem() ? '1' : '0'
       case 'role_code': return quote(ctx.roleCode())
+      case 'setting': return settingLiteral(ctx, arg!)
       default: throw new DbError('XX000', `unknown policy placeholder ${name}`)
     }
   })
@@ -109,9 +124,10 @@ export function shadow(sql: string, ctx: Context, role = roleOf(ctx)): string[] 
     active.add(name)
     const v = view(name)
     if (v) {
-      if (!v.sql) throw new DbError('0A000', `view ${name} is not available yet`)
-      for (const dep of mentioned(v.sql)) if (dep !== name) visit(dep)
-      ctes.push(`${quoteId(name)} AS NOT MATERIALIZED (${v.sql})`)
+      const body = v.sql ?? handViews[name]
+      if (!body) throw new DbError('0A000', `NOT_PORTED: view ${name} is not available on the Cloudflare database yet`)
+      for (const dep of mentioned(body)) if (dep !== name) visit(dep)
+      ctes.push(`${quoteId(name)} AS NOT MATERIALIZED (${fill(body, ctx)})`)
     } else if (table(name)) {
       const cond = condition(name, ctx, 'SELECT', 'using', role)
       if (cond !== '1') {
