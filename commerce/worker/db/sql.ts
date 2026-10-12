@@ -27,6 +27,8 @@ export interface Sql {
 function uniqueName(tableName: string, columns: string[]): string | undefined {
   const t = table(tableName)
   if (!t) return undefined
+  const named = t.uniqueNames?.[columns.join(',')]
+  if (named) return named
   if (t.pk.length === columns.length && t.pk.every((c, i) => c === columns[i])) return `${tableName}_pkey`
   return `${tableName}_${columns.join('_')}_key`
 }
@@ -69,14 +71,16 @@ export function nodeSql(db: SyncDatabase): Sql {
     script: (text) => wrap(() => { for (const st of typeof text === 'string' ? [text] : text) db.exec(st) }),
     transaction<T>(fn: () => T): T {
       const name = `sp${++savepoint}`
-      db.exec(depth === 0 ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${name}`)
+      // Inside a transaction someone else opened (tests), nest as a savepoint too.
+      const outer = depth === 0 && !(db as { isTransaction?: boolean }).isTransaction
+      db.exec(outer ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${name}`)
       depth++
       try {
         const result = fn()
-        db.exec(depth === 1 ? 'COMMIT' : `RELEASE ${name}`)
+        db.exec(outer ? 'COMMIT' : `RELEASE ${name}`)
         return result
       } catch (e) {
-        db.exec(depth === 1 ? 'ROLLBACK' : `ROLLBACK TO ${name}; RELEASE ${name}`)
+        db.exec(outer ? 'ROLLBACK' : `ROLLBACK TO ${name}; RELEASE ${name}`)
         throw e
       } finally {
         depth--

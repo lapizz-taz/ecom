@@ -34,6 +34,12 @@ export function tokenize(src) {
       out.push({ t: 'str', v })
       continue
     }
+    if (c === '$' && /[0-9]/.test(src[i + 1] ?? '')) {
+      const m = /^\$([0-9]+)/.exec(src.slice(i))
+      out.push({ t: 'param', v: Number(m[1]) })
+      i += m[0].length
+      continue
+    }
     if (c === '"') {
       const j = src.indexOf('"', i + 1)
       out.push({ t: 'id', v: src.slice(i + 1, j), quoted: true })
@@ -81,7 +87,7 @@ export const quoteId = (name) => (SQLITE_KEYWORDS.has(name) || !/^[a-z_][a-z0-9_
 const sqlString = (v) => `'${String(v).replaceAll("'", "''")}'`
 
 /** Back to text. Column names that are SQLite reserved words are quoted. */
-export function render(tokens) {
+export function render(tokens, opts = {}) {
   let s = ''
   let prev = null
   for (let k = 0; k < tokens.length; k++) {
@@ -91,9 +97,11 @@ export function render(tokens) {
       case 'str': piece = sqlString(tk.v); break
       case 'num': piece = tk.v; break
       case 'raw': piece = tk.v; break
+      case 'param': piece = `?${tk.v}`; break
       case 'id': {
         const call = tokens[k + 1]?.t === '('
-        piece = tk.quoted || (!KEYWORDS.has(tk.v) && !call) ? quoteId(tk.v) : tk.v
+        // Hand-written SQL (opts.bare) keeps names as written; Postgres' own output quotes what it must.
+        piece = tk.quoted ? quoteId(tk.v) : !opts.bare && !KEYWORDS.has(tk.v) && !call ? quoteId(tk.v) : tk.v
         break
       }
       case 'op': piece = tk.v; break
@@ -108,7 +116,7 @@ export function render(tokens) {
 }
 
 /** Index of the bracket matching the one at `open` (either direction). */
-function match(tokens, open) {
+export function match(tokens, open) {
   const pairs = { '(': ')', '[': ']' }
   const back = { ')': '(', ']': '[' }
   const t = tokens[open].t
@@ -129,7 +137,7 @@ function match(tokens, open) {
 }
 
 /** Start index of the operand that ends at `end` (a literal, a name, a call or a bracketed group). */
-function operandStart(tokens, end) {
+export function operandStart(tokens, end) {
   const tk = tokens[end]
   if (tk.t === ')' || tk.t === ']') {
     let start = match(tokens, end)
@@ -150,7 +158,7 @@ function operandStart(tokens, end) {
 const TYPE_WORDS = new Set(['character', 'varying', 'double', 'precision', 'timestamp', 'with', 'without', 'time', 'zone'])
 
 /** Reads a type name after '::' starting at i. Returns { name, array, end }. */
-function readType(tokens, i) {
+export function readType(tokens, i) {
   const words = []
   let j = i
   // schema-qualified (public.order_status)
@@ -201,11 +209,13 @@ export function intervalModifiers(text, sign = '+') {
     rest = rest.slice(0, hms.index).trim()
   }
   const units = { year: 'years', years: 'years', mon: 'months', mons: 'months', month: 'months', months: 'months', day: 'days', days: 'days',
-    hour: 'hours', hours: 'hours', minute: 'minutes', minutes: 'minutes', min: 'minutes', mins: 'minutes', second: 'seconds', seconds: 'seconds' }
+    hour: 'hours', hours: 'hours', minute: 'minutes', minutes: 'minutes', min: 'minutes', mins: 'minutes', second: 'seconds', seconds: 'seconds',
+    sec: 'seconds', secs: 'seconds', week: 'weeks', weeks: 'weeks' }
   for (const m of rest.matchAll(/(-?\d+(?:\.\d+)?)\s*([a-z]+)/g)) {
-    const unit = units[m[2]]
+    let unit = units[m[2]]
     if (!unit) throw new Untranslatable(`interval unit ${m[2]}`)
-    const n = Number(m[1]) * (sign === '-' ? -1 : 1)
+    let n = Number(m[1]) * (sign === '-' ? -1 : 1)
+    if (unit === 'weeks') { unit = 'days'; n *= 7 }
     mods.push(`${n < 0 ? '-' : '+'}${Math.abs(n)} ${unit}`)
   }
   return mods
@@ -240,16 +250,19 @@ const CONTEXT = {
 const RENAME = {
   char_length: 'length', character_length: 'length', btrim: 'trim', jsonb_typeof: 'json_type', json_typeof: 'json_type',
   jsonb_array_length: 'json_array_length', cardinality: 'json_array_length', jsonb_extract_path_text: 'json_extract',
+  jsonb_agg: 'json_group_array', json_agg: 'json_group_array', array_agg: 'json_group_array', jsonb_object_agg: 'json_group_object',
+  json_object_agg: 'json_group_object', string_agg: 'group_concat', bool_or: 'max', bool_and: 'min',
 }
 const SAME = new Set(['length', 'lower', 'upper', 'trim', 'ltrim', 'rtrim', 'coalesce', 'nullif', 'abs', 'round', 'replace', 'substr',
   'substring', 'json_array_length', 'json_type', 'max', 'min', 'sum', 'count', 'avg', 'strftime', 'date', 'datetime', 'json_extract',
-  'json_each', 'json_valid', 'hex', 'randomblob', 'random', 'instr', 'iif', 'json_group_array', 'json_object', 'json_array', 'total'])
+  'json_each', 'json_valid', 'hex', 'randomblob', 'random', 'instr', 'iif', 'json_group_array', 'json_object', 'json_array', 'total',
+  'json_group_object', 'group_concat', 'json_set', 'json_patch', 'json', 'ifnull', 'typeof', 'printf', 'json_remove', 'julianday', 'unixepoch'])
 
 /**
  * Rewrites a token list in place (recursively for brackets) and returns the new list.
  * opts.context: allow context placeholders (row-security rules).
  */
-function rewrite(tokens, opts) {
+export function rewrite(tokens, opts) {
   let out = [...tokens]
 
   // 1. ( SELECT f(args) AS alias ) → f(args)   (Postgres' "initplan" wrapping)
@@ -404,6 +417,15 @@ function rewrite(tokens, opts) {
       out.splice(i, close - i + 1, raw(`${name}(`), ...a.slice(from + 1), ...(chars.length ? [{ t: ',' }, ...chars] : []), raw(')'))
       continue
     }
+    if (fn === 'jsonb_set' || fn === 'json_set') {
+      if (fn === 'json_set' || args.length < 3) continue
+      const path = args[1]
+      if (path.length !== 1 || path[0].t !== 'str') throw new Untranslatable('jsonb_set with a computed path')
+      const keys = path[0].v.replace(/^\{|\}$/g, '').split(',').map((k) => k.trim().replace(/^"|"$/g, ''))
+      const jsonPath = `'$${keys.map((k) => (/^\d+$/.test(k) ? `[${k}]` : `."${k.replaceAll("'", "''")}"`)).join('')}'`
+      out.splice(i, close - i + 1, raw('json_set('), ...args[0], raw(`, ${jsonPath}, json(`), ...args[2], raw('))'))
+      continue
+    }
     if (fn === 'array_length') {
       out.splice(i, close - i + 1, raw('json_array_length('), ...args[0], raw(')'))
       continue
@@ -441,7 +463,7 @@ function rewrite(tokens, opts) {
   return out
 }
 
-function splitTop(tokens) {
+export function splitTop(tokens) {
   const parts = [[]]
   let depth = 0
   for (const tk of tokens) {
@@ -468,7 +490,7 @@ function arrayToJson(tokens, opts) {
 
 /** Translates one Postgres expression to SQLite text. */
 export function toSqlite(expr, opts = {}) {
-  return render(rewrite(tokenize(expr), opts))
+  return render(rewrite(tokenize(expr), opts), opts)
 }
 
 /** Splits an expression into its top-level AND parts (outer brackets removed). */

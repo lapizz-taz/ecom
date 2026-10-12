@@ -57,6 +57,8 @@ export interface TableMeta {
   columns: Record<string, ColumnMeta>
   pk: string[]
   unique: string[][]
+  /** Postgres names of the primary key and unique rules, by their columns ("a,b"). */
+  uniqueNames?: Record<string, string>
   partialUnique?: Array<{ columns: string[]; where: string }>
   fks: ForeignKey[]
   grants: Partial<Record<'anon' | 'authenticated', string[]>>

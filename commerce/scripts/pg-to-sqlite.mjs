@@ -192,6 +192,8 @@ for (const t of tables) {
   const cons = constraints.filter((c) => c.table === t.name)
   const pk = cons.find((c) => c.type === 'p')?.columns ?? []
   const tmeta = { columns: {}, pk, unique: [], fks: [], grants: {}, rls: t.rls, policies: [], checks: [] }
+  const pkName = cons.find((c) => c.type === 'p')?.name
+  if (pkName) tmeta.uniqueNames = { [pk.join(',')]: pkName }
   const lines = []
 
   for (const col of cols) {
@@ -232,6 +234,7 @@ for (const t of tables) {
       if (/NULLS NOT DISTINCT/.test(con.def)) report.indexes.push(`${t.name}.${con.name}: NULLS NOT DISTINCT is not available; checked as a plain unique key`)
       lines.push(`CONSTRAINT ${quoteId(con.name)} UNIQUE (${con.columns.map(quoteId).join(', ')})`)
       tmeta.unique.push(con.columns)
+      ;(tmeta.uniqueNames ??= {})[con.columns.join(',')] = con.name
     } else if (con.type === 'f') {
       const ref = con.ref_schema === 'auth' && con.ref_table === 'users' ? 'users' : con.ref_table
       if (con.ref_schema !== 'public' && ref !== 'users') throw new Error(`foreign key to ${con.ref_schema}.${con.ref_table}`)
@@ -323,6 +326,7 @@ for (const ix of indexes) {
     const pred = where ? ` WHERE ${toSqlite(where)}` : ''
     ddl.push(`CREATE ${unique ?? ''}INDEX ${quoteId(name)} ON ${quoteId(table)} (${parts.join(', ')})${pred};`)
     if (unique && !where) meta.tables[table].unique.push(splitCols(cols).map((c) => c.replace(/"/g, '')))
+    if (unique) (meta.tables[table].uniqueNames ??= {})[splitCols(cols).map((c) => c.replace(/"/g, '')).join(',')] = name
     if (unique && where) (meta.tables[table].partialUnique ??= []).push({ columns: splitCols(cols), where: toSqlite(where) })
   } catch (e) {
     if (!(e instanceof Untranslatable)) throw e
