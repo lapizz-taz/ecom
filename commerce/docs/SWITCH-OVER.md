@@ -9,7 +9,7 @@ read-only, as the way back until the new setup has run cleanly.
 
 | Piece | Where | Checked |
 | --- | --- | --- |
-| Database (orders, stock, money, staff…) | Database Durable Object (`worker/db`) | 433 of 435 Postgres tests replayed; the 2 left are the order-status decision and the phone gateway |
+| Database (orders, stock, money, staff…) | Database Durable Object (`worker/db`) | 435 of 436 Postgres tests replayed; the one left is the phone gateway |
 | Sign-in sessions behind Clerk | `worker/db/auth.ts`, `worker/db/tokens.ts` | supabase-js sign-in, renew, sign-out in the Workers runtime |
 | Live updates (new orders, scans, live lists) | `worker/db/realtime.ts` | supabase-js realtime: staff hear changes, visitors do not |
 | 12 scheduled jobs | `worker/cron.ts` (one trigger a minute) | schedules, due checks, every database job runs on the engine |

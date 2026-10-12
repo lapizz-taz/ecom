@@ -79,13 +79,8 @@ the permanent-record rules apply to what the functions do.
 ## How it is tested
 
 - **The Postgres test suite, replayed:** `CF_DB_TESTS=1 npx vitest run --project cfdb`
-  runs the 435 tests in `supabase/tests/db` (written against Postgres) on the
-  Cloudflare database through a pg-driver look-alike. **433 pass.** The 2 that do not:
-  - *order-tools — admin override to DELIVERED:* `_order_status_path` picks among
-    equally short status paths by the order Postgres happens to read rows in (its
-    hash join), not by a rule. On Cloudflare it can pick READY_TO_SHIP → PENDING_CANCEL
-    → DELIVERED, which skips the stock commit that SHIPPED does. The tie-break needs
-    a business decision before the switch-over (it is fragile on Postgres too).
+  runs the 436 tests in `supabase/tests/db` (written against Postgres) on the
+  Cloudflare database through a pg-driver look-alike. **435 pass.** The one that does not:
   - *voicedrive-pbx — the phone gateway:* Asterisk reads the `pbx_gw` views over a
     Postgres connection, which a Durable Object does not offer. The phone feature is
     marked coming soon; it needs a different gateway link before it can move.

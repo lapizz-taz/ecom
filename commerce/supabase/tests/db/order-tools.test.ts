@@ -103,6 +103,31 @@ describe('super edit', () => {
         .toBe('Courier delivered, app missed it')
     }))
 
+  it('takes an order that has not shipped through SHIPPED, so the stock always goes out', () =>
+    inTx(async (db) => {
+      await asSystem(db)
+      const path = (from: string, to: string) =>
+        value<string[] | null>(db, `select to_jsonb(public._order_status_path($1::public.order_status, $2::public.order_status))`, [from, to])
+      expect(await path('READY_TO_SHIP', 'DELIVERED')).toEqual(['SHIPPED', 'DELIVERED'])
+      expect(await path('READY_TO_SHIP', 'LOST')).toEqual(['SHIPPED', 'LOST'])
+      expect(await path('READY_TO_SHIP', 'RETURNED')).toEqual(['SHIPPED', 'RETURNING', 'RETURNED'])
+      expect(await path('PROCESSING', 'PARTIALLY_DELIVERED')).toEqual(['READY_TO_SHIP', 'SHIPPED', 'PARTIALLY_DELIVERED'])
+      // Not past shipping: the shortest route, as before.
+      expect(await path('READY_TO_SHIP', 'CANCELLED')).toEqual(['CANCELLED'])
+      expect(await path('READY_TO_SHIP', 'PENDING_CANCEL')).toEqual(['PENDING_CANCEL'])
+      expect(await path('FAILED_DELIVERY', 'RETURNED')).toEqual(['RETURNED'])
+
+      const { o, p } = await order(db, '01799000003')
+      await advanceOrder(db, o.id, ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'])
+      const admin = await overrider(db)
+      await asUser(db, admin)
+      const r = await value<{ path: string[]; order: { status: string } }>(db,
+        `select public.admin_override_order($1, '{"status":"DELIVERED"}', 'Courier delivered, app missed it')`, [o.id])
+      expect(r.path).toEqual(['SHIPPED', 'DELIVERED'])
+      expect(r.order.status).toBe('DELIVERED')
+      expect((await inventory(db, p.variantIds[0])).on_hand).toBe(8)
+    }))
+
   it('needs force when no normal route exists and the permission, but no reason or fresh sign-in', () =>
     inTx(async (db) => {
       const { o } = await order(db, '01799000002')
