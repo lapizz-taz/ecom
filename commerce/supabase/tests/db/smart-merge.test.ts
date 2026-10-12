@@ -53,7 +53,7 @@ describe('smart automatic merging', () => {
       expect(num(primary.subtotal)).toBe(1800)
       expect(num(primary.total_amount)).toBe(num(primary.subtotal) + num(primary.delivery_charge) - num(primary.delivery_discount))
       expect(primary.merged_count).toBe(1)
-      expect(primary.customer_note).toContain('gave another address')
+      expect(primary.customer_note).toMatch(/had another address \(Flat 5B, Road 9, Mirpur, Dhaka\); the first order's address is used/)
 
       // The merged order is kept, cancelled as merged, its messages skipped.
       const merged = await db.query<{ id: string; status: string; merged_into: string; review_status: string }>(
@@ -117,7 +117,7 @@ describe('smart automatic merging', () => {
         { idempotency_key: `k-${Date.now()}-c2` })
       expect(c2.merged).toBe(true)
       expect(c2.id).toBe(c.id)
-      expect((await row(db, c.id)).customer_note).toMatch(/gave another address: .*Chattogram/)
+      expect((await row(db, c.id)).customer_note).toMatch(/had another address \(.*Chattogram\); the first order's address is used/)
 
       // Approved and already packed / ready to ship: protected — the new web order is only flagged.
       const d = await checkout(db, { phone: '01712345606', items: [{ variantId: v.cap, quantity: 1 }] })

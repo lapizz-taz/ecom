@@ -270,10 +270,12 @@ describe('store order import fixes', () => {
       await asSystem(db)
       const kept = await value<Record<string, any>>(db, `select to_jsonb(o) from public.orders o where id = $1`, [a.order_id])
       expect(kept.merged_count).toBe(1)
+      // The first order's address counts.
       expect(kept.shipping_district).toBe('Dhaka')
+      expect(kept.shipping_address).toBe('House 9, Road 2, Mirpur 10')
       // Products 1,899 × 2 + one delivery 200 + both store taxes.
       expect(num(kept.tax_amount)).toBe(149.8)
       expect(num(kept.total_amount)).toBe(3798 + 200 + 149.8)
-      expect(kept.customer_note).toMatch(/Merged order .* gave another address: idk/)
+      expect(kept.customer_note).toMatch(/Merged order .* had another address \(idk\); the first order's address is used/)
     }))
 })
