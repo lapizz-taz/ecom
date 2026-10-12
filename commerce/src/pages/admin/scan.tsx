@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, CircleAlert, CircleCheck, CircleX, PackageCheck, PackageSearch, RotateCcw, ScanBarcode, Truck, Volume2, VolumeX } from 'lucide-react'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Money } from '@/components/common/money'
 import { PageHeader } from '@/components/common/page-header'
@@ -53,41 +53,72 @@ export default function ScanPage() {
   const couriers = useQuery({ queryKey: ['couriers', 'active'], queryFn: () => listCouriers(true) })
   const log = useQuery({ queryKey: ['parcel-scans'], queryFn: () => recentScans(60), refetchInterval: 30_000 })
 
-  // Scans made on other devices show up live.
-  useEffect(() => {
-    const channel = supabase.channel('parcel-scans')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'parcel_scans' }, () => {
-        void queryClient.invalidateQueries({ queryKey: ['parcel-scans'] })
-      })
-      .subscribe()
-    return () => { void supabase.removeChannel(channel) }
-  }, [queryClient])
-
-  const scan = useMutation({
-    meta: { silent: true },
-    mutationFn: (value: string) => scanParcel(value, mode, mode === 'SHIPPED' ? courierId || null : null),
-    onSuccess: (r) => {
-      setLast(r)
-      const kind = r.result === 'OK' ? 'ok' : r.result === 'ALREADY' ? 'warn' : 'error'
-      scanFeedback(kind, sound)
-      setSession((s) => ({ ok: s.ok + (kind === 'ok' ? 1 : 0), already: s.already + (kind === 'warn' ? 1 : 0), error: s.error + (kind === 'error' ? 1 : 0) }))
+  // Lists that depend on scans refresh once a burst of scans is over, not after every scan.
+  const refreshTimer = useRef<number | undefined>(undefined)
+  const refreshSoon = useCallback(() => {
+    window.clearTimeout(refreshTimer.current)
+    refreshTimer.current = window.setTimeout(() => {
       void queryClient.invalidateQueries({ queryKey: ['parcel-scans'] })
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
       void queryClient.invalidateQueries({ queryKey: ['fulfillment-summary'] })
-    },
-    onError: (e) => {
-      scanFeedback('error', sound)
-      setLast({ result: 'ERROR', message: toUserMessage(e), code, order: null })
-    },
-    onSettled: () => inputRef.current?.focus(),
-  })
+    }, 1200)
+  }, [queryClient])
+  useEffect(() => () => window.clearTimeout(refreshTimer.current), [])
+
+  // Scans made on other devices show up live.
+  useEffect(() => {
+    const channel = supabase.channel('parcel-scans')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'parcel_scans' }, refreshSoon)
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [refreshSoon])
+
+  // Every code is accepted at once and worked through in the order it was scanned:
+  // nothing is dropped while the previous parcel is still being saved.
+  const queue = useRef<string[]>([])
+  const working = useRef(false)
+  const settings = useRef({ mode, courierId, sound })
+  settings.current = { mode, courierId, sound }
+  const [waiting, setWaiting] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const drain = useCallback(async () => {
+    if (working.current) return
+    working.current = true
+    setBusy(true)
+    while (queue.current.length) {
+      const value = queue.current.shift()!
+      setWaiting(queue.current.length)
+      const { mode: m, courierId: c, sound: s } = settings.current
+      try {
+        const r = await scanParcel(value, m, m === 'SHIPPED' ? c || null : null)
+        setLast(r)
+        const kind = r.result === 'OK' ? 'ok' : r.result === 'ALREADY' ? 'warn' : 'error'
+        scanFeedback(kind, s)
+        setSession((x) => ({ ok: x.ok + (kind === 'ok' ? 1 : 0), already: x.already + (kind === 'warn' ? 1 : 0), error: x.error + (kind === 'error' ? 1 : 0) }))
+      } catch (e) {
+        scanFeedback('error', s)
+        setLast({ result: 'ERROR', message: toUserMessage(e), code: value, order: null })
+        setSession((x) => ({ ...x, error: x.error + 1 }))
+      }
+    }
+    working.current = false
+    setBusy(false)
+    setWaiting(0)
+    refreshSoon()
+    inputRef.current?.focus()
+  }, [refreshSoon])
+  const enqueue = useCallback((value: string) => {
+    queue.current.push(value)
+    setWaiting(queue.current.length)
+    void drain()
+  }, [drain])
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
     const value = code.trim()
-    if (!value || scan.isPending) return
+    if (!value) return
     setCode('')
-    scan.mutate(value)
+    enqueue(value)
   }
 
   useEffect(() => { inputRef.current?.focus() }, [mode])
@@ -142,14 +173,15 @@ export default function ScanPage() {
                   placeholder="Scan or type order / tracking no."
                   className="h-14 rounded-xl pl-12 font-mono text-lg" aria-label="Barcode" />
               </div>
-              <Button type="submit" size="lg" className="h-14 rounded-xl px-6" disabled={!code.trim() || scan.isPending}>
-                {scan.isPending ? <Spinner /> : 'Go'}
+              <Button type="submit" size="lg" className="h-14 rounded-xl px-6" disabled={!code.trim()}>
+                {busy ? <Spinner /> : 'Go'}
               </Button>
               <Button type="button" size="lg" variant="outline" className="h-14 rounded-xl" onClick={() => setCamera((c) => !c)} aria-pressed={camera}>
                 <Camera /> <span className="hidden sm:inline">Camera</span>
               </Button>
             </form>
-            {camera && <CameraScanner onScan={(c) => { if (!scan.isPending) scan.mutate(c) }} onClose={() => { setCamera(false); inputRef.current?.focus() }} />}
+            {camera && <CameraScanner onScan={enqueue} onClose={() => { setCamera(false); inputRef.current?.focus() }} />}
+            {waiting > 0 && <p className="text-xs text-muted-foreground" role="status">{waiting} more scan{waiting === 1 ? '' : 's'} being saved…</p>}
 
             {last && style ? (
               <div className={cn('flex gap-4 rounded-xl border-2 p-5', style.cls)} role="status" aria-live="assertive">

@@ -1,27 +1,40 @@
-import { CameraOff, X } from 'lucide-react'
+import { CameraOff, Flashlight, FlashlightOff, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface DetectedBarcode { rawValue: string }
 interface BarcodeDetectorLike { detect(source: CanvasImageSource): Promise<DetectedBarcode[]> }
-type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDetectorLike
+type BarcodeDetectorCtor = (new (options?: { formats?: string[] }) => BarcodeDetectorLike) & { getSupportedFormats?: () => Promise<string[]> }
+
+/** What shipping labels carry: tracking and invoice barcodes, and QR codes. Fewer formats = faster reads. */
+const FORMATS = ['code_128', 'qr_code', 'code_39', 'ean_13']
+/** The part of the frame inside the guide box (as a share of width and height): only that is read. */
+const BAND = { x: 0.08, y: 0.3, w: 0.84, h: 0.4 }
+
+type TorchTrack = Omit<MediaStreamTrack, 'getCapabilities'> & { getCapabilities?: () => { torch?: boolean } }
 
 /**
- * Reads barcodes with the device camera. Uses the browser's built-in
- * BarcodeDetector (Chrome / Android) and falls back to ZXing elsewhere.
- * Repeated reads of the same code within a short window are ignored.
+ * Reads barcodes with the device camera, as fast as the phone allows:
+ * the browser's BarcodeDetector (Chrome / Android) on the guide band of every
+ * frame, ZXing elsewhere (iPhone) with no pause between attempts. Turns the
+ * torch on where the camera has one. The same code read again within 2.5 s
+ * is ignored.
  */
 export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const trackRef = useRef<TorchTrack | null>(null)
   const last = useRef<{ code: string; at: number }>({ code: '', at: 0 })
   const [error, setError] = useState<string | null>(null)
+  const [torch, setTorch] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false })
+  const [flash, setFlash] = useState(0)
   const onScanRef = useRef(onScan)
   onScanRef.current = onScan
 
   useEffect(() => {
     let stopped = false
     let stream: MediaStream | null = null
-    let timer: number | undefined
+    let frame: number | undefined
     let zxingControls: { stop: () => void } | null = null
 
     const emit = (raw: string) => {
@@ -29,32 +42,60 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
       const now = Date.now()
       if (!code || (code === last.current.code && now - last.current.at < 2500)) return
       last.current = { code, at: now }
+      setFlash((n) => n + 1)
+      navigator.vibrate?.(35)
       onScanRef.current(code)
     }
 
     const start = async () => {
-      const Detector = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector
       try {
-        if (Detector) {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
-          if (stopped || !videoRef.current) return
-          videoRef.current.srcObject = stream
-          await videoRef.current.play()
-          const detector = new Detector({ formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'ean_8', 'upc_a'] })
-          const tick = async () => {
-            if (stopped || !videoRef.current) return
-            try {
-              const found = await detector.detect(videoRef.current)
-              if (found[0]?.rawValue) emit(found[0].rawValue)
-            } catch { /* frame not ready */ }
-            timer = window.setTimeout(tick, 180)
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        })
+        if (stopped || !videoRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
+        const track = stream.getVideoTracks()[0] as TorchTrack | undefined
+        trackRef.current = track ?? null
+        // Continuous focus where the camera allows it (labels are read up close).
+        await track?.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }).catch(() => undefined)
+        setTorch({ supported: Boolean(track?.getCapabilities?.().torch), on: false })
+        const video = videoRef.current
+        video.srcObject = stream
+        await video.play()
+
+        const Detector = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector
+        const supported = Detector?.getSupportedFormats ? await Detector.getSupportedFormats().catch(() => []) : FORMATS
+        const formats = FORMATS.filter((f) => supported.includes(f))
+        if (Detector && formats.length) {
+          const detector = new Detector({ formats })
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d', { willReadFrequently: true })
+          let busy = false
+          const tick = () => {
+            if (stopped) return
+            frame = requestAnimationFrame(tick)
+            if (busy || video.readyState < 2 || !ctx) return
+            busy = true
+            const vw = video.videoWidth
+            const vh = video.videoHeight
+            canvas.width = Math.round(vw * BAND.w)
+            canvas.height = Math.round(vh * BAND.h)
+            ctx.drawImage(video, vw * BAND.x, vh * BAND.y, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height)
+            detector.detect(canvas)
+              .then((found) => { if (found[0]?.rawValue) emit(found[0].rawValue) })
+              .catch(() => undefined)
+              .finally(() => { busy = false })
           }
-          void tick()
+          tick()
         } else {
-          const { BrowserMultiFormatReader } = await import('@zxing/browser')
-          if (stopped || !videoRef.current) return
-          const reader = new BrowserMultiFormatReader()
-          zxingControls = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+          const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([import('@zxing/browser'), import('@zxing/library')])
+          if (stopped || !stream) return
+          const hints = new Map<(typeof DecodeHintType)[keyof typeof DecodeHintType], unknown>([
+            [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128, BarcodeFormat.QR_CODE, BarcodeFormat.CODE_39, BarcodeFormat.EAN_13]],
+          ])
+          // The default waits 500 ms between attempts; labels are read on the next frame instead.
+          const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 40, delayBetweenScanSuccess: 300 })
+          zxingControls = await reader.decodeFromStream(stream, video, (result) => {
             if (result) emit(result.getText())
           })
         }
@@ -67,11 +108,24 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
     void start()
     return () => {
       stopped = true
-      if (timer) window.clearTimeout(timer)
+      if (frame) cancelAnimationFrame(frame)
       zxingControls?.stop()
       stream?.getTracks().forEach((t) => t.stop())
+      trackRef.current = null
     }
   }, [])
+
+  const toggleTorch = async () => {
+    const track = trackRef.current
+    if (!track) return
+    const on = !torch.on
+    try {
+      await track.applyConstraints({ advanced: [{ torch: on } as MediaTrackConstraintSet] })
+      setTorch({ supported: true, on })
+    } catch {
+      setTorch({ supported: false, on: false })
+    }
+  }
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-black">
@@ -82,13 +136,22 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
       ) : (
         <>
           <video ref={videoRef} className="aspect-video w-full object-cover" muted playsInline />
-          <div className="pointer-events-none absolute inset-x-[12%] top-1/2 h-24 -translate-y-1/2 rounded-xl border-2 border-brand/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
-          <p className="absolute inset-x-0 bottom-3 text-center text-xs text-white/80">Point the camera at the label barcode</p>
+          <div key={flash} className={cn('pointer-events-none absolute inset-x-[8%] top-[30%] h-[40%] rounded-xl border-2 border-brand/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]',
+            flash > 0 && 'animate-[scan-hit_0.35s_ease-out]')} />
+          <p className="absolute inset-x-0 bottom-3 text-center text-xs text-white/80">Hold the label barcode inside the box</p>
         </>
       )}
-      <Button type="button" size="icon-sm" variant="secondary" className="absolute top-3 right-3 rounded-full" onClick={onClose} aria-label="Close camera">
-        <X />
-      </Button>
+      <div className="absolute top-3 right-3 flex gap-2">
+        {torch.supported && !error && (
+          <Button type="button" size="icon-sm" variant="secondary" className={cn('rounded-full', torch.on && 'bg-amber-300 text-black hover:bg-amber-200')}
+            onClick={() => void toggleTorch()} aria-pressed={torch.on} aria-label={torch.on ? 'Turn torch off' : 'Turn torch on'}>
+            {torch.on ? <FlashlightOff /> : <Flashlight />}
+          </Button>
+        )}
+        <Button type="button" size="icon-sm" variant="secondary" className="rounded-full" onClick={onClose} aria-label="Close camera">
+          <X />
+        </Button>
+      </div>
     </div>
   )
 }

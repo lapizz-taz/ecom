@@ -2,6 +2,7 @@
 // authorises advertiser accounts, then campaigns and daily campaign numbers
 // are read. Tokens travel in the Access-Token header, never in a URL.
 import { env } from '../env.ts'
+import { fetchWithRetry } from '../fetch-retry.ts'
 
 type FetchFn = typeof fetch
 
@@ -32,7 +33,7 @@ export function tiktokAuthUrl(appId: string, state: string, redirectUri: string)
 }
 
 export class TikTokClient {
-  constructor(private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly fetchFn: FetchFn = fetchWithRetry(fetch)) {}
 
   private async call<T>(method: 'GET' | 'POST', path: string, opts: { token?: string; query?: Record<string, string>; body?: unknown } = {}): Promise<T> {
     const url = new URL(`${apiBase()}/open_api/v1.3/${path.replace(/^\/+/, '')}`)

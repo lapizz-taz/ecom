@@ -471,6 +471,12 @@
   outline-offset: 1px;
 }
 
+/* Camera scanner: the guide box flashes when a code is read. */
+@keyframes scan-hit {
+  0% { border-color: rgb(34 197 94); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35), inset 0 0 0 4px rgb(34 197 94 / 0.6); }
+  100% { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35), inset 0 0 0 0 transparent; }
+}
+
 /* Parcel booking: boxes slide into the van while the road moves. */
 @keyframes parcel-in {
   0% { transform: translateX(-90px) translateY(0); opacity: 0; }

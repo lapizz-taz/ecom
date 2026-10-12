@@ -3,6 +3,7 @@
 // goes in the Authorization header (never in a URL), and appsecret_proof is
 // added when META_APP_SECRET is set.
 import { env } from '../env.ts'
+import { fetchWithRetry } from '../fetch-retry.ts'
 
 type FetchFn = typeof fetch
 
@@ -44,7 +45,7 @@ export class MetaGraph {
   private proof?: Promise<string>
 
   constructor(private readonly token: string, opts: GraphOptions = {}) {
-    this.fetchFn = opts.fetchFn ?? fetch
+    this.fetchFn = opts.fetchFn ?? fetchWithRetry(fetch)
     const base = (opts.baseUrl ?? env('META_GRAPH_URL') ?? 'https://graph.facebook.com').replace(/\/+$/, '')
     this.root = `${base}/${opts.version ?? env('META_GRAPH_VERSION') ?? 'v23.0'}`
     this.appSecret = opts.appSecret ?? env('META_APP_SECRET')
