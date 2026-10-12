@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle, ArrowDown, ArrowRight, ArrowUp, Boxes, ChevronRight, ClipboardList, CreditCard, Eye, EyeOff, Factory, GripVertical, LayoutGrid,
-  PackagePlus, Plug, RotateCcw, ShieldAlert, ShoppingCart, Sparkles, Truck, TrendingDown, TrendingUp, UserPlus, Wallet, X,
+  PackagePlus, Plug, RefreshCw, RotateCcw, ShieldAlert, ShoppingCart, Sparkles, Truck, TrendingDown, TrendingUp, UserPlus, Wallet, X,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
@@ -161,6 +161,14 @@ export default function DashboardPage() {
   const [range, setRange] = useState<DateRange>(() => rangeFor('30d'))
   const [editing, setEditing] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  // Every number on the dashboard, including the order pipeline counts.
+  const refreshing = useIsFetching({ predicate: (q) => q.queryKey[0] === 'dashboard' || (q.queryKey[0] === 'orders' && String(q.queryKey[1]).endsWith('-counts')) }) > 0
+  const refresh = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+    queryClient.invalidateQueries({ queryKey: ['orders', 'queue-counts'] }),
+    queryClient.invalidateQueries({ queryKey: ['orders', 'status-counts'] }),
+  ])
   const overview = useQuery({ queryKey: ['dashboard', range], queryFn: () => dashboardOverview(range.from, range.to) })
   const center = useQuery({ queryKey: ['dashboard', 'center', range], queryFn: () => commandCenter(range.from, range.to) })
   const prev = previousPeriod(range)
@@ -185,6 +193,9 @@ export default function DashboardPage() {
       <PageHeader title={greeting(access?.full_name)} description={`${config?.store.name ?? 'Your store'} · ${rangeLabel(range)}`}
         actions={(
           <>
+            <Button size="icon-sm" variant="outline" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh dashboard" title="Refresh">
+              <RefreshCw className={cn(refreshing && 'animate-spin')} />
+            </Button>
             <DateRangeFilter value={range} onChange={setRange} />
             <Button size="sm" variant={editing ? 'default' : 'outline'} onClick={() => setEditing((e) => !e)}>
               <LayoutGrid /> {editing ? 'Done' : 'Customize'}
