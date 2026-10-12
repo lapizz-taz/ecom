@@ -137,6 +137,13 @@ try {
   const variant = await call('GET', `/rest/v1/product_variants?select=id,inventory(on_hand,available)&product_id=eq.${product.body?.id}`, { key: SERVICE, merchant: M1 })
   const variantId = variant.body?.[0]?.id
   check('a product is saved with its opening stock', product.status === 200 && variant.body?.[0]?.inventory?.on_hand === 10, JSON.stringify(product.body) + JSON.stringify(variant.body))
+  // The order lists: one statement with several inlined functions, more constants than the
+  // Durable Object's SQLite can bind (?1…?100) — the compiler writes the rest out as literals.
+  const lists = await Promise.all([
+    { queue: 'web', review_status: 'PROCESSING' }, { queue: 'approved', stage: 'PENDING' }, {},
+  ].map((p_filters) => call('POST', '/rest/v1/rpc/admin_search_orders', { key: SERVICE, merchant: M1, body: { p_filters, p_sort: 'created_at', p_direction: 'desc', p_limit: 25, p_offset: 0 } })))
+  check('the order lists (web, approved, all) answer on the Durable Object', lists.every((r) => r.status === 200 && typeof r.body?.total === 'number' && Array.isArray(r.body?.items)),
+    JSON.stringify(lists.map((r) => [r.status, r.body?.message ?? r.body?.details ?? r.body?.total])))
   const grabs = await Promise.all(Array.from({ length: 20 }, () =>
     call('POST', '/rest/v1/rpc/adjust_stock', { key: SERVICE, merchant: M1, body: { p_variant_id: variantId, p_type: 'LOSS', p_quantity: 1, p_note: 'race' } })))
   const won = grabs.filter((r) => r.status === 200).length

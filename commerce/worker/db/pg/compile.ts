@@ -233,8 +233,10 @@ export class Compiler implements SqlHelp {
 
   bind(v: unknown, t: string): string {
     const raw = encodeSql(v, t)
-    // Views are inlined into other statements as text: constants are written out.
-    if (this.opts.literal) return sqlLiteral(raw)
+    // Views are inlined into other statements as text: constants are written out. So are the
+    // constants past the 90th: the Durable Object's SQLite stops at ?100, and a statement with
+    // several inlined functions (the order lists) binds more than that.
+    if (this.opts.literal || this.params.length >= MAX_BOUND_PARAMS) return sqlLiteral(raw)
     this.params.push(raw)
     return `?${this.params.length}`
   }
@@ -1593,6 +1595,9 @@ export class Compiler implements SqlHelp {
 }
 
 // ---------------------------------------------------------------- helpers
+
+/** Bound parameters per statement before constants are written out (the Durable Object's SQLite allows ?1…?100). */
+const MAX_BOUND_PARAMS = 90
 
 function sqlLiteral(v: SqlValue): string {
   if (v === null) return 'NULL'
