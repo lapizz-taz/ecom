@@ -12,6 +12,7 @@ import { Parser } from './parse.ts'
 import type { Decl, Handler, PlStmt } from './plparse.ts'
 import { execStatement, type ResultSet } from './query.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
+import { tempUtility } from './temp.ts'
 import { elemType, isArrayType } from './types.ts'
 import { cast, castScale, guessType, isTableType, PgRow, roundScale, toText } from './values.ts'
 
@@ -478,6 +479,12 @@ export class PlCall implements Vars {
       }
       case 'utility': {
         if (s.word === 'set') return null
+        const query = (src: string) => {
+          const p = new Parser(lex(src), src, {})
+          const res = execStatement(this.engine, p.query(), this, [])
+          return { cols: res.cols, rows: res.rows }
+        }
+        if (tempUtility(this.engine, s.word, s.src, query)) return null
         throw new NotSupported(`${s.word.toUpperCase()} inside a function (${s.src.slice(0, 60)})`)
       }
     }

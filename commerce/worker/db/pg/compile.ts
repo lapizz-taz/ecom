@@ -14,6 +14,7 @@ import type { Row } from '../sql.ts'
 import { Evaluator } from './evaluate.ts'
 import { runSql } from './run.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
+import { tempRowsJson, tempTable } from './temp.ts'
 import { elemType, isArrayType } from './types.ts'
 import { addInterval as addIv, arithScale, cast, castScale, castTyped, Interval, isEnum, isTableType, PgRow, scaleOf, zoneOffset } from './values.ts'
 
@@ -251,7 +252,7 @@ export class Compiler implements SqlHelp {
       if (w.recursive && c.q.k === 'setop') {
         // The non-recursive term fixes the columns; then the whole may refer to itself.
         const first = this.query(c.q.l, scope)
-        const cols = first.cols.map((col, i) => ({ name: c.cols?.[i] ?? col.name, t: col.t }))
+        const cols = first.cols.map((col, i) => ({ name: c.cols?.[i] ?? col.name, t: col.t, s: col.s }))
         scope.ctes.set(c.name, { sqlName, cols })
         const all = this.query(c.q, scope)
         parts.push(`${qi(sqlName)}(${cols.map((x) => qi(x.name)).join(', ')}) AS (${all.sql})`)
@@ -259,9 +260,11 @@ export class Compiler implements SqlHelp {
         continue
       }
       const compiled = this.query(c.q, scope)
-      const cols = compiled.cols.map((col, i) => ({ name: c.cols?.[i] ?? col.name, t: col.t }))
+      const cols = compiled.cols.map((col, i) => ({ name: c.cols?.[i] ?? col.name, t: col.t, s: col.s }))
       scope.ctes.set(c.name, { sqlName, cols })
       parts.push(`${qi(sqlName)}(${cols.map((x) => qi(x.name)).join(', ')}) AS ${c.materialized === false ? 'NOT MATERIALIZED ' : ''}(${compiled.sql})`)
+      // later WITH queries (and their per-row lookups) see this one
+      scope.cteSql = [...parts]
     }
     scope.cteSql = [...parts]
     scope.recursive = w.recursive
@@ -438,6 +441,13 @@ export class Compiler implements SqlHelp {
         src.cols = src.cols.map((c, i) => ({ ...c, sql: `${qi(alias)}.${qi(cte.cols[i].name)}` }))
       }
       return `${qi(cte.sqlName)} AS ${qi(alias)}`
+    }
+    const temp = tempTable(this.engine.ctx, f.name, f.schema)
+    if (temp) {
+      const names = temp.cols.map((c, i) => f.cols?.[i] ?? c.name)
+      this.addSource(scope, alias, temp.cols.map((c, i) => ({ name: names[i], t: c.t, s: c.s })))
+      const cells = temp.cols.map((_c, i) => `json_extract("_t".value, '$[${i}]') AS ${qi(names[i])}`)
+      return `(SELECT ${cells.join(', ')} FROM json_each(${this.bind(tempRowsJson(temp), 'text')}) AS "_t") AS ${qi(alias)}`
     }
     if (f.schema === 'auth' && f.name === 'users') {
       const t = tableMeta('users')!

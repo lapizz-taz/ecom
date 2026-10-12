@@ -6,6 +6,7 @@ import type { Expr } from './ast.ts'
 import { schema } from '../meta.ts'
 import type { Engine, Typed } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
+import { tempTable } from './temp.ts'
 import {
   addInterval, cast, cleanNumber, compare, err, guessType, Interval, isJNull, isoLocal, isoZ, jsonKeyOrder, jsonText, jsonType, JNULL,
   localToTz, parseInterval, PgRow, toJson, toText, tzToLocal, zoneOffset,
@@ -1038,8 +1039,12 @@ export const builtins: Record<string, Builtin> = {
   version: { ret: fixed('text'), strict: false, js: () => 'PostgreSQL 15 compatible (Cloudflare SQLite)' },
   pg_typeof: { ret: fixed('text'), strict: false, js: (_a, t) => t[0] },
   enum_range: { ret: (t) => `${t[0]}[]`, strict: false, js: (_a, t) => [...(schema.enums[t[0]] ?? [])] },
-  to_regclass: { ret: fixed('text'), js: (a) => {
-    const name = String(a[0]).replace(/^public\./, '').replace(/^"|"$/g, '')
+  to_regclass: { ret: fixed('text'), js: (a, _t, call) => {
+    const text = String(a[0])
+    const temp = /^pg_temp\./.test(text)
+    const name = text.replace(/^(public|pg_temp)\./, '').replace(/^"|"$/g, '')
+    if (tempTable(call.engine.ctx, name)) return name
+    if (temp) return null
     return Object.hasOwn(schema.tables, name) || Object.hasOwn(schema.views, name) ? name : null
   } },
   current_database: { ret: fixed('text'), strict: false, js: () => 'postgres' },

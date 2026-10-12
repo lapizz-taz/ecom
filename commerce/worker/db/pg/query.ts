@@ -15,6 +15,7 @@ import { Compiler, columnName, SRF, walk, type OutCol } from './compile.ts'
 import { Evaluator } from './evaluate.ts'
 import { runSql } from './run.ts'
 import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
+import { insertTemp, tempTable } from './temp.ts'
 import { cast, JNULL, PgRow, plainValue } from './values.ts'
 
 export interface ResultSet {
@@ -200,6 +201,17 @@ function readRows(engine: Engine, name: string, keys: Key[]): PgRow[] {
 function execInsert(engine: Engine, st: Insert, vars: Vars, params: Typed[]): ResultSet {
   if (st.schema === 'auth' && st.table === 'users') return insertUsers(engine, st, vars, params)
   if (st.schema === 'vault') throw new NotSupported('INSERT into vault (use vault.create_secret)')
+  const temp = tempTable(engine.ctx, st.table, st.schema)
+  if (temp) {
+    const source = st.source === 'default' ? 'default' : st.with ? ({ ...st.source, with: st.with } as Select) : st.source
+    let rows: Array<Array<Typed | undefined>>
+    if (source === 'default') rows = [[]]
+    else {
+      const res = execQuery(engine, source, vars, params)
+      rows = res.rows.map((r) => r.map((v, i) => ({ t: res.cols[i]?.t ?? 'unknown', v })))
+    }
+    return { cols: [], rows: [], count: insertTemp(temp, st, rows), command: 'INSERT' }
+  }
   if (st.with) {
     if (st.source === 'default' || st.source.k === 'values') throw new NotSupported('INSERT … VALUES with WITH')
     st = { ...st, source: { ...st.source, with: st.with } as Select, with: undefined }
