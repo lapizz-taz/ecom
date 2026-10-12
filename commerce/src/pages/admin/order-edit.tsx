@@ -146,8 +146,8 @@ export default function OrderEditPage() {
               </Field>
               <Field label="District">
                 <Select value={form.district} onValueChange={(v) => setForm({ ...form, district: v })} disabled={!editable}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="District" /></SelectTrigger>
-                  <SelectContent className="max-h-72">{[...new Set([o.shipping_district, ...(config?.delivery.districts ?? [])])].map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Choose district" /></SelectTrigger>
+                  <SelectContent className="max-h-72">{[...new Set([o.shipping_district, ...(config?.delivery.districts ?? [])])].filter(Boolean).map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               <Field label="Delivery">

@@ -249,9 +249,9 @@ export function EditOrderDialog({ order, open, onOpenChange, onDone }: DialogPro
         <Field label="Address" htmlFor="e-addr" className="sm:col-span-2"><Textarea id="e-addr" rows={2} value={values.shipping_address} onChange={set('shipping_address')} /></Field>
         <Field label="District">
           <Select value={values.shipping_district} onValueChange={(v) => setValues((s) => ({ ...s, shipping_district: v }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Choose district" /></SelectTrigger>
             <SelectContent className="max-h-72">
-              {[...new Set([values.shipping_district, ...(config?.delivery.districts ?? [])])].map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              {[...new Set([values.shipping_district, ...(config?.delivery.districts ?? [])])].filter(Boolean).map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
             </SelectContent>
           </Select>
         </Field>

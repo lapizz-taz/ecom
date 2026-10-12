@@ -156,6 +156,10 @@ async function bookOrder(client: SupabaseClient, admin: SupabaseClient, orderId:
     throw new HttpError(409, `${order.order_number} is already booked (${active.tracking_number})`, 'ALREADY_BOOKED')
   }
   const provider = await courierProviderFor(admin, courier)
+  // Store orders can come in without a district; Steadfast books on the address alone, the others need one.
+  if (!order.shipping_district?.trim() && provider.code !== 'steadfast') {
+    throw new HttpError(422, `${order.order_number} has no district yet. Edit the order and choose it, then book with ${courier.name}.`, 'DISTRICT_MISSING')
+  }
   const opts = courierOptions(courier.config)
   const items = order.order_items as unknown as Array<{ quantity: number; product_name: string | null; product_variants: { weight_grams: number | null } | null }>
   // Weight only when every item has one; otherwise the courier's minimum is used.

@@ -73,7 +73,8 @@ describe('sales channels: importing orders', () => {
       const bad = order({ external_id: '5002', number: '#1002', customer: { name: 'Sumon', phone: '12345', email: null },
         shipping: { address: 'Ward 4, Bazar Road', city: 'Kalampur', state: null, postal_code: null, district_hint: null } })
       const r = await ingest(db, c, bad)
-      expect(r).toMatchObject({ status: 'FAILED', error: expect.stringContaining('district') })
+      // Only the phone holds it back: an unreadable district never does.
+      expect(r).toMatchObject({ status: 'FAILED', error: expect.stringContaining('mobile number') })
       await asSystem(db)
       expect(num(await value(db, `select count(*) from public.orders where external_order_id = '5002'`))).toBe(0)
       expect(num(await value(db, `select count(*) from public.products where 'shopify' = any(tags) and name = 'Canvas Tote'`))).toBe(0)
@@ -83,7 +84,7 @@ describe('sales channels: importing orders', () => {
       const list = await value<{ items: Array<{ id: string; status: string; error: string }> }>(db, `select public.channel_imports_list('{"status":"FAILED"}')`)
       expect(list.items.find((i) => i.id === r.import_id)).toMatchObject({ status: 'FAILED' })
 
-      // …choose the district; the phone is still wrong, so it fails again with that reason.
+      // …choose the district anyway; the phone is still wrong, so it fails again with that reason.
       await asService(db)
       await db.query(`select public.channel_import_for_retry($1, '{"district":"Gazipur"}', null)`, [r.import_id])
       expect(await ingest(db, c, bad, 'RETRY')).toMatchObject({ status: 'FAILED', error: expect.stringContaining('mobile number') })

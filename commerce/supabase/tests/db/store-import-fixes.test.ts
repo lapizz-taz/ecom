@@ -208,4 +208,49 @@ describe('store order import fixes', () => {
         { line_id: '901', refund_id: '91', created_at: new Date(Date.now() + 1000).toISOString(), external_variant_id: 'v-1', quantity: 2, location_id: '1' }])])).toMatchObject({ status: 'OK' })
       expect(await inventory(db, v)).toMatchObject({ on_hand: 5, available: 5 })
     }))
+
+  it('never holds a store order back for its address: no district, a short address or no delivery zone still come in', () =>
+    inTx(async (db) => {
+      const { c, v } = await syncedStore(db, 'nodistrict.myshopify.com')
+      const note = (id: string) => value<string>(db, `select string_agg(body, ' | ') from public.order_notes where order_id = $1`, [id])
+
+      // The district cannot be read: imported without one, with a note saying what to do.
+      const r = await ingest(db, c, order({ external_id: '7701', number: '#7701',
+        shipping: { address: 'dasdasda, dasd', city: 'asdas', state: null, postal_code: '1215', district_hint: 'asdas' } }))
+      expect(r.status).toBe('IMPORTED')
+      await asSystem(db)
+      expect(await value(db, `select shipping_district from public.orders where id = $1`, [r.order_id])).toBe('')
+      expect(await note(r.order_id!)).toMatch(/District not recognised from "asdas": choose it on the order before booking Pathao or RedX/)
+      expect(await value<string[]>(db, `select warnings from public.channel_order_imports where id = $1`, [r.import_id])).toEqual(
+        [expect.stringMatching(/District not recognised/)])
+      // The customer keeps a known district; no half address is saved for next time.
+      expect(await value(db, `select district from public.customers where phone = '01712000801'`)).toBeNull()
+      expect(num(await value(db, `select count(*) from public.customer_addresses a join public.customers u on u.id = a.customer_id where u.phone = '01712000801'`))).toBe(0)
+
+      // A very short address: imported as typed, with a note.
+      const s = await ingest(db, c, order({ external_id: '7702', number: '#7702', customer: { name: 'Rina Akter', phone: '01712000809', email: null },
+        shipping: { address: 'asdd', city: 'Dhaka', state: null, postal_code: null, district_hint: 'Dhaka' } }))
+      expect(s.status).toBe('IMPORTED')
+      await asSystem(db)
+      expect(await value(db, `select shipping_address || ' / ' || shipping_district from public.orders where id = $1`, [s.order_id])).toBe('asdd / Dhaka')
+      expect(await note(s.order_id!)).toMatch(/delivery address is very short \("asdd"\)/)
+
+      // No delivery zone for the district here: the store's own delivery charge is kept.
+      await db.query(`update public.delivery_zones set is_active = false`)
+      const z = await ingest(db, c, order({ external_id: '7703', number: '#7703', customer: { name: 'Rina Akter', phone: '01712000810', email: null },
+        shipping_price: 130, total: 2029 }))
+      expect(z.status).toBe('IMPORTED')
+      await asSystem(db)
+      expect(num(await value(db, `select delivery_charge from public.orders where id = $1`, [z.order_id]))).toBe(130)
+
+      // Only store imports: checkout and staff orders still need a district and an address.
+      const payload = JSON.stringify({ customer: { full_name: 'Rina Akter', phone: '01712000811' },
+        shipping: { address: 'House 9, Road 2', district: '' }, items: [{ variant_id: v, quantity: 1 }] })
+      for (const [source, flag] of [['STOREFRONT', 'on'], ['API', ''], ['ADMIN', 'on']] as const) {
+        await db.query(`savepoint s`)
+        await db.query(`select set_config('app.store_order_import', $1, true)`, [flag])
+        await expect(db.query(`select public._create_order($1, $2)`, [payload, source])).rejects.toThrow(/district is required/)
+        await db.query(`rollback to savepoint s`)
+      }
+    }))
 })

@@ -69,7 +69,8 @@ describe('Store order numbers (Shopify #10768 → order 10768)', () => {
       const n = String(20000 + Math.floor(Math.random() * 1e8))
       const bad = await value<Record<string, any>>(db, `select public.channel_ingest_order($1, $2, 'WEBHOOK')`, [c, JSON.stringify({
         external_id: String(Math.floor(Math.random() * 1e12)), number: `#${n}`, cancelled: false,
-        customer: { name: 'X Y', phone: phone() }, shipping: { address: 'Somewhere far', city: 'Nowhere' },
+        // Fails inside order creation (after the number is taken): the phone is not a mobile number.
+        customer: { name: 'X Y', phone: '12345' }, shipping: { address: 'Somewhere far', city: 'Nowhere' },
         lines: [{ external_variant_id: 'none', sku: 'NO-SUCH-SKU', title: 'Ghost', quantity: 1, unit_price: 10 }],
         shipping_price: 0, total: 10, paid_amount: 0,
       })])

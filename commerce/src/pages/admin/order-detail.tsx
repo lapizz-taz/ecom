@@ -561,6 +561,7 @@ export default function OrderDetailPage() {
             <CardContent className="space-y-1 text-sm">
               <p>{o.shipping_address}</p>
               <p className="text-muted-foreground">{[o.shipping_area, o.shipping_city, o.shipping_district, o.shipping_postal_code].filter(Boolean).join(', ')}</p>
+              {!o.shipping_district && <p className="text-xs font-medium text-amber-600 dark:text-amber-400">District needed: edit the order and choose it before booking Pathao or RedX</p>}
               <p className="text-muted-foreground">Method: {titleCase(o.delivery_method)}</p>
               {o.customer_note && <p className="mt-2 rounded-md bg-muted/60 p-2"><span className="font-medium">Customer note:</span> {o.customer_note}</p>}
             </CardContent>

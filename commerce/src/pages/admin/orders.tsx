@@ -329,7 +329,7 @@ export function OrdersPage({ view }: { view: View }) {
     ...(view === 'web' ? [] : [{ key: 'date', header: 'Date', cell: (o: OrderListItem) => <span title={formatDateTime(o.created_at)} className="text-muted-foreground">{timeAgo(o.created_at)}</span> }]),
     {
       key: 'customer', header: 'Customer',
-      cell: (o) => <div className="max-w-48"><p className="truncate">{o.customer_name}</p><p className="text-xs text-muted-foreground">{o.customer_phone} · {o.shipping_district}</p></div>,
+      cell: (o) => <div className="max-w-48"><p className="truncate">{o.customer_name}</p><p className="text-xs text-muted-foreground">{o.customer_phone} · {o.shipping_district || <span className="text-amber-600 dark:text-amber-400">District needed</span>}</p></div>,
     },
   ]
   if (view === 'web') {
