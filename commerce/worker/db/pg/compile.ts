@@ -566,6 +566,47 @@ export class Compiler implements SqlHelp {
     return `json_each((SELECT json_group_array(${obj}) FROM (${sub.sql}) AS "_lr")) AS ${a}`
   }
 
+  /**
+   * A PL/pgSQL function in FROM whose arguments use columns to its left: called once per
+   * distinct argument tuple (a lookup, see lookup()). One-row results become columns of
+   * the row; SETOF results travel as a JSON array that json_each() expands.
+   */
+  private perRowFunction(f: Extract<FromItem, { k: 'func' }>, args: SqlArg[], scope: QScope): string {
+    const call = f.call
+    const alias = f.alias ?? call.name
+    const a = qi(alias)
+    const types = args.map((x) => x.t)
+    const rt = this.engine.returnType(call.name, types, call.schema)
+    if (!rt) throw new DbError('42883', `function ${call.name}(${types.join(', ')}) does not exist`)
+    const set = rt.startsWith('setof ')
+    const declared = this.engine.resultColumns(call.name, types)
+    const grouped = call.args.some((x) => hasAggregate(x))
+    const asJson = (v: unknown): unknown => (v instanceof PgRow ? v.plain() : v)
+    if (!set && !declared) {
+      // one value: the column is the value itself
+      const value = this.lookup(scope, args, rt, (vals) => this.engine.call(call.name, vals, call.names, call.schema), grouped)
+      const cols: Col[] = [{ name: f.cols?.[0] ?? alias, t: rt, sql: value.sql }]
+      scope.sources.push({ alias, cols, whole: { sql: value.sql, t: rt } })
+      return `(SELECT 1) AS ${a}`
+    }
+    const json = this.lookup(scope, args, 'jsonb', (vals) => {
+      const r = this.engine.call(call.name, vals, call.names, call.schema)
+      const v = set ? ((r.v as unknown[] | null) ?? []).map(asJson) : asJson(r.v)
+      return { t: 'jsonb', v }
+    }, grouped)
+    const fields = declared ?? [{ name: alias, type: rt.replace(/^setof /, '') }]
+    if (!set) {
+      const cols: Col[] = fields.map((c, i) => ({ name: f.cols?.[i] ?? c.name, t: c.type, sql: jsonCell(json.sql, c.name, c.type, false) }))
+      scope.sources.push({ alias, cols, whole: this.wholeRow(cols) })
+      return `(SELECT 1) AS ${a}`
+    }
+    const cols: Col[] = declared
+      ? fields.map((c, i) => ({ name: f.cols?.[i] ?? c.name, t: c.type, sql: jsonCell(`${a}.value`, c.name, c.type, false) }))
+      : [{ name: f.cols?.[0] ?? alias, t: fields[0].type, sql: `${a}.value` }]
+    scope.sources.push({ alias, cols, whole: declared ? this.wholeRow(cols) : { sql: cols[0].sql, t: cols[0].t } })
+    return `json_each(${json.sql}) AS ${a}`
+  }
+
   private funcSource(f: Extract<FromItem, { k: 'func' }>, scope: QScope): string {
     const call = f.call
     const name = call.name
@@ -598,7 +639,7 @@ export class Compiler implements SqlHelp {
       return `json_each(${src}) AS ${a}`
     }
     const inline = this.engine.inline(name, args.map((x) => x.t))
-    if (!inline) throw new NotSupported(`function ${name} in FROM with per-row arguments`)
+    if (!inline) return this.perRowFunction(f, args, scope)
     const frag = new Map<string, SqlArg>()
     inline.params.forEach((p, i) => {
       frag.set(p, args[i] ?? { sql: 'NULL', t: inline.types[i] })
@@ -949,7 +990,18 @@ export class Compiler implements SqlHelp {
         const items = e.items.map((it) => this.expr(it, scope))
         return { sql: `(${items.map((x) => x.sql).join(', ')})`, t: 'record' }
       }
-      case 'field': throw new NotSupported('a field of a composite value from a column')
+      case 'field': {
+        // (r.o).created_at: a field of a row value, which SQLite holds as a JSON object
+        const x = this.expr(e.e, scope)
+        if (e.name === '*') return x
+        const own = x.cols?.[e.name]
+        if (own) return own
+        const meta = isTableType(x.t) ? tableMeta(x.t) ?? viewMeta(x.t) : undefined
+        if (meta && !meta.columns[e.name]) throw new DbError('42703', `column "${e.name}" not found in data type ${x.t}`)
+        const col = meta?.columns[e.name]
+        const t = col ? columnType(col) : 'text'
+        return { sql: jsonCell(x.sql, e.name, t, false), t, s: col?.scale }
+      }
       case 'index': {
         const x = this.expr(e.e, scope)
         if (e.slice) {
