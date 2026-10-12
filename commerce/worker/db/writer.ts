@@ -157,6 +157,19 @@ function nowDefaults(env: WriteEnv, t: TableMeta, given: Values): Values {
 }
 
 /** WITH CHECK policies and application checks on rows just written. */
+/** Row security's WITH CHECK on a row about to be inserted (columns left to SQLite's defaults read as NULL). */
+function checkNewRow(env: WriteEnv, name: string, t: TableMeta, cols: string[], params: SqlValue[]): void {
+  if (!t.rls || env.role === 'service_role') return
+  const check = condition(name, env.ctx, 'INSERT', 'check', env.role)
+  if (check === '1') return
+  const values = Object.keys(t.columns).map((c) => {
+    const i = cols.indexOf(c)
+    return `${i < 0 ? 'NULL' : `?${i + 1}`} AS ${quoteId(c)}`
+  })
+  const bad = env.sql.all(secure(`SELECT 1 FROM (SELECT ${values.join(', ')}) AS ${quoteId(name)} WHERE NOT coalesce((${check}), 0)`, env.ctx, env.role), params)
+  if (bad.length) throw new DbError('42501', `new row violates row-level security policy for table "${name}"`)
+}
+
 function verify(env: WriteEnv, name: string, t: TableMeta, keys: Key[], cmd: 'INSERT' | 'UPDATE', rows?: Row[]): Row[] {
   const raw = rows ?? readRaw(env, name, t, keys)
   if (t.rls && env.role !== 'service_role') {
@@ -177,12 +190,12 @@ function storeResetActive(sql: Sql, merchant: unknown): boolean {
   return typeof merchant === 'string' && sql.all("SELECT 1 FROM _flags WHERE name = 'store_reset' AND value = ?", [merchant]).length > 0
 }
 
-/** public.log_audit */
+/** public.log_audit: SECURITY DEFINER owned by app_owner, so audit_logs' row security applies. */
 export function logAudit(env: WriteEnv, action: string, entityType: string, entityId: string | null, oldValues: unknown = null, newValues: unknown = null, metadata: Values = {}): void {
   const uid = env.ctx.uid
   const email = (uid ? env.sql.all('SELECT email FROM profiles WHERE id = ?', [uid])[0]?.email as string | undefined : undefined) ??
     env.ctx.identity.email ?? (env.ctx.isSystem() ? 'system' : null)
-  insert({ ...env, role: 'service_role' }, 'audit_logs', [{
+  insert({ ...env, role: 'app_owner' }, 'audit_logs', [{
     actor_id: uid, actor_email: email, action, entity_type: entityType, entity_id: entityId,
     old_values: oldValues, new_values: newValues, metadata,
   }])
@@ -263,7 +276,14 @@ export function insert(env: WriteEnv, name: string, rows: Values[], opts: Insert
     const sql = cols.length
       ? `INSERT INTO main.${quoteId(name)} (${cols.map(quoteId).join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING *`
       : `INSERT INTO main.${quoteId(name)} DEFAULT VALUES RETURNING *`
-    const raw = env.sql.all(sql, params)
+    let raw: Row[]
+    try {
+      raw = env.sql.all(sql, params)
+    } catch (e) {
+      // Postgres checks row security before NOT NULL and CHECK constraints: that error comes first
+      if (e instanceof DbError && (e.code === '23502' || e.code === '23514')) checkNewRow(env, name, t, cols, params)
+      throw e
+    }
     const key = keyOf(t, raw[0])
     verify(env, name, t, [key], 'INSERT', raw)
     const decoded = decodeRow(t, raw[0])
