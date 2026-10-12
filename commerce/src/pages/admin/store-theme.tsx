@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowLeft, Blocks, ChevronDown, Copy, Eye, EyeOff, GripVertical, Home, LayoutTemplate, Maximize2, Monitor, MoreHorizontal, MousePointerClick,
-  Package, Paintbrush, PanelBottom, PanelTop, Plus, Redo2, ShoppingCart, Smartphone, Store, Trash2, Undo2, X,
+  ArrowLeft, ChevronDown, Copy, Eye, EyeOff, GripVertical, Home, LayoutTemplate, Maximize2, Monitor, MoreHorizontal, MousePointerClick,
+  Package, Paintbrush, PanelBottom, PanelTop, Plus, Redo2, ShoppingBag, ShoppingCart, Smartphone, Store, Trash2, Undo2, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
@@ -20,9 +20,12 @@ import { cn } from '@/lib/utils'
 import { getCategories, listProducts } from '@/services/storefront'
 import { useStoreAddress } from '@/hooks/use-store-address'
 
-type Tab = 'sections' | 'settings' | 'apps'
+type Tab = 'sections' | 'settings'
 type Page = 'home' | 'collection' | 'product' | 'cart'
-const FIXED: Record<string, string> = { announcement: 'Announcement bar', header: 'Header', footer: 'Footer', 'collection-banner': 'Collection banner', 'collection-grid': 'Product grid' }
+const FIXED: Record<string, string> = {
+  announcement: 'Announcement bar', header: 'Header', footer: 'Footer', 'collection-banner': 'Collection banner', 'collection-grid': 'Product grid',
+  'product-info': 'Product information', 'product-related': 'Related products',
+}
 const PAGES: Array<{ value: Page; label: string; icon: ReactNode }> = [
   { value: 'home', label: 'Home page', icon: <Home className="size-3.5" /> },
   { value: 'collection', label: 'Collections', icon: <LayoutTemplate className="size-3.5" /> },
@@ -116,24 +119,26 @@ export default function StoreThemePage() {
   if (!draft) return <div className="fixed inset-0 z-[60] grid place-items-center bg-[#f1f1f1]"><Spinner /></div>
 
   const setTheme = (patch: Partial<StoreTheme>) => commit({ ...draft, theme: { ...theme, ...patch } as unknown as Record<string, unknown> })
-  const setSections = (sections: ThemeSection[]) => setTheme({ sections })
+  // The home page and product pages each have their own list of sections.
+  const sections = page === 'product' ? theme.product_sections : theme.sections
+  const setSections = (next: ThemeSection[]) => setTheme(page === 'product' ? { product_sections: next } : { sections: next })
   const setSectionSettings = (id: string, key: string, v: unknown) =>
-    setSections(theme.sections.map((x) => (x.id === id ? { ...x, settings: { ...x.settings, [key]: v } } : x)))
+    setSections(sections.map((x) => (x.id === id ? { ...x, settings: { ...x.settings, [key]: v } } : x)))
   const addSection = (type: SectionType) => {
     const sec = makeSection(type)
-    setSections([...theme.sections, sec])
+    setSections([...sections, sec])
     setSelected(sec.id); setPickerOpen(false)
   }
-  const removeSection = (id: string) => { setSections(theme.sections.filter((x) => x.id !== id)); setSelected(null) }
+  const removeSection = (id: string) => { setSections(sections.filter((x) => x.id !== id)); setSelected(null) }
   const duplicate = (id: string) => {
-    const i = theme.sections.findIndex((x) => x.id === id)
-    const copy = { ...makeSection(theme.sections[i].type), settings: structuredClone(theme.sections[i].settings) }
-    setSections([...theme.sections.slice(0, i + 1), copy, ...theme.sections.slice(i + 1)])
+    const i = sections.findIndex((x) => x.id === id)
+    const copy = { ...makeSection(sections[i].type), settings: structuredClone(sections[i].settings) }
+    setSections([...sections.slice(0, i + 1), copy, ...sections.slice(i + 1)])
     setSelected(copy.id)
   }
   const exit = () => { if (!s.dirty || window.confirm('Leave without saving your changes?')) navigate('/admin/store/sales-channels') }
   const h = history.current
-  const current = theme.sections.find((x) => x.id === selected)
+  const current = sections.find((x) => x.id === selected)
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#f1f1f1] text-[13px] text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -143,7 +148,6 @@ export default function StoreThemePage() {
         <div className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
         <IconButton label="Sections" active={tab === 'sections'} onClick={() => setTab('sections')}><PanelTop /></IconButton>
         <IconButton label="Theme settings" active={tab === 'settings'} onClick={() => setTab('settings')}><Paintbrush /></IconButton>
-        <IconButton label="App embeds" active={tab === 'apps'} onClick={() => setTab('apps')}><Blocks /></IconButton>
 
         <div className="mx-auto flex min-w-0 items-center gap-2">
           <span className="hidden items-center gap-1.5 font-medium sm:flex"><Store className="size-3.5 text-zinc-500" />{config?.store.name ?? 'Store'}</span>
@@ -187,11 +191,10 @@ export default function StoreThemePage() {
         <aside className="max-h-[42vh] shrink-0 overflow-y-auto border-b border-zinc-200 bg-white lg:max-h-none lg:w-[300px] lg:border-r lg:border-b-0 dark:border-zinc-800 dark:bg-zinc-900">
           <fieldset disabled={!s.canEdit} className="contents">
             {tab === 'sections' && (
-              <SectionTree page={page} theme={theme} selected={selected} onSelect={setSelected} onSections={setSections}
+              <SectionTree page={page} theme={theme} sections={sections} selected={selected} onSelect={setSelected} onSections={setSections}
                 pickerOpen={pickerOpen} setPickerOpen={setPickerOpen} onAdd={addSection} />
             )}
             {tab === 'settings' && <ThemeSettings theme={theme} setTheme={setTheme} />}
-            {tab === 'apps' && <AppEmbeds theme={theme} setTheme={setTheme} />}
           </fieldset>
         </aside>
 
@@ -215,7 +218,7 @@ export default function StoreThemePage() {
                   <DropdownMenuTrigger asChild><button type="button" aria-label="Section actions" className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="z-[70]">
                     <DropdownMenuItem onClick={() => duplicate(current.id)}><Copy /> Duplicate</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSections(theme.sections.map((x) => (x.id === current.id ? { ...x, enabled: !x.enabled } : x)))}>{current.enabled ? <EyeOff /> : <Eye />} {current.enabled ? 'Hide' : 'Show'}</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSections(sections.map((x) => (x.id === current.id ? { ...x, enabled: !x.enabled } : x)))}>{current.enabled ? <EyeOff /> : <Eye />} {current.enabled ? 'Hide' : 'Show'}</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -273,14 +276,14 @@ function TreeItem({ icon, label, sub, active, hidden, onClick, actions, drag }: 
   )
 }
 
-function SectionTree({ page, theme, selected, onSelect, onSections, pickerOpen, setPickerOpen, onAdd }: {
-  page: Page; theme: StoreTheme; selected: string | null; onSelect: (id: string) => void; onSections: (s: ThemeSection[]) => void
+function SectionTree({ page, theme, sections, selected, onSelect, onSections, pickerOpen, setPickerOpen, onAdd }: {
+  page: Page; theme: StoreTheme; sections: ThemeSection[]; selected: string | null; onSelect: (id: string) => void; onSections: (s: ThemeSection[]) => void
   pickerOpen: boolean; setPickerOpen: (v: boolean) => void; onAdd: (t: SectionType) => void
 }) {
   const [dragging, setDragging] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
   const move = (from: number, to: number) => {
-    const next = [...theme.sections]
+    const next = [...sections]
     const [item] = next.splice(from, 1)
     next.splice(to > from ? to - 1 : to, 0, item)
     onSections(next)
@@ -296,50 +299,58 @@ function SectionTree({ page, theme, selected, onSelect, onSections, pickerOpen, 
       <TreeItem icon={<PanelBottom className="size-4" />} label="Footer" active={selected === 'footer'} onClick={() => onSelect('footer')} />
     </TreeGroup>
   )
+  // Sections the merchant adds (home page, or under the product on product pages): drag, hide, add.
+  const sectionList = (
+    <>
+      {sections.map((sec, i) => {
+        const sub = typeof sec.settings.heading === 'string' && sec.settings.heading && sec.type !== 'hero' ? `: ${sec.settings.heading}` : undefined
+        return (
+          <TreeItem key={sec.id} icon={SECTION_ICON[sec.type]} label={SECTIONS[sec.type].label} sub={sub} active={selected === sec.id} hidden={!sec.enabled}
+            onClick={() => onSelect(sec.id)}
+            drag={{ onDragStart: () => setDragging(i), onDragOver: (e) => { e.preventDefault(); setOver(i) }, onDrop: () => { if (dragging !== null && dragging !== i) move(dragging, i); setDragging(null); setOver(null) }, over: over === i && dragging !== null && dragging !== i }}
+            actions={
+              <button type="button" aria-label={sec.enabled ? 'Hide section' : 'Show section'} className="grid size-6 place-items-center rounded hover:bg-black/10"
+                onClick={() => onSections(sections.map((x) => (x.id === sec.id ? { ...x, enabled: !x.enabled } : x)))}>
+                {sec.enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+              </button>
+            } />
+        )
+      })}
+      <div onDragOver={(e) => { e.preventDefault(); setOver(sections.length) }} onDrop={() => { if (dragging !== null) move(dragging, sections.length); setDragging(null); setOver(null) }}
+        className={cn('h-1 rounded', over === sections.length && dragging !== null && 'bg-[#2c6ecb]')} />
+      <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+        <PopoverTrigger asChild>
+          <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <span className="grid size-4 place-items-center rounded-full border border-current"><Plus className="size-3" /></span> Add section
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="right" align="start" sideOffset={8} className="z-[70] w-auto border-0 bg-transparent p-0 shadow-none">
+          <SectionPicker onPick={onAdd} />
+        </PopoverContent>
+      </Popover>
+    </>
+  )
   return (
     <div>
       <p className="px-4 pt-3 pb-1 text-sm font-semibold">{PAGES.find((p) => p.value === page)?.label}</p>
       {headerItems}
       <TreeGroup title="Template">
-        {page === 'home' ? (
-          <>
-            {theme.sections.map((sec, i) => {
-              const sub = typeof sec.settings.heading === 'string' && sec.settings.heading && sec.type !== 'hero' ? `: ${sec.settings.heading}` : undefined
-              return (
-                <TreeItem key={sec.id} icon={SECTION_ICON[sec.type]} label={SECTIONS[sec.type].label} sub={sub} active={selected === sec.id} hidden={!sec.enabled}
-                  onClick={() => onSelect(sec.id)}
-                  drag={{ onDragStart: () => setDragging(i), onDragOver: (e) => { e.preventDefault(); setOver(i) }, onDrop: () => { if (dragging !== null && dragging !== i) move(dragging, i); setDragging(null); setOver(null) }, over: over === i && dragging !== null && dragging !== i }}
-                  actions={
-                    <button type="button" aria-label={sec.enabled ? 'Hide section' : 'Show section'} className="grid size-6 place-items-center rounded hover:bg-black/10"
-                      onClick={() => onSections(theme.sections.map((x) => (x.id === sec.id ? { ...x, enabled: !x.enabled } : x)))}>
-                      {sec.enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-                    </button>
-                  } />
-              )
-            })}
-            <div onDragOver={(e) => { e.preventDefault(); setOver(theme.sections.length) }} onDrop={() => { if (dragging !== null) move(dragging, theme.sections.length); setDragging(null); setOver(null) }}
-              className={cn('h-1 rounded', over === theme.sections.length && dragging !== null && 'bg-[#2c6ecb]')} />
-            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                  <span className="grid size-4 place-items-center rounded-full border border-current"><Plus className="size-3" /></span> Add section
-                </button>
-              </PopoverTrigger>
-              <PopoverContent side="right" align="start" sideOffset={8} className="z-[70] w-auto border-0 bg-transparent p-0 shadow-none">
-                <SectionPicker onPick={onAdd} />
-              </PopoverContent>
-            </Popover>
-          </>
-        ) : page === 'collection' ? (
-          <>
-            <TreeItem icon={<PanelTop className="size-4" />} label="Collection banner" active={selected === 'collection-banner'} hidden={!theme.collection.banner} onClick={() => onSelect('collection-banner')} />
-            <TreeItem icon={<LayoutTemplate className="size-4" />} label="Product grid" active={selected === 'collection-grid'} onClick={() => onSelect('collection-grid')} />
-          </>
-        ) : (
-          <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">
-            {page === 'product' ? 'Product pages show each product’s photos, options and description. Edit them on the product, and the card style in Theme settings.' : 'The cart uses your theme colours and font.'}
-          </p>
-        )}
+        {page === 'home' ? sectionList
+          : page === 'collection' ? (
+            <>
+              <TreeItem icon={<PanelTop className="size-4" />} label="Collection banner" active={selected === 'collection-banner'} hidden={!theme.collection.banner} onClick={() => onSelect('collection-banner')} />
+              <TreeItem icon={<LayoutTemplate className="size-4" />} label="Product grid" active={selected === 'collection-grid'} onClick={() => onSelect('collection-grid')} />
+            </>
+          ) : page === 'product' ? (
+            <>
+              <TreeItem icon={<ShoppingBag className="size-4" />} label="Product information" active={selected === 'product-info'} onClick={() => onSelect('product-info')} />
+              <TreeItem icon={<LayoutTemplate className="size-4" />} label="Related products" sub={theme.product_page.related_title ? `: ${theme.product_page.related_title}` : undefined}
+                active={selected === 'product-related'} hidden={!theme.product_page.show_related} onClick={() => onSelect('product-related')} />
+              {sectionList}
+            </>
+          ) : (
+            <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">The cart uses your theme colours and font.</p>
+          )}
       </TreeGroup>
       {footerItems}
     </div>
@@ -390,6 +401,39 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
         <FieldRow label="Copyright text"><input className={inputClass} value={String(draft.footer_text ?? '')} placeholder={`© ${new Date().getFullYear()} Your store`} onChange={(e) => setSf('footer_text', e.target.value)} /></FieldRow>
         <FieldRow label="Background"><ColorInput value={theme.colors.footer_bg} onChange={(v) => setTheme({ colors: { ...theme.colors, footer_bg: v } })} /></FieldRow>
         <FieldRow label="Text"><ColorInput value={theme.colors.footer_text} onChange={(v) => setTheme({ colors: { ...theme.colors, footer_text: v } })} /></FieldRow>
+      </>
+    )
+  }
+  if (id === 'product-info') {
+    const pp = theme.product_page
+    const set = (patch: Partial<StoreTheme['product_page']>) => setTheme({ product_page: { ...pp, ...patch } })
+    const toggle = (label: string, key: keyof StoreTheme['product_page'], hint?: string) => (
+      <FieldRow label={label} hint={hint} inline><Switch checked={!!pp[key]} onCheckedChange={(v) => set({ [key]: v })} /></FieldRow>
+    )
+    return (
+      <>
+        <FieldRow label="Image shape"><SelectInput value={pp.image_aspect} onChange={(v) => set({ image_aspect: v as typeof pp.image_aspect })} options={[{ value: 'portrait', label: 'Portrait (4:5)' }, { value: 'square', label: 'Square' }]} /></FieldRow>
+        {toggle('Brand above the name', 'show_brand')}
+        {toggle('“Sale” badge', 'show_sale_badge')}
+        {toggle('Stock note', 'show_stock', '“Only 3 left” / “In stock”. Out of stock always shows.')}
+        {toggle('Quantity selector', 'show_quantity')}
+        {toggle('“Buy now” button', 'show_buy_now')}
+        {toggle('Description', 'show_description')}
+        {pp.show_description && <FieldRow label="Description heading"><input className={inputClass} value={pp.description_title} placeholder="Description" onChange={(e) => set({ description_title: e.target.value })} /></FieldRow>}
+        {toggle('Shipping and warranty', 'show_details')}
+        {toggle('SKU', 'show_sku')}
+        {toggle('Tags', 'show_tags')}
+        <p className="text-[11px] leading-snug text-zinc-500">Photos, options, prices and text are set on each product.</p>
+      </>
+    )
+  }
+  if (id === 'product-related') {
+    const pp = theme.product_page
+    return (
+      <>
+        <FieldRow label="Show related products" inline><Switch checked={pp.show_related} onCheckedChange={(v) => setTheme({ product_page: { ...pp, show_related: v } })} /></FieldRow>
+        <FieldRow label="Heading"><input className={inputClass} value={pp.related_title} placeholder="You may also like" onChange={(e) => setTheme({ product_page: { ...pp, related_title: e.target.value } })} /></FieldRow>
+        <p className="text-[11px] leading-snug text-zinc-500">Products from the same category.</p>
       </>
     )
   }
@@ -469,29 +513,15 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
         <FieldRow label="Uppercase names" inline><Switch checked={pc.uppercase} onCheckedChange={(v) => setTheme({ product_card: { ...pc, uppercase: v } })} /></FieldRow>
         <FieldRow label="“Sale” badge" inline><Switch checked={pc.sale_badge} onCheckedChange={(v) => setTheme({ product_card: { ...pc, sale_badge: v } })} /></FieldRow>
       </Accordion>
+      <Accordion title="Chat button">
+        <FieldRow label="WhatsApp chat button" inline><Switch checked={!!theme.whatsapp} onCheckedChange={(v) => setTheme({ whatsapp: v ? '01' : '' })} /></FieldRow>
+        {!!theme.whatsapp && <input className={inputClass} inputMode="tel" value={theme.whatsapp} onChange={(e) => setTheme({ whatsapp: e.target.value })} placeholder="01XXXXXXXXX" />}
+        <p className="text-[11px] text-zinc-500">A “Chat” button on every page opens WhatsApp with your number.</p>
+      </Accordion>
       <Accordion title="Collection page">
         <FieldRow label="Banner with the category image" inline><Switch checked={theme.collection.banner} onCheckedChange={(v) => setTheme({ collection: { ...theme.collection, banner: v } })} /></FieldRow>
         <FieldRow label="Products per row"><RangeInput value={theme.collection.columns} min={2} max={5} onChange={(v) => setTheme({ collection: { ...theme.collection, columns: v as 2 | 3 | 4 | 5 } })} /></FieldRow>
       </Accordion>
-    </div>
-  )
-}
-
-function AppEmbeds({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: Partial<StoreTheme>) => void }) {
-  return (
-    <div>
-      <p className="px-4 pt-3 pb-2 text-sm font-semibold">App embeds</p>
-      <div className="space-y-3 px-4 pb-4">
-        <div className="space-y-2.5 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
-          <div className="flex items-center justify-between"><p className="font-medium">WhatsApp chat button</p><Switch checked={!!theme.whatsapp} onCheckedChange={(v) => setTheme({ whatsapp: v ? '01' : '' })} /></div>
-          {!!theme.whatsapp && <input className={inputClass} inputMode="tel" value={theme.whatsapp} onChange={(e) => setTheme({ whatsapp: e.target.value })} placeholder="01XXXXXXXXX" />}
-          <p className="text-[11px] text-zinc-500">A “Chat” button on every page opens WhatsApp with your number.</p>
-        </div>
-        <div className="flex items-center justify-between rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
-          <div><p className="font-medium">Payment badges</p><p className="text-[11px] text-zinc-500">Your payment methods in the footer.</p></div>
-          <Switch checked={theme.payment_badges} onCheckedChange={(v) => setTheme({ payment_badges: v })} />
-        </div>
-      </div>
     </div>
   )
 }

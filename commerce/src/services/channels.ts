@@ -9,6 +9,8 @@ export interface ChannelCheck { key: string; label: string; status: 'ok' | 'warn
 
 export interface SalesChannel {
   id: string; platform: ChannelPlatform; name: string; shop_domain: string; status: ChannelStatus
+  /** False when customers buy on another store ("Where do customers buy?"): nothing syncs with it. */
+  in_use: boolean
   auth_mode: 'OAUTH' | 'TOKEN' | 'KEYS' | null; scopes: string[]; currency: string | null
   settings: { import_orders?: boolean; plugin?: PluginReport & { last_seen_at?: string }; plugin_pair?: { ok: boolean; at: string; detail: string | null } }; webhooks: Array<{ id: string | number; topic: string }>
   last_test: { checks: ChannelCheck[]; at: string } | null; last_tested_at: string | null; last_sync_at: string | null

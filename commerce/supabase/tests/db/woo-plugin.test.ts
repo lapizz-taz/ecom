@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, asUser, closePool, expectError, inTx, value, type Db } from '../support/db'
-import { advanceOrder, createOrder, createProduct, createStaff } from '../support/fixtures'
+import { advanceOrder, createOrder, createProduct, createStaff, sellOn } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -12,6 +12,7 @@ async function store(db: Db, platform: 'SHOPIFY' | 'WOOCOMMERCE' = 'WOOCOMMERCE'
   const id = await value<string>(db, `select (public.channel_upsert($1, null)).id`, [JSON.stringify({ platform, shop_domain: domain, auth_mode: platform === 'SHOPIFY' ? 'TOKEN' : 'KEYS' })])
   await asSystem(db)
   await db.query(`update public.sales_channels set status = 'CONNECTED', settings = settings || $2::jsonb where id = $1`, [id, JSON.stringify(settings)])
+  await sellOn(db, platform)
   return id
 }
 

@@ -123,10 +123,16 @@ export interface OrderRow {
   fraud_check_id: string | null
 }
 
-/** Creates an order exactly like the storefront does (no risk check). */
+/** Creates an order exactly like the storefront does (no risk check). Tests that picked Shopify or
+ *  WooCommerce (which closes the website) still get their order, as if placed before the switch. */
 export async function createOrder(db: Db, input: OrderInput): Promise<OrderRow> {
-  await asSystem(db, input.merchantId ?? MERCHANT_1)
-  return one<OrderRow>(db, `select * from public._create_order($1, 'STOREFRONT')`, [JSON.stringify(orderPayload(input))])
+  const merchant = input.merchantId ?? MERCHANT_1
+  await asSystem(db, merchant)
+  const mode = await value<string>(db, `select coalesce((select value ->> 'mode' from public.settings where merchant_id = $1 and key = 'storefront'), 'OWN')`, [merchant])
+  if (mode !== 'OWN') await sellOn(db, 'OWN', merchant)
+  const order = await one<OrderRow>(db, `select * from public._create_order($1, 'STOREFRONT')`, [JSON.stringify(orderPayload(input))])
+  if (mode !== 'OWN') await sellOn(db, mode as 'SHOPIFY' | 'WOOCOMMERCE' | 'OFF', merchant)
+  return order
 }
 
 /** Storefront checkout: record a fraud check then place the order atomically. */
@@ -174,4 +180,14 @@ export async function inventory(db: Db, variantId: string): Promise<{ on_hand: n
 export async function setSetting(db: Db, key: string, patch: Record<string, unknown>): Promise<void> {
   await asSystem(db)
   await db.query(`update public.settings set value = value || $2::jsonb where key = $1`, [key, JSON.stringify(patch)])
+}
+
+/** Where customers buy (Sales channels): only that store's connections sync; the others are paused. */
+export async function sellOn(db: Db, mode: 'OWN' | 'SHOPIFY' | 'WOOCOMMERCE' | 'OFF', merchantId: string = MERCHANT_1): Promise<void> {
+  const { role, merchant } = await one<{ role: string; merchant: string }>(db, `select current_user as role, coalesce(current_setting('app.merchant_id', true), '') as merchant`)
+  await db.query('reset role')
+  await db.query(`select set_config('app.merchant_id', $1, true)`, [merchantId])
+  await db.query(`update public.settings set value = value || jsonb_build_object('mode', $1::text) where merchant_id = $2 and key = 'storefront'`, [mode, merchantId])
+  await db.query(`select set_config('app.merchant_id', $1, true)`, [merchant])
+  if (['anon', 'authenticated', 'service_role'].includes(role)) await db.query(`set local role ${role}`)
 }

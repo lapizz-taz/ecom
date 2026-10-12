@@ -13,6 +13,22 @@ export type SectionType = 'hero' | 'collections' | 'featured' | 'new' | 'trust' 
 export type Settings = Record<string, unknown>
 export interface ThemeSection { id: string; type: SectionType; enabled: boolean; settings: Settings }
 export interface MenuLink { label: string; link: string }
+/** What the product page shows, edited under Products in the theme builder. */
+export interface ProductPageSettings {
+  image_aspect: 'portrait' | 'square'
+  show_brand: boolean
+  show_sale_badge: boolean
+  show_stock: boolean
+  show_quantity: boolean
+  show_buy_now: boolean
+  show_description: boolean
+  description_title: string
+  show_details: boolean
+  show_sku: boolean
+  show_tags: boolean
+  show_related: boolean
+  related_title: string
+}
 
 export interface StoreTheme {
   accent: string
@@ -24,8 +40,11 @@ export interface StoreTheme {
   header: { menu: MenuLink[]; sticky: boolean; uppercase: boolean; transparent: boolean }
   product_card: { aspect: 'portrait' | 'square'; uppercase: boolean; sale_badge: boolean; gap: 'none' | 'small' | 'large'; image_bg: string }
   collection: { banner: boolean; columns: 2 | 3 | 4 | 5 }
+  product_page: ProductPageSettings
   footer: { contact_title: string; contact_text: string; links: MenuLink[]; show_currency: boolean }
   sections: ThemeSection[]
+  /** Sections shown under the product on every product page. */
+  product_sections: ThemeSection[]
   /** Kept for older themes; the trust and banner sections now hold their own settings. */
   trust: Array<{ title: string; text: string }>
   banner: { title: string; text: string; image_url: string; link: string; label: string }
@@ -186,6 +205,11 @@ export const DEFAULT_THEME: StoreTheme = {
   header: { menu: [], sticky: true, uppercase: true, transparent: false },
   product_card: { aspect: 'portrait', uppercase: true, sale_badge: true, gap: 'small', image_bg: '#f4f4f5' },
   collection: { banner: true, columns: 4 },
+  product_page: {
+    image_aspect: 'portrait', show_brand: true, show_sale_badge: true, show_stock: true, show_quantity: true, show_buy_now: true,
+    show_description: true, description_title: 'Description', show_details: true, show_sku: true, show_tags: true,
+    show_related: true, related_title: 'You may also like',
+  },
   footer: { contact_title: 'Contact information', contact_text: '', links: [], show_currency: true },
   sections: [
     { id: 'hero', type: 'hero', enabled: true, settings: { ...SECTIONS.hero.defaults } },
@@ -193,6 +217,7 @@ export const DEFAULT_THEME: StoreTheme = {
     { id: 'new', type: 'new', enabled: true, settings: { ...SECTIONS.new.defaults } },
     { id: 'featured', type: 'featured', enabled: true, settings: { ...SECTIONS.featured.defaults } },
   ],
+  product_sections: [],
   trust: DEFAULT_TRUST,
   banner: { title: '', text: '', image_url: '', link: '/shop', label: 'Shop now' },
   whatsapp: '',
@@ -206,6 +231,13 @@ const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
 const links = (v: unknown): MenuLink[] => (Array.isArray(v) ? v : [])
   .filter((l): l is MenuLink => !!l && typeof l === 'object' && typeof (l as MenuLink).label === 'string')
   .map((l) => ({ label: l.label, link: str(l.link, '/') })).slice(0, 12)
+
+/** Sections saved by the editor ({id, type, enabled, settings}), defaults filled in. */
+function readSections(v: unknown): ThemeSection[] {
+  return (Array.isArray(v) ? v : []).filter((x): x is ThemeSection => !!x && typeof x === 'object' && (x as ThemeSection).type in SECTIONS)
+    .map((x) => ({ id: str(x.id, newId()), type: x.type, enabled: x.enabled !== false, settings: { ...SECTIONS[x.type].defaults, ...(x.settings ?? {}) } }))
+    .slice(0, 20)
+}
 
 /** The saved theme with defaults filled in; older saved themes are upgraded. */
 export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
@@ -248,6 +280,8 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
   const pc = (t.product_card ?? {}) as Partial<StoreTheme['product_card']>
   const col = (t.collection ?? {}) as Partial<StoreTheme['collection']>
   const f = (t.footer ?? {}) as Partial<StoreTheme['footer']>
+  const pp = (t.product_page ?? {}) as Partial<ProductPageSettings>
+  const dp = DEFAULT_THEME.product_page
   const legacyText = str(sf?.announcement).trim()
   const items = Array.isArray(a.items) ? a.items.filter((x): x is string => typeof x === 'string') : legacyText ? [legacyText] : []
   return {
@@ -267,8 +301,18 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
       gap: pc.gap === 'none' || pc.gap === 'large' ? pc.gap : 'small', image_bg: hex(pc.image_bg, DEFAULT_THEME.product_card.image_bg),
     },
     collection: { banner: bool(col.banner, true), columns: ([2, 3, 4, 5] as const).includes(col.columns as 2) ? (col.columns as 2 | 3 | 4 | 5) : 4 },
+    product_page: {
+      image_aspect: pp.image_aspect === 'square' ? 'square' : 'portrait',
+      show_brand: bool(pp.show_brand, dp.show_brand), show_sale_badge: bool(pp.show_sale_badge, dp.show_sale_badge),
+      show_stock: bool(pp.show_stock, dp.show_stock), show_quantity: bool(pp.show_quantity, dp.show_quantity),
+      show_buy_now: bool(pp.show_buy_now, dp.show_buy_now), show_description: bool(pp.show_description, dp.show_description),
+      description_title: str(pp.description_title, dp.description_title), show_details: bool(pp.show_details, dp.show_details),
+      show_sku: bool(pp.show_sku, dp.show_sku), show_tags: bool(pp.show_tags, dp.show_tags),
+      show_related: bool(pp.show_related, dp.show_related), related_title: str(pp.related_title, dp.related_title),
+    },
     footer: { contact_title: str(f.contact_title, DEFAULT_THEME.footer.contact_title), contact_text: str(f.contact_text), links: links(f.links), show_currency: bool(f.show_currency, true) },
     sections,
+    product_sections: readSections(t.product_sections),
     trust,
     banner,
     whatsapp: str(t.whatsapp),

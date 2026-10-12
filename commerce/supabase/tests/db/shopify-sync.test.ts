@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
-import { advanceOrder, createProduct, createStaff, inventory } from '../support/fixtures'
+import { advanceOrder, createProduct, createStaff, inventory, sellOn } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -10,6 +10,7 @@ async function shopify(db: Db, settings: Record<string, unknown> = {}) {
   await asSystem(db)
   await db.query(`update public.sales_channels set status = 'CONNECTED', settings = settings || $2::jsonb,
     locations = '[{"id":"gid://shopify/Location/1","name":"Warehouse","active":true}]' where id = $1`, [id, JSON.stringify(settings)])
+  await sellOn(db, 'SHOPIFY')
   return id
 }
 

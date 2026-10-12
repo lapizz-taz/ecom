@@ -49,6 +49,8 @@ interface Channel {
   id: string; platform: 'SHOPIFY' | 'WOOCOMMERCE'; name: string; shop_domain: string; status: string; auth_mode: string | null
   webhooks: Array<{ id: string | number; topic: string }>; settings: Record<string, unknown>
   catalog_imported_at?: string | null; first_sync_at?: string | null
+  /** From the store list: false when the merchant sells on another store (see channelInUse). */
+  in_use?: boolean
 }
 interface Secret {
   mode?: 'OAUTH' | 'CLIENT' | 'TOKEN' | 'KEYS'; client_id?: string; client_secret?: string; access_token?: string; api_secret?: string
@@ -129,6 +131,10 @@ async function credsOf(admin: SupabaseClient, c: Channel, force = false): Promis
   if (t.scopes.length) await rpc(admin, 'channel_update', { p_id: c.id, p: { scopes: t.scopes } })
   return next
 }
+
+/** Only the store picked under "Where do customers buy?" syncs; the merchant's other stores are paused. */
+const channelInUse = (admin: SupabaseClient, id: string) => rpc<boolean>(admin, 'channel_in_use', { p_channel_id: id })
+const PAUSED = 'This store is paused because your customers buy on another store. Choose it under "Where do customers buy?" to use it again.'
 
 async function channelOf(admin: SupabaseClient, id: string): Promise<Channel> {
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
@@ -455,6 +461,8 @@ async function webhook(req: Request, id: string): Promise<Response> {
   const admin = adminClient(merchantId)
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
   if (!c?.id || c.status === 'DISCONNECTED') return json(req, { ok: true, ignored: 'not connected' })
+  // A paused store's events are acknowledged and dropped, before any work.
+  if (!(await channelInUse(admin, c.id))) return json(req, { ok: true, ignored: 'paused' })
   let s = await secretOf(admin, c.id)
 
   if (c.platform === 'SHOPIFY') {
@@ -630,6 +638,8 @@ async function pluginEvent(req: Request, id: string): Promise<Response> {
   const c = await rpc<Channel | null>(admin, 'channel_get', { p_id: id })
   if (!c?.id || c.platform !== 'WOOCOMMERCE') throw new HttpError(404, 'Unknown store', 'NOT_FOUND')
   if (c.status === 'DISCONNECTED') throw new HttpError(410, 'This store is disconnected in Fullfilio. Connect it again there.', 'DISCONNECTED')
+  // Paused: nothing is recorded, and checkouts are never held up.
+  if (!(await channelInUse(admin, c.id))) return json(req, { ok: true, ignored: 'paused', decision: 'allow', reason: 'PAUSED' })
   const s = await secretOf(admin, c.id)
   const type = (req.headers.get('x-ffc-event') ?? '').slice(0, 40)
   const eventId = (req.headers.get('x-ffc-event-id') ?? '').slice(0, 80) || null
@@ -758,7 +768,7 @@ Deno.serve(
     // Scheduled runs go through every merchant, each with its own stores and keys.
     if (cron && input.action === 'sync') {
       return json(req, await forEachMerchant('channels', async (admin) => {
-        const list = (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED')
+        const list = (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED' && c.in_use !== false)
         const results = []
         for (const c of list) results.push(await syncChannel(admin, c, 2))
         // The hourly run also refreshes Shopify's abandoned checkouts (last 7 days).
@@ -859,9 +869,10 @@ Deno.serve(
           return json(req, { ok: true })
         }
         case 'sync': {
+          if (input.channel_id && !(await channelInUse(admin, input.channel_id))) throw new HttpError(422, PAUSED, 'PAUSED')
           const list = input.channel_id
             ? [await channelOf(admin, input.channel_id)]
-            : (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED')
+            : (await rpc<Channel[]>(admin, 'sales_channels_list')).filter((c) => c.status === 'CONNECTED' && c.in_use !== false)
           const results = []
           for (const c of list) results.push(await syncChannel(admin, c, input.days))
           if (input.channel_id && !results[0].ok) throw new HttpError(502, results[0].error ?? 'Sync failed', 'SYNC_FAILED')
@@ -873,9 +884,10 @@ Deno.serve(
           return json(req, { ...jobs, statuses })
         }
         case 'abandoned_sync': {
+          if (input.channel_id && !(await channelInUse(admin, input.channel_id))) throw new HttpError(422, PAUSED, 'PAUSED')
           const list = (input.channel_id ? [await channelOf(admin, input.channel_id)] : await rpc<Channel[]>(admin, 'sales_channels_list'))
-            .filter((c) => c.platform === 'SHOPIFY' && c.status !== 'DISCONNECTED')
-          if (!list.length) throw new HttpError(422, 'No Shopify store is connected', 'NOT_CONNECTED')
+            .filter((c) => c.platform === 'SHOPIFY' && c.status !== 'DISCONNECTED' && c.in_use !== false)
+          if (!list.length) throw new HttpError(422, 'No Shopify store is in use', 'NOT_CONNECTED')
           // Continuing a history import: one store per call, with its cursor.
           if (input.cursor && list.length > 1) throw new HttpError(422, 'Choose the store to continue', 'VALIDATION')
           const results = []
@@ -947,6 +959,7 @@ Deno.serve(
         }
         case 'retry_import': {
           const row = await rpc<{ channel_id: string; payload: NormalizedOrder }>(admin, 'channel_import_for_retry', { p_import_id: input.import_id, p_overrides: input.overrides, p_actor: actor })
+          if (!(await channelInUse(admin, row.channel_id))) throw new HttpError(422, PAUSED, 'PAUSED')
           const r = await ingest(admin, await channelOf(admin, row.channel_id), row.payload, 'RETRY')
           return json(req, r)
         }

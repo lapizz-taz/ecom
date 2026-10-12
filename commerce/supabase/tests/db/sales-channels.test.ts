@@ -1,12 +1,13 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asAnon, asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
-import { createProduct, createStaff, inventory, orderPayload } from '../support/fixtures'
+import { createProduct, createStaff, inventory, orderPayload, sellOn } from '../support/fixtures'
 
 afterAll(closePool)
 
 type Result = { status: string; order_id?: string; order_number?: string; error?: string; import_id?: string }
 
-async function channel(db: Db, platform = 'SHOPIFY', domain = 'mystore.myshopify.com'): Promise<string> {
+async function channel(db: Db, platform: 'SHOPIFY' | 'WOOCOMMERCE' = 'SHOPIFY', domain = 'mystore.myshopify.com'): Promise<string> {
+  await sellOn(db, platform)
   await asService(db)
   return value<string>(db, `select (public.channel_upsert($1, null)).id`, [JSON.stringify({ platform, shop_domain: domain, auth_mode: 'TOKEN' })])
 }
@@ -139,6 +140,7 @@ describe('sales channels: importing orders', () => {
         .toMatch(/stock here is now -2/)
       // The allowance ends with the import: an order taken here is still held to the stock.
       expect(await value(db, `select coalesce(current_setting('app.store_order_import', true), '')`)).toBe('')
+      await sellOn(db, 'OWN')
       await expectError(db, `select public._create_order($1, 'STOREFRONT')`,
         [JSON.stringify(orderPayload({ items: [{ variantId: ours.variantIds[0], quantity: 1 }] }))], /INSUFFICIENT_STOCK/)
     }))

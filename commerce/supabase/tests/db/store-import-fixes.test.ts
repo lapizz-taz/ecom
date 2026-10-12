@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, closePool, inTx, num, value, type Db } from '../support/db'
-import { createProduct, createStaff, inventory } from '../support/fixtures'
+import { createProduct, createStaff, inventory, sellOn } from '../support/fixtures'
 import { asUser } from '../support/db'
 
 afterAll(closePool)
@@ -8,6 +8,7 @@ afterAll(closePool)
 type Result = { status: string; order_id?: string; error?: string; import_id?: string }
 
 async function channel(db: Db, domain: string): Promise<string> {
+  await sellOn(db, 'SHOPIFY')
   await asService(db)
   return value<string>(db, `select (public.channel_upsert($1, null)).id`, [JSON.stringify({ platform: 'SHOPIFY', shop_domain: domain, auth_mode: 'TOKEN' })])
 }

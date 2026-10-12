@@ -39,4 +39,14 @@ describe('store theme', () => {
     expect(t.sections.map((s) => s.id)).toEqual([marquee.id, hero.id])
     expect(t.sections[1].settings.heading).toBe('Hi')
   })
+
+  it('product pages: everything shows until the store turns it off, and sections under the product are kept', () => {
+    expect(resolveTheme({}).product_page).toEqual(DEFAULT_THEME.product_page)
+    expect(resolveTheme({}).product_sections).toEqual([])
+    const trust = makeSection('trust')
+    const t = resolveTheme({ theme: { product_page: { show_sku: false, show_tags: false, image_aspect: 'square', related_title: 'More like this', show_buy_now: 'yes' },
+      product_sections: [trust, { id: 'x', type: 'unknown', enabled: true, settings: {} }] } as never })
+    expect(t.product_page).toMatchObject({ show_sku: false, show_tags: false, image_aspect: 'square', related_title: 'More like this', show_buy_now: true, show_description: true })
+    expect(t.product_sections.map((s) => s.id)).toEqual([trust.id])
+  })
 })

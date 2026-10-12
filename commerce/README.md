@@ -213,24 +213,24 @@ Seeded logins (password `Password123!` for all):
    $$);
 
    -- Shopify / WooCommerce: fetch recent orders (and Shopify fulfilments made by hand) every hour.
+   -- Only stores in use count: a merchant sells on one store at a time (Sales channels → Where do customers buy?).
    select cron.schedule('channels-sync', '37 * * * *', $$
      select net.http_post(
        url := 'https://<ref>.supabase.co/functions/v1/channels',
        headers := jsonb_build_object('Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
        body := '{"action": "sync"}'::jsonb)
-     where exists (select 1 from public.sales_channels where status = 'CONNECTED')
+     where public.channels_sync_due()
    $$);
 
-   -- Shopify fulfilment and stock jobs (with retries); calls the function only when a job is due.
+   -- Store fulfilment, stock and status jobs (with retries); calls the function only when a job of a store in use is due.
    select cron.schedule('channel-sync-jobs', '* * * * *', $$
      select net.http_post(
        url := 'https://<ref>.supabase.co/functions/v1/channels',
        headers := jsonb_build_object('Content-Type', 'application/json',
          'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')),
        body := '{"action": "process_jobs"}'::jsonb)
-     where exists (select 1 from public.channel_sync_jobs
-                   where (status = 'PENDING' and next_attempt_at <= now()) or (status = 'RUNNING' and locked_until < now()))
+     where public.channel_jobs_due()
    $$);
    ```
    Shopify app setup (scopes, redirect URL, protected customer data, stock sync): see

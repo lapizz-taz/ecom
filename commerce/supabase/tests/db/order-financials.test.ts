@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
-import { advanceOrder, createOrder, createProduct, createStaff } from '../support/fixtures'
+import { advanceOrder, createOrder, createProduct, createStaff, sellOn } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -19,6 +19,7 @@ async function wooStore(db: Db) {
     [JSON.stringify({ platform: 'WOOCOMMERCE', shop_domain: `https://w${Math.floor(Math.random() * 1e6)}.example.com`, auth_mode: 'KEYS' })])
   await asSystem(db)
   await db.query(`update public.sales_channels set status = 'CONNECTED', name = 'My Woo shop' where id = $1`, [id])
+  await sellOn(db, 'WOOCOMMERCE')
   return id
 }
 

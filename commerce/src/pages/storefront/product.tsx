@@ -9,6 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { QuantityStepper } from '@/features/cart/cart-drawer'
 import { useCart } from '@/features/cart/cart-store'
 import { PriceTag, ProductGrid } from '@/features/storefront/product-card'
+import { SectionFrame, ThemeSections } from '@/features/storefront/sections'
+import { useStoreTheme } from '@/features/storefront/theme-context'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import { getProduct, trackEvent } from '@/services/storefront'
@@ -28,6 +30,8 @@ export default function ProductPage() {
   const navigate = useNavigate()
   const add = useCart((s) => s.add)
   const setOpen = useCart((s) => s.setOpen)
+  const theme = useStoreTheme()
+  const pp = theme.product_page
   const { data: product, isLoading, error, refetch } = useQuery({ queryKey: ['product', slug], queryFn: () => getProduct(slug) })
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [quantity, setQuantity] = useState(1)
@@ -93,106 +97,119 @@ export default function ProductPage() {
     }
   }
 
+  const sku = variant?.sku ?? product.sku
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <nav className="mb-5 text-sm text-muted-foreground">
-        <Link to="/shop" className="hover:text-foreground">Shop</Link>
-        {product.category && <> / <Link to={`/collection/${product.category.slug}`} className="hover:text-foreground">{product.category.name}</Link></>}
-      </nav>
-      <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
-        <div className="space-y-3">
-          <div className="aspect-[4/5] overflow-hidden rounded-lg bg-muted">
-            {image && <img src={imageUrl(image.url, 1000)} alt={image.alt} className="size-full object-cover" />}
-          </div>
-          {product.images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto">
-              {product.images.map((img, i) => (
-                <button key={img.id} type="button" onClick={() => setImageIndex(i)} aria-label={`Show image ${i + 1}`}
-                  className={cn('size-16 shrink-0 overflow-hidden rounded-md border-2', i === imageIndex ? 'border-foreground' : 'border-transparent')}>
-                  <img src={imageUrl(img.url, 160)} alt="" className="size-full object-cover" loading="lazy" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          <div className="space-y-2">
-            {product.brand && <p className="text-sm text-muted-foreground">{product.brand}</p>}
-            <h1 className="text-2xl font-semibold sm:text-3xl">{product.name}</h1>
-            <div className="flex items-center gap-2">
-              <PriceTag price={variant?.price ?? product.price} compareAt={variant?.compare_at_price ?? product.compare_at_price} className="text-lg" />
-              {(variant?.compare_at_price ?? 0) > (variant?.price ?? 0) && <Badge variant="destructive">Sale</Badge>}
-            </div>
-            {product.short_description && <p className="text-sm leading-relaxed text-muted-foreground">{product.short_description}</p>}
-          </div>
-
-          {product.option_names.map((name) => (
-            <div key={name} className="space-y-2">
-              <p className="text-sm font-medium">{name}: <span className="font-normal text-muted-foreground">{selected[name]}</span></p>
-              <div className="flex flex-wrap gap-2">
-                {optionValues(product, name).map((value) => {
-                  const candidate = findVariant(product, { ...selected, [name]: value })
-                  const available = Boolean(candidate?.in_stock)
-                  return (
-                    <button key={value} type="button" onClick={() => setSelected((s) => ({ ...s, [name]: value }))}
-                      className={cn('min-w-12 rounded-md border px-3 py-1.5 text-sm transition-colors',
-                        selected[name] === value ? 'border-foreground bg-foreground text-background' : 'hover:border-foreground',
-                        !available && 'text-muted-foreground line-through decoration-1')}
-                      aria-pressed={selected[name] === value}>
-                      {value}
-                    </button>
-                  )
-                })}
+    <div>
+      <SectionFrame id="product-info" label="Product information">
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <nav className="mb-5 text-sm text-muted-foreground">
+            <Link to="/shop" className="hover:text-foreground">Shop</Link>
+            {product.category && <> / <Link to={`/collection/${product.category.slug}`} className="hover:text-foreground">{product.category.name}</Link></>}
+          </nav>
+          <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
+            <div className="space-y-3">
+              <div className={cn('overflow-hidden rounded-lg bg-muted', pp.image_aspect === 'square' ? 'aspect-square' : 'aspect-[4/5]')}>
+                {image && <img src={imageUrl(image.url, 1000)} alt={image.alt} className="size-full object-cover" />}
               </div>
+              {product.images.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto">
+                  {product.images.map((img, i) => (
+                    <button key={img.id} type="button" onClick={() => setImageIndex(i)} aria-label={`Show image ${i + 1}`}
+                      className={cn('size-16 shrink-0 overflow-hidden rounded-md border-2', i === imageIndex ? 'border-foreground' : 'border-transparent')}>
+                      <img src={imageUrl(img.url, 160)} alt="" className="size-full object-cover" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
 
-          <div className="text-sm">
-            {!variant ? <span className="text-muted-foreground">This combination is not available.</span>
-              : !variant.in_stock ? <span className="font-medium text-red-600">Out of stock</span>
-              : variant.available !== null && variant.available <= 5 ? <span className="font-medium text-amber-600">Only {variant.available} left</span>
-              : <span className="text-emerald-700">In stock</span>}
+            <div className="space-y-6">
+              <div className="space-y-2">
+                {pp.show_brand && product.brand && <p className="text-sm text-muted-foreground">{product.brand}</p>}
+                <h1 className="text-2xl font-semibold sm:text-3xl">{product.name}</h1>
+                <div className="flex items-center gap-2">
+                  <PriceTag price={variant?.price ?? product.price} compareAt={variant?.compare_at_price ?? product.compare_at_price} className="text-lg" />
+                  {pp.show_sale_badge && (variant?.compare_at_price ?? 0) > (variant?.price ?? 0) && <Badge variant="destructive">Sale</Badge>}
+                </div>
+                {product.short_description && <p className="text-sm leading-relaxed text-muted-foreground">{product.short_description}</p>}
+              </div>
+
+              {product.option_names.map((name) => (
+                <div key={name} className="space-y-2">
+                  <p className="text-sm font-medium">{name}: <span className="font-normal text-muted-foreground">{selected[name]}</span></p>
+                  <div className="flex flex-wrap gap-2">
+                    {optionValues(product, name).map((value) => {
+                      const candidate = findVariant(product, { ...selected, [name]: value })
+                      const available = Boolean(candidate?.in_stock)
+                      return (
+                        <button key={value} type="button" onClick={() => setSelected((s) => ({ ...s, [name]: value }))}
+                          className={cn('min-w-12 rounded-md border px-3 py-1.5 text-sm transition-colors',
+                            selected[name] === value ? 'border-foreground bg-foreground text-background' : 'hover:border-foreground',
+                            !available && 'text-muted-foreground line-through decoration-1')}
+                          aria-pressed={selected[name] === value}>
+                          {value}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Out of stock and impossible combinations always show; the rest follows the theme. */}
+              {(pp.show_stock || !variant || !variant.in_stock) && (
+                <div className="text-sm">
+                  {!variant ? <span className="text-muted-foreground">This combination is not available.</span>
+                    : !variant.in_stock ? <span className="font-medium text-red-600">Out of stock</span>
+                    : variant.available !== null && variant.available <= 5 ? <span className="font-medium text-amber-600">Only {variant.available} left</span>
+                    : <span className="text-emerald-700">In stock</span>}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                {pp.show_quantity && <QuantityStepper value={quantity} max={maxQty} onChange={(v) => setQuantity(Math.max(1, Math.min(v, maxQty)))} size="default" />}
+                <Button size="lg" className="flex-1" disabled={!canBuy} onClick={() => addToCart(false)}><ShoppingBag /> Add to cart</Button>
+              </div>
+              {pp.show_buy_now && <Button size="lg" variant="outline" className="w-full" disabled={!canBuy} onClick={() => addToCart(true)}><Zap /> Buy now</Button>}
+
+              {pp.show_description && product.description && (
+                <div className="space-y-2 border-t pt-5">
+                  {pp.description_title && <h2 className="font-medium">{pp.description_title}</h2>}
+                  <p className="text-sm leading-relaxed whitespace-pre-line text-muted-foreground">{product.description}</p>
+                </div>
+              )}
+              {pp.show_details && (product.shipping_note || product.warranty) && (
+                <div className="grid gap-3 border-t pt-5 text-sm">
+                  {product.shipping_note && <div><p className="font-medium">Shipping</p><p className="whitespace-pre-line text-muted-foreground">{product.shipping_note}</p></div>}
+                  {product.warranty && <div><p className="font-medium">Warranty</p><p className="whitespace-pre-line text-muted-foreground">{product.warranty}</p></div>}
+                </div>
+              )}
+              {((pp.show_sku && sku) || (pp.show_tags && product.tags.length > 0)) && (
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t pt-5 text-sm">
+                  {pp.show_sku && sku && <><dt className="text-muted-foreground">SKU</dt><dd>{sku}</dd></>}
+                  {pp.show_tags && product.tags.length > 0 && (
+                    <>
+                      <dt className="text-muted-foreground">Tags</dt>
+                      <dd className="flex flex-wrap gap-1">
+                        {product.tags.map((t) => <Link key={t} to={`/shop?tag=${encodeURIComponent(t)}`}><Badge variant="secondary">{t}</Badge></Link>)}
+                      </dd>
+                    </>
+                  )}
+                </dl>
+              )}
+            </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <QuantityStepper value={quantity} max={maxQty} onChange={(v) => setQuantity(Math.max(1, Math.min(v, maxQty)))} size="default" />
-            <Button size="lg" className="flex-1" disabled={!canBuy} onClick={() => addToCart(false)}><ShoppingBag /> Add to cart</Button>
-          </div>
-          <Button size="lg" variant="outline" className="w-full" disabled={!canBuy} onClick={() => addToCart(true)}><Zap /> Buy now</Button>
-
-          {product.description && (
-            <div className="space-y-2 border-t pt-5">
-              <h2 className="font-medium">Description</h2>
-              <p className="text-sm leading-relaxed whitespace-pre-line text-muted-foreground">{product.description}</p>
-            </div>
-          )}
-          {(product.shipping_note || product.warranty) && (
-            <div className="grid gap-3 border-t pt-5 text-sm">
-              {product.shipping_note && <div><p className="font-medium">Shipping</p><p className="whitespace-pre-line text-muted-foreground">{product.shipping_note}</p></div>}
-              {product.warranty && <div><p className="font-medium">Warranty</p><p className="whitespace-pre-line text-muted-foreground">{product.warranty}</p></div>}
-            </div>
-          )}
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t pt-5 text-sm">
-            <dt className="text-muted-foreground">SKU</dt><dd>{variant?.sku ?? product.sku ?? '—'}</dd>
-            {product.tags.length > 0 && (
-              <>
-                <dt className="text-muted-foreground">Tags</dt>
-                <dd className="flex flex-wrap gap-1">
-                  {product.tags.map((t) => <Link key={t} to={`/shop?tag=${encodeURIComponent(t)}`}><Badge variant="secondary">{t}</Badge></Link>)}
-                </dd>
-              </>
-            )}
-          </dl>
         </div>
-      </div>
+      </SectionFrame>
 
-      {product.related.length > 0 && (
-        <section className="mt-16">
-          <h2 className="mb-5 text-xl font-semibold">You may also like</h2>
-          <ProductGrid products={product.related} />
-        </section>
+      {pp.show_related && product.related.length > 0 && (
+        <SectionFrame id="product-related" label="Related products">
+          <section className="mx-auto max-w-6xl px-4 pb-12">
+            {pp.related_title && <h2 className="mb-5 text-xl font-semibold">{pp.related_title}</h2>}
+            <ProductGrid products={product.related} />
+          </section>
+        </SectionFrame>
       )}
+      <ThemeSections sections={theme.product_sections} />
     </div>
   )
 }

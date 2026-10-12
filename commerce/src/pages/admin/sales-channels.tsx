@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LogoMark } from '@/components/brand/logo'
 import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
-import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Pause, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { reportError } from '@/lib/monitoring'
@@ -61,7 +61,8 @@ export default function SalesChannelsPage() {
   }, [params, setParams, queryClient])
 
   const config = useStoreConfig()
-  const storeOpen = (config.data?.storefront.mode ?? 'OWN') === 'OWN'
+  const mode = config.data?.storefront.mode ?? 'OWN'
+  const storeOpen = mode === 'OWN'
   const live = (channels.data ?? []).filter((c) => c.status !== 'DISCONNECTED')
   const old = (channels.data ?? []).filter((c) => c.status === 'DISCONNECTED')
 
@@ -82,12 +83,15 @@ export default function SalesChannelsPage() {
         </SourceCard>
         {(['SHOPIFY', 'WOOCOMMERCE'] as const).map((p) => {
           const mine = live.filter((c) => c.platform === p)
+          // Only the store customers buy on runs; the other one is paused.
+          const paused = mine.length > 0 && mode !== p
           return (
             <SourceCard key={p} mark={PLATFORM[p].mark} title={PLATFORM[p].name}
               onOpen={manage ? () => setDialog(p) : undefined}
-              flow={<SyncFlow platform={p} live={mine.some((c) => c.status === 'CONNECTED')} />}
-              subtitle={mine.length ? `${mine.length} store${mine.length === 1 ? '' : 's'} connected` : 'Not connected'}
-              status={mine.length ? <Pill className={STATUS[mine.some((c) => c.status !== 'CONNECTED') ? 'ERROR' : 'CONNECTED'].className}>{mine.some((c) => c.status !== 'CONNECTED') ? 'Check' : 'Connected'}</Pill> : null}
+              flow={<SyncFlow platform={p} live={!paused && mine.some((c) => c.status === 'CONNECTED')} />}
+              subtitle={mine.length ? `${mine.length} store${mine.length === 1 ? '' : 's'} connected${paused ? ' · paused' : ''}` : 'Not connected'}
+              status={paused ? <Pill className="bg-muted text-muted-foreground">Paused</Pill>
+                : mine.length ? <Pill className={STATUS[mine.some((c) => c.status !== 'CONNECTED') ? 'ERROR' : 'CONNECTED'].className}>{mine.some((c) => c.status !== 'CONNECTED') ? 'Check' : 'Connected'}</Pill> : null}
               actions={<>
                 {manage && <Button size="sm" variant={mine.length ? 'outline' : 'default'} onClick={() => setDialog(p)}><Plug /> {mine.length ? 'Add store' : 'Connect'}</Button>}
                 {p === 'WOOCOMMERCE' && <Button size="sm" variant="outline" asChild><a href={WOO_PLUGIN_DOWNLOAD} download><Download /> Plugin</a></Button>}
@@ -119,14 +123,14 @@ export default function SalesChannelsPage() {
 }
 
 const MODES: Array<{ value: StoreMode; title: string; detail: string; mark: ReactNode }> = [
-  { value: 'OWN', title: 'Our store', detail: 'Customers order on this website.', mark: <LogoMark className="size-5" /> },
-  { value: 'SHOPIFY', title: 'Shopify', detail: 'You sell on Shopify. This website closes and sends visitors there.', mark: <ShopifyLogo className="size-5" /> },
-  { value: 'WOOCOMMERCE', title: 'WooCommerce', detail: 'You sell on your WordPress store. This website closes and sends visitors there.', mark: <WooLogo className="h-4 w-6" /> },
-  { value: 'OFF', title: 'No website', detail: 'Phone, Facebook and walk-in orders only. This website is closed.', mark: <Unplug className="size-4 text-muted-foreground" /> },
+  { value: 'OWN', title: 'Our store', detail: 'Customers order on this website. Shopify and WooCommerce pause.', mark: <LogoMark className="size-5" /> },
+  { value: 'SHOPIFY', title: 'Shopify', detail: 'You sell on Shopify. This website closes and sends visitors there; WooCommerce pauses.', mark: <ShopifyLogo className="size-5" /> },
+  { value: 'WOOCOMMERCE', title: 'WooCommerce', detail: 'You sell on your WordPress store. This website closes and sends visitors there; Shopify pauses.', mark: <WooLogo className="h-4 w-6" /> },
+  { value: 'OFF', title: 'No website', detail: 'Phone, Facebook and walk-in orders only. This website closes and connected stores pause.', mark: <Unplug className="size-4 text-muted-foreground" /> },
 ]
 
-/** Which store customers buy from. Anything but "Our store" closes this website (and the
- *  database refuses website orders), while Shopify / WooCommerce orders keep arriving. */
+/** Which store customers buy from. Only that one runs: anything but "Our store" closes this
+ *  website (the database refuses website orders), and the other connected stores pause. */
 function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesChannel[] }) {
   const queryClient = useQueryClient()
   const config = useStoreConfig()
@@ -141,8 +145,16 @@ function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesC
   const save = useMutation({
     mutationFn: () => setStoreMode(mode, platform ? (url.trim() || null) : null),
     onSuccess: (r) => {
-      toast.success(r.mode === 'OWN' ? 'Your website is taking orders' : 'Your website is closed to new orders')
+      const name = r.mode === 'SHOPIFY' ? 'Shopify' : r.mode === 'WOOCOMMERCE' ? 'WooCommerce' : null
+      toast.success(r.mode === 'OWN' ? 'Your website is taking orders. Shopify and WooCommerce are paused.'
+        : name ? `${name} is in use. Your website is closed and other stores are paused.` : 'Your website is closed and connected stores are paused.')
       void queryClient.invalidateQueries({ queryKey: ['store-config'] })
+      void queryClient.invalidateQueries({ queryKey: ['sales-channels'] })
+      // The store just picked catches up on the orders it missed while paused.
+      for (const c of channels.filter((x) => x.platform === r.mode && x.status === 'CONNECTED')) {
+        syncChannel(c.id, 7).then(() => queryClient.invalidateQueries({ queryKey: ['sales-channels'] }))
+          .catch((e) => reportError(e, { scope: 'store-mode-catch-up', channel: c.id }))
+      }
     },
     onError: (e) => toast.error((e as Error).message),
   })
@@ -154,7 +166,7 @@ function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesC
       <CardContent className="space-y-3">
         <div>
           <p className="font-semibold">Where do customers buy?</p>
-          <p className="text-sm text-muted-foreground">Pick one. You can change it any time; orders already placed are not affected.</p>
+          <p className="text-sm text-muted-foreground">Pick one. Only that one runs; the others pause until you pick them. Orders already placed are not affected.</p>
         </div>
         <div role="radiogroup" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {MODES.map((m) => (
@@ -280,7 +292,8 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
     },
   })
   const toggle = useMutation({ mutationFn: (v: boolean) => saveChannelSettings(c.id, { import_orders: v }), onSuccess: refresh })
-  const checks = c.last_test?.checks ?? []
+  const paused = c.in_use === false && c.status !== 'PENDING'
+  const checks = paused ? [] : c.last_test?.checks ?? []
   const hookFailed = checks.some((x) => x.key === 'webhooks' && x.status === 'fail')
   const busy = test.isPending || hooks.isPending || sync.isPending
 
@@ -290,7 +303,7 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
         <div className="flex flex-wrap items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg border bg-card">{PLATFORM[c.platform].mark}</span>
           <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-2 font-semibold">{c.name} <Pill className={STATUS[c.status].className}>{STATUS[c.status].label}</Pill></p>
+            <p className="flex flex-wrap items-center gap-2 font-semibold">{c.name} {paused ? <Pill className="bg-muted text-muted-foreground">Paused</Pill> : <Pill className={STATUS[c.status].className}>{STATUS[c.status].label}</Pill>}</p>
             <p className="truncate text-xs text-muted-foreground">{PLATFORM[c.platform].name} · {c.shop_domain}{c.currency ? ` · ${c.currency}` : ''}</p>
             {c.platform === 'WOOCOMMERCE' && <PluginLine c={c} />}
           </div>
@@ -310,13 +323,19 @@ function ChannelCard({ c, manage }: { c: SalesChannel; manage: boolean }) {
         </dl>
 
         {c.status === 'PENDING' && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Waiting for you to approve on {PLATFORM[c.platform].name}…</p>}
+        {paused && (
+          <p className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <Pause className="mt-0.5 size-4 shrink-0" />
+            Paused: your customers buy on another store, so nothing syncs with this one (orders, stock, status). Choose {PLATFORM[c.platform].name} under “Where do customers buy?” to use it again; it then catches up on the last 7 days.
+          </p>
+        )}
         {checks.length > 0 && <Checklist checks={checks} />}
         {c.last_error && c.status === 'ERROR' && !checks.length && <p className="flex items-center gap-2 text-sm"><AlertTriangle className="size-4" /> {c.last_error}</p>}
 
         {manage && (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => test.mutate()} disabled={busy}>{test.isPending ? <Spinner /> : <Stethoscope />} Test connection</Button>
-            <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={busy || c.status === 'PENDING'}>{sync.isPending ? <Spinner /> : <RefreshCw />} Fetch last 7 days</Button>
+            <Button size="sm" variant="outline" onClick={() => sync.mutate()} disabled={busy || c.status === 'PENDING' || paused}>{sync.isPending ? <Spinner /> : <RefreshCw />} Fetch last 7 days</Button>
             {hookFailed && <Button size="sm" onClick={() => hooks.mutate()} disabled={busy}>{hooks.isPending ? <Spinner /> : <Webhook />} Fix webhooks</Button>}
             {c.status === 'CONNECTED' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/sync?channel=${c.id}`}><ArrowLeftRight /> Stock & products</Link></Button>}
             {c.platform === 'WOOCOMMERCE' && c.status !== 'PENDING' && <Button size="sm" variant="outline" asChild><Link to={`/admin/store/sync?channel=${c.id}&tab=plugin`}><PlugZap /> Plugin</Link></Button>}
