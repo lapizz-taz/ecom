@@ -110,15 +110,10 @@ Supabase. Two differences:
 - `auth.mfa_factors` is empty: second factors are kept by Clerk, and the app never
   enrolled Supabase ones, so the access review shows 0 as it does today.
 
-## Still to do before the switch-over
+## Switch-over
 
-1. The two items above.
-2. Sign-in fully on Clerk tokens in the pages, and live updates (3 places use
-   Supabase Realtime) on the Worker.
-3. Copy the data: export from Supabase, import here, compare counts and money
-   totals; Vault credentials move machine to machine (never shown), with approval.
-4. Switch over on Workers Paid ($5 a month); Supabase stays read-only as the way
-   back until the new setup has run cleanly.
+Sign-in sessions, live updates, the scheduled jobs and the data copy are built too;
+the steps, who does what, and the way back are in [SWITCH-OVER.md](SWITCH-OVER.md).
 
 ## Commands
 

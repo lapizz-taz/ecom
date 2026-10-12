@@ -8,7 +8,12 @@
 
 const read = (value: unknown) => String(value ?? '').trim()
 
-const supabaseUrl = read(import.meta.env.VITE_SUPABASE_URL).replace(/\/+$/, '')
+// "cloudflare" after the switch-over: the database (rest, auth, realtime) answers on the
+// site's own address, the Worker; otherwise Supabase's (VITE_SUPABASE_URL).
+const databaseBackend = read(import.meta.env.VITE_DATABASE_BACKEND)
+const supabaseUrl = (databaseBackend === 'cloudflare' && typeof window !== 'undefined'
+  ? window.location.origin
+  : read(import.meta.env.VITE_SUPABASE_URL)).replace(/\/+$/, '')
 const supabaseAnonKey = read(import.meta.env.VITE_SUPABASE_ANON_KEY)
 const superAdminPath = read(import.meta.env.VITE_SUPER_ADMIN_PATH)
 const clerkKey = read(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
