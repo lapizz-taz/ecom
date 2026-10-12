@@ -15516,6 +15516,10 @@ export type Database = {
         }
         Returns: Json
       }
+      storefront_resolve_preview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       storefront_resolve_slug: {
         Args: {
           p_slug: string

@@ -34,7 +34,23 @@ function storeSlugInPath(pathname = typeof location === 'undefined' ? '' : locat
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const cacheKey = () => (typeof location === 'undefined' ? 'site:v2' : `site:v2:${location.host}:${storeSlugInPath() ?? ''}`)
 
+/**
+ * True inside the theme editor's preview frame: a frame on this site opened
+ * with ?theme_preview=1 (kept for the pages the frame moves to). The frame
+ * shows the signed-in staff's own store, so it never uses or fills the
+ * remembered answer for this address.
+ */
+export function isPreviewFrame(): boolean {
+  if (typeof window === 'undefined' || window.parent === window) return false
+  try {
+    return new URLSearchParams(window.location.search).has('theme_preview') || !!sessionStorage.getItem('theme_preview')
+  } catch {
+    return false
+  }
+}
+
 function readCache(): SiteInfo | null {
+  if (isPreviewFrame()) return null
   try {
     const value = JSON.parse(localStorage.getItem(cacheKey()) ?? 'null') as SiteInfo | null
     if (!value || !['store', 'platform', 'missing'].includes(value.kind)) return null
@@ -46,6 +62,7 @@ function readCache(): SiteInfo | null {
 }
 
 function writeCache(site: SiteInfo) {
+  if (isPreviewFrame()) return
   try {
     localStorage.setItem(cacheKey(), JSON.stringify({ kind: site.kind, merchant_id: site.merchant_id ?? null, name: site.name, slug: site.slug ?? null }))
   } catch {
@@ -101,10 +118,11 @@ let resolving: Promise<SiteInfo> | null = null
  * Asks what this web address shows. Uses the remembered answer straight away
  * when there is one and refreshes it in the background; if the answer changed
  * (a store was moved or switched off), the page reloads once with the new one.
+ * The theme editor's preview frame asks for the staff's own store instead.
  */
-export function resolveSite(lookup: (host: string, slug: string | null) => Promise<SiteInfo | null>): Promise<SiteInfo> {
+export function resolveSite(lookup: (host: string, slug: string | null, preview: boolean) => Promise<SiteInfo | null>): Promise<SiteInfo> {
   const remembered = site
-  resolving ??= lookup(location.host, storeSlugInPath()).then((found) => {
+  resolving ??= lookup(location.host, storeSlugInPath(), isPreviewFrame()).then((found) => {
     const next: SiteInfo = found && found.kind ? found : found?.merchant_id ? { ...found, kind: 'store' } : { kind: 'platform' }
     if (next.kind === 'store' && !(next.merchant_id && UUID.test(next.merchant_id))) next.kind = 'missing'
     site = next

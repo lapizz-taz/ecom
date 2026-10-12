@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
 import { asAnon, asSystem, asUser, closePool, expectError, inTx, value, type Db } from '../support/db'
-import { createPlatformStaff, createStaff } from '../support/fixtures'
+import { createCustomerUser, createPlatformStaff, createStaff } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -76,6 +76,24 @@ describe('store addresses', () => {
       await db.query(`update public.settings set value = value || '{"mode":"SHOPIFY"}' where merchant_id = $1 and key = 'storefront'`, [MERCHANT_1])
       await asAnon(db, null)
       expect(await value<Record<string, any>>(db, `select public.storefront_resolve_slug($1)`, [slug])).toEqual({ kind: 'missing' })
+    }))
+
+  it('staff preview their own store in the theme editor whatever its mode, even without a store name', () =>
+    inTx(async (db) => {
+      const owner = await createStaff(db, 'OWNER')
+      await asSystem(db, MERCHANT_1)
+      await db.query(`update public.settings set value = value || '{"mode":"SHOPIFY"}' where merchant_id = $1 and key = 'storefront'`, [MERCHANT_1])
+      await db.query(`update public.merchants set slug = null where id = $1`, [MERCHANT_1])
+      await asUser(db, owner)
+      expect(await value<Record<string, any>>(db, `select public.storefront_resolve_preview()`))
+        .toMatchObject({ kind: 'store', merchant_id: MERCHANT_1, slug: null, redirect_to: null })
+      // The store itself stays closed to shoppers.
+      await asAnon(db, null)
+      expect(await value<Record<string, any>>(db, `select public.storefront_resolve_slug('isolation')`)).toEqual({ kind: 'missing' })
+      await expectError(db, `select public.storefront_resolve_preview()`, [], /permission denied/i)
+      const customer = await createCustomerUser(db)
+      await asUser(db, customer)
+      await expectError(db, `select public.storefront_resolve_preview()`, [], /PERMISSION_DENIED/)
     }))
 
   it('serves subdomains under the platform domain, and the main address shows the website once switched', () =>

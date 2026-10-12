@@ -45,6 +45,7 @@ export default function StoreThemePage() {
   const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
   const [inspect, setInspect] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const history = useRef<{ past: Storefront[]; future: Storefront[]; last: number }>({ past: [], future: [], last: 0 })
   const [, bump] = useState(0)
   const draft = s.draft as Storefront | undefined
@@ -53,7 +54,9 @@ export default function StoreThemePage() {
   const categories = useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
   const firstProduct = useQuery({ queryKey: ['products', 'editor-first'], queryFn: () => listProducts({ limit: 1, sort: 'newest' }), staleTime: 5 * 60_000 })
   const firstCategory = categories.data?.find((c) => c.product_count > 0)?.slug
-  // The preview opens the store under /s/<name> on this site (same origin, so the editor can talk to it).
+  // The preview opens the staff's own store at this site's root (?theme_preview=1 resolves it through
+  // storefront_resolve_preview): same origin, so the editor can talk to it, and it works while the
+  // store is off or selling on Shopify / WooCommerce, when no store address is published.
   const store = useStoreAddress()
   const path = page === 'home' ? '/' : page === 'collection' ? (firstCategory ? `/collection/${firstCategory}` : '/shop')
     : page === 'product' ? (firstProduct.data?.items[0] ? `/product/${firstProduct.data.items[0].slug}` : '/shop') : '/cart'
@@ -68,6 +71,7 @@ export default function StoreThemePage() {
       if (e.origin !== window.location.origin) return
       if (e.data?.type === 'theme-preview-ready') post({ type: 'theme-preview', storefront: draft, selected, inspect })
       if (e.data?.type === 'theme-section-click') { setSelected(e.data.id); setTab('sections') }
+      if (e.data?.type === 'theme-preview-error') setPreviewError(typeof e.data.message === 'string' && e.data.message ? e.data.message : 'Unknown error')
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -151,7 +155,13 @@ export default function StoreThemePage() {
 
         <div className="mx-auto flex min-w-0 items-center gap-2">
           <span className="hidden items-center gap-1.5 font-medium sm:flex"><Store className="size-3.5 text-zinc-500" />{config?.store.name ?? 'Store'}</span>
-          <span className="hidden rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800 sm:inline dark:bg-emerald-500/15 dark:text-emerald-300">Active</span>
+          {store.state && (
+            <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline', store.state.online
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+              : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300')}>
+              {store.state.label}
+            </span>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
               {PAGES.find((p) => p.value === page)?.icon}{PAGES.find((p) => p.value === page)?.label}<ChevronDown className="size-3.5 text-zinc-500" />
@@ -200,10 +210,15 @@ export default function StoreThemePage() {
 
         {/* Preview */}
         <div className="min-h-[50vh] min-w-0 flex-1 overflow-auto p-2 lg:p-3">
+          {previewError && (
+            <div role="alert" className="mx-auto mb-2 max-w-[1400px] rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              The preview could not load your store: {previewError}
+            </div>
+          )}
           <div className={cn('mx-auto h-full overflow-hidden rounded-lg bg-white shadow-[0_0_0_1px_rgb(0_0_0/.08),0_4px_16px_rgb(0_0_0/.06)] transition-[width] duration-300',
             device === 'mobile' ? 'w-[390px]' : device === 'full' ? 'w-full' : 'w-full max-w-[1400px]')}>
-            <iframe ref={frame} key={path} title="Store preview" src={`${store.path ?? ''}${path}${path.includes('?') ? '&' : '?'}theme_preview=1`} className="size-full min-h-[50vh]"
-              onLoad={() => post({ type: 'theme-preview', storefront: draft, selected, inspect })} />
+            <iframe ref={frame} key={path} title="Store preview" src={`${path}${path.includes('?') ? '&' : '?'}theme_preview=1`} className="size-full min-h-[50vh]"
+              onLoad={() => { setPreviewError(null); post({ type: 'theme-preview', storefront: draft, selected, inspect }) }} />
           </div>
         </div>
 
