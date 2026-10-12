@@ -213,7 +213,13 @@ export class Compiler implements SqlHelp {
   }
 
   private member(q: Query, scope: QScope, top: boolean): Compiled {
-    const c = this.query(q, scope, top)
+    this.members++
+    let c: Compiled
+    try {
+      c = this.query(q, scope, top)
+    } finally {
+      this.members--
+    }
     const own = q.k !== 'values' && (q.orderBy.length > 0 || q.limit !== undefined || q.offset !== undefined)
     return own || q.k === 'setop' ? { sql: `SELECT * FROM (${c.sql})`, cols: c.cols } : c
   }
@@ -232,6 +238,7 @@ export class Compiler implements SqlHelp {
     for (const c of w.ctes) {
       if (c.q.k !== 'select' && c.q.k !== 'setop' && c.q.k !== 'values') throw new NotSupported('a data-modifying WITH query')
       const sqlName = `_cte${++this.cteCount}_${c.name}`
+      this.cteNames.add(c.name)
       if (w.recursive && c.q.k === 'setop') {
         // The non-recursive term fixes the columns; then the whole may refer to itself.
         const first = this.query(c.q.l, scope)
@@ -309,6 +316,10 @@ export class Compiler implements SqlHelp {
     const groupBy = q.groupBy.map((g) => this.groupItem(g, scope, q.items, items))
     const having = q.having ? this.cond(q.having, scope) : null
     const orderBy = q.orderBy.map((o) => this.orderItem(o, scope, items, outName))
+    // Rows that tie on ORDER BY, or a query without one, come back in insertion order, as
+    // Postgres returns them from a table scan in practice (SQLite would follow whichever index it picks).
+    const tie = top && (orderBy.length || !this.members) && !q.groupBy.length && !q.distinct && !q.items.some((it) => hasAggregate(it.e)) ? this.firstTable(q.from[0]) : null
+    if (tie) orderBy.push({ expr: `${qi(tie)}.rowid`, ref: `${qi(tie)}.rowid`, dir: '' })
     const conds = [where, ...scope.extraWhere].filter(Boolean)
     const tail = `${from.length ? ` FROM ${from.join(', ')}` : ''}${conds.length ? ` WHERE ${conds.join(' AND ')}` : ''}${
       groupBy.length ? ` GROUP BY ${groupBy.join(', ')}` : ''}${having ? ` HAVING ${having}` : ''}`
@@ -333,6 +344,18 @@ export class Compiler implements SqlHelp {
     sql += this.limitSql(q.limit, q.offset, scope)
     return { sql: withSql + sql, cols: items.map((it) => ({ name: it.name, t: it.t })) }
   }
+
+  /** The alias of the leftmost base table of a FROM item (for ORDER BY tie-breaks). */
+  private firstTable(f: FromItem | undefined): string | null {
+    if (!f) return null
+    if (f.k === 'join') return this.firstTable(f.l)
+    if (f.k === 'table' && (!f.schema || f.schema === 'public') && tableMeta(f.name) && !this.cteNames.has(f.name)) return f.alias ?? f.name
+    return null
+  }
+
+  private cteNames = new Set<string>()
+  /** Depth inside UNION/INTERSECT/EXCEPT members, which cannot carry their own ORDER BY. */
+  private members = 0
 
   private groupItem(g: Expr, scope: QScope, raw: SelItem[], items: Array<{ sql: string; name: string }>): string {
     if (g.k === 'lit' && typeof g.v === 'number') return items[g.v - 1]?.sql ?? String(g.v)

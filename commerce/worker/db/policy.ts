@@ -139,7 +139,8 @@ export function shadow(sql: string, ctx: Context, role = roleOf(ctx)): string[] 
       const cond = condition(name, ctx, 'SELECT', 'using', role)
       if (cond !== '1') {
         for (const dep of mentioned(cond)) if (dep !== name) visit(dep)
-        ctes.push(`${quoteId(name)} AS NOT MATERIALIZED (SELECT * FROM main.${quoteId(name)} AS ${quoteId(name)} WHERE ${cond})`)
+        // rowid stays visible so queries can break ORDER BY ties in insertion order, as Postgres does
+        ctes.push(`${quoteId(name)} AS NOT MATERIALIZED (SELECT rowid AS rowid, * FROM main.${quoteId(name)} AS ${quoteId(name)} WHERE ${cond})`)
       }
     }
     active.delete(name)
