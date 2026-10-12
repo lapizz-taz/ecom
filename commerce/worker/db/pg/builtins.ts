@@ -748,7 +748,8 @@ export const builtins: Record<string, Builtin> = {
       const flat = (a[0] as unknown[]).flat(Infinity)
       return flat.filter((v) => v !== null || (a[2] !== undefined && a[2] !== null)).map((v) => (v === null ? str(a[2]) : toText(v, et))).join(str(a[1]))
     },
-    sql: (a) => `(SELECT group_concat(value, ${a[1].sql}) FROM json_each(${a[0].sql}) WHERE value IS NOT NULL)`,
+    // an empty array gives '' (a NULL array NULL); NULL elements are skipped unless a replacement is given
+    sql: (a) => `(CASE WHEN ${a[0].sql} IS NULL OR ${a[1].sql} IS NULL THEN NULL ELSE coalesce((SELECT group_concat(${a[2] ? `coalesce(value, ${a[2].sql})` : 'value'}, ${a[1].sql}) FROM json_each(${a[0].sql})${a[2] ? '' : ' WHERE value IS NOT NULL'}), '') END)`,
   },
 
   // ---- conditionals (evaluated lazily by the evaluator; these are for SQL)

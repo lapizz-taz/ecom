@@ -315,6 +315,8 @@ function findConflict(engine: Engine, st: Insert, t: TableMeta, values: Values):
     candidates = [{ cols: t.pk }, ...t.unique.map((u) => ({ cols: u })), ...(t.partialUnique ?? []).map((p) => ({ cols: p.columns, where: p.where }))]
   }
   for (const cand of candidates) {
+    // a partial unique index only covers new rows that meet its WHERE
+    if (cand.where && !meetsPredicate(engine, t, values, cand.where)) continue
     const probe: SqlValue[] = []
     let complete = true
     for (const col of cand.cols) {
@@ -333,6 +335,20 @@ function findConflict(engine: Engine, st: Insert, t: TableMeta, values: Values):
     if (found) return found
   }
   return null
+}
+
+/** Whether a row about to be inserted meets a partial index's predicate (SQLite SQL over the table's columns). */
+function meetsPredicate(engine: Engine, t: TableMeta, values: Values, predicate: string): boolean {
+  const params: SqlValue[] = []
+  const cells = Object.entries(t.columns).map(([c, meta]) => {
+    let v = Object.hasOwn(values, c) ? values[c] : undefined
+    if (v === undefined && meta.fill && 'ctx' in meta.fill) v = meta.fill.ctx === 'merchant' ? engine.ctx.merchantId() : engine.ctx.uid
+    // columns left out take their default, as the row will
+    if (v === undefined) return `${meta.default ? `(${meta.default})` : 'NULL'} AS ${qi(c)}`
+    params.push(encodeSql(v, columnType(meta)))
+    return `?${params.length} AS ${qi(c)}`
+  })
+  return engine.sql.all(`SELECT 1 FROM (SELECT ${cells.join(', ')}) WHERE (${predicate})`, params).length > 0
 }
 
 /** ON CONFLICT (a, lower(b)): the existing row whose target expressions equal the new row's. */
