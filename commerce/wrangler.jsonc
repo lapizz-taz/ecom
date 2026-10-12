@@ -1,0 +1,59 @@
+// Fullfilio on Cloudflare Workers (docs/CLOUDFLARE.md walks through the setup).
+//
+// One Worker serves the site from Workers Static Assets (the Vite build in
+// ./dist, free and not counted as Worker requests) and runs the backend
+// functions for the paths in run_worker_first. The database stays Supabase
+// Postgres. Secrets are never written here: set them in the dashboard
+// (Worker → Settings → Variables and Secrets) or with `npx wrangler secret put`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fullfilio",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  // Variables set in the dashboard (FUNCTIONS_URL, PLATFORM_URL, …) survive deploys.
+  "keep_vars": true,
+  "upload_source_maps": true,
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Only these paths start the Worker; every other request is a static file or the app shell.
+    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*"]
+  },
+
+  "vars": {
+    "SUPABASE_URL": "https://tcjdgiohmhjqppzwoztj.supabase.co",
+    // Long-running functions stay on Supabase Edge Functions while the Worker is on
+    // Workers Free (10 ms CPU, 50 outgoing requests per call). On Workers Paid set "".
+    "SUPABASE_FUNCTIONS": "channels,courier,meta-ads,ad-platforms,notifications-dispatch"
+  },
+
+  // Public, rebuildable cache entries only (Clerk's signing keys). Never orders, stock or money.
+  "kv_namespaces": [{ "binding": "CACHE", "id": "bd50f9bfc46e407097966b4317f0a33f" }],
+
+  // Product images, theme images and courier statements (Supabase Storage before).
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "fullfilio-files" }],
+
+  // After the domain is on Cloudflare (docs/CLOUDFLARE.md, step 6), add for example:
+  // "routes": [
+  //   { "pattern": "example.com", "custom_domain": true },
+  //   { "pattern": "www.example.com", "custom_domain": true }
+  // ],
+
+  "env": {
+    // `npx wrangler deploy --env staging`: its own Worker, cache and files.
+    // Point SUPABASE_URL at a separate (free) Supabase project, never the live one.
+    "staging": {
+      "name": "fullfilio-staging",
+      // SUPABASE_URL is set in the dashboard (it is kept across deploys).
+      "vars": { "SUPABASE_FUNCTIONS": "" },
+      "kv_namespaces": [{ "binding": "CACHE", "id": "e28a2bd7b9114f41a72f7ee9defd3b5c" }],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "fullfilio-files-staging" }]
+    }
+  }
+}

@@ -25,8 +25,17 @@ export interface Diagnosis {
   issues: DomainIssue[]
 }
 
-/** Where a domain must point. Vercel's current values first, older ones still accepted. */
-export const TARGET = { a: '76.76.21.21', cname: 'cname.vercel-dns.com' }
+/**
+ * Where a store's domain must point. On Vercel: an A record (apex) or a CNAME
+ * to Vercel. On Cloudflare (Cloudflare for SaaS): a CNAME to our own target
+ * hostname, also at the apex where the DNS provider allows it (CNAME
+ * flattening / ALIAS); Cloudflare has no fixed address for an A record.
+ */
+export interface HostingTarget { provider: 'vercel' | 'cloudflare'; a: string | null; cname: string }
+export const VERCEL_TARGET: HostingTarget = { provider: 'vercel', a: '76.76.21.21', cname: 'cname.vercel-dns.com' }
+export const cloudflareTarget = (cname: string): HostingTarget => ({ provider: 'cloudflare', a: null, cname: cname.toLowerCase().replace(/\.$/, '') })
+/** Header every page of the site carries on Cloudflare (public/_headers), so a check can tell it is our store answering. */
+export const STORE_HEADER = 'x-fullfilio'
 const VERCEL_A = [/^76\.76\.21\.\d+$/, /^216\.198\.79\.\d+$/, /^64\.29\.17\.\d+$/, /^66\.33\.60\.\d+$/]
 const VERCEL_CNAME = [/(^|\.)vercel-dns\.com\.?$/i, /(^|\.)vercel-dns-\d+\.com\.?$/i, /(^|\.)vercel\.app\.?$/i]
 
@@ -106,18 +115,28 @@ export const RESOLVERS = [
 
 const only = (answers: DohAnswer[] | null, type: RecordType) => (answers ?? []).filter((a) => a.type === TYPE_CODE[type]).map((a) => a.data)
 
-/** True when these answers (the CNAME chain and/or addresses) lead to the store. */
-function answersPoint(kind: 'apex' | 'subdomain', answers: DohAnswer[] | null): boolean {
-  if (!answers?.length) return false
-  const cnames = only(answers, 'CNAME')
-  const as = only(answers, 'A')
-  if (cnames.some(isVercelCname)) return true
-  // A subdomain may also use A records (some providers cannot set a CNAME).
-  return as.length > 0 && as.every(isVercelA) && (kind === 'apex' || cnames.length === 0)
+/** The CNAME / A checks for one hosting target. */
+function matchers(target: HostingTarget) {
+  if (target.provider === 'vercel') return { cname: isVercelCname, a: isVercelA }
+  return { cname: (host: string) => host.toLowerCase().replace(/\.$/, '') === target.cname, a: (_ip: string) => false }
 }
 
-export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Date; vercelPointed?: boolean | null } = {}): Promise<Diagnosis> {
+/** True when these answers (the CNAME chain and/or addresses) lead to the store. */
+function answersPoint(kind: 'apex' | 'subdomain', answers: DohAnswer[] | null, target: HostingTarget = VERCEL_TARGET): boolean {
+  if (!answers?.length) return false
+  const m = matchers(target)
+  const cnames = only(answers, 'CNAME')
+  const as = only(answers, 'A')
+  if (cnames.some(m.cname)) return true
+  // A subdomain may also use A records (some providers cannot set a CNAME).
+  return as.length > 0 && as.every(m.a) && (kind === 'apex' || cnames.length === 0)
+}
+
+export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Date; vercelPointed?: boolean | null; target?: HostingTarget } = {}): Promise<Diagnosis> {
   const fetcher = opts.fetcher ?? fetch
+  const target = opts.target ?? VERCEL_TARGET
+  const onCloudflare = target.provider === 'cloudflare'
+  const m = matchers(target)
   const kind = domainKind(domain)
   const [a, aaaa, cname, caa, apexCaa] = await Promise.all([
     doh(fetcher, RESOLVERS[0].url, domain, 'A'),
@@ -137,7 +156,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     try {
       const res = await fetcher(`https://${domain}/`, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(8_000) })
       await res.body?.cancel().catch(() => undefined)
-      const ours = res.headers.has('x-vercel-id') || /vercel/i.test(res.headers.get('server') ?? '')
+      const ours = onCloudflare ? res.headers.has(STORE_HEADER) : res.headers.has('x-vercel-id') || /vercel/i.test(res.headers.get('server') ?? '')
       return { ok: true, status: res.status, served_by_store: ours, detail: ours ? 'TLS certificate provisioned for secure connections' : 'HTTPS works, but another server answered (not the store)' }
     } catch (error) {
       const msg = String((error as Error)?.message ?? error)
@@ -149,34 +168,38 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const servedByUs = tls.served_by_store === true
   const records: FoundRecord[] = []
   for (const v of cnameValues) {
-    const ok = isVercelCname(v)
-    records.push({ type: 'CNAME', name, value: v, ok, note: ok ? undefined : `Should be ${TARGET.cname}` })
+    const ok = m.cname(v)
+    records.push({ type: 'CNAME', name, value: v, ok, note: ok ? undefined : `Should be ${target.cname}` })
   }
   // With a CNAME, the A/AAAA answers belong to its target, not to this name.
   const own = cnameValues.length === 0
   for (const v of own ? aValues : []) {
-    const ok = isVercelA(v) || (isCloudflare(v) && servedByUs)
-    records.push({ type: 'A', name, value: v, ok, note: ok ? (isCloudflare(v) ? 'Cloudflare proxy' : undefined) : isCloudflare(v) ? 'Cloudflare proxy (not reaching the store)' : `Should be ${TARGET.a}` })
+    const ok = m.a(v) || (isCloudflare(v) && servedByUs)
+    const wrong = target.a ? `Should be ${target.a}` : `Use a CNAME (or ALIAS) to ${target.cname} instead`
+    const note = onCloudflare
+      ? (ok ? 'Cloudflare (CNAME flattening)' : isCloudflare(v) ? 'Another Cloudflare site answers here, not the store' : wrong)
+      : (ok ? (isCloudflare(v) ? 'Cloudflare proxy' : undefined) : isCloudflare(v) ? 'Cloudflare proxy (not reaching the store)' : wrong)
+    records.push({ type: 'A', name, value: v, ok, note })
   }
   for (const v of own ? aaaaValues : []) {
     const ok = isCloudflare(v) && servedByUs
-    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? 'Cloudflare proxy' : 'Remove: the store has no IPv6 address' })
+    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Cloudflare (CNAME flattening)' : 'Cloudflare proxy') : 'Remove: the store has no IPv6 address' })
   }
 
-  const pointedByDns = answersPoint(kind, a) || cnameValues.some(isVercelCname) || (proxied && servedByUs)
+  const pointedByDns = answersPoint(kind, a, target) || cnameValues.some(m.cname) || (proxied && servedByUs)
   const pointed = opts.vercelPointed ?? pointedByDns
 
   // Every region and every resolver should see the same thing.
   const regionAnswers = await Promise.all(REGIONS.map((r) => doh(fetcher, RESOLVERS[0].url, domain, 'A', r.subnet)))
   const regions = REGIONS.map((r, i) => {
     const ans = regionAnswers[i]
-    const ok = answersPoint(kind, ans) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
+    const ok = answersPoint(kind, ans, target) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
     return { code: r.code, name: r.name, ok, answers: only(ans, 'A').concat(only(ans, 'CNAME')) }
   })
   const resolverAnswers = await Promise.all(RESOLVERS.map((r) => doh(fetcher, r.url, domain, 'A')))
   const resolvers = RESOLVERS.map((r, i) => {
     const ans = resolverAnswers[i]
-    const ok = answersPoint(kind, ans) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
+    const ok = answersPoint(kind, ans, target) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
     return { name: r.name, ok, answers: only(ans, 'A').concat(only(ans, 'CNAME')) }
   })
 
@@ -187,30 +210,38 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     issues.push({ code: 'CHECK_FAILED', severity: 'error', title: 'Could not check DNS right now', detail: 'The DNS resolvers did not answer. Try again in a minute.' })
   } else if (!aValues.length && !cnameValues.length) {
     issues.push({ code: 'NO_RECORDS', severity: 'error', title: 'No DNS records found',
-      detail: kind === 'apex' ? `Add an A record for @ pointing to ${TARGET.a} at your domain provider.` : `Add a CNAME record for ${name} pointing to ${TARGET.cname} at your domain provider.` })
+      detail: kind === 'apex' && target.a ? `Add an A record for @ pointing to ${target.a} at your domain provider.`
+        : kind === 'apex' ? `Add a CNAME (or ALIAS / ANAME) record for @ pointing to ${target.cname}. If your domain provider cannot, use www.${domain} instead.`
+        : `Add a CNAME record for ${name} pointing to ${target.cname} at your domain provider.` })
   } else if (!pointedByDns) {
     issues.push({ code: 'WRONG_TARGET', severity: 'error', title: 'DNS records point somewhere else',
-      detail: kind === 'apex' ? `Change the A record for @ to ${TARGET.a} and delete any other A records for @.` : `Change the CNAME record for ${name} to ${TARGET.cname}.` })
+      detail: kind === 'apex' && target.a ? `Change the A record for @ to ${target.a} and delete any other A records for @.`
+        : kind === 'apex' ? `Point @ at ${target.cname} with a CNAME (or ALIAS / ANAME) record and delete the A and AAAA records for @.`
+        : `Change the CNAME record for ${name} to ${target.cname}.` })
   }
-  if (proxied) {
+  // On Cloudflare a customer's own Cloudflare proxy in front of us works as is.
+  if (proxied && !onCloudflare) {
     issues.push({ code: 'CLOUDFLARE_PROXY', severity: servedByUs ? 'warning' : 'error', title: 'Your domain has a Cloudflare proxy',
       detail: servedByUs
         ? 'The store opens through it, but the proxy can delay certificate renewals and cache pages. In Cloudflare, set the record to "DNS only" (grey cloud).'
         : 'The proxy is not passing visitors to the store. In Cloudflare, set the record to "DNS only" (grey cloud).' })
   }
-  const strayA = aValues.filter((v) => !isVercelA(v) && !isCloudflare(v))
-  if (own && strayA.length && aValues.some(isVercelA)) {
+  const strayA = aValues.filter((v) => !m.a(v) && !isCloudflare(v))
+  if (own && strayA.length && (aValues.some(m.a) || (onCloudflare && servedByUs))) {
     issues.push({ code: 'EXTRA_A', severity: 'error', title: 'Extra A records',
       detail: `Some visitors will reach ${strayA.join(', ')} instead of the store. Delete those A records.` })
   }
-  if (own && aaaaValues.length && !proxied) {
+  if (own && aaaaValues.some((v) => !isCloudflare(v))) {
     issues.push({ code: 'AAAA', severity: 'warning', title: 'IPv6 (AAAA) records found',
       detail: 'Visitors on IPv6 may reach another server. Delete the AAAA records for this name.' })
   }
   const caaValues = only(caa, 'CAA').concat(only(apexCaa, 'CAA'))
-  if (caaValues.length && !caaValues.some((v) => /letsencrypt\.org/i.test(v))) {
+  // Cloudflare issues the certificate through Let's Encrypt or Google Trust Services.
+  const allowedCa = onCloudflare ? /letsencrypt\.org|pki\.goog/i : /letsencrypt\.org/i
+  if (caaValues.length && !caaValues.some((v) => allowedCa.test(v))) {
     issues.push({ code: 'CAA', severity: 'error', title: 'A CAA record blocks the certificate',
-      detail: 'Add a CAA record allowing letsencrypt.org, or the store cannot get an HTTPS certificate.' })
+      detail: onCloudflare ? 'Add CAA records allowing letsencrypt.org and pki.goog, or the store cannot get an HTTPS certificate.'
+        : 'Add a CAA record allowing letsencrypt.org, or the store cannot get an HTTPS certificate.' })
   }
   if (pointedByDns && !tls.ok) {
     issues.push({ code: 'TLS_PENDING', severity: 'info', title: 'Certificate on the way', detail: 'DNS is correct. The HTTPS certificate is usually ready within a few minutes.' })

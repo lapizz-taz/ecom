@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setSharedCache } from './cache.ts'
 import { clerkProxySetting, clerkSecret, clerkWebhookSecret, createClerkUser, deleteClerkUser, setClerkUserBanned, setClerkUserName, verifyWebhook, proxyRequest, proxyResponse, resetClerkKeys, verifiedPrimaryEmail, verifySessionToken, type ClerkUser } from './clerk.ts'
 
 const enc = (v: unknown) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url')
@@ -31,6 +32,33 @@ describe('clerk session tokens', () => {
     const claims = await verifySessionToken(await sign({ sub: 'user_abc', sid: 'sess_1', exp: t + 60, nbf: t - 5 }), jwksFetch as never, now)
     expect(claims.sub).toBe('user_abc')
     expect(jwksFetch).toHaveBeenCalledWith('https://api.clerk.com/v1/jwks', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer sk_test_x' }) }))
+  })
+
+  it('shares the public signing keys through the cache (Workers KV), per Clerk instance', async () => {
+    const store = new Map<string, string>()
+    setSharedCache({ get: async (k) => store.get(k) ?? null, put: async (k, v) => { store.set(k, v) } })
+    try {
+      const token = await sign({ sub: 'user_abc', exp: t + 60 })
+      await verifySessionToken(token, jwksFetch as never, now)
+      expect(jwksFetch).toHaveBeenCalledTimes(1)
+      expect([...store.keys()]).toEqual([expect.stringMatching(/^clerk:jwks:[0-9a-f]{16}$/)])
+      expect([...store.values()][0]).not.toContain('sk_test_x')
+      // A new server instance (empty memory) uses the shared copy instead of asking Clerk.
+      resetClerkKeys()
+      await verifySessionToken(token, jwksFetch as never, now)
+      expect(jwksFetch).toHaveBeenCalledTimes(1)
+      // Another Clerk instance (other secret key) never reads this instance's keys.
+      resetClerkKeys()
+      vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_other')
+      await verifySessionToken(token, jwksFetch as never, now)
+      expect(jwksFetch).toHaveBeenCalledTimes(2)
+      // A broken cache is ignored.
+      setSharedCache({ get: async () => { throw new Error('kv down') }, put: async () => { throw new Error('kv down') } })
+      resetClerkKeys()
+      await expect(verifySessionToken(token, jwksFetch as never, now)).resolves.toMatchObject({ sub: 'user_abc' })
+    } finally {
+      setSharedCache(null)
+    }
   })
 
   it('rejects tampered, foreign, expired and malformed tokens', async () => {

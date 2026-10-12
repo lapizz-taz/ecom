@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
   server: {
     port: 5173,
-    // Same as the vercel.json rewrite: Shopify's OAuth callback on the app's own host.
+    // Same as the Worker's (and vercel.json's) route: Shopify's OAuth callback on the app's own host.
     proxy: {
       '/oauth/shopify/callback': {
         target: loadEnv(mode, process.cwd(), 'VITE_').VITE_SUPABASE_URL || 'http://127.0.0.1:54321',

@@ -7,3 +7,5 @@ coverage
 *.tsbuildinfo
 supabase/.temp
 supabase/.branches
+.dev.vars*
+.wrangler

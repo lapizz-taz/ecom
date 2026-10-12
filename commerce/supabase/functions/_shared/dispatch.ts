@@ -1,4 +1,5 @@
 import { env } from './env.ts'
+import { callFunction } from './internal.ts'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
 
@@ -16,7 +17,7 @@ export function dispatchNotificationsInBackground(merchantId?: string | null): v
   else headers.Authorization = `Bearer ${serviceKey}`
   // Only that merchant's queue when known; the cron run drains everyone's.
   const body = JSON.stringify(merchantId ? { merchant_id: merchantId } : {})
-  const task = fetch(`${url}/functions/v1/notifications-dispatch`, { method: 'POST', headers, body })
+  const task = callFunction('notifications-dispatch', { method: 'POST', headers, body })
     .catch((error) => console.error('Could not trigger notification dispatch', error))
   if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(task)
 }

@@ -1,0 +1,15 @@
+# Response headers for static files on Cloudflare Workers Static Assets
+# (the same as vercel.json's "headers"). X-Fullfilio lets the custom-domain
+# check see that the store itself answered on a merchant's domain.
+/*
+  X-Fullfilio: store
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy: frame-ancestors 'self'
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/media/*
+  Cache-Control: public, max-age=604800

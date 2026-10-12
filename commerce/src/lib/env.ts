@@ -12,6 +12,9 @@ const supabaseUrl = read(import.meta.env.VITE_SUPABASE_URL).replace(/\/+$/, '')
 const supabaseAnonKey = read(import.meta.env.VITE_SUPABASE_ANON_KEY)
 const superAdminPath = read(import.meta.env.VITE_SUPER_ADMIN_PATH)
 const clerkKey = read(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
+// Cloudflare builds (.env.cloudflare): functions on the site's own Worker, uploads on R2.
+const functionsBase = read(import.meta.env.VITE_FUNCTIONS_URL).replace(/\/+$/, '')
+const fileStore = read(import.meta.env.VITE_FILE_STORE)
 
 export const env = {
   supabaseUrl,
@@ -28,9 +31,14 @@ export const env = {
     release: read(import.meta.env.VITE_RELEASE) || undefined,
   },
   isDev: import.meta.env.DEV,
+  /** Where the backend functions answer: the Worker's /functions/v1 on Cloudflare, else Supabase. */
+  functionsBase: functionsBase || `${supabaseUrl}/functions/v1`,
+  /** Uploads go to Cloudflare R2 (through the Worker) instead of Supabase Storage. */
+  filesOnR2: fileStore === 'r2',
 } as const
 
-/** Address of an edge function (plus any path or query after its name). */
+/** Address of a backend function (plus any path or query after its name), always absolute. */
 export function functionsUrl(path: string): string {
-  return `${env.supabaseUrl}/functions/v1/${path.replace(/^\/+/, '')}`
+  const base = env.functionsBase.startsWith('/') && typeof window !== 'undefined' ? `${window.location.origin}${env.functionsBase}` : env.functionsBase
+  return `${base}/${path.replace(/^\/+/, '')}`
 }

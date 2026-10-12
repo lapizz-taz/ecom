@@ -3,7 +3,7 @@
 // Admin panel. They never use a merchant's gateway account.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { appBase } from './storefront.ts'
-import { env, requireEnv } from './env.ts'
+import { functionsBase } from './env.ts'
 import { HttpError } from './http.ts'
 import { type Gateway, gatewayFromCredentials } from './payments/registry.ts'
 import type { PaymentProvider } from './payments/types.ts'
@@ -41,7 +41,7 @@ export function panelBase(req?: Request): string {
 
 /** The billing function's own address (gateway returns and IPNs). */
 export function billingCallbackBase(): string {
-  return `${requireEnv('SUPABASE_URL').replace(/\/+$/, '')}/functions/v1/billing`
+  return `${functionsBase()}/billing`
 }
 
 export type { SupabaseClient }

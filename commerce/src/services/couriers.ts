@@ -4,7 +4,8 @@ import { merchantFolder } from '@/lib/merchant'
 import { supabase } from '@/lib/supabase'
 import type { Enums, TablesInsert } from '@/types/database'
 import type { CodReceivableItem } from '@/types/domain'
-import { functionsUrl } from '@/lib/env'
+import { env, functionsUrl } from '@/lib/env'
+import { isR2Path, signedFileUrl, uploadFile } from '@/lib/files'
 
 export async function listCouriers(activeOnly = false) {
   let query = supabase.from('couriers').select('*').order('name')
@@ -221,6 +222,7 @@ export type CourierInvoiceDetail = Awaited<ReturnType<typeof getCourierInvoice>>
 
 /** Keeps the original statement file with the record (private bucket). */
 export async function uploadStatementFile(courierId: string, file: File): Promise<string> {
+  if (env.filesOnR2) return (await uploadFile('courier-invoices', courierId, file)).path
   const path = `${merchantFolder()}/${courierId}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80)}`
   const { error } = await supabase.storage.from('courier-invoices').upload(path, file, { contentType: file.type || undefined })
   if (error) throw error
@@ -228,6 +230,7 @@ export async function uploadStatementFile(courierId: string, file: File): Promis
 }
 
 export async function statementFileUrl(path: string): Promise<string> {
+  if (isR2Path(path)) return signedFileUrl('courier-invoices', path)
   const { data, error } = await supabase.storage.from('courier-invoices').createSignedUrl(path, 300)
   if (error) throw error
   return data.signedUrl

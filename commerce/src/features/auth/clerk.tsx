@@ -31,8 +31,9 @@ function useDarkPage(): boolean {
 
 /**
  * Clerk's production instance is reached through this site's own /__clerk
- * address (vercel.json sends it to the clerk-proxy function): the site has no
- * DNS records of its own for Clerk. Development keys talk to Clerk directly.
+ * address (the Cloudflare Worker, or vercel.json, sends it to the clerk-proxy
+ * function): no DNS records of our own for Clerk are needed. Development keys
+ * talk to Clerk directly.
  */
 export const clerkProxyUrl = (key: string | null | undefined): string | undefined =>
   key?.startsWith('pk_live_') ? '/__clerk' : undefined

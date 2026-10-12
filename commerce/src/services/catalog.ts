@@ -1,3 +1,5 @@
+import { env } from '@/lib/env'
+import { deleteFile, isR2Path, uploadFile } from '@/lib/files'
 import { asJson } from '@/lib/json'
 import { merchantFolder } from '@/lib/merchant'
 import { supabase } from '@/lib/supabase'
@@ -134,22 +136,36 @@ export async function deleteCategory(id: string) {
   if (error) throw error
 }
 
-// Images (Supabase Storage: product-images bucket) ------------------------------
+// Images (product-images: Supabase Storage, or Cloudflare R2 on Cloudflare builds) ----
 const BUCKET = 'product-images'
+
+/** Stores an image in the store's folder; returns its stored path and public address. */
+async function storeImage(folder: string, file: File): Promise<{ path: string; url: string }> {
+  if (env.filesOnR2) {
+    const saved = await uploadFile(BUCKET, folder, file)
+    return { path: saved.path, url: saved.url! }
+  }
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+  const path = `${merchantFolder()}/${folder}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { cacheControl: '31536000', contentType: file.type })
+  if (error) throw error
+  return { path, url: supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl }
+}
+
+async function removeImage(path: string) {
+  if (isR2Path(path)) await deleteFile(BUCKET, path)
+  else await supabase.storage.from(BUCKET).remove([path])
+}
 
 export async function uploadProductImage(productId: string, file: File, position: number, primary: boolean) {
   if (!file.type.startsWith('image/')) throw new Error('VALIDATION: please choose an image file')
   if (file.size > 5 * 1024 * 1024) throw new Error('VALIDATION: images must be smaller than 5 MB')
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const path = `${merchantFolder()}/${productId}/${crypto.randomUUID()}.${ext}`
-  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { cacheControl: '31536000', contentType: file.type })
-  if (uploadError) throw uploadError
-  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  const stored = await storeImage(productId, file)
   const { error } = await supabase.from('product_images').insert({
-    product_id: productId, storage_path: path, url: pub.publicUrl, alt: file.name.replace(/\.[^.]+$/, ''), position, is_primary: primary,
+    product_id: productId, storage_path: stored.path, url: stored.url, alt: file.name.replace(/\.[^.]+$/, ''), position, is_primary: primary,
   })
   if (error) {
-    await supabase.storage.from(BUCKET).remove([path])
+    await removeImage(stored.path)
     throw error
   }
 }
@@ -158,11 +174,7 @@ export async function uploadProductImage(productId: string, file: File, position
 export async function uploadThemeImage(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('VALIDATION: please choose an image file')
   if (file.size > 8 * 1024 * 1024) throw new Error('VALIDATION: images must be smaller than 8 MB')
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const path = `${merchantFolder()}/theme/${crypto.randomUUID()}.${ext}`
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { cacheControl: '31536000', contentType: file.type })
-  if (error) throw error
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+  return (await storeImage('theme', file)).url
 }
 
 /** Adds an image by address (no upload). */
@@ -176,7 +188,7 @@ export async function addProductImageUrl(productId: string, url: string, positio
 export async function deleteProductImage(image: { id: string; storage_path: string | null }) {
   const { error } = await supabase.from('product_images').delete().eq('id', image.id)
   if (error) throw error
-  if (image.storage_path) await supabase.storage.from(BUCKET).remove([image.storage_path])
+  if (image.storage_path) await removeImage(image.storage_path)
 }
 
 export async function reorderProductImages(productId: string, ids: string[], primaryId?: string) {

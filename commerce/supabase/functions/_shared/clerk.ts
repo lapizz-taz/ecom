@@ -6,6 +6,7 @@
 // in the CLERK_SECRET_KEY edge function secret, or encrypted in Vault as the
 // platform credential "auth.clerk" ({ "secret_key": "sk_...", "proxy_url":
 // "https://<site>/__clerk" }; proxy_url only for a production instance).
+import { cacheGet, cachePut } from './cache.ts'
 import { env } from './env.ts'
 import { HttpError } from './http.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -89,13 +90,27 @@ async function api<T>(path: string, init: RequestInit = {}, f: Fetch = fetch): P
 const b64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0))
 const decodeJson = <T>(s: string): T => JSON.parse(new TextDecoder().decode(b64url(s))) as T
 
-let jwksCache: { at: number; keys: Array<JsonWebKey & { kid?: string }> } | null = null
+type Jwk = JsonWebKey & { kid?: string }
+let jwksCache: { at: number; keys: Jwk[] } | null = null
+
+/** Name of the shared cache entry for this Clerk instance's public keys (from a hash of its secret key). */
+async function jwksCacheKey(): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(await clerkSecret())))
+  return `clerk:jwks:${Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('')}`
+}
 
 async function signingKey(kid: string, f: Fetch): Promise<JsonWebKey | null> {
   const fresh = jwksCache && Date.now() - jwksCache.at < 10 * 60_000
   if (!fresh || !jwksCache!.keys.some((k) => k.kid === kid)) {
-    const set = await api<{ keys: Array<JsonWebKey & { kid?: string }> }>('/jwks', {}, f)
-    jwksCache = { at: Date.now(), keys: set.keys }
+    // Public keys only: another server instance may have fetched them already (Workers KV on Cloudflare).
+    const cacheKey = await jwksCacheKey()
+    const cached = await cacheGet(cacheKey)
+    let keys = cached ? (JSON.parse(cached) as Jwk[]) : null
+    if (!keys?.some((k) => k.kid === kid)) {
+      keys = (await api<{ keys: Jwk[] }>('/jwks', {}, f)).keys
+      await cachePut(cacheKey, JSON.stringify(keys), 3600)
+    }
+    jwksCache = { at: Date.now(), keys }
   }
   return jwksCache!.keys.find((k) => k.kid === kid) ?? null
 }
@@ -241,7 +256,7 @@ export const CLERK_FAPI = 'https://frontend-api.clerk.dev'
 const DROP_REQUEST = new Set(['host', 'connection', 'content-length', 'accept-encoding', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'x-forwarded-for', 'x-vercel-forwarded-for', 'cf-connecting-ip', 'clerk-secret-key', 'clerk-proxy-url'])
 const DROP_RESPONSE = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection'])
 
-/** The visitor's address as the edge saw it (Vercel's header first: it sits in front of us). */
+/** The visitor's address as the edge saw it (Vercel's header first when Vercel sits in front of us; the Cloudflare Worker removes it and sets X-Forwarded-For). */
 export function visitorIp(req: Request): string | null {
   const first = (v: string | null) => v?.split(',')[0]?.trim() || null
   return first(req.headers.get('x-vercel-forwarded-for')) ?? first(req.headers.get('x-forwarded-for')) ?? req.headers.get('x-real-ip')

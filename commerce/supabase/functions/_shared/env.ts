@@ -20,3 +20,23 @@ export function requireEnv(name: string): string {
   if (!value) throw new Error(`Missing required environment variable ${name}`)
   return value
 }
+
+/**
+ * Public address of the backend functions, for links handed to browsers,
+ * payment gateways and webhook senders. On Cloudflare the functions run in the
+ * site's own Worker, so FUNCTIONS_URL is https://<site>/functions/v1; on
+ * Supabase it defaults to <SUPABASE_URL>/functions/v1.
+ */
+export function functionsBase(): string {
+  const set = env('FUNCTIONS_URL')
+  if (set) return set.replace(/\/+$/, '')
+  return `${(env('PUBLIC_SUPABASE_URL') ?? requireEnv('SUPABASE_URL')).replace(/\/+$/, '')}/functions/v1`
+}
+
+/** Which runtime is serving this request (System health). */
+export function runtimeVersion(): string {
+  const deno = (globalThis as { Deno?: { version?: { deno?: string } } }).Deno
+  if (deno?.version?.deno) return `Deno ${deno.version.deno}`
+  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator
+  return nav?.userAgent === 'Cloudflare-Workers' ? 'Cloudflare Workers' : 'unknown'
+}

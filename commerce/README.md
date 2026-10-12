@@ -105,6 +105,10 @@ Seeded logins (password `Password123!` for all):
 
 ## Deploy to a hosted Supabase project
 
+> **On Cloudflare:** the site and the backend functions can run on one Cloudflare Worker (Workers Static Assets, R2
+> for uploads, Cloudflare for SaaS for store domains) with the database staying here. Setup, switch-over, rollback and
+> costs: [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md). The steps below (database, secrets, cron jobs) apply either way.
+
 1. **Database**
    ```bash
    supabase link --project-ref <ref>
@@ -301,6 +305,8 @@ Seeded logins (password `Password123!` for all):
 | `STEADFAST_*`, `PATHAO_*`, `REDX_*` (optional) | Fallback courier keys. Normally couriers are connected in **Admin → Couriers**; keys entered there are tested with the courier, then stored encrypted in Supabase Vault by the service role and never returned to a browser |
 | `NOTIFY_WEBHOOK_URL`, `NOTIFY_WEBHOOK_SECRET` | Forward notifications (e.g. to a WhatsApp BSP), HMAC-signed |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email notifications |
+| `FUNCTIONS_URL` | Public address of the backend functions when they are reached through the site (Cloudflare Worker: `https://<site>/functions/v1`). Webhook, payment-return and OAuth addresses use it; default `<SUPABASE_URL>/functions/v1` |
+| `CF_SAAS_API_TOKEN`, `CF_ZONE_ID`, `CUSTOM_DOMAIN_TARGET` | Store domains through Cloudflare for SaaS (see docs/CLOUDFLARE.md, step 10). Without them `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID`) attach domains to Vercel; with neither, domains are saved for manual setup |
 | `PLATFORM_URL` | The app's address (e.g. `https://commerce-sage-eight-89.vercel.app`): links in staff invitations, where merchants return after paying the platform, and the storefront fallback when no store domain or `STOREFRONT_URL` is set |
 | `MANAGEMENT_API_TOKEN`, `PROJECT_REF` (optional) | A Supabase personal access token (and the project ref, when it is not the one in the URL) so **Super Admin → Data Management** can show backup status. Without it the panel says it cannot see backups. Edge function secrets cannot start with `SUPABASE_`, hence the names |
 
