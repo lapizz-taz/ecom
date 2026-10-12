@@ -115,15 +115,22 @@ export const isoLocal = (d: Date): string => d.toISOString().slice(0, 23)
 const TS_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(\.\d+)?)?)?\s*(Z|UTC|[+-]\d{1,2}(?::?\d{2})?)?$/i
 
 /** Parses date/time text; returns epoch ms and whether a zone was given. */
+const INFINITY_MS = Date.parse('9999-12-31T23:59:59.999Z')
+const INFINITY_MS_NEG = -Date.parse('0000-01-01T00:00:00.000Z')
+
 function parseTimestamp(text: string, type: string): { ms: number; zoned: boolean } {
   const s = text.trim()
   const lower = s.toLowerCase()
   if (lower === 'now') return { ms: Date.now(), zoned: true }
-  if (lower === 'today') {
+  if (lower === 'today' || lower === 'yesterday' || lower === 'tomorrow') {
     const d = new Date()
-    return { ms: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), zoned: false }
+    const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+    return { ms: day + (lower === 'yesterday' ? -86_400_000 : lower === 'tomorrow' ? 86_400_000 : 0), zoned: false }
   }
-  if (lower === 'infinity' || lower === '-infinity') return err('22008', 'infinite timestamps are not supported')
+  if (lower === 'epoch') return { ms: 0, zoned: true }
+  // ±infinity: the first and last instants stored text can hold, so they still compare as Postgres' do
+  if (lower === 'infinity' || lower === '+infinity') return { ms: INFINITY_MS, zoned: true }
+  if (lower === '-infinity') return { ms: -INFINITY_MS_NEG, zoned: true }
   const m = TS_RE.exec(s)
   if (!m) return invalid(type, text)
   const [, y, mo, d, h = '0', mi = '0', sec = '0', frac = '', zone] = m

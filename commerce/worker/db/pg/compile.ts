@@ -148,6 +148,44 @@ export function mapExpr(e: Expr, f: (x: Expr) => Expr): Expr {
 }
 
 /** Visits an expression tree (not into sub-queries); `fn` returns false to skip children. */
+/**
+ * An inlined SQL function body with its table aliases made unique (s → s__i7). Its
+ * arguments are the caller's compiled SQL ("s"."user_id"); a table of the same alias inside
+ * the body would otherwise capture them (s.user_id = p_user becoming always true).
+ */
+export function uniqueAliases<T>(q: T, suffix: string): T {
+  const names = new Set<string>()
+  const collect = (x: unknown): void => {
+    if (Array.isArray(x)) return x.forEach(collect)
+    if (!x || typeof x !== 'object') return
+    const o = x as Record<string, unknown>
+    if (o.k === 'value') return
+    if (o.k === 'table' && typeof o.name === 'string') names.add((o.alias as string | undefined) ?? o.name)
+    if (o.k === 'subq' && typeof o.alias === 'string') names.add(o.alias)
+    for (const v of Object.values(o)) collect(v)
+  }
+  collect(q)
+  const rename = (n: string) => (names.has(n) ? `${n}${suffix}` : n)
+  const map = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(map)
+    if (!x || typeof x !== 'object') return x
+    const o = x as Record<string, unknown>
+    if (o.k === 'value' || o.constructor !== Object) return x
+    const out: Record<string, unknown> = {}
+    for (const [key, v] of Object.entries(o)) out[key] = map(v)
+    if (out.k === 'table' && typeof out.name === 'string') out.alias = rename((out.alias as string | undefined) ?? out.name)
+    else if (out.k === 'subq' && typeof out.alias === 'string') out.alias = rename(out.alias)
+    else if (out.k === 'star' && typeof out.table === 'string') out.table = rename(out.table)
+    else if (out.k === 'ref') {
+      const parts = out.parts as string[]
+      if (parts.length >= 2 && names.has(parts[0])) out.parts = [rename(parts[0]), ...parts.slice(1)]
+      else if (parts.length === 3 && parts[0] === 'public' && names.has(parts[1])) out.parts = [rename(parts[1]), parts[2]]
+    }
+    return out
+  }
+  return map(q) as T
+}
+
 export function walk(e: Expr, fn: (x: Expr) => boolean | void): void {
   if (fn(e) === false) return
   const kids: Array<Expr | undefined> = []
@@ -567,11 +605,12 @@ export class Compiler implements SqlHelp {
     this.fragments.push(frag)
     if (inline.bypass) this.bypass++
     try {
-      if (this.singleRow(inline.q)) {
+      const body = uniqueAliases(inline.q, `__i${++this.cteCount}`)
+      if (this.singleRow(body)) {
         const names = f.cols ?? this.engine.resultColumns(name, args.map((x) => x.t))?.map((c) => c.name)
-        return this.lateralColumns(inline.q, alias, names, scope, true)
+        return this.lateralColumns(body, alias, names, scope, true)
       }
-      const c = this.query(inline.q, scope)
+      const c = this.query(body, scope)
       this.addSource(scope, alias, c.cols.map((col, i) => ({ name: f.cols?.[i] ?? col.name, t: col.t, s: col.s })))
       return `(${c.sql}) AS ${a}`
     } finally {
@@ -1333,7 +1372,7 @@ export class Compiler implements SqlHelp {
     this.fragments.push(frag)
     if (inline.bypass) this.bypass++
     try {
-      const c = this.select(inline.q, scope)
+      const c = this.select(uniqueAliases(inline.q, `__i${++this.cteCount}`), scope)
       const rt = this.engine.returnType(name, args.map((x) => x.t), e.schema) ?? c.cols[0]?.t ?? 'unknown'
       return { sql: `(${c.sql})`, t: rt.startsWith('setof ') ? rt.slice(6) : rt, s: rt === 'numeric' ? c.cols[0]?.s : undefined }
     } finally {
