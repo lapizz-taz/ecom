@@ -118,6 +118,19 @@ export class Evaluator {
       }
       case 'in': {
         if (e.q) return this.viaSql(e)
+        if (e.e.k === 'row') {
+          // row values: equal when every field is; NULL when none differs but one is unknown
+          const xs = e.e.items.map((it) => this.eval(it))
+          let unknown = false
+          for (const it of e.list!) {
+            if (it.k !== 'row' || it.items.length !== xs.length) throw new DbError('42601', 'IN list rows must have as many values as the left row')
+            const cs = it.items.map((v, i) => compareTyped(xs[i], this.eval(v)))
+            if (cs.some((c) => c !== null && c !== 0)) continue
+            if (cs.some((c) => c === null)) unknown = true
+            else return BOOL(!e.not)
+          }
+          return BOOL(unknown ? null : e.not)
+        }
         const x = this.eval(e.e)
         if (x.v === null) return BOOL(null)
         let sawNull = false

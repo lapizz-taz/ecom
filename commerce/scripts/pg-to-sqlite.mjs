@@ -471,6 +471,15 @@ meta.tables.users = {
   },
   pk: ['id'], unique: [['email'], ['clerk_user_id']], fks: [], grants: {}, rls: true, policies: [], checks: [],
 }
+// Supabase's auth.sessions (created by worker/db/migrate.ts 0003): functions only, never the API.
+meta.tables.sessions = {
+  columns: {
+    id: { type: 'uuid', default: `(${UUID})` }, user_id: { type: 'uuid' }, created_at: { type: 'timestamptz', default: `(${NOW})` },
+    updated_at: { type: 'timestamptz', default: `(${NOW})` }, not_after: { type: 'timestamptz', nullable: true },
+  },
+  pk: ['id'], unique: [], fks: [{ name: 'sessions_user_id_fkey', columns: ['user_id'], table: 'users', refColumns: ['id'] }],
+  grants: {}, rls: true, policies: [], checks: [],
+}
 writeFileSync(resolve(outDir, 'meta.json'), `${JSON.stringify(meta)}\n`)
 
 // name → overloads: { lang, src, args [{ name, type, mode i/o/b/v/t, default? }], returns, set, definer, owner, volatility, config, grants }

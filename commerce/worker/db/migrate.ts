@@ -4,6 +4,7 @@
 import schema from './generated/schema.ts'
 import type { Sql } from './sql.ts'
 
+const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
 const UUID = "lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6)))"
 
 export const migrations: Array<{ name: string; sql: readonly string[] }> = [
@@ -13,6 +14,21 @@ export const migrations: Array<{ name: string; sql: readonly string[] }> = [
   { name: '0002_cron_secret', sql: [`INSERT INTO _vault_secrets (id, name, description, secret)
     SELECT ${UUID}, 'cron_secret', 'Authenticates scheduled calls to the backend', lower(hex(randomblob(32)))
     WHERE NOT EXISTS (SELECT 1 FROM _vault_secrets WHERE name = 'cron_secret')`] },
+  // Supabase's auth.sessions: one row per signed-in session (a Clerk session, by its stable
+  // uuid), recorded the first time it is seen. Staff session limits read created_at; signing
+  // staff out deletes the rows, and a deleted session is remembered so it is never recorded again.
+  { name: '0003_auth_sessions', sql: [
+    `CREATE TABLE sessions (
+      id TEXT PRIMARY KEY DEFAULT (${UUID}) CHECK (length(id) = 36),
+      user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (${NOW}),
+      updated_at TEXT NOT NULL DEFAULT (${NOW}),
+      not_after TEXT
+    ) STRICT`,
+    'CREATE INDEX sessions_user_idx ON sessions (user_id)',
+    `CREATE TABLE _ended_sessions (id TEXT PRIMARY KEY, ended_at TEXT NOT NULL DEFAULT (${NOW})) STRICT`,
+    'CREATE TRIGGER sessions_ended AFTER DELETE ON sessions FOR EACH ROW BEGIN INSERT OR IGNORE INTO _ended_sessions (id) VALUES (OLD.id); END',
+  ] },
 ]
 
 export function migrate(sql: Sql): string[] {

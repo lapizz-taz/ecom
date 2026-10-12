@@ -527,7 +527,7 @@ export class Compiler implements SqlHelp {
       scope.sources.push({ alias, cols })
       return `main."_vault_secrets" AS ${a}`
     }
-    if (f.schema && f.schema !== 'public') throw new NotSupported(`${f.schema}.${f.name}`)
+    if (f.schema && f.schema !== 'public' && !(f.schema === 'auth' && f.name === 'sessions')) throw new NotSupported(`${f.schema}.${f.name}`)
     const meta = tableMeta(f.name) ?? viewMeta(f.name)
     if (!meta) throw new DbError('42P01', `relation "${f.name}" does not exist`)
     if (this.engine.role === 'anon' || this.engine.role === 'authenticated') requireGrant(f.name, this.engine.ctx, 'select', this.engine.role)
@@ -956,6 +956,16 @@ export class Compiler implements SqlHelp {
         if (e.q) {
           const sub = this.query(e.q, scope)
           return { sql: `(${x.sql} ${e.not ? 'NOT ' : ''}IN (${sub.sql}))`, t: 'bool' }
+        }
+        if (e.e.k === 'row') {
+          // (a, b) IN ((1, 2), (3, 4)): SQLite compares row values only against VALUES
+          const left = e.e.items.map((it) => this.expr(it, scope))
+          const rows = e.list!.map((it) => {
+            const items = it.k === 'row' ? it.items : null
+            if (!items || items.length !== left.length) throw new DbError('42601', 'IN list rows must have as many values as the left row')
+            return `(${items.map((v, i) => this.coerceTo(this.expr(v, scope), left[i].t).sql).join(', ')})`
+          })
+          return { sql: `(${x.sql} ${e.not ? 'NOT ' : ''}IN (VALUES ${rows.join(', ')}))`, t: 'bool' }
         }
         const list = e.list!.map((it) => this.coerceTo(this.expr(it, scope), x.t).sql)
         return { sql: `(${x.sql} ${e.not ? 'NOT ' : ''}IN (${list.join(', ')}))`, t: 'bool' }

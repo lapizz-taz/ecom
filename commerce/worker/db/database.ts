@@ -44,6 +44,7 @@ export class Database extends DurableObject {
       const u = this.sql.all('SELECT id, banned_until FROM users WHERE clerk_user_id = ?', [caller.clerkUserId])[0]
       if (u && !(u.banned_until && String(u.banned_until) > new Date().toISOString())) uid = String(u.id)
     }
+    if (uid && caller.sessionId) this.recordSession(caller.sessionId, uid)
     return {
       role: caller.role,
       uid,
@@ -53,6 +54,16 @@ export class Database extends DurableObject {
       userAgent: caller.userAgent ?? null,
       ip: caller.ip ?? null,
     }
+  }
+
+  /**
+   * auth.sessions: a session is recorded the first time it is seen (its start is what staff
+   * session limits measure). One that was signed out stays out: it is not recorded again, so
+   * platform checks keep refusing it, as Supabase does after a sign-out.
+   */
+  private recordSession(id: string, uid: string): void {
+    if (this.sql.all('SELECT 1 FROM sessions WHERE id = ? UNION ALL SELECT 1 FROM _ended_sessions WHERE id = ? LIMIT 1', [id, id]).length) return
+    this.sql.run('INSERT OR IGNORE INTO sessions (id, user_id) VALUES (?, ?)', [id, uid])
   }
 
   async rest(req: RestRequest, caller: Caller): Promise<RestResponse> {

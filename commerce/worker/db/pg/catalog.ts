@@ -6,6 +6,8 @@
 //   pg_proc                   functions: name, SECURITY DEFINER, owner (tenancy checks)
 //   pg_roles                  the database roles row security distinguishes
 //   pg_stat_activity          this database's one connection (platform health)
+//   auth.mfa_factors          always empty: second factors are kept by Clerk, and the app never
+//                             enrolled Supabase ones (the access review counts them)
 import functions from '../generated/functions.json'
 import { schema } from '../meta.ts'
 import type { TempTable } from './temp.ts'
@@ -19,8 +21,8 @@ function pgClass(): TempTable {
   classes ??= {
     cols: [col('oid', 'text'), col('relname', 'text'), col('relnamespace', 'text'), col('relkind', 'text'), col('relrowsecurity', 'bool')],
     rows: [
-      // users stands in for auth.users, which lives in the auth schema
-      ...Object.entries(schema.tables).map(([name, t]) => [name, name, name === 'users' ? 'auth' : 'public', 'r', Boolean(t.rls)]),
+      // users and sessions stand in for auth.users and auth.sessions, which live in the auth schema
+      ...Object.entries(schema.tables).map(([name, t]) => [name, name, name === 'users' || name === 'sessions' ? 'auth' : 'public', 'r', Boolean(t.rls)]),
       ...Object.keys(schema.views).map((name) => [name, name, 'public', 'v', false]),
     ],
   }
@@ -74,8 +76,15 @@ const activity: TempTable = {
   rows: [['postgres', 1, 'postgres', 'active']],
 }
 
-/** A catalog view by name (pg_catalog.x or a bare pg_x), or undefined. */
+const mfaFactors: TempTable = {
+  cols: [col('id', 'uuid'), col('user_id', 'uuid'), col('friendly_name', 'text'), col('factor_type', 'text'),
+    col('status', 'text'), col('created_at', 'timestamptz'), col('updated_at', 'timestamptz')],
+  rows: [],
+}
+
+/** A catalog view by name (pg_catalog.x or a bare pg_x, or auth.mfa_factors), or undefined. */
 export function catalogTable(name: string, schemaName?: string): TempTable | undefined {
+  if (schemaName === 'auth') return name === 'mfa_factors' ? mfaFactors : undefined
   if (schemaName && schemaName !== 'pg_catalog') return undefined
   if (!schemaName && !name.startsWith('pg_')) return undefined
   switch (name) {

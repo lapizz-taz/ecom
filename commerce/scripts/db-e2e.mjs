@@ -90,6 +90,24 @@ try {
   const outsider = await call('GET', `/auth/v1/admin/users/${user.body?.id}`, { merchant: M1 })
   check('the account admin API is closed to visitors', outsider.status === 403, JSON.stringify(outsider))
 
+  // auth.sessions: a Clerk session is recorded once; one that was signed out is not recorded again.
+  const staff = await call('POST', '/auth/v1/admin/users', { key: SERVICE, body: { email: 'session@example.com', email_confirm: true, app_metadata: { clerk_user_id: 'user_session' } } })
+  const as = (sessionId) => fetch(`${base}/__as`, { method: 'POST', body: JSON.stringify({ path: 'merchants', caller: { role: 'authenticated', clerkUserId: 'user_session', sessionId } }) })
+  const S1 = '11111111-1111-4111-8111-111111111111'
+  const S2 = '22222222-2222-4222-8222-222222222222'
+  const sessions = async () => (await call('GET', `/rest/v1/sessions?select=id&user_id=eq.${staff.body?.id}&order=id`, { key: SERVICE })).body?.map((r) => r.id)
+  await as(S1)
+  await as(S1)
+  const recorded = await sessions()
+  await call('DELETE', `/rest/v1/sessions?id=eq.${S1}`, { key: SERVICE })
+  await as(S1)
+  await as(S2)
+  const after = await sessions()
+  const hidden = await fetch(`${base}/__as`, { method: 'POST', body: JSON.stringify({ path: 'sessions', caller: { role: 'authenticated', clerkUserId: 'user_session', sessionId: S2 } }) })
+  check('sign-in sessions are recorded once, a signed-out one stays out, and only the server reads them',
+    JSON.stringify(recorded) === JSON.stringify([S1]) && JSON.stringify(after) === JSON.stringify([S2]) && (hidden.status === 401 || hidden.status === 403),
+    `${JSON.stringify(recorded)} ${JSON.stringify(after)} ${hidden.status}`)
+
   const product = await call('POST', '/rest/v1/rpc/admin_save_product', { key: SERVICE, merchant: M1, body: { p_payload: {
     name: 'E2E Shirt', price: 500, status: 'ACTIVE', variants: [{ sku: 'E2E-SHIRT', title: 'Default', initial_stock: 10 }] } } })
   const variant = await call('GET', `/rest/v1/product_variants?select=id,inventory(on_hand,available)&product_id=eq.${product.body?.id}`, { key: SERVICE, merchant: M1 })

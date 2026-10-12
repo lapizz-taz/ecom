@@ -80,25 +80,39 @@ the permanent-record rules apply to what the functions do.
 
 - **The Postgres test suite, replayed:** `CF_DB_TESTS=1 npx vitest run --project cfdb`
   runs the 435 tests in `supabase/tests/db` (written against Postgres) on the
-  Cloudflare database through a pg-driver look-alike. **432 pass.** The 3 that do not:
+  Cloudflare database through a pg-driver look-alike. **433 pass.** The 2 that do not:
   - *order-tools — admin override to DELIVERED:* `_order_status_path` picks among
     equally short status paths by the order Postgres happens to read rows in (its
     hash join), not by a rule. On Cloudflare it can pick READY_TO_SHIP → PENDING_CANCEL
     → DELIVERED, which skips the stock commit that SHIPPED does. The tie-break needs
     a business decision before the switch-over (it is fragile on Postgres too).
-  - *data-security — staff session limits and remote sign-out:* they read Supabase's
-    `auth.sessions`. With Clerk, sessions need their own record (keyed by Clerk's
-    session id); part of moving sign-in.
   - *voicedrive-pbx — the phone gateway:* Asterisk reads the `pbx_gw` views over a
     Postgres connection, which a Durable Object does not offer. The phone feature is
     marked coming soon; it needs a different gateway link before it can move.
 - `npx vitest run worker` — data layer unit tests (40).
-- `npm run db:e2e` — the database in the real Workers runtime (14 checks, including
+- `npm run db:e2e` — the database in the real Workers runtime (15 checks, including
   20 buyers racing for the last 10 items: exactly 10 succeed).
+
+## Sign-in sessions
+
+`auth.sessions` (staff session limits, "sign staff out", the access review) is the
+`sessions` table. A Clerk session is recorded, under a stable uuid made from its id,
+the first time the Worker sees one of its verified tokens; its start is what the
+staff session limit measures. Deleting it (sign staff out) leaves a tombstone, so a
+signed-out session is never recorded again and the Super Admin keeps refusing it,
+as on Supabase. Other access with that token continues until it expires, also as on
+Supabase. Two differences:
+
+- signing out in the pages ends the Clerk session but does not yet delete its row,
+  so the access review's session count includes sessions ended that way (the limit
+  itself is unaffected: it is measured from each session's start). Removing the row
+  on sign-out is part of moving the pages' sign-in to Clerk tokens;
+- `auth.mfa_factors` is empty: second factors are kept by Clerk, and the app never
+  enrolled Supabase ones, so the access review shows 0 as it does today.
 
 ## Still to do before the switch-over
 
-1. The three items above.
+1. The two items above.
 2. Sign-in fully on Clerk tokens in the pages, and live updates (3 places use
    Supabase Realtime) on the Worker.
 3. Copy the data: export from Supabase, import here, compare counts and money

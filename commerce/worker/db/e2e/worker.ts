@@ -1,6 +1,6 @@
 // A minimal Worker for checking the Cloudflare database in the real runtime
 // (scripts/db-e2e.mjs): the Database Durable Object behind the same gateway the site uses.
-import { Database as Base } from '../database.ts'
+import { Database as Base, type Caller } from '../database.ts'
 import { database, type DbEnv } from '../gateway.ts'
 
 /** The database with one extra call to load test data. */
@@ -26,9 +26,13 @@ export class Database extends Base {
 
 export default {
   async fetch(req: Request, env: DbEnv): Promise<Response> {
-    if (new URL(req.url).pathname === '/__seed') {
-      const ns = env.DATABASE as unknown as DurableObjectNamespace<Database>
-      return Response.json(await ns.get(ns.idFromName('main')).seed(await req.text()))
+    const ns = env.DATABASE as unknown as DurableObjectNamespace<Database>
+    if (new URL(req.url).pathname === '/__seed') return Response.json(await ns.get(ns.idFromName('main')).seed(await req.text()))
+    // A request as an already verified Clerk session (signing real Clerk tokens needs Clerk's keys).
+    if (new URL(req.url).pathname === '/__as') {
+      const { caller, path } = await req.json() as { caller: Caller; path: string }
+      const res = await ns.get(ns.idFromName('main')).rest({ method: 'GET', path, search: '', headers: {}, body: null }, caller)
+      return new Response(res.body, { status: res.status })
     }
     return database(req, env)
   },
