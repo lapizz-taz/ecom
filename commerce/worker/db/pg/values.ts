@@ -13,7 +13,7 @@
 //   NULL                null
 import { DbError } from '../errors.ts'
 import { schema } from '../meta.ts'
-import { FLOAT, type Typed } from './runtime.ts'
+import { BIGINT, FLOAT, type Typed } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
 
 export class Interval {
@@ -484,8 +484,9 @@ export function castTyped(x: Typed, to: string, scale?: number): Typed {
     const n = cast(x.v, x.t, to) as number
     return { t: to, v: scale !== undefined && scale !== FLOAT ? roundScale(n, scale) : n, s }
   }
-  if (x.v === null || x.v === undefined) return { t: to, v: null }
-  return { t: to, v: cast(x.v, x.t, to, x.s) }
+  const s = to === 'int' && scale === BIGINT ? BIGINT : undefined
+  if (x.v === null || x.v === undefined) return { t: to, v: null, s }
+  return { t: to, v: cast(x.v, x.t, to, x.s), s }
 }
 
 function numberText(n: number): string {

@@ -15,6 +15,8 @@ export interface Typed {
 
 /** The scale marking a float8 (double precision) value: printed shortest, returned as a number. */
 export const FLOAT = -1
+/** The display hint of a bigint (int8): the Postgres driver returns it as text. */
+export const BIGINT = -2
 
 export const NULL: Typed = Object.freeze({ t: 'unknown', v: null }) as Typed
 export const typed = (t: string, v: unknown): Typed => ({ t, v })

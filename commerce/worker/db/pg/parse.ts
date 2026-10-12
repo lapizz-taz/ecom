@@ -3,7 +3,7 @@
 // (plparse.ts) extends it, so INTO clauses are read here when allowed.
 import type { CallExpr, Conflict, Cte, Delete, Expr, FromItem, Insert, Into, OrderItem, Query, Select, SelItem, SetItem, SetOp, Statement, TypeName, Update, Values, WindowSpec, With } from './ast.ts'
 import { lex, SqlSyntaxError, type Tok } from './lex.ts'
-import { FLOAT } from './runtime.ts'
+import { BIGINT, FLOAT } from './runtime.ts'
 import { normType } from './types.ts'
 
 const FLOAT_TYPES = new Set(['real', 'float4', 'float8', 'float', 'double precision'])
@@ -165,6 +165,7 @@ export class Parser {
     // numeric(p, s) rounds to s decimals (numeric(p) to none); float types print their shortest form
     if (name === 'numeric' && FLOAT_TYPES.has(written.replace(/^(pg_catalog)\./, ''))) return { name, array, scale: FLOAT }
     if (name === 'numeric' && mods.length) return { name, array, scale: Number(mods[1] ?? 0) }
+    if (name === 'int' && (written === 'bigint' || written === 'int8' || written === 'bigserial')) return { name, array, scale: BIGINT }
     return { name, array }
   }
 

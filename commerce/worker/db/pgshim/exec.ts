@@ -8,7 +8,7 @@ import { asDbError, PgEngine } from '../pg/engine.ts'
 import { lex } from '../pg/lex.ts'
 import { Parser } from '../pg/parse.ts'
 import { execStatement } from '../pg/query.ts'
-import { FLOAT, NO_VARS, type Typed } from '../pg/runtime.ts'
+import { BIGINT, FLOAT, NO_VARS, type Typed } from '../pg/runtime.ts'
 import { Interval, JNULL, PgRow, toText } from '../pg/values.ts'
 import type { DbRole } from '../policy.ts'
 import type { Sql } from '../sql.ts'
@@ -153,6 +153,7 @@ export function driverValue(v: unknown, t: string, s?: number): unknown {
   if (v === JNULL) return null
   // numeric arrives as text with its display scale ('990.00'); float8 as a number
   if (t === 'numeric') return typeof v === 'number' ? (s === FLOAT ? v : toText(v, 'numeric', s)) : v
+  if (t === 'int' && s === BIGINT && typeof v === 'number') return String(v)
   if (t === 'timestamptz' || t === 'timestamp') return new Date(t === 'timestamp' ? `${String(v)}Z` : String(v))
   if (t === 'date') {
     const [y, m, d] = String(v).split('-').map(Number)

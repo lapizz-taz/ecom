@@ -2,8 +2,15 @@
 // booleans 0/1, JSON and arrays as text, numbers as REAL/INTEGER, dates as text).
 import type { SqlValue } from '../codec.ts'
 import type { ColumnMeta } from '../meta.ts'
+import { BIGINT } from './runtime.ts'
 import { elemType, isArrayType } from './types.ts'
 import { cleanNumber, Interval, isTableType, JNULL, parseArrayText, parseInterval, parseJson, PgRow, plainValue, toText } from './values.ts'
+
+/** A column's display hint (Typed.s): its numeric scale, or BIGINT for int8. */
+export function columnDisplay(c: ColumnMeta | undefined): number | undefined {
+  if (!c) return undefined
+  return c.type === 'int' && c.big ? BIGINT : c.scale
+}
 
 /** The engine type of a stored column. */
 export function columnType(c: ColumnMeta): string {

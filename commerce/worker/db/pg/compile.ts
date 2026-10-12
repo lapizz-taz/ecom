@@ -8,12 +8,12 @@ import { quoteId } from '../ident.ts'
 import { table as tableMeta, view as viewMeta } from '../meta.ts'
 import { requireGrant } from '../policy.ts'
 import type { CallExpr, Expr, FromItem, OrderItem, Query, Select, SelItem, Values } from './ast.ts'
-import { columnType, decodeSql, encodeSql } from './bridge.ts'
+import { columnDisplay, columnType, decodeSql, encodeSql } from './bridge.ts'
 import { aggregates, aggregateType, builtins, numericTextSql, textSql, windowFunctions, windowType, type SqlArg, type SqlHelp } from './builtins.ts'
 import type { Row } from '../sql.ts'
 import { Evaluator } from './evaluate.ts'
 import { runSql } from './run.ts'
-import { NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
+import { BIGINT, NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
 import { catalogTable } from './catalog.ts'
 import { tempRowsJson, tempTable } from './temp.ts'
 import { elemType, isArrayType } from './types.ts'
@@ -376,7 +376,7 @@ export class Compiler implements SqlHelp {
         continue
       }
       const a = this.expr(it.e, scope)
-      items.push({ sql: a.sql, t: a.t === 'unknown' ? 'text' : a.t, name: it.alias ?? columnName(it.e), s: a.t === 'numeric' ? a.s : undefined })
+      items.push({ sql: a.sql, t: a.t === 'unknown' ? 'text' : a.t, name: it.alias ?? columnName(it.e), s: a.t === 'numeric' || a.t === 'int' ? a.s : undefined })
     }
     const outName = (i: number) => (top ? qi(`c${i}`) : qi(items[i].name))
     const groupBy = q.groupBy.map((g) => this.groupItem(g, scope, q.items, items))
@@ -525,7 +525,7 @@ export class Compiler implements SqlHelp {
     if (!meta) throw new DbError('42P01', `relation "${f.name}" does not exist`)
     if (this.engine.role === 'anon' || this.engine.role === 'authenticated') requireGrant(f.name, this.engine.ctx, 'select', this.engine.role)
     const names = Object.keys(meta.columns)
-    this.addSource(scope, alias, names.map((n, i) => ({ name: f.cols?.[i] ?? n, t: columnType(meta.columns[n]), s: meta.columns[n].scale })), f.name)
+    this.addSource(scope, alias, names.map((n, i) => ({ name: f.cols?.[i] ?? n, t: columnType(meta.columns[n]), s: columnDisplay(meta.columns[n]) })), f.name)
     if (f.cols) {
       const src = scope.sources[scope.sources.length - 1]
       src.cols = src.cols.map((c, i) => ({ ...c, sql: `${qi(alias)}.${qi(names[i])}` }))
@@ -1334,6 +1334,8 @@ export class Compiler implements SqlHelp {
       return { sql: this.bind(v.v, to), t: to, c: v, s: v.s }
     }
     const from = a.t
+    // ::bigint marks the value for display; ::int drops the mark
+    if (to === 'int' && from === 'int') return { sql: a.sql, t: 'int', s: scale === BIGINT ? BIGINT : undefined }
     if (to === 'numeric') {
       // numeric(p, s) rounds; plain numeric keeps the value's scale (integers have none)
       const s = castScale({ t: from, v: null, s: a.s }, scale)
@@ -1532,8 +1534,9 @@ export class Compiler implements SqlHelp {
       }
       default: throw new NotSupported(`aggregate ${name}`)
     }
-    // sum, min and max keep the values' display scale (sum of numeric(12,2) prints 990.00)
-    return { sql, t, s: t === 'numeric' && ['sum', 'min', 'max'].includes(name) ? args[0]?.s : undefined }
+    // sum, min and max keep the values' display scale (sum of numeric(12,2) prints 990.00); count is a bigint
+    const s = name === 'count' || (name === 'sum' && t === 'int') ? BIGINT : t === 'numeric' && ['sum', 'min', 'max'].includes(name) ? args[0]?.s : undefined
+    return { sql, t, s }
   }
 
   private windowCall(e: CallExpr, scope: QScope): SqlArg {

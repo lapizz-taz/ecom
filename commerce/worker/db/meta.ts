@@ -19,6 +19,8 @@ export interface ColumnMeta {
   /** timestamp without time zone (stored like timestamptz). */
   local?: boolean
   scale?: number
+  /** bigint (int8): the Postgres driver returns it as text. */
+  big?: boolean
   nullable?: boolean
   /** The SQLite DEFAULT expression, when SQLite fills the column in. */
   default?: string

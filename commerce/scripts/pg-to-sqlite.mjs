@@ -140,7 +140,8 @@ function kindOf(col) {
   switch (col.udt) {
     case 'uuid': return { kind: 'uuid' }
     case 'text': case 'varchar': case 'bpchar': case 'citext': case 'name': case 'inet': return { kind: 'text' }
-    case 'int2': case 'int4': case 'int8': return { kind: 'int' }
+    case 'int2': case 'int4': return { kind: 'int' }
+    case 'int8': return { kind: 'int', big: true }
     case 'numeric': {
       const scale = col.typmod > 0 ? (col.typmod - 4) & 0xffff : undefined
       return scale === undefined ? { kind: 'numeric' } : { kind: 'numeric', scale }
@@ -222,6 +223,7 @@ for (const t of tables) {
     if (k.enum) cm.enum = k.enum
     if (col.udt === 'timestamp') cm.local = true
     if (k.scale !== undefined) cm.scale = k.scale
+    if (k.big) cm.big = true
     if (!col.notnull) cm.nullable = true
     let line = `${quoteId(col.name)} ${STORAGE[k.kind]}`
     const autoPk = col.identity && pk.length === 1 && pk[0] === col.name && k.kind === 'int'
@@ -380,7 +382,7 @@ for (const v of views) {
     where n.nspname = 'public' and c.relname = $1 and a.attnum > 0 order by a.attnum`, [v.name]))
   const vmeta = { columns: Object.fromEntries(columnsOf.map((c) => {
     const k = kindOf({ ...c, table: v.name })
-    return [c.name, { type: k.kind, ...(k.scale !== undefined ? { scale: k.scale } : {}), ...(k.elem ? { elem: k.elem } : {}), ...(k.enum ? { enum: k.enum } : {}), nullable: true }]
+    return [c.name, { type: k.kind, ...(k.scale !== undefined ? { scale: k.scale } : {}), ...(k.big ? { big: true } : {}), ...(k.elem ? { elem: k.elem } : {}), ...(k.enum ? { enum: k.enum } : {}), nullable: true }]
   })) }
   try {
     vmeta.sql = toSqlite(v.definition.trim().replace(/;$/, ''), { functions: new Set() })

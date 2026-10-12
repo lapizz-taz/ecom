@@ -5,7 +5,7 @@
 import { DbError } from '../errors.ts'
 import { table as tableMeta } from '../meta.ts'
 import type { Expr, Into, Statement } from './ast.ts'
-import { columnType } from './bridge.ts'
+import { columnDisplay, columnType } from './bridge.ts'
 import { Evaluator } from './evaluate.ts'
 import { lex } from './lex.ts'
 import { Parser } from './parse.ts'
@@ -185,7 +185,7 @@ export class PlCall implements Vars {
     const row = v.value
     if (row instanceof PgRow) {
       if (!Object.hasOwn(row.values, field)) throw new DbError('42703', `record "${name}" has no field "${field}"`)
-      const s = row.scales[field] ?? (isTableType(v.type) ? tableMeta(v.type)?.columns[field]?.scale : undefined)
+      const s = row.scales[field] ?? (isTableType(v.type) ? columnDisplay(tableMeta(v.type)?.columns[field]) : undefined)
       return { t: row.types[field] ?? guessType(row.values[field]), v: row.values[field], s }
     }
     if (isTableType(v.type)) {
