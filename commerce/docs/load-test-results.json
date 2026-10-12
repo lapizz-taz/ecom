@@ -1,0 +1,46 @@
+{
+  "measuredAt": "2026-10-12",
+  "environment": "local PostgreSQL 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1), 4 CPU cores, same machine as the load generator",
+  "concurrency": 16,
+  "ordersPerSecond": 134,
+  "statusChangesPerSecond": 561,
+  "searchP95Ms": 25,
+  "ordersInDatabase": 3926,
+  "ordersBeforeSearch": 2720,
+  "errors": 0,
+  "details": {
+    "orders": {
+      "label": "place orders",
+      "ok": 2720,
+      "errors": 0,
+      "seconds": 20.2,
+      "perSecond": 134,
+      "p50": 70,
+      "p95": 390,
+      "p99": 708,
+      "firstErrors": []
+    },
+    "status": {
+      "label": "status changes",
+      "ok": 10880,
+      "errors": 0,
+      "seconds": 19.4,
+      "perSecond": 561,
+      "p50": 27,
+      "p95": 46,
+      "p99": 60,
+      "firstErrors": []
+    },
+    "search": {
+      "label": "search under load",
+      "ok": 12072,
+      "errors": 0,
+      "seconds": 20,
+      "perSecond": 603,
+      "p50": 12,
+      "p95": 25,
+      "p99": 34,
+      "firstErrors": []
+    }
+  }
+}

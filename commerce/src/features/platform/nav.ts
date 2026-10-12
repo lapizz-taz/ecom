@@ -1,6 +1,6 @@
 import {
   Activity, BarChart3, CreditCard, Database, LayoutDashboard, LifeBuoy, type LucideIcon, Megaphone, MessageSquare, PhoneCall, Plug, ScrollText,
-  Settings2, ShieldCheck, Siren, Store, ToggleRight, Truck, UsersRound, Wallet, Workflow,
+  Radio, Settings2, ShieldCheck, Siren, Store, ToggleRight, Truck, UsersRound, Wallet, Workflow,
 } from 'lucide-react'
 
 export interface PlatformNavItem {
@@ -14,6 +14,7 @@ export interface PlatformNavItem {
 export const PLATFORM_NAV: PlatformNavItem[] = [
   { module: 'overview', label: 'Overview', to: '/super-admin', icon: LayoutDashboard },
   { module: 'merchants', label: 'Merchants', to: '/super-admin/merchants', icon: Store },
+  { module: 'merchants', label: 'Live & Capacity', to: '/super-admin/live', icon: Radio },
   { module: 'employees', label: 'Employees & Roles', to: '/super-admin/employees', icon: UsersRound },
   { module: 'subscriptions', label: 'Subscriptions & Plans', to: '/super-admin/subscriptions', icon: CreditCard },
   { module: 'credits', label: 'Credits & Wallets', to: '/super-admin/credits', icon: Wallet },

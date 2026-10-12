@@ -28,6 +28,8 @@ import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { deviceLabel } from '@/lib/device'
+import { batcher } from '@/lib/batch'
+import { usePresence } from '@/lib/presence'
 import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -90,30 +92,41 @@ const THEMES: Array<{ value: AdminTheme; label: string; icon: typeof Sun }> = [
   { value: 'system', label: 'System', icon: Monitor },
 ]
 
-/** New storefront orders appear as they arrive (Supabase Realtime). */
+/** New storefront orders appear as they arrive (Supabase Realtime). A burst (a store import, a
+ *  bulk approval, a courier sync) becomes one toast and one refetch instead of one per order. */
 function useNewOrderAlerts(enabled: boolean) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [unseen, setUnseen] = useState(0)
   useEffect(() => {
     if (!enabled) return
-    const channel = supabase
-      .channel('admin-new-orders')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
-        const order = payload.new as { id: string; order_number: string; customer_name: string; total_amount: number }
-        setUnseen((n) => n + 1)
+    type NewOrder = { id: string; order_number: string; customer_name: string; total_amount: number }
+    const arrivals = batcher<NewOrder>((orders) => {
+      setUnseen((n) => n + orders.length)
+      if (orders.length === 1) {
+        const [order] = orders
         toast.success(`New order ${order.order_number}`, {
           description: `${order.customer_name} · ${formatMoney(order.total_amount)}`,
           action: { label: 'Open', onClick: () => navigate(`/admin/orders/${order.id}`) },
         })
-        void queryClient.invalidateQueries({ queryKey: ['orders'] })
-        void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
-        void queryClient.invalidateQueries({ queryKey: ['orders'] })
-      })
+      } else {
+        toast.success(`${orders.length} new orders`, {
+          description: `${orders.slice(0, 3).map((o) => o.order_number).join(', ')}${orders.length > 3 ? ' and more' : ''} · ${formatMoney(orders.reduce((s, o) => s + Number(o.total_amount || 0), 0))}`,
+          action: { label: 'Open', onClick: () => navigate('/admin/orders') },
+        })
+      }
+      void queryClient.invalidateQueries({ queryKey: ['orders'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    })
+    const changes = batcher<true>(() => { void queryClient.invalidateQueries({ queryKey: ['orders'] }) })
+    const channel = supabase
+      .channel('admin-new-orders')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => arrivals.push(payload.new as NewOrder))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => changes.push(true))
       .subscribe()
     return () => {
+      arrivals.cancel()
+      changes.cancel()
       void supabase.removeChannel(channel)
     }
   }, [enabled, navigate, queryClient])
@@ -225,6 +238,7 @@ export default function AdminLayout() {
   const theme = useAdminThemePreference()
   useAdminTheme()
   useIdleSignOut(access?.idle_logout_minutes ?? 0, signOut)
+  usePresence('admin', Boolean(session && access))
 
   const toggleCollapsed = useCallback(() => setCollapsed((c) => {
     try { localStorage.setItem(COLLAPSED_KEY, c ? '0' : '1') } catch { /* private mode */ }

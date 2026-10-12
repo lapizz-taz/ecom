@@ -66,6 +66,7 @@ const shared: RouteObject[] = [
     children: [
       { index: true, handle: { module: 'overview' }, ...page(() => import('@/pages/super-admin/overview')) },
       platform('merchants', 'merchants', () => import('@/pages/super-admin/merchants')),
+      platform('live', 'merchants', () => import('@/pages/super-admin/live')),
       platform('merchants/new', 'merchants', () => import('@/pages/super-admin/merchant-new')),
       platform('merchants/:id', 'merchants', () => import('@/pages/super-admin/merchant-detail')),
       platform('employees', 'employees', () => import('@/pages/super-admin/employees')),
