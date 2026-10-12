@@ -5,7 +5,7 @@
 import type { SqlValue } from '../codec.ts'
 import { DbError } from '../errors.ts'
 import { quoteId } from '../ident.ts'
-import { table as tableMeta, view as viewMeta } from '../meta.ts'
+import { schema as dbSchema, table as tableMeta, view as viewMeta } from '../meta.ts'
 import { requireGrant } from '../policy.ts'
 import type { CallExpr, Expr, FromItem, OrderItem, Query, Select, SelItem, Values } from './ast.ts'
 import { columnDisplay, columnType, decodeSql, encodeSql } from './bridge.ts'
@@ -18,6 +18,13 @@ import { catalogTable } from './catalog.ts'
 import { tempRowsJson, tempTable } from './temp.ts'
 import { elemType, isArrayType } from './types.ts'
 import { addInterval as addIv, arithScale, cast, castScale, castTyped, Interval, isEnum, isTableType, PgRow, scaleOf, zoneOffset } from './values.ts'
+
+/** An enum value's position among its type's values (declaration order), for sorting. */
+const enumValues = (t: string): string[] => dbSchema.enums[t] ?? []
+
+function enumRankSql(x: string, t: string): string {
+  return `instr(${str(`,${enumValues(t).join(',')},`)}, ',' || ${x} || ',')`
+}
 
 /** The widest display scale among numeric values (a CASE or VALUES column takes it). */
 function widestScale(xs: Array<{ t?: string; s?: number }>): number | undefined {
@@ -432,17 +439,17 @@ export class Compiler implements SqlHelp {
     return this.expr(g, scope).sql
   }
 
-  private orderItem(o: OrderItem, scope: QScope, items: Array<{ sql: string; name: string }>, outName: (i: number) => string): { expr: string; ref?: string; dir: string } {
+  private orderItem(o: OrderItem, scope: QScope, items: Array<{ sql: string; name: string; t?: string }>, outName: (i: number) => string): { expr: string; ref?: string; dir: string } {
     const dir = o.desc ? (o.nulls === 'last' ? ' DESC NULLS LAST' : ' DESC NULLS FIRST') : o.nulls === 'first' ? ' NULLS FIRST' : ' NULLS LAST'
-    if (o.e.k === 'lit' && typeof o.e.v === 'number' && o.e.type === 'int') {
-      const i = o.e.v - 1
-      return { expr: items[i].sql, ref: outName(i), dir }
-    }
+    // enums sort in the order their values were declared, not alphabetically
+    const item = (i: number) => (items[i].t && isEnum(items[i].t!) ? { expr: enumRankSql(items[i].sql, items[i].t!), dir } : { expr: items[i].sql, ref: outName(i), dir })
+    if (o.e.k === 'lit' && typeof o.e.v === 'number' && o.e.type === 'int') return item(o.e.v - 1)
     if (o.e.k === 'ref' && o.e.parts.length === 1) {
       const i = items.findIndex((it) => it.name === (o.e as { parts: string[] }).parts[0])
-      if (i >= 0) return { expr: items[i].sql, ref: outName(i), dir }
+      if (i >= 0) return item(i)
     }
-    return { expr: this.expr(o.e, scope).sql, dir }
+    const x = this.expr(o.e, scope)
+    return { expr: isEnum(x.t) ? enumRankSql(x.sql, x.t) : x.sql, dir }
   }
 
   // ---------------------------------------------------------------- FROM
