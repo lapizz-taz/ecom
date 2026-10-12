@@ -17,6 +17,9 @@
   "keep_vars": true,
   "upload_source_maps": true,
   "observability": { "enabled": true, "head_sampling_rate": 1 },
+  // Scheduled jobs (worker/cron.ts): one trigger every minute; each job keeps its own
+  // schedule. They run only with DATABASE_BACKEND=cloudflare (before that, Supabase runs them).
+  "triggers": { "crons": ["* * * * *"] },
 
   "assets": {
     "directory": "./dist",
