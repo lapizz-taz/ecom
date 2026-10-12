@@ -12,6 +12,8 @@ const supabaseUrl = read(import.meta.env.VITE_SUPABASE_URL).replace(/\/+$/, '')
 const supabaseAnonKey = read(import.meta.env.VITE_SUPABASE_ANON_KEY)
 const superAdminPath = read(import.meta.env.VITE_SUPER_ADMIN_PATH)
 const clerkKey = read(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
+// Unset: the old default (production keys through /__clerk). Empty: Clerk on its own DNS (clerk.<domain>).
+const clerkProxy = import.meta.env.VITE_CLERK_PROXY_URL === undefined ? undefined : read(import.meta.env.VITE_CLERK_PROXY_URL)
 // Cloudflare builds (.env.cloudflare): functions on the site's own Worker, uploads on R2.
 const functionsBase = read(import.meta.env.VITE_FUNCTIONS_URL).replace(/\/+$/, '')
 const fileStore = read(import.meta.env.VITE_FILE_STORE)
@@ -25,6 +27,8 @@ export const env = {
   superAdminPath: /^\/[A-Za-z0-9_-]{8,64}$/.test(superAdminPath) ? superAdminPath : null,
   /** Clerk publishable key (pk_test_… / pk_live_…). Set: staff sign in with Clerk; empty: the built-in sign-in. */
   clerkPublishableKey: /^pk_(test|live)_[A-Za-z0-9+/=_-]+$/.test(clerkKey) ? clerkKey : null,
+  /** Clerk's Frontend API through this site ("/__clerk"); "" when Clerk has its own DNS; undefined: the default. */
+  clerkProxyUrl: clerkProxy,
   sentry: {
     dsn: read(import.meta.env.VITE_SENTRY_DSN) || null,
     environment: read(import.meta.env.VITE_SENTRY_ENVIRONMENT) || import.meta.env.MODE,

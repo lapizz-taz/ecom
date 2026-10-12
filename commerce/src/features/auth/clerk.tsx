@@ -30,13 +30,17 @@ function useDarkPage(): boolean {
 }
 
 /**
- * Clerk's production instance is reached through this site's own /__clerk
- * address (the Cloudflare Worker, or vercel.json, sends it to the clerk-proxy
- * function): no DNS records of our own for Clerk are needed. Development keys
+ * Where the browser reaches Clerk. On fullfilio.com Clerk has its own DNS
+ * (clerk.fullfilio.com), set with an empty VITE_CLERK_PROXY_URL. Without the
+ * setting, a production instance is reached through this site's own /__clerk
+ * address (the Worker, or vercel.json, sends it to the clerk-proxy function),
+ * for addresses where we have no DNS records (vercel.app). Development keys
  * talk to Clerk directly.
  */
-export const clerkProxyUrl = (key: string | null | undefined): string | undefined =>
-  key?.startsWith('pk_live_') ? '/__clerk' : undefined
+export const clerkProxyUrl = (key: string | null | undefined, configured: string | undefined = env.clerkProxyUrl): string | undefined => {
+  if (configured !== undefined) return configured || undefined
+  return key?.startsWith('pk_live_') ? '/__clerk' : undefined
+}
 
 function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
   const isDark = useDarkPage()

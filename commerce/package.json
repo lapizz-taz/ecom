@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:cloudflare": "tsc -b && vite build --mode cloudflare",
+    "build:cloudflare": "tsc -b && env -u VITE_CLERK_PUBLISHABLE_KEY vite build --mode cloudflare",
     "deploy:cloudflare": "npm run build:cloudflare && wrangler deploy --env=\"\"",
     "worker:dev": "npm run build:cloudflare && wrangler dev",
     "worker:types": "wrangler types worker/worker-configuration.d.ts",
