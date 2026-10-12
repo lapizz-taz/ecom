@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useSyncExternalStore } from 'react'
+import { isPreviewFrame } from '@/lib/merchant'
 import type { StoreConfig } from '@/types/domain'
 
 // The store's theme, edited in the theme builder (Shopify-style editor) and
@@ -350,7 +351,8 @@ export function useThemeFont(font: ThemeFont) {
 }
 
 // --- live preview inside the theme builder ------------------------------------------
-// The builder shows the store in an iframe (?theme_preview=1) and posts the draft
+// The builder shows the staff's own store in an iframe on this site
+// (/?theme_preview=1, resolved by storefront_resolve_preview) and posts the draft
 // storefront settings and the selected section to it; nothing is saved until
 // staff save. Clicking a section in the preview selects it in the editor.
 
@@ -360,8 +362,7 @@ const listeners = new Set<() => void>()
 let listening = false
 
 function startListening() {
-  if (listening || typeof window === 'undefined' || window.parent === window) return
-  if (!new URLSearchParams(window.location.search).has('theme_preview') && !sessionStorage.getItem('theme_preview')) return
+  if (listening || !isPreviewFrame()) return
   try { sessionStorage.setItem('theme_preview', '1') } catch { /* private mode */ }
   listening = true
   window.addEventListener('message', (e) => {
@@ -385,10 +386,7 @@ function startListening() {
 const subscribe = (l: () => void) => { startListening(); listeners.add(l); return () => { listeners.delete(l) } }
 
 /** True inside the theme builder's preview frame. */
-export function isThemePreview(): boolean {
-  if (typeof window === 'undefined' || window.parent === window) return false
-  try { return new URLSearchParams(window.location.search).has('theme_preview') || !!sessionStorage.getItem('theme_preview') } catch { return false }
-}
+export const isThemePreview = isPreviewFrame
 
 /** The storefront settings to render: the builder's draft while previewing, else the saved ones. */
 export function useStorefront(saved: Storefront | undefined): Storefront | undefined {

@@ -87,7 +87,11 @@ export function storePublicUrl(a: StoreAddress | undefined | null, origin = wind
   return `${origin}/s/${a.slug}`
 }
 
-/** Same-site path to the store (for the theme preview, which must share this origin). */
-export function storeSitePath(a: StoreAddress | undefined | null): string | null {
-  return a?.slug && a.mode === 'OWN' ? `/s/${a.slug}` : null
+/** Where the store stands, for a badge: online, off, or selling through another platform. */
+export function storeState(a: StoreAddress | undefined | null): { label: string; online: boolean } | null {
+  if (!a) return null
+  if (a.mode === 'OWN') return { label: 'Online', online: true }
+  if (a.mode === 'SHOPIFY') return { label: 'Selling on Shopify', online: false }
+  if (a.mode === 'WOOCOMMERCE') return { label: 'Selling on WooCommerce', online: false }
+  return { label: 'Off', online: false }
 }

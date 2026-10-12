@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from '@/App'
-import { hasRememberedSite, resolveSite, type SiteInfo } from '@/lib/merchant'
+import { hasRememberedSite, isPreviewFrame, resolveSite, type SiteInfo } from '@/lib/merchant'
 import { initMonitoring, reportError } from '@/lib/monitoring'
 import { supabase } from '@/lib/supabase'
 import './index.css'
@@ -10,11 +10,14 @@ void initMonitoring()
 
 // What this address shows: the Fullfilio website, a store, or a missing store.
 // A remembered answer starts the page at once; a first visit waits for it so
-// the catalog never loads without a store.
-const site = resolveSite(async (host, slug) => {
-  const { data, error } = slug
-    ? await supabase.rpc('storefront_resolve_slug', { p_slug: slug })
-    : await supabase.rpc('storefront_resolve', { p_host: host })
+// the catalog never loads without a store. The theme editor's preview frame
+// shows the signed-in staff's own store, whatever its mode.
+const site = resolveSite(async (host, slug, preview) => {
+  const { data, error } = preview
+    ? await supabase.rpc('storefront_resolve_preview')
+    : slug
+      ? await supabase.rpc('storefront_resolve_slug', { p_slug: slug })
+      : await supabase.rpc('storefront_resolve', { p_host: host })
   if (error) throw error
   const found = (data as unknown as SiteInfo | null) ?? null
   // A secondary custom domain opens the same page on the primary one (staff pages stay put).
@@ -24,6 +27,11 @@ const site = resolveSite(async (host, slug) => {
   return found
 }).catch((error) => {
   reportError(error, { where: 'storefront_resolve' })
+  // The editor says why its preview is empty rather than showing the platform's website in it.
+  if (isPreviewFrame()) {
+    window.parent.postMessage({ type: 'theme-preview-error', message: (error as Error)?.message ?? String(error) }, window.location.origin)
+    return { kind: 'missing' } as SiteInfo
+  }
   return { kind: 'platform' } as SiteInfo
 })
 
