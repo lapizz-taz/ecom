@@ -1,6 +1,7 @@
 // A minimal Worker for checking the Cloudflare database in the real runtime
 // (scripts/db-e2e.mjs): the Database Durable Object behind the same gateway the site uses.
 import { Database as Base, type Caller } from '../database.ts'
+import { copyOnce, type CopyEnv } from '../../copy.ts'
 import { database, type DbEnv } from '../gateway.ts'
 
 /** The database with one extra call to load test data. */
@@ -22,6 +23,12 @@ export class Database extends Base {
       roles: Number(this.sql.all('SELECT count(*) AS n FROM roles')[0].n),
     }
   }
+
+  /** Rows of a table (the copy check: before the switch the API is off). */
+  async countRows(table: string): Promise<number> {
+    if (!/^[a-z_]+$/.test(table)) throw new Error('bad table')
+    return Number(this.sql.all(`SELECT count(*) AS n FROM "${table}"`)[0].n)
+  }
 }
 
 export default {
@@ -33,6 +40,14 @@ export default {
       const { caller, path } = await req.json() as { caller: Caller; path: string }
       const res = await ns.get(ns.idFromName('main')).rest({ method: 'GET', path, search: '', headers: {}, body: null }, caller)
       return new Response(res.body, { status: res.status })
+    }
+    // The switch-over copy (worker/copy.ts) from a local Postgres, when the check runs one.
+    if (new URL(req.url).pathname === '/__count') {
+      return Response.json(await ns.get(ns.idFromName('main')).countRows(new URL(req.url).searchParams.get('table') ?? ''))
+    }
+    if (new URL(req.url).pathname === '/__copy') {
+      const token = new URL(req.url).searchParams.get('token') ?? ''
+      return Response.json(await copyOnce({ ...(env as CopyEnv), DATABASE: ns as never, COPY_FROM_SUPABASE: token }))
     }
     return database(req, env)
   },

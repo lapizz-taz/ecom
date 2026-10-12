@@ -25,6 +25,7 @@
     "db:convert": "node scripts/pg-to-sqlite.mjs",
     "db:seed": "jiti scripts/pg-export.ts --seed worker/db/generated/seed.sql",
     "db:e2e": "node scripts/db-e2e.mjs",
+    "db:copy-e2e": "node scripts/copy-e2e.mjs",
     "build:woo-plugin": "node scripts/build-woo-plugin.mjs",
     "functions:check": "cd supabase/functions && deno check --config deno.json */index.ts"
   },

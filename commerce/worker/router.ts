@@ -8,13 +8,16 @@
 //   /rest/v1/…, /auth/v1/…   the Cloudflare database (when DATABASE_BACKEND=cloudflare; see db/gateway.ts)
 //
 // Everything else is the site itself (Workers Static Assets, single-page app).
+import type { CopyEnv } from './copy.ts'
 import { database, type DbEnv } from './db/gateway.ts'
 import { filesApi, serveFile, type FilesEnv } from './files.ts'
 import { FUNCTIONS, type Handler } from './functions.ts'
 
-export interface Env extends FilesEnv, DbEnv {
+export interface Env extends FilesEnv, DbEnv, Omit<CopyEnv, 'DATABASE'> {
   ASSETS: Fetcher
   CACHE?: KVNamespace
+  /** "on" during the switch-over: pages and the API answer "back in a few minutes" (503). */
+  MAINTENANCE?: string
   /**
    * Functions that keep running on Supabase Edge Functions: the Worker passes
    * their requests on unchanged. For the Workers Free plan (10 ms CPU and 50

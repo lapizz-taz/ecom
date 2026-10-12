@@ -4,6 +4,7 @@
 // that identity along; nothing here trusts the browser for it.
 import { DurableObject } from 'cloudflare:workers'
 import * as sessions from './auth.ts'
+import { loadStatements, type Summary, targetSummary } from './export.ts'
 import * as live from './realtime.ts'
 import type { SocketState } from './realtime.ts'
 import { authSecret, type TokenEnv, verifyAccessToken } from './tokens.ts'
@@ -84,6 +85,41 @@ export class Database extends DurableObject {
     } catch (e) {
       return errorResponse(e)
     }
+  }
+
+  // --- The switch-over copy from Supabase (worker/copy.ts) ---------------------------
+
+  private copying: { token: string; at: number } | null = null
+
+  private isLive(): boolean {
+    return (this.env as { DATABASE_BACKEND?: string }).DATABASE_BACKEND === 'cloudflare'
+  }
+
+  /** Claims a copy run; false when this database is live, or the run is done or under way. */
+  async copyBegin(token: string): Promise<boolean> {
+    if (this.isLive()) return false
+    if (this.copying && Date.now() - this.copying.at < 15 * 60_000) return false
+    if (this.sql.all('SELECT 1 FROM _copy_runs WHERE token = ?', [token]).length) return false
+    this.copying = { token, at: Date.now() }
+    this.sql.run('INSERT INTO _copy_runs (token, started_at) VALUES (?, ?)', [token, new Date().toISOString()])
+    return true
+  }
+
+  /** Replaces this database with the copied rows (one transaction) and returns its summary. Never once live. */
+  async copyLoad(statements: string[]): Promise<Summary> {
+    if (this.isLive() || !this.copying) throw new Error('No copy is under way, or the Cloudflare database is already live')
+    await this.ctx.storage.deleteAll()
+    migrate(this.sql)
+    loadStatements(this.sql, statements)
+    this.sql.run('INSERT OR IGNORE INTO _copy_runs (token, started_at) VALUES (?, ?)', [this.copying.token, new Date(this.copying.at).toISOString()])
+    return targetSummary(this.sql, { vault: true })
+  }
+
+  async copyEnd(token: string, ok: boolean, issues: string[]): Promise<void> {
+    this.sql.run(`INSERT INTO _copy_runs (token, started_at, finished_at, ok, issues) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (token) DO UPDATE SET finished_at = excluded.finished_at, ok = excluded.ok, issues = excluded.issues`,
+    [token, new Date().toISOString(), new Date().toISOString(), ok ? 1 : 0, JSON.stringify(issues)])
+    if (this.copying?.token === token) this.copying = null
   }
 
   /** Live updates (realtime.ts): the WebSocket supabase-js opens at /realtime/v1/websocket. */

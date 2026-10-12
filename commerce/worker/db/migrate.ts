@@ -49,6 +49,10 @@ export const migrations: Array<{ name: string; sql: readonly string[] }> = [
     ) STRICT`,
     'CREATE INDEX _auth_refresh_tokens_session_idx ON _auth_refresh_tokens (session_id)',
   ] },
+  // The switch-over copy from Supabase (worker/copy.ts): one row per run, so each runs once.
+  { name: '0005_copy_runs', sql: [
+    'CREATE TABLE _copy_runs (token TEXT PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, ok INTEGER, issues TEXT) STRICT',
+  ] },
 ]
 
 export function migrate(sql: Sql): string[] {

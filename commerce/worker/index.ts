@@ -6,6 +6,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { setSharedCache } from '../supabase/functions/_shared/cache.ts'
 import { setLocalCaller } from '../supabase/functions/_shared/internal.ts'
+import { copyOnce } from './copy.ts'
 import { type JobRunner, runDue } from './cron.ts'
 import { database, INTERNAL_ORIGIN, usesCloudflareDb } from './db/gateway.ts'
 import { createRouter, type Env, type Router } from './router.ts'
@@ -72,8 +73,26 @@ function jobRunner(env: Env, active: Router): JobRunner {
   }
 }
 
+const MAINTENANCE_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fullfilio is being upgraded</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#fafafa;color:#18181b}
+main{max-width:28rem;padding:2rem;text-align:center}h1{font-size:1.4rem;margin:0 0 .5rem}p{color:#52525b;line-height:1.5}
+@media (prefers-color-scheme:dark){body{background:#09090b;color:#fafafa}p{color:#a1a1aa}}</style></head>
+<body><main><h1>Fullfilio is being upgraded</h1><p>We are moving to faster servers. Everything will be back in a few minutes; nothing you saved is lost.</p></main></body></html>`
+
+/** During the switch-over nothing is read or written: pages show a notice, the API asks callers to retry. */
+function maintenance(req: Request): Response {
+  const path = new URL(req.url).pathname
+  const headers = { 'Retry-After': '300', 'Cache-Control': 'no-store' }
+  if (/^\/(rest|auth|realtime|functions)\/v1\//.test(path) || path.startsWith('/__clerk') || path.startsWith('/oauth/') || path.startsWith('/files/')) {
+    return Response.json({ error: { code: 'MAINTENANCE', message: 'Fullfilio is being upgraded. Try again in a few minutes.' } }, { status: 503, headers })
+  }
+  if (/\.[a-z0-9]{2,5}$/i.test(path)) return new Response('Service unavailable', { status: 503, headers })
+  return new Response(MAINTENANCE_PAGE, { status: 503, headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8' } })
+}
+
 export default {
   fetch(req, env, ctx) {
+    if (env.MAINTENANCE === 'on') return maintenance(req)
     router ??= setUp(env)
     const active = router
     return requests.run(ctx, () => active.route(req))
@@ -81,7 +100,11 @@ export default {
   // Every minute (wrangler.jsonc). Only with the Cloudflare database: before the
   // switch-over the same jobs run in Supabase (pg_cron), and must not run twice.
   scheduled(event, env, ctx) {
-    if (!usesCloudflareDb(env)) return
+    // The switch-over copy from Supabase, when asked for (copy.ts); never over a live database.
+    if (env.COPY_FROM_SUPABASE && env.SUPABASE_DB_URL) {
+      ctx.waitUntil(copyOnce(env).catch((e) => console.error('copy from Supabase failed:', e instanceof Error ? e.message : e)))
+    }
+    if (!usesCloudflareDb(env) || env.MAINTENANCE === 'on') return
     router ??= setUp(env)
     const runner = jobRunner(env, router)
     ctx.waitUntil(requests.run(ctx, () => runDue(new Date(event.scheduledTime), runner,
