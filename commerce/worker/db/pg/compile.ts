@@ -290,10 +290,25 @@ export class Compiler implements SqlHelp {
         const col = ['jsonb_array_elements', 'json_array_elements', 'jsonb_array_elements_text', 'json_array_elements_text'].includes(e.name) ? 'value' : alias
         return { k: 'ref', parts: [alias, col] }
       }
+      // a user function returning SETOF a scalar gives one row per value too (m.id in (select ids()))
+      if (e.k === 'call' && !e.over && (!e.schema || e.schema === 'public') && !builtins[e.name] && this.scalarSetOf(e)) {
+        found = true
+        const alias = `_srf${++this.cteCount}`
+        from.push({ k: 'func', call: e, alias, lateral: true, ordinality: false })
+        return { k: 'ref', parts: [alias, alias] }
+      }
       return mapExpr(e, rewrite)
     }
     const items = q.items.map((it) => (it.e.k === 'star' ? it : { ...it, e: rewrite(it.e), alias: it.alias ?? columnName(it.e) }))
     return found ? { ...q, items, from } : q
+  }
+
+  /** Whether a user function call returns SETOF a scalar type. */
+  private scalarSetOf(e: CallExpr): boolean {
+    const rt = this.engine.returnType(e.name, e.args.map(() => 'unknown'), e.schema)
+    if (!rt?.startsWith('setof ')) return false
+    const t = rt.slice(6)
+    return t !== 'record' && !isTableType(t)
   }
 
   select(q0: Select, parent: QScope | null, top = false): Compiled {
