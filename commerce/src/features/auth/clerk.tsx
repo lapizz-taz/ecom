@@ -72,6 +72,18 @@ export function ClerkRoot({ children }: { children: ReactNode }) {
 /** Opening the account by itself at most this many times per window; then the page asks. */
 const AUTO_LIMIT = 3
 const AUTO_WINDOW_MS = 60_000
+/** How long Clerk must stay signed out before the account here is closed too. */
+const SIGN_OUT_GRACE_MS = 2_000
+
+/**
+ * Whether someone is signed in to Clerk in this browser, from Clerk's own "__client_uat"
+ * cookie (shared by every tab, "0" once signed out); null when the cookie is not there.
+ */
+export function clerkSignedInHere(cookies: string): boolean | null {
+  const values = cookies.split(';').map((c) => c.trim()).filter((c) => /^__client_uat(_[^=]*)?=/.test(c)).map((c) => c.slice(c.indexOf('=') + 1))
+  if (!values.length) return null
+  return values.some((v) => v !== '' && v !== '0')
+}
 
 /** Runs `fn` while no other tab of this site runs it (Web Locks; directly where unsupported). */
 async function oneTabAtATime(fn: () => Promise<void>): Promise<void> {
@@ -147,10 +159,18 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
       autoSyncs.current.push(now)
       sync().catch((e: Error) => { setError(e); reportError(e, { where: 'clerk-session-sync' }) })
     } else if (!isSignedIn && linkedTo && !inflight.current && !clerk.user) {
-      // Signed out of Clerk (here or in another tab): close the account in this browser too
-      // (only here: other devices keep theirs). The live check on clerk.user avoids reacting
-      // to a render that has not caught up with a sign-in.
-      void endSupabaseSession('local')
+      // Signed out of Clerk: close the account in this browser too (only here: other devices
+      // keep theirs). Clerk can show "signed out" for a moment (right after the account opens
+      // it did, and the account was closed again and again), and a tab in the background keeps
+      // Clerk's state from before a sign-in made in another tab. So only a sign-out that lasts,
+      // and that Clerk's own cookie (shared by every tab) agrees with, closes the account.
+      const t = window.setTimeout(() => {
+        if (clerk.user || clerk.session) return
+        const here = clerkSignedInHere(document.cookie)
+        if (here || (here === null && document.visibilityState !== 'visible')) return
+        void endSupabaseSession('local')
+      }, SIGN_OUT_GRACE_MS)
+      return () => window.clearTimeout(t)
     }
   }, [isLoaded, isSignedIn, userId, linkedTo, sync, clerk])
 
