@@ -78,8 +78,14 @@ export function parseField(text: string): { name: string; json: JsonStep[] } {
   return { name, json }
 }
 
-export function parseSelect(text: string | null): SelectItem[] {
+// Reject absurdly nested select embeds / and()·or() trees before recursing, so a
+// crafted query string can't blow the stack or burn CPU in the single-threaded
+// database. Real queries never nest anywhere near this deep.
+const MAX_PARSE_DEPTH = 40
+
+export function parseSelect(text: string | null, depth = 0): SelectItem[] {
   if (text === null || text.trim() === '') return [{ kind: 'star' }]
+  if (depth > MAX_PARSE_DEPTH) bad('"failed to parse select parameter" nested too deeply', text ?? '')
   return splitTop(text).map((raw) => raw.trim()).filter(Boolean).map((item): SelectItem => {
     if (item === '*') return { kind: 'star' }
     const spread = item.startsWith('...')
@@ -101,7 +107,7 @@ export function parseSelect(text: string | null): SelectItem[] {
         else if (h === 'left') inner = false
         else hint = h
       }
-      return { kind: 'embed', relation: relation.trim(), alias, hint, inner, spread, select: parseSelect(body.slice(open + 1, -1)) }
+      return { kind: 'embed', relation: relation.trim(), alias, hint, inner, spread, select: parseSelect(body.slice(open + 1, -1), depth + 1) }
     }
     if (spread) bad('"failed to parse select parameter"', item)
     let rest = item
@@ -136,10 +142,11 @@ function parseOperation(text: string): { negate: boolean; op: Operator; quantifi
 }
 
 /** One item of an and()/or() list: "col.op.value" or a nested "and(...)". */
-function parseLogicItem(text: string): Filter {
+function parseLogicItem(text: string, depth = 0): Filter {
+  if (depth > MAX_PARSE_DEPTH) bad('"failed to parse logic tree" nested too deeply', text)
   const t = text.trim()
   const logic = /^(not\.)?(and|or)\(([\s\S]*)\)$/.exec(t)
-  if (logic) return { kind: 'logic', negate: Boolean(logic[1]), op: logic[2] as 'and' | 'or', items: splitTop(logic[3]).map(parseLogicItem) }
+  if (logic) return { kind: 'logic', negate: Boolean(logic[1]), op: logic[2] as 'and' | 'or', items: splitTop(logic[3]).map((x) => parseLogicItem(x, depth + 1)) }
   // The column ends at the first dot that is not inside a JSON path.
   const m = /^((?:"[^"]*"|[^.])+?)\.((?:not\.)?[a-z]+(?:\((?:any|all)\))?\.[\s\S]*)$/.exec(t)
   if (!m) bad(`"failed to parse logic tree (${t})"`)
@@ -149,7 +156,7 @@ function parseLogicItem(text: string): Filter {
 
 export function parseLogic(op: 'and' | 'or', negate: boolean, value: string): Filter {
   if (!value.startsWith('(') || !value.endsWith(')')) bad(`"failed to parse logic tree (${value})"`)
-  return { kind: 'logic', op, negate, items: splitTop(value.slice(1, -1)).map(parseLogicItem) }
+  return { kind: 'logic', op, negate, items: splitTop(value.slice(1, -1)).map((x) => parseLogicItem(x, 1)) }
 }
 
 export function parseOrder(text: string): OrderTerm[] {
