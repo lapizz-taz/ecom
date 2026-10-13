@@ -70,6 +70,19 @@
   --sidebar-active: #ffffff;
   --sidebar-border: #e4e4e7;
   --selection: rgb(33 66 231 / 0.14);
+  /* Raised ("3D") buttons: a light top edge, a darker bottom lip and a soft glow of the
+     button's own colour. Ink = black buttons, brand = blue, paper = white, danger = red. */
+  --b3d-ink: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 18px -8px rgb(0 0 0 / 0.55);
+  --b3d-ink-hover: inset 0 1px 0 rgb(255 255 255 / 0.2), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 2px 4px rgb(0 0 0 / 0.16), 0 12px 24px -10px rgb(0 0 0 / 0.6);
+  --b3d-ink-press: inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.18);
+  --b3d-brand: inset 0 1px 0 rgb(255 255 255 / 0.24), inset 0 -2.5px 0 rgb(12 26 120 / 0.5), 0 1px 2px rgb(33 66 231 / 0.3), 0 10px 22px -8px rgb(33 66 231 / 0.6);
+  --b3d-brand-hover: inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -2.5px 0 rgb(12 26 120 / 0.5), 0 2px 4px rgb(33 66 231 / 0.3), 0 14px 28px -10px rgb(33 66 231 / 0.7);
+  --b3d-brand-press: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 -1px 0 rgb(12 26 120 / 0.45), 0 1px 2px rgb(33 66 231 / 0.3);
+  --b3d-paper: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2px 0 rgb(24 24 27 / 0.07), 0 1px 2px rgb(24 24 27 / 0.07), 0 6px 14px -8px rgb(24 24 27 / 0.22);
+  --b3d-paper-hover: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2px 0 rgb(24 24 27 / 0.08), 0 2px 4px rgb(24 24 27 / 0.08), 0 10px 20px -10px rgb(24 24 27 / 0.28);
+  --b3d-paper-press: inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 -1px 0 rgb(24 24 27 / 0.06), 0 1px 1px rgb(24 24 27 / 0.06);
+  --b3d-danger: inset 0 1px 0 rgb(255 255 255 / 0.2), inset 0 -2.5px 0 rgb(110 10 10 / 0.5), 0 1px 2px rgb(220 38 38 / 0.25), 0 10px 20px -8px rgb(220 38 38 / 0.55);
+  --b3d-danger-press: inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -1px 0 rgb(110 10 10 / 0.45), 0 1px 2px rgb(220 38 38 / 0.25);
 }
 
 .dark {
@@ -289,6 +302,18 @@
   --color-stone-800: #2a2a30;
   --color-stone-900: #e4e4e7;
   --color-stone-950: #f0f0f2;
+  /* Light buttons on dark: the lip is a shade of grey and the glow is faint white. */
+  --b3d-ink: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -2.5px 0 rgb(0 0 0 / 0.22), 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 20px -8px rgb(255 255 255 / 0.22);
+  --b3d-ink-hover: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -2.5px 0 rgb(0 0 0 / 0.22), 0 2px 4px rgb(0 0 0 / 0.5), 0 12px 26px -10px rgb(255 255 255 / 0.3);
+  --b3d-ink-press: inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 -1px 0 rgb(0 0 0 / 0.2), 0 1px 1px rgb(0 0 0 / 0.5);
+  --b3d-brand: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -2.5px 0 rgb(20 30 110 / 0.45), 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 22px -8px rgb(123 143 255 / 0.45);
+  --b3d-brand-hover: inset 0 1px 0 rgb(255 255 255 / 0.34), inset 0 -2.5px 0 rgb(20 30 110 / 0.45), 0 2px 4px rgb(0 0 0 / 0.5), 0 14px 28px -10px rgb(123 143 255 / 0.55);
+  --b3d-brand-press: inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -1px 0 rgb(20 30 110 / 0.4), 0 1px 2px rgb(0 0 0 / 0.5);
+  --b3d-paper: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -2px 0 rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 14px -8px rgb(0 0 0 / 0.8);
+  --b3d-paper-hover: inset 0 1px 0 rgb(255 255 255 / 0.09), inset 0 -2px 0 rgb(0 0 0 / 0.4), 0 2px 4px rgb(0 0 0 / 0.5), 0 10px 20px -10px rgb(0 0 0 / 0.9);
+  --b3d-paper-press: inset 0 1px 0 rgb(255 255 255 / 0.04), inset 0 -1px 0 rgb(0 0 0 / 0.35), 0 1px 1px rgb(0 0 0 / 0.5);
+  --b3d-danger: inset 0 1px 0 rgb(255 255 255 / 0.18), inset 0 -2.5px 0 rgb(90 10 10 / 0.55), 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 20px -8px rgb(239 68 68 / 0.45);
+  --b3d-danger-press: inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 0 rgb(90 10 10 / 0.5), 0 1px 2px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
@@ -500,10 +525,6 @@
 @keyframes wire-left { from { left: calc(100% - 8px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } to { left: 0; opacity: 0; } }
 @keyframes wire-down { from { top: 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } to { top: calc(100% - 8px); opacity: 0; } }
 @keyframes wire-up { from { top: calc(100% - 8px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } to { top: 0; opacity: 0; } }
-@keyframes dg-drift {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(-14px); }
-}
 @keyframes van-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-1.5px); }
@@ -532,6 +553,54 @@
 }
 
 /* Horizontal tab rows that scroll on narrow screens without a visible bar. */
+/* The Fullfilio website (marketing pages). Dark by default; visitors can switch to the white
+   version with the toggle in the header (data-site-theme="light"). Product demos stay dark. */
+.site {
+  --s-bg: #08090a; --s-panel: #0f1011; --s-fg: #f7f8f8; --s-fg2: #d0d6e0; --s-muted: #8a8f98;
+  --s-subtle: #62666d; --s-art: #3e4248; --s-accent: #7b8fff;
+  --s-line: rgb(255 255 255 / 0.07); --s-line-strong: rgb(255 255 255 / 0.12);
+  --s-tint: rgb(255 255 255 / 0.035); --s-tint-strong: rgb(255 255 255 / 0.07);
+  --s-cta: #f7f8f8; --s-cta-fg: #08090a; --s-cta-hover: #ffffff;
+  --b3d-site: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2.5px 0 rgb(0 0 0 / 0.2), 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 22px -8px rgb(255 255 255 / 0.28);
+  --b3d-site-hover: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2.5px 0 rgb(0 0 0 / 0.2), 0 2px 4px rgb(0 0 0 / 0.5), 0 12px 28px -10px rgb(255 255 255 / 0.36);
+  --b3d-site-press: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 -1px 0 rgb(0 0 0 / 0.2), 0 1px 1px rgb(0 0 0 / 0.5);
+  --b3d-site-ghost: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -2px 0 rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 14px -8px rgb(0 0 0 / 0.9);
+  --b3d-site-ghost-press: inset 0 1px 0 rgb(255 255 255 / 0.04), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+.site[data-site-theme="light"] {
+  --s-bg: #ffffff; --s-panel: #f6f6f7; --s-fg: #0b0c0e; --s-fg2: #3a3f47; --s-muted: #666b73;
+  --s-subtle: #8b9098; --s-art: #c9ccd2; --s-accent: #2142e7;
+  --s-line: rgb(8 9 10 / 0.08); --s-line-strong: rgb(8 9 10 / 0.14);
+  --s-tint: rgb(8 9 10 / 0.025); --s-tint-strong: rgb(8 9 10 / 0.05);
+  --s-cta: #0b0c0e; --s-cta-fg: #ffffff; --s-cta-hover: #25262a;
+  --b3d-site: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 18px -8px rgb(0 0 0 / 0.55);
+  --b3d-site-hover: inset 0 1px 0 rgb(255 255 255 / 0.2), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 2px 4px rgb(0 0 0 / 0.16), 0 12px 24px -10px rgb(0 0 0 / 0.6);
+  --b3d-site-press: inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.18);
+  --b3d-site-ghost: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2px 0 rgb(24 24 27 / 0.08), 0 1px 2px rgb(24 24 27 / 0.07), 0 6px 14px -8px rgb(24 24 27 / 0.22);
+  --b3d-site-ghost-press: inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 -1px 0 rgb(24 24 27 / 0.06), 0 1px 1px rgb(24 24 27 / 0.06);
+  color-scheme: light;
+}
+
+/* Raised buttons (see the --b3d-* tokens). Hover lifts the glow, press pushes the button
+   down onto its lip. Utilities still win (e.g. the focus ring), as they should. */
+@layer components {
+  .btn-3d { box-shadow: var(--b3d-rest); transition-property: color, background-color, border-color, box-shadow, transform, translate, opacity; }
+  .btn-3d:hover:not(:disabled):not([aria-disabled="true"]) { box-shadow: var(--b3d-hover, var(--b3d-rest)); }
+  .btn-3d:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: var(--b3d-press, var(--b3d-rest)); translate: 0 1px; }
+  .btn-3d-ink { --b3d-rest: var(--b3d-ink); --b3d-hover: var(--b3d-ink-hover); --b3d-press: var(--b3d-ink-press); }
+  .btn-3d-brand { --b3d-rest: var(--b3d-brand); --b3d-hover: var(--b3d-brand-hover); --b3d-press: var(--b3d-brand-press); }
+  .btn-3d-paper { --b3d-rest: var(--b3d-paper); --b3d-hover: var(--b3d-paper-hover); --b3d-press: var(--b3d-paper-press); }
+  .btn-3d-danger { --b3d-rest: var(--b3d-danger); --b3d-hover: var(--b3d-danger); --b3d-press: var(--b3d-danger-press); }
+  .btn-3d-site { --b3d-rest: var(--b3d-site); --b3d-hover: var(--b3d-site-hover); --b3d-press: var(--b3d-site-press); }
+  .btn-3d-site-ghost { --b3d-rest: var(--b3d-site-ghost); --b3d-hover: var(--b3d-site-ghost); --b3d-press: var(--b3d-site-ghost-press); }
+}
+
+/* Toasts in the app's typeface (goey-toast sets the system font on its wrapper). */
+:root .gooey-wrapper, :root .gooey-wrapper button {
+  font-family: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Bengali", sans-serif;
+}
+
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }

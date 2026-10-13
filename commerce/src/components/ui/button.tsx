@@ -8,11 +8,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/80 ring-inset hover:bg-primary/88',
-        brand: 'bg-brand text-brand-foreground shadow-sm ring-1 ring-black/10 ring-inset hover:bg-brand/90',
-        destructive: 'bg-destructive text-white shadow-sm hover:bg-destructive/90 focus-visible:ring-destructive/25',
-        outline: 'border border-input bg-card text-foreground shadow-xs hover:border-foreground/20 hover:bg-accent',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/70 dark:hover:bg-accent',
+        // Raised like a physical key (index.css, .btn-3d): black on light, white on dark.
+        default: 'btn-3d btn-3d-ink bg-primary text-primary-foreground hover:bg-primary/92',
+        brand: 'btn-3d btn-3d-brand bg-brand text-brand-foreground hover:bg-brand/95',
+        destructive: 'btn-3d btn-3d-danger bg-destructive text-white hover:bg-destructive/92 focus-visible:ring-destructive/25',
+        outline: 'btn-3d btn-3d-paper border border-input bg-card text-foreground hover:border-foreground/15 hover:bg-accent/60',
+        secondary: 'btn-3d btn-3d-paper bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:hover:bg-accent',
         ghost: 'text-foreground/80 hover:bg-accent hover:text-accent-foreground',
         link: 'h-auto px-0 text-brand underline-offset-4 hover:underline has-[>svg]:px-0',
       },

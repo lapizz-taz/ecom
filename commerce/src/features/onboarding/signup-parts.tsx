@@ -1,9 +1,10 @@
-import { Check } from 'lucide-react'
+import { Check, MessageCircle } from 'lucide-react'
+import { useState } from 'react'
 import { Field } from '@/components/common/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatMoney, formatNumber } from '@/lib/format'
-import { normalizePhone } from '@/lib/phone'
+import { isValidWhatsapp, normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import { cn } from '@/lib/utils'
 import { BUSINESS_TYPES, ORDER_VOLUMES, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
 
@@ -16,6 +17,7 @@ export function businessErrors(b: SignupBusiness): Partial<Record<keyof SignupBu
   if (name.length < 2 || name.length > 120) e.business_name = 'Enter your business name (2 to 120 characters)'
   if (b.full_name.trim().length < 2) e.full_name = 'Enter your name'
   if (!BD_MOBILE.test(normalizePhone(b.phone))) e.phone = 'Enter a Bangladesh mobile number (01XXXXXXXXX)'
+  if (b.whatsapp?.trim() && !isValidWhatsapp(normalizeWhatsapp(b.whatsapp))) e.whatsapp = 'Enter a WhatsApp number (01XXXXXXXXX, or + country code and number)'
   if (b.website.trim() && !/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(b.website.trim())) e.website = 'This address does not look right'
   return e
 }
@@ -109,6 +111,7 @@ export function BusinessFields({ value, onChange, errors, showErrors }: {
           <Input value={value.phone} onChange={(e) => set('phone', e.target.value)} type="tel" inputMode="tel" autoComplete="tel" placeholder="01XXXXXXXXX" className="h-10" />
         </Field>
       </div>
+      <WhatsappField value={value.whatsapp ?? ''} onChange={(v) => set('whatsapp', v)} error={err('whatsapp')} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="What do you sell?">
           <Select value={value.business_type || undefined} onValueChange={(v) => set('business_type', v)}>
@@ -154,5 +157,33 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
         </li>
       ))}
     </ol>
+  )
+}
+
+/** WhatsApp for the support group: the mobile number unless the owner gives another one. */
+function WhatsappField({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  const [other, setOther] = useState(value.trim() !== '')
+  return (
+    <div className="grid gap-2 rounded-xl border bg-muted/30 p-3">
+      <div className="flex items-start gap-2.5">
+        <MessageCircle className="mt-0.5 size-4 shrink-0 text-[#25d366]" />
+        <div className="min-w-0 text-[13px]">
+          <p className="font-medium">WhatsApp number</p>
+          <p className="text-muted-foreground">We add you to a Fullfilio support group on WhatsApp for setup help and quick answers.</p>
+        </div>
+      </div>
+      <label className="flex items-center gap-2 pl-6.5 text-[13px]">
+        <input type="checkbox" className="size-4 accent-foreground" checked={!other}
+          onChange={(e) => { setOther(!e.target.checked); if (e.target.checked) onChange('') }} />
+        Same as my mobile number
+      </label>
+      {other && (
+        <div className="pl-6.5">
+          <Field label="WhatsApp number" required error={error}>
+            <Input value={value} onChange={(e) => onChange(e.target.value)} type="tel" inputMode="tel" placeholder="01XXXXXXXXX or +971…" className="h-10" autoFocus />
+          </Field>
+        </div>
+      )}
+    </div>
   )
 }

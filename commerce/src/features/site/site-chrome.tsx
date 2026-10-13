@@ -1,11 +1,56 @@
-import { Menu, X } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { Menu, Moon, Sun, X } from 'lucide-react'
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation } from 'react-router'
 import { Wordmark } from '@/components/brand/logo'
 
 // The frame every page of the Fullfilio website shares: header, footer and
-// the dark page background. Section links point at the home page ("/#…") so
-// they work from any page.
+// the page background. Section links point at the home page ("/#…") so they
+// work from any page.
+
+// --- black (default) or white version, remembered in this browser -------------
+type SiteTheme = 'dark' | 'light'
+const THEME_KEY = 'fullfilio.site-theme'
+const listeners = new Set<() => void>()
+function readTheme(): SiteTheme {
+  try { return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark' } catch { return 'dark' }
+}
+let current: SiteTheme = typeof window === 'undefined' ? 'dark' : readTheme()
+function setSiteTheme(next: SiteTheme) {
+  current = next
+  try { localStorage.setItem(THEME_KEY, next) } catch { /* private mode: this visit only */ }
+  for (const l of listeners) l()
+}
+export function useSiteTheme(): SiteTheme {
+  return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l) }, () => current, () => 'dark')
+}
+
+function ThemeToggle() {
+  const theme = useSiteTheme()
+  const light = theme === 'light'
+  return (
+    <button type="button" onClick={() => setSiteTheme(light ? 'dark' : 'light')} aria-label={light ? 'Switch to the black version' : 'Switch to the white version'}
+      title={light ? 'Black version' : 'White version'} aria-pressed={light}
+      className="grid size-8 place-items-center rounded-full text-(--s-muted) transition-colors hover:bg-(--s-tint-strong) hover:text-(--s-fg)">
+      {light ? <Moon className="size-4" /> : <Sun className="size-4" />}
+    </button>
+  )
+}
+
+/** The page root: website colours for the chosen version. */
+export function SiteRoot({ children }: { children: ReactNode }) {
+  const theme = useSiteTheme()
+  useEffect(() => {
+    // The browser chrome (overscroll, mobile address bar) follows the page.
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = theme === 'light' ? '#ffffff' : '#08090a'
+    return () => { document.body.style.backgroundColor = prev }
+  }, [theme])
+  return (
+    <div className="site min-h-dvh bg-(--s-bg) font-sans text-(--s-fg) antialiased selection:bg-[#2142e7]/60 selection:text-white" data-site-theme={theme}>
+      {children}
+    </div>
+  )
+}
 
 const NAV: Array<[string, string]> = [
   ['Product', '/#product'], ['Features', '/#orders'], ['Pricing', '/#pricing'], ['Changelog', '/#changelog'], ['Blog', '/blog'], ['Contact', '/contact'],
@@ -30,22 +75,23 @@ function SiteLink({ to, className, onClick, children }: { to: string; className?
 export function SiteHeader() {
   const [menu, setMenu] = useState(false)
   return (
-    <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#08090a]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-(--s-line) bg-(--s-bg)/80 backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
-        <Link to="/" aria-label="Fullfilio home" className="text-white"><Wordmark className="h-[18px]" /></Link>
-        <nav className="ml-auto hidden items-center gap-6 text-[13px] text-[#8a8f98] md:flex" aria-label="Main">
-          {NAV.map(([l, h]) => <SiteLink key={l} to={h} className="transition-colors hover:text-white">{l}</SiteLink>)}
+        <Link to="/" aria-label="Fullfilio home" className="text-(--s-fg)"><Wordmark className="h-[18px]" /></Link>
+        <nav className="ml-auto hidden items-center gap-6 text-[13px] text-(--s-muted) md:flex" aria-label="Main">
+          {NAV.map(([l, h]) => <SiteLink key={l} to={h} className="transition-colors hover:text-(--s-fg)">{l}</SiteLink>)}
         </nav>
         <div className="ml-auto flex items-center gap-2 md:ml-4">
-          <Link to="/admin/login" className="hidden px-2 text-[13px] text-[#8a8f98] transition-colors hover:text-white sm:inline">Log in</Link>
-          <Link to="/start" className="rounded-full bg-[#f7f8f8] px-3.5 py-1.5 text-[13px] font-medium text-[#08090a] transition-colors hover:bg-white">Sign up</Link>
+          <ThemeToggle />
+          <Link to="/admin/login" className="hidden px-2 text-[13px] text-(--s-muted) transition-colors hover:text-(--s-fg) sm:inline">Log in</Link>
+          <Link to="/start" className="rounded-full bg-(--s-cta) px-3.5 py-1.5 text-[13px] font-medium text-(--s-cta-fg) transition-colors hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Sign up</Link>
           <button type="button" className="grid size-8 place-items-center md:hidden" aria-label="Menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>{menu ? <X className="size-4" /> : <Menu className="size-4" />}</button>
         </div>
       </div>
       {menu && (
-        <nav className="grid gap-1 border-t border-white/[0.06] px-5 py-3 text-sm md:hidden">
-          {NAV.map(([l, h]) => <SiteLink key={l} to={h} onClick={() => setMenu(false)} className="py-2 text-[#d0d6e0]">{l}</SiteLink>)}
-          <Link to="/admin/login" className="py-2 text-[#d0d6e0]">Log in</Link>
+        <nav className="grid gap-1 border-t border-(--s-line) px-5 py-3 text-sm md:hidden">
+          {NAV.map(([l, h]) => <SiteLink key={l} to={h} onClick={() => setMenu(false)} className="py-2 text-(--s-fg2)">{l}</SiteLink>)}
+          <Link to="/admin/login" className="py-2 text-(--s-fg2)">Log in</Link>
         </nav>
       )}
     </header>
@@ -54,19 +100,19 @@ export function SiteHeader() {
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-white/[0.06]">
+    <footer className="border-t border-(--s-line)">
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:grid-cols-[1fr_repeat(4,auto)] sm:gap-16">
-        <div className="text-white"><Wordmark className="h-4" /></div>
+        <div className="text-(--s-fg)"><Wordmark className="h-4" /></div>
         {FOOTER.map(([h, links]) => (
           <div key={h}>
             <p className="text-[13px] font-medium">{h}</p>
-            <ul className="mt-4 space-y-2.5 text-[13px] text-[#8a8f98]">
-              {links.map(([l, href]) => <li key={l}><SiteLink to={href} className="hover:text-white">{l}</SiteLink></li>)}
+            <ul className="mt-4 space-y-2.5 text-[13px] text-(--s-muted)">
+              {links.map(([l, href]) => <li key={l}><SiteLink to={href} className="hover:text-(--s-fg)">{l}</SiteLink></li>)}
             </ul>
           </div>
         ))}
       </div>
-      <p className="mx-auto max-w-6xl px-5 pb-10 text-[12px] text-[#62666d]">© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</p>
+      <p className="mx-auto max-w-6xl px-5 pb-10 text-[12px] text-(--s-subtle)">© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</p>
     </footer>
   )
 }
@@ -75,10 +121,10 @@ export function SiteFooter() {
 export function SitePage({ title, children }: { title: string; children: ReactNode }) {
   useEffect(() => { document.title = title }, [title])
   return (
-    <div className="min-h-dvh bg-[#08090a] font-sans text-[#f7f8f8] antialiased selection:bg-[#2142e7]/60">
+    <SiteRoot>
       <SiteHeader />
       <main>{children}</main>
       <SiteFooter />
-    </div>
+    </SiteRoot>
   )
 }

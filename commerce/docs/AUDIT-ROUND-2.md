@@ -82,3 +82,24 @@ Probe: `scratchpad/r2/run-mobile-all.cjs` runs the real Worker locally (site, th
 | Rest of the app on phones | Same probe over 81 site, store and admin pages. | — | **PASS**: 0 px page overflow on all. 17 pages have a sideways strip inside the page, all deliberate: swipeable chip rows (status tabs, quick actions) and wide data tables scrolling inside their own card. |
 | "Who is using our SaaS" | New **Super Admin → Live & Capacity**: online now (last 2 minutes), stores working now, last 15 minutes, today, each person with role, store, section and device, and store visitors in the last 5 minutes. The admin and Super Admin send a heartbeat once a minute while a tab is visible and on each new section (at most every 20 s); ids in paths are blanked. Only people with the merchants permission can read it. | `20261109002300_presence_capacity.sql`, `src/lib/presence.ts`, `src/pages/super-admin/live.tsx` | **PASS**: probe shows the owner and the Super Admin online with their sections; `presence-capacity.test.ts` 4/4 (staff can only ping, a limited role cannot read, ids blanked, numbers right) |
 | "How many orders can it take" | Same page: orders in the last hour, 24 h, 7 days, busiest minute and hour, status changes, orders in each status, database connections and size, and the load-test result (§4) with today's headroom. | `platform_capacity()`, `capacity-benchmark.ts` | **PASS** (local); live after the migration in R11 |
+
+## 6. Design: buttons, quick actions, toasts, custom domain (R8)
+
+Check: `scratchpad/r2/run-design.cjs` on the local Worker in Chromium, 14 of 14 passed.
+
+| Item | What changed | Result |
+|---|---|---|
+| Buttons everywhere | Every filled and outlined button in the admin, Super Admin and website is raised like the sample: a light top edge, a darker bottom lip, a soft glow, and it presses down when clicked (`.btn-3d` in `index.css`, used by the shared `Button`). **Black** was chosen over blue: the admin, Super Admin and the default website are black and grey, and blue is kept for links and status. Blue (brand) and red (delete) buttons get the same treatment; in dark mode the black button turns white with a grey lip. Plain text and icon buttons stay flat. | **PASS**: computed shadow checked on the website and admin; screenshots |
+| Quick actions (New order, Add product, …) | Same raised design, white, same size (32 px) and round shape, not blue. | **PASS** |
+| Toasts in Poppins | The toast library set the system font on its wrapper; it now uses Poppins like the rest of the app. | **PASS**: computed font of a real toast is Poppins |
+| Custom domain add + toast | Round 1 tested the domain functions (`sites-domains` 4, DNS/HTTPS checker unit tests); not re-run. Adding a domain in the browser saves it and shows the success toast. No domain has ever been added on live (`store_domains` is empty). | **PASS** (local); live DNS/HTTPS **BLOCKED** (no domain added; hosts unreachable from here) |
+| Domain status popup | The screen recording shared was a reference for a 3D globe. The popup now shows a dark globe that turns slowly: drag to turn it, hover a country to see its name, one pin per DNS-check region (blue = sees the domain, red = not yet), over the red/blue status band. The world map (100 KB) loads only on this page. | **PASS**: globe drawn, hover shows country names |
+
+## 7. Website, logo, promo video, sign-up WhatsApp (R9)
+
+| Item | What changed | Result |
+|---|---|---|
+| New logo | Wordmark redrawn from the new artwork, measured from its pixels: the "i" after "f" cut on the F's slant, a round dot on the last "i", the "o" drawn as the cube from the app icon, an even 16-unit gap between letters. Used in the admin, Super Admin, sign-up, website and `public/fullfilio-wordmark.svg`. | **PASS**: traced paths overlaid on the artwork within 1–2 px |
+| "See it in 30 seconds" video | Replaced with the new promo (38 s): 1280×720 MP4 (1.7 MB, was 19 MB uploaded) and WebM (1.3 MB), new poster. New file names, because media is cached for a week and returning visitors would otherwise keep the old video. | **PASS**: served, plays; label reads 0:38 |
+| White version of the website | Every website page now draws from colour tokens with a black set (default) and a white set; a sun/moon button in the header switches, and the choice is remembered in the browser. Product demos stay dark in both. | **PASS**: opens black, switches to white, remembered after reload, fits a phone |
+| Sign-up asks for WhatsApp | New field under the mobile number: "Same as my mobile number" (default) or another number (Bangladesh or international). Checked in the browser and in the database (`20261109002500_signup_whatsapp.sql`, patched in place), stored with the business's onboarding details, and shown in Super Admin → Merchant → Profile with an "open chat" link for creating the group. | **PASS**: `self-onboarding.test.ts` 4/4 (default, +880 written short, international kept, nonsense refused) |

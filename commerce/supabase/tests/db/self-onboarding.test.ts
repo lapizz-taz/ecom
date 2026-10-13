@@ -20,6 +20,23 @@ const signUp = (over: Record<string, unknown> = {}) => JSON.stringify({
 })
 
 describe('self sign-up', () => {
+  it('keeps the WhatsApp number for the support group: the mobile by default, +880 written short, nonsense refused', () =>
+    inTx(async (db) => {
+      const whatsappOf = async (over: Record<string, unknown>) => {
+        const me = await newPerson(db)
+        await asUser(db, me.id, me.email, null)
+        const r = await value<Record<string, any>>(db, `select public.merchant_self_onboard($1)`, [signUp(over)])
+        await asSystem(db, null)
+        return value<string>(db, `select onboarding ->> 'whatsapp' from public.merchants where id = $1`, [r.merchant_id])
+      }
+      expect(await whatsappOf({})).toBe('01712345678')
+      expect(await whatsappOf({ whatsapp: '+880 1811-223344' })).toBe('01811223344')
+      expect(await whatsappOf({ whatsapp: '+971 50 123 4567' })).toBe('+971501234567')
+      const me = await newPerson(db)
+      await asUser(db, me.id, me.email, null)
+      await expectError(db, `select public.merchant_self_onboard($1)`, [signUp({ whatsapp: '12345' })], /WhatsApp number/)
+    }))
+
   it('shows the public plans to anyone, never private ones', () =>
     inTx(async (db) => {
       await asAnon(db, null)
