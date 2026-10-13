@@ -139,7 +139,7 @@ function CourierPanelSettings() {
               <p className="text-sm font-medium">{connected ? `Provided by the platform · ${connectedCount} courier${connectedCount === 1 ? '' : 's'} connected` : 'Not available right now'}</p>
               <p className="text-xs text-muted-foreground">
                 {!connected ? 'Checks use BD Courier and your own store history until it is connected.'
-                  : (status.data?.providers ?? []).filter((p) => p.connected).map((p) => p.label).join(', ')}
+                  : (status.data?.providers ?? []).filter((p) => p.connected).map((p) => (p.accounts > 1 ? `${p.label} (${p.accounts} accounts)` : p.label)).join(', ')}
                 {connected && status.data && !status.data.enabled && <span className="block text-amber-700">Turned off for checks — tick “Courier sign-in accounts” under Providers below.</span>}
               </p>
             </div>

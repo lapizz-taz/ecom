@@ -168,6 +168,8 @@ export interface CourierPanelProviderStatus {
   /** Which field this courier signs in with. */
   login_field: 'email' | 'phone' | 'user'
   connected: boolean
+  /** How many company accounts are connected for this courier. */
+  accounts: number
 }
 
 /** Merchant-side status: the platform provides the accounts. */

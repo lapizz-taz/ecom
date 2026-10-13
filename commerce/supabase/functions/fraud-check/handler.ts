@@ -10,7 +10,7 @@
 import { z } from 'zod'
 import { COURIER_HISTORY_SERVICES, CourierHistoryProvider, type CourierHistorySummary } from '../_shared/fraud/courier-history.ts'
 import {
-  COURIER_PANEL_LABELS, COURIER_PANEL_LOGIN_FIELD, COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider,
+  COURIER_PANEL_LABELS, COURIER_PANEL_LOGIN_FIELD, COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider, panelAccounts,
 } from '../_shared/fraud/courier-panel.ts'
 import {
   courierHistoryConfig, databaseMeter, FraudDetectionService, type FraudSettings, loadFraudProviders,
@@ -109,9 +109,8 @@ export default (
     if (input.action === 'courier_panel_status') {
       const creds = (await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {}
       const providers = COURIER_PANEL_PROVIDERS.map((p) => {
-        const c = creds[p]
-        const connected = !!c && !!String(c.password ?? '').trim() && !!String(c.email ?? c.phone ?? c.user ?? '').trim()
-        return { provider: p, label: COURIER_PANEL_LABELS[p], login_field: COURIER_PANEL_LOGIN_FIELD[p], connected }
+        const accounts = panelAccounts(creds, p).length
+        return { provider: p, label: COURIER_PANEL_LABELS[p], login_field: COURIER_PANEL_LOGIN_FIELD[p], connected: accounts > 0, accounts }
       })
       return json(req, {
         provided_by_platform: true,

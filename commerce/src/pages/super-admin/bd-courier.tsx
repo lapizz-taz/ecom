@@ -113,26 +113,26 @@ function Connection({ status }: { status: ServiceStatus }) {
   )
 }
 
-function PanelConnectDialog({ account, onClose, onDone }: { account: CourierPanelAccountStatus; onClose: () => void; onDone: () => void }) {
+function PanelConnectDialog({ courier, accountId, onClose, onDone }: { courier: CourierPanelAccountStatus; accountId?: string; onClose: () => void; onDone: () => void }) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [phone, setPhone] = useState('')
-  const idLabel = account.login_field === 'email' ? 'Account email' : account.login_field === 'phone' ? 'Login phone' : 'Username'
-  const idPlaceholder = account.login_field === 'email' ? 'you@company.com' : account.login_field === 'phone' ? '01XXXXXXXXX' : 'username'
+  const idLabel = courier.login_field === 'email' ? 'Account email' : courier.login_field === 'phone' ? 'Login phone' : 'Username'
+  const idPlaceholder = courier.login_field === 'email' ? 'you@company.com' : courier.login_field === 'phone' ? '01XXXXXXXXX' : 'username'
   const connect = useMutation({
     meta: { silent: true },
     mutationFn: () => {
       const login: { email?: string; phone?: string; user?: string; password: string } = { password: password.trim() }
-      if (account.login_field === 'email') login.email = identifier.trim()
-      else if (account.login_field === 'phone') login.phone = identifier.trim()
+      if (courier.login_field === 'email') login.email = identifier.trim()
+      else if (courier.login_field === 'phone') login.phone = identifier.trim()
       else login.user = identifier.trim()
-      return connectCourierPanel(account.provider, login, phone.trim())
+      return connectCourierPanel(courier.provider, login, phone.trim(), accountId)
     },
-    onSuccess: (r) => { toast.success(r.message || `${account.label} connected`); onDone(); onClose() },
+    onSuccess: (r) => { toast.success(r.message || `${courier.label} connected`); onDone(); onClose() },
   })
   return (
-    <FormDialog open onOpenChange={(o) => !o && onClose()} title={`Connect ${account.label}`} submitLabel="Test and connect"
-      description="The company's own login for this courier's merchant panel. We sign in and read the fraud page to prove it before saving. The password is stored encrypted and never shown again."
+    <FormDialog open onOpenChange={(o) => !o && onClose()} title={accountId ? `Change ${courier.label} login` : `Add a ${courier.label} account`} submitLabel="Test and save"
+      description="A company login for this courier's merchant panel. We sign in and read the fraud page to prove it before saving. The password is stored encrypted and never shown again."
       busy={connect.isPending} disabled={!identifier.trim() || !password.trim() || !phone.trim()} onSubmit={() => connect.mutate()}>
       <Field label={idLabel} required><Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder={idPlaceholder} autoComplete="off" /></Field>
       <Field label="Password" required><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" /></Field>
@@ -142,60 +142,80 @@ function PanelConnectDialog({ account, onClose, onDone }: { account: CourierPane
   )
 }
 
+type PanelTarget = { courier: CourierPanelAccountStatus; accountId?: string }
+
 function CourierPanelAccounts() {
   const { can } = usePlatform()
   const queryClient = useQueryClient()
   const panel = useQuery({ queryKey: ['platform-courier-panel'], queryFn: courierPanelPlatformStatus })
-  const [connect, setConnect] = useState<CourierPanelAccountStatus | null>(null)
-  const [remove, setRemove] = useState<CourierPanelProvider | null>(null)
-  const [testing, setTesting] = useState<CourierPanelProvider | null>(null)
+  const [connect, setConnect] = useState<PanelTarget | null>(null)
+  const [remove, setRemove] = useState<{ provider: CourierPanelProvider; accountId: string; hint: string } | null>(null)
+  const [testing, setTesting] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['platform-courier-panel'] })
   const test = useMutation({
     meta: { silent: true },
-    mutationFn: (provider: CourierPanelProvider) => testCourierPanel(provider, phone.trim()),
+    mutationFn: (t: { provider: CourierPanelProvider; accountId: string }) => testCourierPanel(t.provider, t.accountId, phone.trim()),
     onSuccess: (r) => { toast.success(r.message); setTesting(null); refresh() },
-    onError: () => refresh(),
+    onError: (e) => { toast.error((e as Error).message); refresh() },
   })
+  const manage = can('bd_courier', 'manage')
   return (
-    <Card>
+    <Card className="lg:col-span-2">
       <CardHeader>
         <CardTitle className="text-sm">Courier sign-in accounts</CardTitle>
         <p className="text-xs text-muted-foreground">
-          A second delivery-history source next to BD Courier, using the company's own courier logins (Steadfast, Pathao, RedX, Carrybee, Paperfly).
-          Checks are metered on the same free allowance and credits as BD Courier. Unofficial — a courier can change its site or lock an account from too many sign-ins, so each shows its own status.
+          A second delivery-history source next to BD Courier, using the company's own courier logins. Add several accounts per courier:
+          lookups take turns between them to spread the load, and move to the next one if an account is refused or limited.
+          Metered on the same free allowance and credits as BD Courier. Unofficial — a courier can change its site or lock an account from too many sign-ins.
         </p>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="grid gap-2 md:grid-cols-2">
         {!panel.data ? <LoadingState /> : panel.data.providers.map((p) => (
           <div key={p.provider} className="rounded-lg border p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`size-2.5 rounded-full ${p.connected ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{p.label} {p.connected ? <Badge variant="success">Connected</Badge> : <Badge variant="neutral">Not connected</Badge>}</p>
-                {p.connected && <p className="truncate text-xs text-muted-foreground">{p.hint ?? '••••'}{p.last_test_at ? ` · last test ${timeAgo(p.last_test_at)}: ${p.last_test_ok ? 'worked' : `failed — ${p.last_error ?? 'no detail'}`}` : ''}</p>}
-              </div>
-              {can('bd_courier', 'manage') && (
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setConnect(p)}>{p.connected ? 'Change login' : 'Connect'}</Button>
-                  {p.connected && <Button size="sm" variant="ghost" onClick={() => { setTesting(p.provider); setPhone('') }}><Search /> Test</Button>}
-                  {p.connected && <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setRemove(p.provider)}><Unplug /> Remove</Button>}
-                </div>
-              )}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`size-2.5 rounded-full ${p.accounts.length ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+              <p className="flex-1 text-sm font-medium">
+                {p.label}{' '}
+                {p.accounts.length ? <Badge variant="success">{p.accounts.length} account{p.accounts.length === 1 ? '' : 's'}</Badge> : <Badge variant="neutral">Not connected</Badge>}
+              </p>
+              {manage && <Button size="sm" variant="outline" onClick={() => setConnect({ courier: p })}><PlugZap /> Add account</Button>}
             </div>
-            {testing === p.provider && (
-              <form className="mt-2 flex gap-2 border-t pt-2" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) test.mutate(p.provider) }}>
-                <Input aria-label="Number to test" inputMode="tel" placeholder="01XXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <Button type="submit" size="sm" variant="outline" disabled={!phone.trim() || test.isPending}>{test.isPending ? <Spinner /> : <Search />} Test</Button>
-              </form>
+            {p.accounts.length > 0 && (
+              <ul className="mt-2 divide-y border-t">
+                {p.accounts.map((a) => (
+                  <li key={a.id} className="py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{a.hint}</p>
+                        <p className={`truncate text-xs ${a.last_test_ok === false ? 'text-red-500' : 'text-muted-foreground'}`}>
+                          {a.last_test_at ? `Last test ${timeAgo(a.last_test_at)}: ${a.last_test_ok ? 'worked' : `failed — ${a.last_error ?? 'no detail'}`}` : 'Not tested yet'}
+                        </p>
+                      </div>
+                      {can('bd_courier', 'edit') && <Button size="sm" variant="ghost" onClick={() => { setTesting(`${p.provider}:${a.id}`); setPhone('') }}><Search /> Test</Button>}
+                      {manage && <Button size="sm" variant="ghost" onClick={() => setConnect({ courier: p, accountId: a.id })}>Change</Button>}
+                      {manage && <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setRemove({ provider: p.provider, accountId: a.id, hint: a.hint })}><Unplug /> Remove</Button>}
+                    </div>
+                    {testing === `${p.provider}:${a.id}` && (
+                      <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) test.mutate({ provider: p.provider, accountId: a.id }) }}>
+                        <Input aria-label="Number to test" inputMode="tel" placeholder="01XXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                        <Button type="submit" size="sm" variant="outline" disabled={!phone.trim() || test.isPending}>{test.isPending ? <Spinner /> : <Search />} Test</Button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         ))}
       </CardContent>
-      {connect && <PanelConnectDialog account={connect} onClose={() => setConnect(null)} onDone={refresh} />}
+      {connect && <PanelConnectDialog courier={connect.courier} accountId={connect.accountId} onClose={() => setConnect(null)} onDone={refresh} />}
       <ConfirmDialog open={!!remove} onOpenChange={(o) => !o && setRemove(null)} destructive confirmLabel="Remove"
-        title="Remove this courier login?" description="Checks stop using this courier. The saved login is erased."
-        onConfirm={async () => { if (remove) { try { await disconnectCourierPanel(remove); toast.success('Removed'); setRemove(null); refresh() } catch (e) { toast.error((e as Error).message); throw e } } }} />
+        title="Remove this courier account?" description={remove ? `${remove.hint} stops being used for checks. The saved login is erased.` : ''}
+        onConfirm={async () => {
+          if (!remove) return
+          try { await disconnectCourierPanel(remove.provider, remove.accountId); toast.success('Removed'); setRemove(null); refresh() } catch (e) { toast.error((e as Error).message); throw e }
+        }} />
     </Card>
   )
 }

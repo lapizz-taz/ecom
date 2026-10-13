@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, type SessionStore, testPanelLogin,
+  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, testPanelLogin,
 } from './fraud/courier-panel.ts'
 import { providersFromSettings } from './fraud/service.ts'
 
@@ -142,6 +142,49 @@ describe('courier panel provider', () => {
     expect(none.map((p) => p.name)).not.toContain('courier_panel')
     const on = providersFromSettings({ providers: ['internal', 'courier_panel'] }, fetch, { panel: { redx: allCreds.redx } })
     expect(on.map((p) => p.name)).toContain('courier_panel')
+  })
+
+  it('rotates between several accounts of one courier, one login per lookup', async () => {
+    const fetchFn = panelFetch()
+    const accounts = [{ id: 'a1', email: 'one@x.com', password: 'p1' }, { id: 'a2', email: 'two@x.com', password: 'p2' }]
+    const p = new CourierPanelProvider({ pathao: accounts }, { fetchFn, store: freshStore() })
+    await p.lookup('01811111111')
+    await p.lookup('01822222222')
+    const loginBodies = fetchFn.mock.calls
+      .filter((c) => String(c[0]).includes('/api/v1/login'))
+      .map((c) => JSON.parse(String((c[1] as RequestInit).body)).username)
+    // Two different accounts signed in, one per lookup.
+    expect(new Set(loginBodies)).toEqual(new Set(['one@x.com', 'two@x.com']))
+  })
+
+  it('falls back to the next account when one is refused', async () => {
+    const fetchFn = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/v1/login')) {
+        const user = JSON.parse(String(init?.body)).username
+        return user === 'bad@x.com' ? new Response('{}', { status: 422 }) : withCookie({ access_token: 'ok-tok' })
+      }
+      if (url.includes('/api/v1/user/success')) return withCookie({ data: { customer: { successful_delivery: 3, total_delivery: 4 } } })
+      return new Response('nf', { status: 404 })
+    })
+    const p = new CourierPanelProvider({ pathao: [{ id: 'b1', email: 'bad@x.com', password: 'x' }, { id: 'b2', email: 'good@x.com', password: 'y' }] },
+      { fetchFn, store: freshStore() })
+    // Whichever account the rotation starts on, the lookup succeeds.
+    for (const phone of ['01811111111', '01822222222']) {
+      const s = await p.lookup(phone)
+      expect(s.couriers.find((c) => c.courier === 'pathao')).toMatchObject({ orders: 4, delivered: 3 })
+    }
+  })
+
+  it('reports every account failing when none work', async () => {
+    const fetchFn = vi.fn(async () => new Response('{}', { status: 422 }))
+    const p = new CourierPanelProvider({ pathao: [{ id: 'c1', email: 'a@x.com', password: 'x' }, { id: 'c2', email: 'b@x.com', password: 'y' }] }, { fetchFn, store: freshStore() })
+    await expect(p.lookup('01811111111')).rejects.toThrow(/All 2 Pathao accounts failed/)
+  })
+
+  it('reads an older single saved login as one account', () => {
+    expect(panelAccounts({ steadfast: { email: 'a@b.com', password: 'x' } }, 'steadfast')).toHaveLength(1)
+    expect(panelAccounts({ steadfast: [{ email: 'a@b.com', password: 'x' }, { email: '', password: 'y' }] }, 'steadfast')).toHaveLength(1)
   })
 
   it('covers every courier id', () => {
