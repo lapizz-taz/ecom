@@ -497,6 +497,20 @@ describe('WooCommerce order status follows ours', () => {
     }
   })
 
+  it('sends the customer\'s receive rate with the status (the plugin\'s ad tracking skips low-rate orders), never a bad one', async () => {
+    const base = ctx('CONFIRMED').order
+    const w = woo(); const r = rig(ctx('CONFIRMED', { order: { ...base, receive_rate: '72.5' } }))
+    await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)
+    expect(w.pluginOrderStatus).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed', receive_rate: 72.5 }))
+
+    for (const rate of [null, 'abc', 140, -3]) {
+      const w2 = woo(); const r2 = rig(ctx('CONFIRMED', { order: { ...base, receive_rate: rate } }))
+      await wooFulfillJob(job('FULFILL'), r2.rpc, () => w2, opts)
+      expect(w2.pluginOrderStatus).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed' }))
+      expect(w2.pluginOrderStatus).toHaveBeenCalledWith(expect.not.objectContaining({ receive_rate: expect.anything() }))
+    }
+  })
+
   it('a return sends the items that came back; nothing is sent again once the store shows it', async () => {
     const w = woo(); const r = rig(ctx('RETURNED'))
     await wooFulfillJob(job('FULFILL'), r.rpc, () => w, opts)

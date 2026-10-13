@@ -30,12 +30,18 @@ class FFC_Checkout {
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( __CLASS__, 'order_created' ) );
 	}
 
+	/** Ad tracking needs the visitor's click ids even before the store is connected to Fullfilio. */
+	private static function tracking_on() {
+		return class_exists( 'FFC_Tracking' ) && FFC_Tracking::any_on();
+	}
+
 	public static function assets() {
-		if ( ! FFC_Settings::connected() || is_admin() ) {
+		if ( is_admin() || ( ! FFC_Settings::connected() && ! self::tracking_on() ) ) {
 			return;
 		}
 		$capture = FFC_Settings::enabled( 'capture_leads' ) && function_exists( 'is_checkout' ) && is_checkout() && ! ( function_exists( 'is_order_received_page' ) && is_order_received_page() );
-		if ( ! FFC_Settings::enabled( 'attribution' ) && ! $capture ) {
+		$attr    = FFC_Settings::enabled( 'attribution' ) || self::tracking_on();
+		if ( ! $attr && ! $capture ) {
 			return;
 		}
 		wp_enqueue_script( 'ffc', FFC_URL . 'assets/ffc.js', array(), FFC_VERSION, true );
@@ -43,7 +49,7 @@ class FFC_Checkout {
 			'ffc',
 			'ffcConfig',
 			array(
-				'attribution' => FFC_Settings::enabled( 'attribution' ),
+				'attribution' => $attr,
 				'capture'     => $capture,
 				'leadUrl'     => class_exists( 'WC_AJAX' ) ? WC_AJAX::get_endpoint( 'ffc_lead' ) : '',
 				'cookie'      => self::COOKIE,
@@ -160,6 +166,10 @@ class FFC_Checkout {
 			'last_touch'  => is_array( $value ) ? $clean( isset( $value['last'] ) ? $value['last'] : null ) : null,
 			'fbp'         => $cookie( '_fbp' ),
 			'fbc'         => $cookie( '_fbc' ),
+			// TikTok's browser cookie and the GA client id ("GA1.1.<id>.<ts>" → "<id>.<ts>"),
+			// so server events join the same visitor as the browser pixels.
+			'ttp'         => $cookie( '_ttp' ),
+			'ga_cid'      => preg_match( '/^GA\d\.\d+\.(\d+\.\d+)$/', (string) $cookie( '_ga' ), $ga ) ? $ga[1] : null,
 			'ip'          => class_exists( 'WC_Geolocation' ) ? WC_Geolocation::get_ip_address() : ( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : null ),
 			'user_agent'  => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 300 ) : null,
 		);
@@ -167,10 +177,10 @@ class FFC_Checkout {
 
 	/** Saves attribution on the new order and closes the unfinished checkout. */
 	public static function order_created( $order ) {
-		if ( ! FFC_Settings::connected() || ! $order instanceof WC_Order ) {
+		if ( ! $order instanceof WC_Order || ( ! FFC_Settings::connected() && ! self::tracking_on() ) ) {
 			return;
 		}
-		if ( FFC_Settings::enabled( 'attribution' ) && ! $order->get_meta( '_ffc_attribution' ) ) {
+		if ( ( FFC_Settings::enabled( 'attribution' ) || self::tracking_on() ) && ! $order->get_meta( '_ffc_attribution' ) ) {
 			$order->update_meta_data( '_ffc_attribution', wp_json_encode( self::attribution() ) );
 		}
 		// Remember the shield's answer (allow/advance/block) as an early low-receive-rate
@@ -184,7 +194,7 @@ class FFC_Checkout {
 				}
 			}
 		}
-		$lead_id = function_exists( 'WC' ) && WC()->session ? WC()->session->get( self::LEAD_KEY ) : null;
+		$lead_id = FFC_Settings::connected() && function_exists( 'WC' ) && WC()->session ? WC()->session->get( self::LEAD_KEY ) : null;
 		if ( $lead_id && ! $order->get_meta( '_ffc_lead_id' ) ) {
 			$order->update_meta_data( '_ffc_lead_id', $lead_id );
 			FFC_Outbox::push( 'lead_completed', array( 'id' => $lead_id, 'order_id' => $order->get_id(), 'completed_at' => gmdate( 'c' ) ) );

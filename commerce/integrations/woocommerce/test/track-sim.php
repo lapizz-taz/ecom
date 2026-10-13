@@ -80,6 +80,8 @@ $settings['google'] = array( 'on' => true, 'conv_id' => 'AW-999', 'conv_label' =
 $attr = array(
 	'fbp'        => 'fb.1.100.200',
 	'fbc'        => null,
+	'ttp'        => 'TTP_COOKIE',
+	'ga_cid'     => '1111.2222',
 	'ip'         => '103.10.10.10',
 	'user_agent' => 'Mozilla/5.0',
 	'last_touch' => array( 'params' => array( 'fbclid' => 'FBCLID123', 'ttclid' => 'TTCLID456', 'gclid' => 'GCLID789' ) ),
@@ -114,11 +116,15 @@ check( 'TikTok event CompletePayment', $tt['body']['data'][0]['event'] === 'Comp
 check( 'TikTok ttclid carried', $tt['body']['data'][0]['user']['ttclid'] === 'TTCLID456' );
 check( 'TikTok token in header', isset( $tt['headers']['Access-Token'] ) && $tt['headers']['Access-Token'] === 'TT_TOKEN' );
 check( 'TikTok same event_id', $tt['body']['data'][0]['event_id'] === 'ffc_ord_42' );
+check( 'TikTok _ttp cookie carried', $tt['body']['data'][0]['user']['ttp'] === 'TTP_COOKIE' );
+check( 'TikTok external_id hashed customer id', $tt['body']['data'][0]['user']['external_id'] === hash( 'sha256', '9' ) );
 // Google
 $g = null; foreach ( $GLOBALS['SENT'] as $s ) { if ( strpos( $s['url'], 'google-analytics' ) !== false ) { $g = $s; } }
 check( 'GA4 purchase event', $g['body']['events'][0]['name'] === 'purchase' );
 check( 'GA4 gclid param', $g['body']['events'][0]['params']['gclid'] === 'GCLID789' );
 check( 'GA4 enhanced-conv email', $g['body']['user_data']['sha256_email_address'] === hash( 'sha256', 'shanta@example.com' ) );
+check( 'GA4 phone hashed in E.164 (+880…)', $g['body']['user_data']['sha256_phone_number'] === hash( 'sha256', '+8801712345678' ) );
+check( 'GA4 client_id from the _ga cookie', $g['body']['client_id'] === '1111.2222' );
 check( 'GA4 secret in URL only', strpos( $g['url'], 'GA4_SECRET' ) !== false );
 check( 'order marked sent', (bool) $o->get_meta( FFC_Tracking::SENT ) );
 

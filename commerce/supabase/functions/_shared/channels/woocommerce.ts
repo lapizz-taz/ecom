@@ -76,6 +76,8 @@ export interface PluginOrderStatusInput {
   note?: string
   stock_sync?: boolean
   restock?: Array<{ external_variant_id: string | null; sku: string | null; name: string; quantity: number }>
+  /** The customer's courier receive rate (0–100); the plugin's ad tracking skips low ones. */
+  receive_rate?: number
 }
 export interface PluginOrderStatusResult {
   ok: boolean; status: string; from: string; changed: boolean
