@@ -10,12 +10,11 @@
 import { z } from 'zod'
 import { COURIER_HISTORY_SERVICES, CourierHistoryProvider, type CourierHistorySummary } from '../_shared/fraud/courier-history.ts'
 import {
-  COURIER_PANEL_LABELS, COURIER_PANEL_LOGIN_FIELD, COURIER_PANEL_PROVIDERS, type CourierPanelCreds,
-  type CourierPanelProviderId, CourierPanelProvider, type PanelLogin, testPanelLogin,
+  COURIER_PANEL_LABELS, COURIER_PANEL_LOGIN_FIELD, COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider,
 } from '../_shared/fraud/courier-panel.ts'
 import {
   courierHistoryConfig, databaseMeter, FraudDetectionService, type FraudSettings, loadFraudProviders,
-  merchantPanelCreds, platformCourierHistorySecret,
+  platformCourierHistorySecret, platformPanelCreds,
 } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
@@ -33,18 +32,6 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('courier_history_status') }),
   z.object({ action: z.literal('lookup_courier_panel'), phone: phoneSchema }),
   z.object({ action: z.literal('courier_panel_status') }),
-  z.object({
-    action: z.literal('save_courier_panel'),
-    provider: z.enum(COURIER_PANEL_PROVIDERS),
-    login: z.object({
-      email: z.string().trim().max(160).optional(),
-      phone: z.string().trim().max(20).optional(),
-      user: z.string().trim().max(160).optional(),
-      password: z.string().min(1).max(200),
-    }),
-    test_phone: phoneSchema.optional(),
-  }),
-  z.object({ action: z.literal('clear_courier_panel'), provider: z.enum(COURIER_PANEL_PROVIDERS) }),
 ])
 
 const PERMISSION: Record<string, string> = {
@@ -53,19 +40,6 @@ const PERMISSION: Record<string, string> = {
   courier_history_status: 'settings.view',
   lookup_courier_panel: 'fraud.review',
   courier_panel_status: 'settings.view',
-  save_courier_panel: 'settings.manage',
-  clear_courier_panel: 'settings.manage',
-}
-
-/** The identifier to show masked next to a connected panel, e.g. ra•••@shop.com or 017•••••78. */
-function panelHint(provider: CourierPanelProviderId, login: PanelLogin): string {
-  const field = COURIER_PANEL_LOGIN_FIELD[provider]
-  const value = String((field === 'email' ? login.email : field === 'phone' ? login.phone : login.user) ?? '')
-  if (field === 'email') {
-    const [u, domain] = value.split('@')
-    return domain ? `${u.slice(0, 2)}•••@${domain}` : value.slice(0, 2) + '•••'
-  }
-  return value.length > 5 ? `${value.slice(0, 3)}•••${value.slice(-2)}` : '•••'
 }
 
 const REVIEWABLE = ['PENDING', 'FRAUD_CHECK', 'FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'CONFIRMATION_REQUIRED']
@@ -81,6 +55,25 @@ async function lookup(admin: SupabaseClient, phone: string, settings: FraudSetti
   }
   try {
     const result = await new CourierHistoryProvider(config).lookup(phone)
+    await meter.finish(gate.usageId, true)
+    return result
+  } catch (error) {
+    await meter.finish(gate.usageId, false, (error as Error).message).catch(() => undefined)
+    throw new HttpError(422, `Could not check the number: ${(error as Error).message}`, 'LOOKUP_FAILED')
+  }
+}
+
+/** One metered lookup through the platform's courier merchant-panel accounts. */
+async function panelLookup(admin: SupabaseClient, phone: string): Promise<CourierHistorySummary> {
+  const provider = new CourierPanelProvider((await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {})
+  if (!provider.connected.length) throw new HttpError(503, 'Courier sign-in accounts are not connected on the platform', 'NOT_CONNECTED')
+  const meter = databaseMeter(admin)
+  const gate = await meter.begin(phone)
+  if (!gate.allowed || !gate.usageId) {
+    throw new HttpError(gate.reason === 'FEATURE_OFF' ? 403 : 402, gate.message ?? 'This lookup is not allowed right now', gate.reason ?? 'NOT_ALLOWED')
+  }
+  try {
+    const result = await provider.lookup(phone)
     await meter.finish(gate.usageId, true)
     return result
   } catch (error) {
@@ -112,45 +105,24 @@ export default (
       return json(req, { ok: true, result: await lookup(admin, input.phone, settings) })
     }
 
-    // ---- the merchant's own courier merchant-panel logins (no platform credits) ----
+    // ---- the platform's courier merchant-panel logins (Super Admin, metered like BD Courier) ----
     if (input.action === 'courier_panel_status') {
-      const { data, error } = await admin.from('courier_panel_accounts').select('provider, hint, updated_at')
-      if (error) throw new HttpError(500, 'Could not read courier panel accounts', 'READ_FAILED')
-      const connected = (data ?? []) as Array<{ provider: CourierPanelProviderId; hint: string | null; updated_at: string }>
+      const creds = (await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {}
+      const providers = COURIER_PANEL_PROVIDERS.map((p) => {
+        const c = creds[p]
+        const connected = !!c && !!String(c.password ?? '').trim() && !!String(c.email ?? c.phone ?? c.user ?? '').trim()
+        return { provider: p, label: COURIER_PANEL_LABELS[p], login_field: COURIER_PANEL_LOGIN_FIELD[p], connected }
+      })
       return json(req, {
-        providers: COURIER_PANEL_PROVIDERS.map((p) => {
-          const row = connected.find((c) => c.provider === p)
-          return { provider: p, label: COURIER_PANEL_LABELS[p], login_field: COURIER_PANEL_LOGIN_FIELD[p], connected: !!row, hint: row?.hint ?? null, updated_at: row?.updated_at ?? null }
-        }),
+        provided_by_platform: true,
+        connected: providers.some((p) => p.connected),
+        providers,
         enabled: (settings.providers ?? []).includes('courier_panel'),
       })
     }
 
-    if (input.action === 'save_courier_panel') {
-      const login = input.login as PanelLogin
-      // Verify the login works before saving, so a wrong password is caught here.
-      const tested = await testPanelLogin(input.provider, login, input.test_phone ?? '01700000000')
-      if (!tested.ok) throw new HttpError(422, tested.message, 'PANEL_LOGIN_FAILED')
-      await rpc(admin, 'courier_panel_put', {
-        p_provider: input.provider, p_value: login, p_hint: panelHint(input.provider, login), p_actor: staff.user.id,
-      })
-      return json(req, { ok: true, message: tested.message })
-    }
-
-    if (input.action === 'clear_courier_panel') {
-      await rpc(admin, 'courier_panel_clear', { p_provider: input.provider })
-      return json(req, { ok: true })
-    }
-
     if (input.action === 'lookup_courier_panel') {
-      const creds = await merchantPanelCreds(admin) as CourierPanelCreds | null
-      const provider = new CourierPanelProvider(creds ?? {})
-      if (!provider.connected.length) throw new HttpError(409, 'Connect at least one courier panel login first', 'NO_PANEL')
-      try {
-        return json(req, { ok: true, result: await provider.lookup(input.phone) })
-      } catch (error) {
-        throw new HttpError(422, `Could not check the number: ${(error as Error).message}`, 'LOOKUP_FAILED')
-      }
+      return json(req, { ok: true, result: await panelLookup(admin, input.phone) })
     }
 
     let phone = input.phone ?? ''

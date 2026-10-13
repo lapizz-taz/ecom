@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2, Unplug } from 'lucide-react'
+import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -20,9 +20,8 @@ import { CourierHistoryTable } from '@/features/fraud/courier-history'
 import { ADVANCE_TYPE, FRAUD_DECISION } from '@/lib/status'
 import { myCredits } from '@/services/credits'
 import {
-  type CourierHistoryResult, courierHistoryStatus, type CourierPanelAccount, type CourierPanelLogin, type CourierPanelProviderId,
-  courierPanelStatus, clearCourierPanel, deleteFraudRule, type FraudRule, listFraudRules, lookupCourierHistory, lookupCourierPanel,
-  saveCourierPanel, saveFraudRule, toggleFraudRule,
+  type CourierHistoryResult, courierHistoryStatus, courierPanelStatus, deleteFraudRule, type FraudRule,
+  listFraudRules, lookupCourierHistory, lookupCourierPanel, saveFraudRule, toggleFraudRule,
 } from '@/services/settings'
 import type { Enums } from '@/types/database'
 import { ADVANCE_OPTIONS } from './payment-settings'
@@ -111,12 +110,11 @@ function CourierHistorySettings() {
  */
 function CourierPanelSettings() {
   const { can } = useAuth()
-  const canEdit = can('settings.manage')
   const status = useQuery({ queryKey: ['courier-panel-status'], queryFn: courierPanelStatus, enabled: can('settings.view') })
-  const [editing, setEditing] = useState<CourierPanelAccount | null>(null)
   const [phone, setPhone] = useState('')
   const [result, setResult] = useState<CourierHistoryResult | null>(null)
-  const anyConnected = (status.data?.providers ?? []).some((p) => p.connected)
+  const connectedCount = (status.data?.providers ?? []).filter((p) => p.connected).length
+  const connected = !!status.data?.connected
   const lookup = useMutation({
     meta: { silent: true },
     mutationFn: () => lookupCourierPanel(phone.trim()),
@@ -126,94 +124,40 @@ function CourierPanelSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">My courier accounts (free checks)</CardTitle>
+        <CardTitle className="text-base">Courier sign-in accounts</CardTitle>
         <CardDescription>
-          Connect your own Steadfast, Pathao, RedX, Carrybee and Paperfly merchant logins. We read each courier's own customer
-          success page for the number, using your accounts, so these checks don't use any credits. Passwords are stored encrypted
-          and never shown again. This is unofficial — a courier may stop working if it changes its site or locks the account.
+          A second delivery-history source next to BD Courier. Fullfilio signs in to Steadfast, Pathao, RedX, Carrybee and Paperfly
+          with the company's own accounts and reads each courier's customer success page for the number. Connected and managed by the
+          platform; each lookup counts as one check, the same as BD Courier.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {status.isLoading ? <LoadingState /> : (
-          <div className="grid gap-2">
-            {(status.data?.providers ?? []).map((p) => (
-              <div key={p.provider} className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-2.5">
-                <span className={`size-2.5 rounded-full ${p.connected ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{p.label}</p>
-                  <p className="truncate text-xs text-muted-foreground">{p.connected ? `Connected · ${p.hint ?? ''}` : 'Not connected'}</p>
-                </div>
-                {canEdit && (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditing(p)}>{p.connected ? <><Pencil /> Edit</> : <><Plus /> Connect</>}</Button>
-                    {p.connected && <RemovePanelButton provider={p.provider} onDone={() => void status.refetch()} />}
-                  </div>
-                )}
-              </div>
-            ))}
-            {status.data && !status.data.enabled && anyConnected && (
-              <p className="text-xs text-amber-700">Connected, but not used in checks yet — tick “My courier accounts” under Providers below.</p>
-            )}
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
+            <span className={`size-2.5 rounded-full ${connected && status.data?.enabled ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{connected ? `Provided by the platform · ${connectedCount} courier${connectedCount === 1 ? '' : 's'} connected` : 'Not available right now'}</p>
+              <p className="text-xs text-muted-foreground">
+                {!connected ? 'Checks use BD Courier and your own store history until it is connected.'
+                  : (status.data?.providers ?? []).filter((p) => p.connected).map((p) => p.label).join(', ')}
+                {connected && status.data && !status.data.enabled && <span className="block text-amber-700">Turned off for checks — tick “Courier sign-in accounts” under Providers below.</span>}
+              </p>
+            </div>
           </div>
         )}
-        {anyConnected && can('fraud.review') && (
+        {connected && status.data?.enabled && can('fraud.review') && (
           <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) lookup.mutate() }}>
             <div className="flex gap-2">
               <Input aria-label="Mobile number to look up" inputMode="tel" placeholder="Look up a number, e.g. 01712345678" value={phone} onChange={(e) => setPhone(e.target.value)} />
               <Button type="submit" variant="outline" disabled={!phone.trim() || lookup.isPending}>{lookup.isPending ? <Spinner /> : <Search />} Look up</Button>
             </div>
+            <p className="text-xs text-muted-foreground">Each lookup counts as one check (free checks first, then credits). Failed lookups are not counted.</p>
             {lookup.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{lookup.error.message}</p>}
             {result && <CourierHistoryTable result={result} className="max-w-xl" />}
           </form>
         )}
       </CardContent>
-      {editing && <PanelLoginDialog account={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void status.refetch() }} />}
     </Card>
-  )
-}
-
-function RemovePanelButton({ provider, onDone }: { provider: CourierPanelProviderId; onDone: () => void }) {
-  const remove = useMutation({
-    mutationFn: () => clearCourierPanel(provider),
-    onSuccess: () => { toast.success('Login removed'); onDone() },
-  })
-  return <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={remove.isPending} onClick={() => remove.mutate()}><Unplug /> Remove</Button>
-}
-
-function PanelLoginDialog({ account, onClose, onSaved }: { account: CourierPanelAccount; onClose: () => void; onSaved: () => void }) {
-  const [identifier, setIdentifier] = useState('')
-  const [password, setPassword] = useState('')
-  const [testPhone, setTestPhone] = useState('')
-  const idLabel = account.login_field === 'email' ? 'Account email' : account.login_field === 'phone' ? 'Login phone' : 'Username'
-  const idPlaceholder = account.login_field === 'email' ? 'you@shop.com' : account.login_field === 'phone' ? '01712345678' : 'your username'
-  const save = useMutation({
-    mutationFn: () => {
-      const login: CourierPanelLogin = { password: password.trim() }
-      if (account.login_field === 'email') login.email = identifier.trim()
-      else if (account.login_field === 'phone') login.phone = identifier.trim()
-      else login.user = identifier.trim()
-      return saveCourierPanel(account.provider, login, testPhone.trim() || undefined)
-    },
-    onSuccess: (r) => { toast.success(r.message || `${account.label} connected`); onSaved() },
-  })
-  return (
-    <FormDialog open onOpenChange={(o) => !o && onClose()} title={`${account.label} login`} submitLabel="Verify & save"
-      busy={save.isPending} disabled={!identifier.trim() || !password.trim()} onSubmit={() => save.mutate()}>
-      <p className="text-xs text-muted-foreground">
-        The same login you use on the {account.label} merchant panel. We sign in to check it before saving. The password is
-        encrypted and never shown again.
-      </p>
-      <Field label={idLabel} htmlFor="panel-id" required>
-        <Input id="panel-id" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder={idPlaceholder} autoComplete="off" />
-      </Field>
-      <Field label="Password" htmlFor="panel-pass" required>
-        <Input id="panel-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-      </Field>
-      <Field label="Test with a number" htmlFor="panel-test" hint="Optional — a real customer number to confirm the fraud page answers">
-        <Input id="panel-test" inputMode="tel" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="01712345678" />
-      </Field>
-      {save.error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{save.error.message}</p>}
-    </FormDialog>
   )
 }
 
@@ -305,7 +249,7 @@ function FraudGeneral() {
         </label>
         <label className="flex items-start gap-2 text-sm">
           <Checkbox checked={providers.includes('courier_panel')} onCheckedChange={(v) => toggleProvider('courier_panel', v === true)} className="mt-0.5" />
-          <span>My courier accounts (Steadfast, Pathao, RedX, Carrybee, Paperfly)<span className="block text-xs text-muted-foreground">Uses your own courier logins from “My courier accounts” above — no credits</span></span>
+          <span>Courier sign-in accounts (Steadfast, Pathao, RedX, Carrybee, Paperfly)<span className="block text-xs text-muted-foreground">The platform's courier accounts, from “Courier sign-in accounts” above — counts as one check like BD Courier</span></span>
         </label>
         <label className="flex items-start gap-2 text-sm">
           <Checkbox checked={providers.includes('http')} onCheckedChange={(v) => toggleProvider('http', v === true)} className="mt-0.5" />
