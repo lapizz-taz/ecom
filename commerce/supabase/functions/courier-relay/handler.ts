@@ -3,10 +3,11 @@
 // sends courier sign-in tests and lookups here (see _shared/fraud/courier-relay.ts).
 //   POST {action: 'lookup', phone}                    every connected courier, logins from Vault
 //   POST {action: 'test', provider, login, phone}     one login, nothing saved
-// Only our own servers may call it: the cron secret or the service role key.
+// Only our own servers may call it: the cron secret, or a key Supabase accepts
+// as the service role (asked of Supabase, so the Worker's copy may be another format).
 // Metering stays with the caller; nothing here is logged.
 import { z } from 'zod'
-import { isCronRequest } from '../_shared/cron.ts'
+import { carriesServiceKey, isCronRequest } from '../_shared/cron.ts'
 import { COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider, testPanelLogin } from '../_shared/fraud/courier-panel.ts'
 import { platformPanelCreds } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -29,7 +30,7 @@ export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const admin = adminClient()
-    if (!(await isCronRequest(req, admin))) throw new HttpError(401, 'Not allowed', 'UNAUTHORIZED')
+    if (!(await isCronRequest(req, admin)) && !(await carriesServiceKey(req))) throw new HttpError(401, 'Not allowed', 'UNAUTHORIZED')
     const body = parse(input, await readJson(req))
 
     if (body.action === 'test') return json(req, await testPanelLogin(body.provider, body.login, body.phone))

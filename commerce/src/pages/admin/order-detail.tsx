@@ -28,6 +28,7 @@ import {
   AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, PartialDeliveryDialog, RecordPaymentDialog, RefundDialog,
   RetainAdvanceDialog, ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
+import { CourierRecordCards } from '@/features/orders/courier-record-cards'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { eventLabel } from '@/features/sms/sms-text'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
@@ -322,6 +323,8 @@ export default function OrderDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <CourierRecordCards orderId={o.id} phone={o.customer_phone} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-4">

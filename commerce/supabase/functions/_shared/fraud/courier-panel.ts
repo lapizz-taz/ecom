@@ -342,7 +342,10 @@ function deps(d: PanelDeps): Required<PanelDeps> {
 export async function testPanelLogin(provider: CourierPanelProviderId, login: PanelLogin, samplePhone: string, d: PanelDeps = {}): Promise<{ ok: boolean; message: string }> {
   const phone = bdMobile(samplePhone)
   if (!phone) return { ok: false, message: 'Enter a Bangladeshi mobile number to test with' }
-  if (relay && !isStandIn(d.fetchFn)) return relay.test(provider, login, phone)
+  if (relay && !isStandIn(d.fetchFn)) {
+    // The relay being unreachable or refusing us is a failed test with its reason, never a crash.
+    return relay.test(provider, login, phone).catch((error) => ({ ok: false, message: redact(String((error as Error).message ?? error), login) }))
+  }
   const dd = deps(d)
   dd.store.drop(await sessionKey(provider, login)) // always a fresh sign-in for a test
   try {

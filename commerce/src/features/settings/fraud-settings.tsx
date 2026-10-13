@@ -227,6 +227,11 @@ function FraudGeneral() {
   const s = useSettingDraft('fraud')
   const providers = (s.get(['providers']) as string[] | undefined) ?? []
   const toggleProvider = (name: string, on: boolean) => s.set(['providers'], on ? [...new Set([...providers, name])] : providers.filter((p) => p !== name))
+  // BD Courier and the courier sign-ins run as one source: either name turns both on.
+  const courierRecord = providers.includes('courier_history') || providers.includes('courier_panel')
+  const setCourierRecord = (on: boolean) => s.set(['providers'], on
+    ? [...new Set([...providers.filter((p) => p !== 'courier_panel'), 'courier_history'])]
+    : providers.filter((p) => p !== 'courier_history' && p !== 'courier_panel'))
   const t = (k: string) => Number(s.get(['thresholds', k]))
   const validate = () => {
     if (!(0 <= t('medium') && t('medium') < t('high') && t('high') < t('critical') && t('critical') <= 100)) return 'Thresholds must satisfy 0 ≤ medium < high < critical ≤ 100'
@@ -244,12 +249,11 @@ function FraudGeneral() {
           <span>Store history<span className="block text-xs text-muted-foreground">This store's own delivered / cancelled / returned orders for the phone number</span></span>
         </label>
         <label className="flex items-start gap-2 text-sm">
-          <Checkbox checked={providers.includes('courier_history')} onCheckedChange={(v) => toggleProvider('courier_history', v === true)} className="mt-0.5" />
-          <span>Courier history (Pathao, Steadfast, RedX, Paperfly)<span className="block text-xs text-muted-foreground">Turned on when you connect the courier history check above</span></span>
-        </label>
-        <label className="flex items-start gap-2 text-sm">
-          <Checkbox checked={providers.includes('courier_panel')} onCheckedChange={(v) => toggleProvider('courier_panel', v === true)} className="mt-0.5" />
-          <span>Courier sign-in accounts (Steadfast, Pathao, RedX, Carrybee, Paperfly)<span className="block text-xs text-muted-foreground">The platform's courier accounts, from “Courier sign-in accounts” above — counts as one check like BD Courier</span></span>
+          <Checkbox checked={courierRecord} onCheckedChange={(v) => setCourierRecord(v === true)} className="mt-0.5" />
+          <span>
+            Courier record (Pathao, Steadfast, RedX, CarryBee, Paperfly)
+            <span className="block text-xs text-muted-foreground">BD Courier and the couriers' own panels, asked together and merged per courier — counts as one check</span>
+          </span>
         </label>
         <label className="flex items-start gap-2 text-sm">
           <Checkbox checked={providers.includes('http')} onCheckedChange={(v) => toggleProvider('http', v === true)} className="mt-0.5" />
