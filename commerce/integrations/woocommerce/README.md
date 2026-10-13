@@ -56,7 +56,9 @@ Works with or without the Fullfilio connection. The merchant enters their own Pi
 SHA-256, changelog from `readme.txt`). Installed plugins (`FFC_Updater`) read it over HTTPS, so WordPress
 shows "a new version is available" with Update now, View details and auto-updates. The package must be on
 the manifest's host and match its SHA-256, or it is not installed. Bump `Version`/`FFC_VERSION` and the
-readme `Stable tag` together; the build refuses a mismatch.
+readme `Stable tag` together; the build refuses a mismatch. Published versions use three numbers (x.y.z) so
+every installed copy can read them (1.4.0 accepted nothing else); from 1.4.2 the plugin also reads two-part
+versions and compares parts as numbers (1.5 = 1.5.0, 1.4.10 > 1.4.9) — `php test/updater-sim.php` checks it.
 
 ## Building the zip
 

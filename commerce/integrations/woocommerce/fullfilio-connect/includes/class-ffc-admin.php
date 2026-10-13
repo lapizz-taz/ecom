@@ -3,9 +3,10 @@
  * WooCommerce → Fullfilio: connection, what is switched on, the delivery
  * queue, checkout protection, ad tracking, troubleshooting and the debug log.
  *
- * The page uses WordPress's own light look: a white header band with the page
- * name, version and a round mark, pill tabs, and module cards (title, what it
- * does, then a footer with its status and switch).
+ * The page is a quiet, minimal look in Poppins (bundled with the plugin): a
+ * white header band with the page name, version and the Fullfilio logo,
+ * underline tabs, and module cards (title, what it does, then a footer with
+ * its status and switch).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -186,7 +187,6 @@ class FFC_Admin {
 		'target'    => '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
 		'plug'      => '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
 		'help'      => '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/>',
-		'truck'     => '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
 		'refresh'   => '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
 		'check'     => '<path d="M20 6 9 17l-5-5"/>',
 		'external'  => '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
@@ -202,6 +202,31 @@ class FFC_Admin {
 		'trash'     => '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
 		'send'      => '<path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0-.03.94l7.93 3.18a2 2 0 0 1 1.11 1.11z"/><path d="m21.85 2.15-10.94 10.94"/>',
 	);
+
+	/** The Fullfilio app icon and wordmark (same artwork as the app's logo). */
+	private static function logo() {
+		$word = array(
+			'M75,224C82,198 88,176 94,152C100,122 116,98 150,95H311L240,165H158C138,166 124,173 113,184C100,196 90,210 81,223C79,226 76,226 75,224Z',
+			'M157,214H238L168,284H86Z',
+			'M298,132H349V231A25,25 0 0 0 399,231V132H450V238A45,45 0 0 1 405,283H303Q298,283 298,278V233H346L298,178Z',
+			'M467,70H512V283H467Z',
+			'M529,70H574V283H529Z',
+			'M616,283V110A40,40 0 0 1 656,70H705V108H660V134H698V170H660V283ZM590,134H616V170H590Z',
+			'M721,70H772V115H758L721,139.7Z',
+			'M721,157.5L756,134H772V283H721Z',
+			'M789,70H834V283H789Z',
+			'M876.5,63A26,26 0 1 1 876.5,115A26,26 0 1 1 876.5,63Z',
+			'M854,134H899V283H854Z',
+			'M972,117H1083V231H1028V175H919V170Z',
+			'M916,178H974V233H1083L1033,283H916Z',
+		);
+		$paths = '';
+		foreach ( $word as $d ) {
+			$paths .= '<path d="' . $d . '" fill-rule="evenodd"/>';
+		}
+		return '<svg class="ffc-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#2142e7"/><g fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"><path d="M8 24 24 8H56V38H40V24Z"/><path d="M8 26H24V40H56L40 56H8Z"/></g></svg>'
+			. '<svg class="ffc-word" viewBox="73 60 1015 226" aria-hidden="true">' . $paths . '</svg>';
+	}
 
 	private static function icon( $name ) {
 		return isset( self::ICONS[ $name ] ) ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . self::ICONS[ $name ] . '</svg>' : '';
@@ -237,7 +262,7 @@ class FFC_Admin {
 		for ( $i = 0; $i < 20; $i++ ) {
 			$a   = M_PI - ( $i + 0.5 ) * M_PI / 20;
 			$on  = ( $i + 0.5 ) * 5 <= $pct;
-			$out .= '<line x1="' . round( 100 + cos( $a ) * 62, 1 ) . '" y1="' . round( 100 - sin( $a ) * 62, 1 ) . '" x2="' . round( 100 + cos( $a ) * 90, 1 ) . '" y2="' . round( 100 - sin( $a ) * 90, 1 ) . '" stroke="' . ( $on ? '#2563eb' : '#e5e7eb' ) . '" stroke-width="7" stroke-linecap="round"/>';
+			$out .= '<line x1="' . round( 100 + cos( $a ) * 62, 1 ) . '" y1="' . round( 100 - sin( $a ) * 62, 1 ) . '" x2="' . round( 100 + cos( $a ) * 90, 1 ) . '" y2="' . round( 100 - sin( $a ) * 90, 1 ) . '" stroke="' . ( $on ? '#2142e7' : '#e9eaee' ) . '" stroke-width="7" stroke-linecap="round"/>';
 		}
 		return $out . '</svg>';
 	}
@@ -289,88 +314,103 @@ class FFC_Admin {
 	}
 
 	private static function styles() {
-		echo '<style>
-.ffc-wrap{--ink:#1d2327;--muted:#646970;--line:#dcdcde;--soft:#f6f7f7;--brand:#2563eb;--brand-soft:#eff4ff;--ok:#008a20;margin:0 0 0 -20px;color:var(--ink);font-size:14px}
+		$css = <<<'CSS'
+@font-face{font-family:"FFC Poppins";font-style:normal;font-weight:400;font-display:swap;src:url(%FONTS%poppins-400.woff2) format("woff2")}
+@font-face{font-family:"FFC Poppins";font-style:normal;font-weight:500;font-display:swap;src:url(%FONTS%poppins-500.woff2) format("woff2")}
+@font-face{font-family:"FFC Poppins";font-style:normal;font-weight:600;font-display:swap;src:url(%FONTS%poppins-600.woff2) format("woff2")}
+.ffc-wrap{--ink:#111318;--text:#3d4150;--muted:#6b7080;--line:#e6e7eb;--soft:#f6f7f9;--brand:#2142e7;--brand-ink:#1a34bf;--brand-soft:#eef1fe;--ok:#0a8a3a;--bad:#d63638;
+  margin:0 0 0 -20px;color:var(--ink);font:14px/1.5 "FFC Poppins",Poppins,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--soft);min-height:calc(100vh - 32px)}
 @media(max-width:782px){.ffc-wrap{margin-left:-10px}}
 .ffc-wrap *{box-sizing:border-box}.ffc-wrap a{color:var(--brand)}
-.ffc-in{max-width:1180px;margin:0 auto;padding:0 32px}@media(max-width:782px){.ffc-in{padding:0 14px}}
-.ffc-hero{background:#fff;border-bottom:1px solid var(--line);padding:36px 0 0}
-.ffc-hero-top{display:flex;align-items:center;justify-content:space-between;gap:24px}
-.ffc-eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;display:flex;align-items:center;gap:8px}
-.ffc-hero h1{font-size:34px;line-height:1.15;font-weight:600;margin:0;padding:0;color:var(--ink);display:flex;align-items:center;flex-wrap:wrap;gap:12px}
-.ffc-ver{font-size:14px;font-weight:400;color:#50575e;background:#dcdcde;border-radius:4px;padding:4px 10px;line-height:1.3}
-.ffc-sub{font-size:17px;color:#50575e;margin:12px 0 0;max-width:720px}
-.ffc-orb{width:100px;height:100px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 14px 30px -12px rgba(37,99,235,.65)}
-.ffc-orb svg{width:48px;height:48px;color:#fff}.ffc-orb img{width:62px;height:62px;object-fit:contain;border-radius:14px;background:#fff;padding:7px}
-@media(max-width:782px){.ffc-orb{width:64px;height:64px}.ffc-orb svg{width:30px;height:30px}.ffc-hero h1{font-size:26px}}
-.ffc-tabs{display:flex;gap:10px;flex-wrap:wrap;padding:24px 0 22px}
+.ffc-wrap button,.ffc-wrap input,.ffc-wrap select,.ffc-wrap textarea{font-family:inherit}
+.ffc-in{max-width:1160px;margin:0 auto;padding:0 32px}@media(max-width:782px){.ffc-in{padding:0 16px}}
+.ffc-hero{background:#fff;border-bottom:1px solid var(--line);padding:28px 0 0}
+.ffc-hero-top{display:flex;align-items:center;justify-content:space-between;gap:24px}.ffc-hero-top>div{min-width:0}
+.ffc-eyebrow{font-size:11px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.ffc-hero h1{font-size:24px;line-height:1.25;font-weight:600;margin:0;padding:0;color:var(--ink);display:flex;align-items:center;flex-wrap:wrap;gap:10px;letter-spacing:-.01em}
+.ffc-ver{font-size:11px;font-weight:500;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:2px 9px;line-height:1.4;letter-spacing:0}
+.ffc-sub{font-size:14px;color:var(--muted);margin:6px 0 0;max-width:640px}
+.ffc-brand{display:flex;align-items:center;gap:12px;flex:none;color:var(--ink)!important;text-decoration:none!important;border-radius:14px}
+.ffc-brand:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+.ffc-brand .ffc-mark{width:44px;height:44px;border-radius:12px;box-shadow:0 10px 22px -12px rgba(33,66,231,.75)}
+.ffc-brand .ffc-word{height:21px;width:auto;fill:currentColor}
+@media(max-width:782px){.ffc-hero-top{align-items:flex-start}.ffc-brand .ffc-word{display:none}.ffc-brand .ffc-mark{width:38px;height:38px}.ffc-hero h1{font-size:20px}}
+.ffc-tabs{display:flex;gap:2px;margin:22px -12px 0;padding:0 12px}.ffc-tabs.ffc-scroll{scrollbar-width:none}.ffc-tabs::-webkit-scrollbar{display:none}
+.ffc-tab{display:inline-flex;align-items:center;gap:7px;padding:10px 12px 12px;font-size:13px;font-weight:500;color:var(--muted)!important;text-decoration:none!important;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s}
+.ffc-tab svg{width:15px;height:15px;flex:none}.ffc-tab:hover{color:var(--ink)!important}
+.ffc-tab.is-on{color:var(--ink)!important;border-bottom-color:var(--brand)}.ffc-tab:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:8px}
 .ffc-body{padding:24px 0 48px}
-.ffc-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 16px;border-radius:999px;border:1px solid #e4e4e7;background:#fff;color:#18181b!important;font-size:13px;font-weight:500;line-height:1;cursor:pointer;text-decoration:none!important;white-space:nowrap;transition:box-shadow .15s,border-color .15s,background-color .15s,transform .15s;box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(24,24,27,.07),0 1px 2px rgba(24,24,27,.07),0 6px 14px -8px rgba(24,24,27,.22)}
-.ffc-btn:hover{border-color:#d4d4d8;box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(24,24,27,.08),0 2px 4px rgba(24,24,27,.08),0 10px 20px -10px rgba(24,24,27,.28)}
-.ffc-btn:active{transform:translateY(1px)}.ffc-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.ffc-btn svg{width:16px;height:16px;flex:none}
-.ffc-btn.primary,.ffc-btn.on{background:var(--brand);border-color:var(--brand);color:#fff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.24),inset 0 -2.5px 0 rgba(12,26,120,.5),0 1px 2px rgba(37,99,235,.3),0 10px 22px -8px rgba(37,99,235,.6)}
-.ffc-btn.primary:hover,.ffc-btn.on:hover{background:#1d4ed8;border-color:#1d4ed8}
-.ffc-btn.danger{color:#b32d2e!important}.ffc-btn.sm{height:30px;padding:0 12px;font-size:12px}
+.ffc-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink)!important;font-size:13px;font-weight:500;line-height:1;cursor:pointer;text-decoration:none!important;white-space:nowrap;box-shadow:0 1px 2px rgba(17,19,24,.05);transition:background-color .15s,border-color .15s}
+.ffc-btn:hover{background:var(--soft);border-color:#d6d8de}.ffc-btn:active{transform:translateY(1px)}.ffc-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ffc-btn svg{width:15px;height:15px;flex:none}
+.ffc-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff!important;box-shadow:0 1px 2px rgba(33,66,231,.25)}
+.ffc-btn.primary:hover{background:var(--brand-ink);border-color:var(--brand-ink)}
+.ffc-btn.danger{color:var(--bad)!important}.ffc-btn.sm{height:28px;padding:0 10px;font-size:12px;border-radius:8px}
 .ffc-inline{display:inline-block;margin:0}
-.ffc-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.ffc-card{background:#fff;border:1px solid var(--line);margin-bottom:24px}
-.ffc-card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line)}
-.ffc-card-h{flex-wrap:wrap}.ffc-card-h h2{min-width:0;font-size:17px;font-weight:500;line-height:1.3;margin:0;display:flex;align-items:center;gap:12px;color:var(--ink)}
-.ffc-card-h h2 svg{width:24px;height:24px;color:#50575e;flex:none}
-.ffc-card-b{padding:20px 22px}.ffc-card-b>:first-child{margin-top:0}.ffc-card-b>:last-child{margin-bottom:0}
-.ffc-card-f{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px;background:var(--soft);border-top:1px solid var(--line);min-height:62px}
-.ffc-mods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-bottom:24px}@media(max-width:1000px){.ffc-mods{grid-template-columns:minmax(0,1fr)}}
+.ffc-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ffc-card{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:20px;overflow:hidden}
+.ffc-card-h{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line)}
+.ffc-card-h h2{min-width:0;font-size:15px;font-weight:600;line-height:1.35;margin:0;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.ffc-card-h h2>svg{width:18px;height:18px;color:var(--muted);flex:none}
+.ffc-card-b{padding:18px 20px}.ffc-card-b>:first-child{margin-top:0}.ffc-card-b>:last-child{margin-bottom:0}
+.ffc-card-f{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;background:var(--soft);border-top:1px solid var(--line);min-height:56px}
+.ffc-mods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}@media(max-width:1000px){.ffc-mods{grid-template-columns:minmax(0,1fr)}}
 .ffc-mods .ffc-card{margin:0;display:flex;flex-direction:column}.ffc-mods .ffc-card-b{flex:1}
-.ffc-mod-ic{width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:800;font-size:16px;color:#fff}
-.ffc-mod-ic svg{width:18px;height:18px;color:#fff}
-.ffc-desc{color:#3c434a;margin:0 0 16px;line-height:1.55}
-.ffc-status{font-size:14px;color:#3c434a;min-width:0;flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px}.ffc-card-f .ffc-badge{white-space:normal}.ffc-ok{color:var(--ok)}.ffc-off{color:#8c8f94}.ffc-bad{color:#d63638}
-.ffc-switch{position:relative;display:inline-block;width:60px;height:34px;flex:none;margin:0}
+/* Module tiles are monochrome: one quiet style for every card. */
+.ffc-mod-ic{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600;font-size:15px;background:var(--soft)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
+.ffc-mod-ic svg{width:16px;height:16px;color:var(--ink)}
+.ffc-desc{color:var(--text);margin:0 0 16px;font-size:13.5px;line-height:1.6}
+.ffc-status{font-size:13px;color:var(--text);min-width:0;flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px}.ffc-card-f .ffc-badge{white-space:normal}
+.ffc-ok{color:var(--ok);font-weight:500}.ffc-off{color:var(--muted);font-weight:500}.ffc-bad{color:var(--bad)}
+.ffc-switch{position:relative;display:inline-block;width:40px;height:22px;flex:none;margin:0}
 .ffc-wrap .ffc-switch input[type=checkbox]{position:absolute;inset:0;width:100%;height:100%;opacity:0!important;margin:0;cursor:pointer;z-index:1;-webkit-appearance:none;appearance:none;border:0;box-shadow:none}.ffc-wrap .ffc-switch input[type=checkbox]::before{display:none!important}
-.ffc-switch span{position:absolute;inset:0;background:#c3c4c7;border-radius:999px;transition:background .2s}
-.ffc-switch span:before{content:"";position:absolute;width:26px;height:26px;left:4px;top:4px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
-.ffc-switch input:checked+span{background:var(--brand)}.ffc-switch input:checked+span:before{transform:translateX(26px)}
+.ffc-switch span{position:absolute;inset:0;background:#d4d6dc;border-radius:999px;transition:background .2s}
+.ffc-switch span:before{content:"";position:absolute;width:18px;height:18px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(17,19,24,.25)}
+.ffc-switch input:checked+span{background:var(--brand)}.ffc-switch input:checked+span:before{transform:translateX(18px)}
 .ffc-switch input:focus-visible+span{outline:2px solid var(--brand);outline-offset:2px}.ffc-switch input:disabled{cursor:default}.ffc-switch input:disabled+span{opacity:.55}
-.ffc-switch.sm{width:46px;height:26px}.ffc-switch.sm span:before{width:20px;height:20px;left:3px;top:3px}.ffc-switch.sm input:checked+span:before{transform:translateX(20px)}
-.ffc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;margin-bottom:24px}@media(max-width:1100px){.ffc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.ffc-stats{gap:12px}.ffc-stat{padding:14px}.ffc-stat b{font-size:20px}.ffc-spark{display:none}}
-.ffc-stat{background:#fff;border:1px solid var(--line);padding:18px 20px;display:flex;justify-content:space-between;align-items:flex-end;gap:8px}.ffc-stat>div{min-width:0}
-.ffc-stat small{color:var(--muted);display:block;font-size:13px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ffc-stat b{font-size:26px;font-weight:600;white-space:nowrap}
-.ffc-chg{font-size:12px;font-weight:600;color:var(--ok);margin-left:6px}.ffc-chg.down{color:#d63638}
-.ffc-spark{width:70px;height:30px;flex:none;color:var(--brand)}
-.ffc-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px}.ffc-cols>div{min-width:0}@media(max-width:1200px){.ffc-cols{grid-template-columns:minmax(0,1fr)}}
-.ffc-bars{display:flex;align-items:flex-end;gap:8px;height:190px}.ffc-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}.ffc-bar i{display:block;width:100%;max-width:36px;border-radius:8px 8px 3px 3px;background:#e5e7eb;min-height:4px}.ffc-bar.top i{background:var(--brand)}.ffc-bar span{font-size:11px;color:var(--muted)}
+.ffc-switch.sm{width:34px;height:20px}.ffc-switch.sm span:before{width:16px;height:16px}.ffc-switch.sm input:checked+span:before{transform:translateX(14px)}
+.ffc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:20px}@media(max-width:1100px){.ffc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.ffc-stats{gap:10px}.ffc-stat{padding:14px}.ffc-stat b{font-size:19px}.ffc-spark{display:none}}
+.ffc-stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-end;gap:8px}.ffc-stat>div{min-width:0}
+.ffc-stat small{color:var(--muted);display:block;font-size:12px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ffc-stat b{font-size:22px;font-weight:600;white-space:nowrap;letter-spacing:-.01em}
+.ffc-chg{font-size:11px;font-weight:500;color:var(--ok);margin-left:6px}.ffc-chg.down{color:var(--bad)}
+.ffc-spark{width:64px;height:28px;flex:none;color:var(--brand)}
+.ffc-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px}.ffc-cols>div{min-width:0}@media(max-width:1200px){.ffc-cols{grid-template-columns:minmax(0,1fr)}}
+.ffc-bars{display:flex;align-items:flex-end;gap:8px;height:180px}.ffc-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}.ffc-bar i{display:block;width:100%;max-width:32px;border-radius:6px 6px 2px 2px;background:#e9eaee;min-height:4px}.ffc-bar.top i{background:var(--brand)}.ffc-bar span{font-size:11px;color:var(--muted)}
 .ffc-scroll{overflow-x:auto}
-.ffc-tbl{width:100%;border-collapse:collapse}.ffc-tbl th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
-.ffc-tbl td{padding:11px 12px;border-bottom:1px solid #f0f0f1;vertical-align:middle}.ffc-tbl tr:last-child td{border-bottom:0}.ffc-tbl tbody tr:hover td{background:#fafafa}
-.ffc-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;background:#f0f0f1;color:#50575e;white-space:nowrap}
-.ffc-badge svg{width:12px;height:12px}.ffc-green{background:#edfaef;color:#007017}.ffc-blue{background:#e8f0fe;color:#1d4ed8}.ffc-indigo{background:#eef2ff;color:#4338ca}.ffc-cyan{background:#ecfeff;color:#0e7490}.ffc-teal{background:#f0fdfa;color:#0f766e}.ffc-amber{background:#fcf9e8;color:#8a5a00}.ffc-orange{background:#fff4ec;color:#c2410c}.ffc-rose{background:#fff1f2;color:#be123c}.ffc-red{background:#fcf0f1;color:#b32d2e}
+.ffc-tbl{width:100%;border-collapse:collapse;font-size:13px}.ffc-tbl th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:500;padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.ffc-tbl td{padding:10px 12px;border-bottom:1px solid #f0f1f4;vertical-align:middle}.ffc-tbl tr:last-child td{border-bottom:0}.ffc-tbl tbody tr:hover td{background:#fafbfc}
+.ffc-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:2px 9px;border-radius:999px;background:#f0f1f4;color:#4b5060;white-space:nowrap;letter-spacing:0;text-transform:none}
+.ffc-badge svg{width:12px;height:12px}.ffc-green{background:#eaf7ee;color:#0a7a33}.ffc-blue{background:var(--brand-soft);color:var(--brand)}.ffc-indigo{background:#eef0ff;color:#4338ca}.ffc-cyan{background:#e9f8fb;color:#0e7490}.ffc-teal{background:#e9f7f4;color:#0f766e}.ffc-amber{background:#fdf6e3;color:#8a5a00}.ffc-orange{background:#fff3ea;color:#c2410c}.ffc-rose{background:#fff0f2;color:#be123c}.ffc-red{background:#fdeeee;color:#b32d2e}
 .ffc-muted{color:var(--muted)}.ffc-mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
-.ffc-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#00a32a;margin-right:7px;vertical-align:middle}.ffc-dot.warn{background:#dba617}.ffc-dot.fail{background:#d63638}
-.ffc-gauge{width:100%;max-width:220px;display:block;margin:0 auto}.ffc-gauge-n{text-align:center;margin-top:-36px;font-size:28px;font-weight:600}
-.ffc-feed{list-style:none;margin:0;padding:0}.ffc-feed li{background:var(--soft);border-radius:10px;padding:10px 12px;margin-bottom:8px}.ffc-feed small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-.ffc-field{display:grid;gap:6px;margin-bottom:14px}.ffc-field>label{font-weight:600;font-size:13px}.ffc-field small,.ffc-hint{color:var(--muted);font-size:12px;line-height:1.45}
-.ffc-wrap input[type=text],.ffc-wrap input[type=number],.ffc-wrap input[type=password],.ffc-wrap textarea,.ffc-wrap select{border:1px solid #8c8f94;border-radius:8px;min-height:38px;padding:0 12px;font-size:14px;width:100%;max-width:460px;background:#fff;box-shadow:none}
-.ffc-wrap textarea{padding:10px 12px;max-width:100%}.ffc-wrap input:focus,.ffc-wrap textarea:focus,.ffc-wrap select:focus{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);outline:0}
-.ffc-wrap input.ffc-num{width:96px}
+.ffc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:7px;vertical-align:middle;box-shadow:0 0 0 3px #eaf7ee}.ffc-dot.warn{background:#d99a06;box-shadow:0 0 0 3px #fdf6e3}.ffc-dot.fail{background:var(--bad);box-shadow:0 0 0 3px #fdeeee}
+.ffc-gauge{width:100%;max-width:210px;display:block;margin:0 auto}.ffc-gauge-n{text-align:center;margin-top:-34px;font-size:24px;font-weight:600}
+.ffc-feed{list-style:none;margin:0;padding:0}.ffc-feed li{background:var(--soft);border-radius:10px;padding:9px 12px;margin-bottom:6px;font-size:13px}.ffc-feed small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.ffc-field{display:grid;gap:6px;margin-bottom:14px}.ffc-field>label{font-weight:500;font-size:13px}.ffc-field small,.ffc-hint{color:var(--muted);font-size:12px;line-height:1.5}
+.ffc-wrap input[type=text],.ffc-wrap input[type=number],.ffc-wrap input[type=password],.ffc-wrap textarea,.ffc-wrap select{border:1px solid #d6d8de;border-radius:10px;min-height:38px;padding:0 12px;font-size:13.5px;width:100%;max-width:460px;background:#fff;box-shadow:none;color:var(--ink)}
+.ffc-wrap textarea{padding:10px 12px;max-width:100%}.ffc-wrap input:focus,.ffc-wrap textarea:focus,.ffc-wrap select:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft);outline:0}
+.ffc-wrap input.ffc-num{width:92px}
 .ffc-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:400}
-.ffc-choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px}
-.ffc-choice label{position:relative;display:block;border:1px solid var(--line);border-radius:12px;padding:16px 16px 16px 46px;cursor:pointer;background:#fff;transition:border-color .15s,box-shadow .15s,background-color .15s}
-.ffc-choice label:hover{border-color:#a7aaad}.ffc-choice input{position:absolute;left:16px;top:18px;margin:0}
-.ffc-choice label:has(input:checked){border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);background:var(--brand-soft)}
-.ffc-choice b{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px}.ffc-choice span{display:block;color:var(--muted);font-size:13px;line-height:1.45}
-.ffc-opt{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:16px 0;border-top:1px solid #f0f0f1}.ffc-opt:first-child{border-top:0;padding-top:0}
-.ffc-opt b{display:block;font-size:14px;margin-bottom:3px}.ffc-opt p{margin:0;color:var(--muted);font-size:13px;line-height:1.5;max-width:720px}.ffc-opt .ffc-row{margin-top:10px}
-.ffc-section{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:26px 0 12px}
+.ffc-choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px}
+.ffc-choice label{position:relative;display:block;border:1px solid var(--line);border-radius:12px;padding:14px 14px 14px 42px;cursor:pointer;background:#fff;transition:border-color .15s,background-color .15s}
+.ffc-choice label:hover{border-color:#cfd2d9}.ffc-choice input{position:absolute;left:14px;top:16px;margin:0}
+.ffc-choice label:has(input:checked){border-color:var(--brand);background:var(--brand-soft)}
+.ffc-choice b{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;margin-bottom:3px}.ffc-choice span{display:block;color:var(--muted);font-size:12.5px;line-height:1.5}
+.ffc-opt{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:14px 0;border-top:1px solid #f0f1f4}.ffc-opt:first-child{border-top:0;padding-top:0}
+.ffc-opt b{display:block;font-size:13.5px;font-weight:600;margin-bottom:2px}.ffc-opt p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.55;max-width:720px}.ffc-opt .ffc-row{margin-top:10px}
+.ffc-section{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px}
 .ffc-mq{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:center}@media(max-width:900px){.ffc-mq{grid-template-columns:minmax(0,1fr)}}
-.ffc-mq-n{font-size:46px;font-weight:600;line-height:1}.ffc-mq-n small{font-size:18px;color:var(--muted);font-weight:400}
-.ffc-meter{height:8px;border-radius:99px;background:#e5e7eb;overflow:hidden;margin:12px 0 6px}.ffc-meter i{display:block;height:100%;background:var(--brand);border-radius:99px}
-.ffc-keys{display:flex;flex-wrap:wrap;gap:8px}.ffc-key{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;background:#fff}
-.ffc-key i{width:8px;height:8px;border-radius:50%;background:#c3c4c7}.ffc-key.full i{background:#00a32a}.ffc-key.part i{background:#dba617}.ffc-key em{font-style:normal;color:var(--muted)}
-.ffc-update{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:var(--brand-soft);border:1px solid #c7d7fe;border-radius:12px;padding:12px 16px;margin-top:22px}
-.ffc-update p{margin:0;font-size:14px}
+.ffc-mq-n{font-size:40px;font-weight:600;line-height:1;letter-spacing:-.02em}.ffc-mq-n small{font-size:16px;color:var(--muted);font-weight:400}
+.ffc-meter{height:6px;border-radius:99px;background:#e9eaee;overflow:hidden;margin:12px 0 6px}.ffc-meter i{display:block;height:100%;background:var(--brand);border-radius:99px}
+.ffc-keys{display:flex;flex-wrap:wrap;gap:6px}.ffc-key{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;background:#fff}
+.ffc-key i{width:7px;height:7px;border-radius:50%;background:#c9ccd3}.ffc-key.full i{background:#16a34a}.ffc-key.part i{background:#d99a06}.ffc-key em{font-style:normal;color:var(--muted)}
+.ffc-update{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:var(--brand-soft);border:1px solid #d6defd;border-radius:12px;padding:10px 14px;margin-top:20px}
+.ffc-update p{margin:0;font-size:13.5px}
+.ffc-foot{margin:28px 0 0;font-size:12px;color:var(--muted)}
 .ffc-wrap details summary{cursor:pointer;color:var(--brand)}
-</style>';
+.ffc-wrap code{font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+.ffc-wrap .notice{border-radius:10px}
+CSS;
+		echo '<style>' . str_replace( '%FONTS%', esc_url( FFC_URL . 'assets/fonts/' ), $css ) . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fixed CSS; the font URL is escaped.
 	}
 
 	private static function script() {
@@ -389,16 +429,16 @@ class FFC_Admin {
 		// phpcs:enable
 		$tab  = isset( self::TABS[ $tab ] ) ? $tab : 'overview';
 		$c    = FFC_Settings::connection();
-		$logo = $c && ! empty( $c['app_logo'] ) ? $c['app_logo'] : '';
 		$name = $c && ! empty( $c['app_name'] ) ? $c['app_name'] : 'Fullfilio';
+		$home = $c && ! empty( $c['app_url'] ) ? $c['app_url'] : 'https://fullfilio.com';
 		$t    = self::TABS[ $tab ];
 
 		self::styles();
 		echo '<div class="wrap ffc-wrap"><div class="ffc-hero"><div class="ffc-in"><div class="ffc-hero-top"><div>';
 		echo '<p class="ffc-eyebrow">' . esc_html( $name ) . ' Connect ' . self::connection_chip( $c ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- connection_chip() escapes.
-		echo '<h1>' . esc_html( $t[0] ) . ' <span class="ffc-ver">' . esc_html( FFC_VERSION ) . '</span></h1>';
+		echo '<h1>' . esc_html( $t[0] ) . ' <span class="ffc-ver">v' . esc_html( FFC_VERSION ) . '</span></h1>';
 		echo '<p class="ffc-sub">' . esc_html( sprintf( $t[2], $name ) ) . '</p></div>';
-		echo '<div class="ffc-orb">' . ( $logo ? '<img src="' . esc_url( $logo ) . '" alt="">' : self::icon( 'truck' ) ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- icon() returns fixed SVG.
+		echo '<a class="ffc-brand" href="' . esc_url( $home ) . '" target="_blank" rel="noopener" aria-label="' . esc_attr__( 'Open Fullfilio', 'fullfilio-connect' ) . '">' . self::logo() . '</a></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- logo() returns fixed SVG.
 
 		$update = class_exists( 'FFC_Updater' ) && current_user_can( 'update_plugins' ) ? FFC_Updater::available() : null;
 		if ( $update ) {
@@ -407,9 +447,9 @@ class FFC_Admin {
 				. '<a class="ffc-btn" href="' . esc_url( self_admin_url( 'plugins.php' ) ) . '">What\'s new</a></div></div>';
 		}
 
-		echo '<nav class="ffc-tabs" aria-label="Fullfilio Connect">';
+		echo '<nav class="ffc-tabs ffc-scroll" aria-label="Fullfilio Connect">';
 		foreach ( self::TABS as $key => $tt ) {
-			echo '<a class="ffc-btn' . ( $key === $tab ? ' on' : '' ) . '" href="' . esc_url( self::url( array( 'tab' => $key ) ) ) . '"' . ( $key === $tab ? ' aria-current="page"' : '' ) . '>' . self::icon( $tt[1] ) . esc_html( $tt[0] ) . '</a>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			echo '<a class="ffc-tab' . ( $key === $tab ? ' is-on' : '' ) . '" href="' . esc_url( self::url( array( 'tab' => $key ) ) ) . '"' . ( $key === $tab ? ' aria-current="page"' : '' ) . '>' . self::icon( $tt[1] ) . esc_html( $tt[0] ) . '</a>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		}
 		echo '</nav></div></div>';
 
@@ -418,7 +458,7 @@ class FFC_Admin {
 			echo '<div class="notice notice-' . esc_attr( in_array( $type, array( 'success', 'error', 'warning' ), true ) ? $type : 'info' ) . ' inline" style="margin:0 0 20px"><p>' . esc_html( $notice ) . '</p></div>';
 		}
 		call_user_func( array( __CLASS__, 'tab_' . $tab ), $c, $name );
-		echo '<p class="ffc-muted" style="margin-top:28px">' . esc_html( $name ) . ' Connect ' . esc_html( FFC_VERSION ) . ( class_exists( 'FFC_Updater' ) && current_user_can( 'update_plugins' ) ? ' · <a href="' . esc_url( FFC_Updater::check_url() ) . '">Check for updates</a>' : '' ) . '</p>';
+		echo '<p class="ffc-foot">' . esc_html( $name ) . ' Connect ' . esc_html( FFC_VERSION ) . ( class_exists( 'FFC_Updater' ) && current_user_can( 'update_plugins' ) ? ' · <a href="' . esc_url( FFC_Updater::check_url() ) . '">Check for updates</a>' : '' ) . '</p>';
 		echo '</div></div></div>';
 		self::script();
 	}
