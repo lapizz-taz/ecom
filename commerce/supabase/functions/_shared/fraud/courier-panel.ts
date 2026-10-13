@@ -124,7 +124,31 @@ export function answerDetail(body: unknown): string {
     return say(o.message ?? Object.values(o)[0], depth + 1)
   }
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
-  return text(say(b.message) || say(b.error) || say(b.errors) || say(b.detail)).slice(0, 160)
+  return text(say(b.message) || say(b.error) || say(b.errors) || say(b.detail) || say(b.msg) || say(b.reason) || say(b.title)).slice(0, 160)
+}
+
+/**
+ * What an error answer actually says, for the message shown in Super Admin: its message
+ * field; else its short fields ("status: failed, code: E12"); else the page title or text.
+ * Long digit runs (phone numbers, account numbers) are left out.
+ */
+export async function explainAnswer(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => '')
+  if (!raw.trim()) return 'empty answer'
+  let said = ''
+  try {
+    const body = JSON.parse(raw) as unknown
+    said = answerDetail(body)
+    if (!said && body && typeof body === 'object' && !Array.isArray(body)) {
+      const parts = Object.entries(body as Record<string, unknown>)
+        .filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v) && String(v).length <= 40)
+        .slice(0, 4).map(([k, v]) => `${k}: ${v}`)
+      said = parts.length ? parts.join(', ') : `fields: ${Object.keys(body).slice(0, 6).join(', ') || 'none'}`
+    }
+  } catch {
+    said = /<title[^>]*>([^<]{1,80})/i.exec(raw)?.[1] ?? raw.replace(/<[^>]+>/g, ' ')
+  }
+  return said.replace(/\+?\d[\d\s-]{7,}\d/g, '…').replace(/\s+/g, ' ').trim().slice(0, 140)
 }
 
 /** Cookie jar: collects Set-Cookie across requests and rebuilds the Cookie header. */
@@ -151,7 +175,8 @@ async function timedFetch(fetchFn: FetchFn, url: string | URL, init: RequestInit
   }
 }
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+// A whole browser identity: the couriers' panels sit behind firewalls that treat a cut-short one as a bot.
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'
 
 export interface PanelDeps { fetchFn?: FetchFn; store?: SessionStore; timeoutMs?: number; /** Wait before one retry of a firewall check (tests: 0). */ retryPauseMs?: number }
 
@@ -235,7 +260,7 @@ export function parseSteadfast(body: unknown): PanelStat {
     for (const o of scopes) for (const k of keys) if (k in o) return o[k]
     return undefined
   }
-  const reports = reportCount(pick('fraud_reports', 'reports', 'frauds'))
+  const reports = reportCount(pick('total_reports', 'fraud_reports', 'reports', 'frauds'))
   const delivered = pick('total_delivered', 'delivered', 'total_delivery', 'success')
   const cancelled = pick('total_cancelled', 'cancelled', 'total_cancel', 'cancel')
   if (delivered !== undefined || cancelled !== undefined) {
@@ -254,7 +279,8 @@ export function parseSteadfast(body: unknown): PanelStat {
     }
     if (rate === null && cancelRate !== null) rate = Math.round((100 - cancelRate) * 100) / 100
     const band = bandLabel(pick('volume_band', 'parcel_band'), pick('volume_range', 'parcel_range'))
-    const none = !rate && !cancelRate && (!band || /^0(\D|$)/.test(band))
+    // Steadfast writes "none" (or a 0 band) for a number it has never carried.
+    const none = !rate && !cancelRate && (!band || /^(0|none)(\W|$)/i.test(band))
     if (none) return { ok: true, success: 0, cancel: 0, total: 0, success_ratio: null, ...(reports ? { reports } : {}) }
     return { ok: true, success: 0, cancel: 0, total: 0, success_ratio: rate, rate_only: true, parcel_range: band, ...(reports ? { reports } : {}) }
   }
@@ -349,8 +375,8 @@ async function pathao(login: PanelLogin, phone: string, d: Required<PanelDeps>):
   let res = await read(token)
   if (res.status === 401) { d.store.drop(key); return pathao(login, phone, d) }
   if (!res.ok) {
-    const why = answerDetail(await res.json().catch(() => null))
-    return { ok: false, success: 0, cancel: 0, total: 0, error: `Pathao answered HTTP ${res.status}${why ? `: ${why}` : ''}` }
+    const why = await explainAnswer(res)
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `Pathao answered HTTP ${res.status}: ${why}` }
   }
   const c = ((await res.json().catch(() => ({})) as { data?: { customer?: Record<string, unknown> } }).data?.customer) ?? {}
   const success = num(c.successful_delivery), total = num(c.total_delivery), cancel = Math.max(0, total - success)
@@ -362,15 +388,17 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
   const loginPhone = bdMobile(login.phone ?? ''), password = text(login.password)
   if (!loginPhone || !password) return { ok: false, success: 0, cancel: 0, total: 0, error: 'No RedX login saved' }
   const key = await sessionKey('redx', login)
+  // RedX's own web panel sends these; its API answers requests without them differently.
+  const site = { Origin: 'https://redx.com.bd', Referer: 'https://redx.com.bd/', 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9' }
   const read = async (token: string, number = `88${phone}`): Promise<Response> =>
     timedFetch(d.fetchFn, `https://redx.com.bd/api/redx_se/admin/parcel/customer-success-return-rate?phoneNumber=${encodeURIComponent(number)}`, {
-      headers: { Accept: 'application/json, text/plain, */*', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': UA },
+      headers: { ...site, Accept: 'application/json, text/plain, */*', 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     }, d.timeoutMs)
 
   let token = d.store.get(key)?.value
   if (!token) {
     const res = await timedFetch(d.fetchFn, 'https://api.redx.com.bd/v4/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': UA },
+      method: 'POST', headers: { ...site, 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' },
       body: JSON.stringify({ phone: `88${loginPhone}`, password }),
     }, d.timeoutMs)
     if (!res.ok) return { ok: false, success: 0, cancel: 0, total: 0, error: res.status === 401 || res.status === 422 ? 'RedX rejected the phone or password' : `RedX login HTTP ${res.status}` }
@@ -388,8 +416,8 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
   }
   if (res.status === 429) return { ok: false, success: 0, cancel: 0, total: 0, error: 'RedX rate limit — try again in a minute' }
   if (!res.ok) {
-    const why = answerDetail(await res.json().catch(() => null))
-    return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}${why ? `: ${why}` : ''}` }
+    const why = await explainAnswer(res)
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}: ${why}` }
   }
   const data = ((await res.json().catch(() => ({})) as { data?: Record<string, unknown> }).data) ?? {}
   const success = num(data.deliveredParcels), total = num(data.totalParcels), cancel = Math.max(0, total - success)
@@ -397,23 +425,45 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
 }
 
 // -------------------------------- Carrybee -----------------------------------
+const NO_HISTORY: PanelStat = { ok: true, success: 0, cancel: 0, total: 0, success_ratio: null }
+
+/**
+ * Carrybee's record of a number. Its merchant panel reads /customers/+8801XXXXXXXXX
+ * (404 = it has never carried the number); the older /fraud-check/01XXXXXXXXX address is
+ * tried if that fails another way. Returns null when the session is no longer accepted.
+ */
+async function carrybeeLookup(auth: string, phone: string, d: Required<PanelDeps>): Promise<PanelStat | null> {
+  const { token, business } = JSON.parse(auth) as { token: string; business: string }
+  const base = `https://api-merchant.carrybee.com/api/v2/businesses/${encodeURIComponent(business)}`
+  const get = (path: string) => timedFetch(d.fetchFn, `${base}/${path}`, {
+    headers: {
+      Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`,
+      Origin: 'https://merchant.carrybee.com', Referer: 'https://merchant.carrybee.com/', 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9',
+    },
+  }, d.timeoutMs)
+  const res = await get(`customers/${encodeURIComponent(`+88${phone}`)}`)
+  if (res.status === 401 || res.status === 403) { await res.body?.cancel().catch(() => undefined); return null }
+  if (res.ok) return parseCarrybee(await res.json().catch(() => null))
+  const why = await explainAnswer(res)
+  // A missing route is not "no history": only a 404 about the customer counts as that.
+  if (res.status === 404 && !/route|cannot get|endpoint/i.test(why)) return NO_HISTORY
+  const old = await get(`fraud-check/${encodeURIComponent(phone)}`)
+  if (old.ok) return parseCarrybee(await old.json().catch(() => null))
+  await old.body?.cancel().catch(() => undefined)
+  if (/no (order|data|record|parcel|customer)|not found/i.test(why)) return NO_HISTORY
+  return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee answered HTTP ${res.status}: ${why}` }
+}
+
 async function carrybee(login: PanelLogin, phone: string, d: Required<PanelDeps>): Promise<PanelStat> {
   const loginPhone = text(login.phone), password = text(login.password)
   if (!loginPhone || !password) return { ok: false, success: 0, cancel: 0, total: 0, error: 'No Carrybee login saved' }
   const key = await sessionKey('carrybee', login)
   // Carrybee's tokens look like "1234|abc…", so the session is kept as JSON, not joined with "|".
-  const read = async (auth: string, number = phone): Promise<Response> => {
-    const { token, business } = JSON.parse(auth) as { token: string; business: string }
-    return timedFetch(d.fetchFn, `https://api-merchant.carrybee.com/api/v2/businesses/${encodeURIComponent(business)}/fraud-check/${encodeURIComponent(number)}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': UA },
-    }, d.timeoutMs)
-  }
-
   const cached = d.store.get(key)?.value
   if (cached) {
-    const res = await read(cached)
-    if (res.ok) return parseCarrybee(await res.json().catch(() => null))
-    d.store.drop(key)
+    const stat = await carrybeeLookup(cached, phone, d)
+    if (stat) return stat
+    d.store.drop(key) // session expired; sign in again
   }
   const jar = new Jar()
   const headers = { 'User-Agent': UA, Accept: 'application/json', Referer: 'https://merchant.carrybee.com/login' }
@@ -428,38 +478,34 @@ async function carrybee(login: PanelLogin, phone: string, d: Required<PanelDeps>
   }, d.timeoutMs)
   jar.absorb(loginRes)
   const sessionRes = await timedFetch(d.fetchFn, 'https://merchant.carrybee.com/api/auth/session', { headers: { ...headers, Cookie: jar.header() } }, d.timeoutMs)
-  const session = (await sessionRes.json().catch(() => ({}))) as { accessToken?: unknown; user?: { selectedBusinessId?: unknown } }
-  const accessToken = text(session.accessToken), businessId = text(session.user?.selectedBusinessId)
-  if (!accessToken || !businessId) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Carrybee rejected the phone or password' }
+  const session = (await sessionRes.json().catch(() => ({}))) as {
+    accessToken?: unknown; access_token?: unknown
+    user?: { accessToken?: unknown; selectedBusinessId?: unknown; businessId?: unknown; business_id?: unknown; merchantBusinesses?: { businessId?: unknown }[] }
+  }
+  const accessToken = text(session.accessToken ?? session.access_token ?? session.user?.accessToken)
+  const businessId = text(session.user?.selectedBusinessId ?? session.user?.businessId ?? session.user?.business_id ?? session.user?.merchantBusinesses?.[0]?.businessId)
+  if (!accessToken) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Carrybee rejected the phone or password' }
+  if (!businessId) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Carrybee signed in, but the account has no business selected — open the Carrybee panel once and pick the business' }
   const auth = JSON.stringify({ token: accessToken, business: businessId })
-  let res = await read(auth)
-  let why = ''
-  if (res.status === 400) {
-    // Signed in, but the lookup was refused: keep Carrybee's reason, then try the number with +88 once.
-    why = answerDetail(await res.json().catch(() => null))
-    res = await read(auth, `+88${phone}`)
-  }
-  if (!res.ok) {
-    why = answerDetail(await res.json().catch(() => null)) || why
-    d.store.set(key, auth, 50 * 60_000) // the sign-in itself worked
-    // "No order found" for a number Carrybee has never carried is no history, not a failure.
-    if (res.status === 400 || res.status === 404) {
-      if (/no (order|data|record|parcel)|not found/i.test(why)) return { ok: true, success: 0, cancel: 0, total: 0, success_ratio: null }
-    }
-    return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee answered HTTP ${res.status}${why ? `: ${why}` : ' without saying why'}` }
-  }
-  d.store.set(key, auth, 50 * 60_000)
-  return parseCarrybee(await res.json().catch(() => null))
+  const stat = await carrybeeLookup(auth, phone, d)
+  if (!stat) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Carrybee signed in, but refused the new session for the lookup (HTTP 401)' }
+  d.store.set(key, auth, 50 * 60_000) // the sign-in itself worked
+  return stat
 }
 function parseCarrybee(body: unknown): PanelStat {
-  const top = (body ?? {}) as { data?: Record<string, unknown>; error?: unknown }
+  const top = (body ?? {}) as { data?: Record<string, unknown> | null; error?: unknown }
   // A 200 can still carry an error (as the reference client checks).
   if (top.error && top.error !== false) return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee: ${answerDetail(top) || 'the lookup failed'}` }
-  const data = top.data ?? {}
+  if (!top.data || typeof top.data !== 'object') {
+    const keys = Object.keys(top).slice(0, 6).join(', ')
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee gave an unexpected answer${keys ? ` (fields: ${keys})` : ''}` }
+  }
+  const data = top.data
   const total = num(data.total_order), cancel = Math.min(num(data.cancelled_order), total), success = Math.max(0, total - cancel)
   let r = typeof data.success_rate === 'number' ? data.success_rate : Number(data.success_rate)
   if (!Number.isFinite(r) || (total > 0 && !data.success_rate)) r = ratio(success, total) ?? 0
-  return { ok: true, success, cancel, total, success_ratio: total > 0 ? Math.round(r * 100) / 100 : null }
+  const reports = num(data.fraud_count)
+  return { ok: true, success, cancel, total, success_ratio: total > 0 ? Math.round(r * 100) / 100 : null, ...(reports ? { reports } : {}) }
 }
 
 const RUNNERS: Record<CourierPanelProviderId, (login: PanelLogin, phone: string, d: Required<PanelDeps>) => Promise<PanelStat>> = {
@@ -483,12 +529,15 @@ export async function testPanelLogin(provider: CourierPanelProviderId, login: Pa
   try {
     const r = await RUNNERS[provider](login, phone, dd)
     const label = COURIER_PANEL_LABELS[provider]
-    if (!r.ok) return { ok: false, message: r.error ?? `${label} did not answer` }
+    if (!r.ok) return { ok: false, message: redact(r.error ?? `${label} did not answer`, login) }
+    const reports = r.reports ? `, ${r.reports} fraud report${r.reports === 1 ? '' : 's'}` : ''
     if (r.rate_only) {
-      const reports = r.reports ? `, ${r.reports} fraud report${r.reports === 1 ? '' : 's'}` : ''
       return { ok: true, message: `${label}: signed in — ${r.success_ratio}% delivered${r.parcel_range ? `, volume ${r.parcel_range}` : ''}${reports} for ${phone} (rate only, no parcel counts)` }
     }
-    return { ok: true, message: `${label}: signed in, ${r.total} parcel${r.total === 1 ? '' : 's'} for ${phone}` }
+    if (!r.total) {
+      return { ok: true, message: `${label}: signed in — no parcels on record for ${phone}${reports}. To be sure the lookup reads real data, test once with a number that has ${label} parcels.` }
+    }
+    return { ok: true, message: `${label}: signed in — ${r.success} of ${r.total} parcel${r.total === 1 ? '' : 's'} delivered for ${phone}${reports}` }
   } catch (error) {
     return { ok: false, message: redact(String((error as Error).message ?? error), login) }
   }

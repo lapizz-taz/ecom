@@ -44,6 +44,7 @@ function panelFetch(overrides: Record<string, () => Response> = {}) {
     if (url.includes('merchant.carrybee.com/api/auth/csrf')) return withCookie({ csrfToken: 'csrf-cb' }, 'cb=1; Path=/')
     if (url.includes('merchant.carrybee.com/api/auth/callback/login')) return new Response('', { status: 302, headers: new Headers({ 'set-cookie': 'cb_auth=2; Path=/' }) })
     if (url.includes('merchant.carrybee.com/api/auth/session')) return withCookie({ accessToken: 'cb-tok', user: { selectedBusinessId: 'biz-9' } })
+    if (url.includes('api-merchant.carrybee.com') && url.includes('/customers/')) return withCookie({ data: { total_order: 10, cancelled_order: 0, success_rate: 100 } })
     if (url.includes('api-merchant.carrybee.com') && url.includes('/fraud-check/')) return withCookie({ data: { total_order: 10, cancelled_order: 0, success_rate: 100 } })
     // Steadfast (its login path is a bare /login, so it must be matched last).
     if (url.includes('steadfast.com.bd/login') && method === 'GET') return htmlRes('<input type="hidden" name="_token" value="tok-sf">', 'sf_sess=1; Path=/')
@@ -205,8 +206,8 @@ describe('courier sign-in fixes', () => {
     const fetchFn = panelFetch({ 'merchant.carrybee.com/api/auth/session': () => withCookie({ accessToken: '4521|abcDEF', user: { selectedBusinessId: 'biz-9' } }) })
     const r = await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn, store: freshStore() })
     expect(r.ok).toBe(true)
-    const read = fetchFn.mock.calls.find(([u]) => String(u).includes('/fraud-check/'))!
-    expect(String(read[0])).toBe('https://api-merchant.carrybee.com/api/v2/businesses/biz-9/fraud-check/01811111111')
+    const read = fetchFn.mock.calls.find(([u]) => String(u).includes('/customers/'))!
+    expect(String(read[0])).toBe('https://api-merchant.carrybee.com/api/v2/businesses/biz-9/customers/%2B8801811111111')
     expect((read[1]!.headers as Record<string, string>).Authorization).toBe('Bearer 4521|abcDEF')
   })
 
@@ -372,7 +373,7 @@ describe('Steadfast new sign-in page and RedX 400', () => {
       return fetchFn(input, init)
     })
     const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn: spy, store: freshStore() })
-    expect(r).toEqual({ ok: true, message: 'Steadfast: signed in, 10 parcels for 01811111111' })
+    expect(r).toEqual({ ok: true, message: 'Steadfast: signed in — 8 of 10 parcels delivered for 01811111111' })
     expect(posts[0].url).toBe('https://steadfast.com.bd/merchant/login')
     expect(new URLSearchParams(posts[0].body).get('login')).toBe('shop@x.com')
     expect(new URLSearchParams(posts[0].body).get('_token')).toBe('meta-tok')
@@ -404,7 +405,7 @@ describe('Steadfast new sign-in page and RedX 400', () => {
     })
     const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => { urls.push(String(input)); return fetchFn(input, init) })
     const r = await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: spy, store: freshStore() })
-    expect(r).toEqual({ ok: true, message: 'RedX: signed in, 5 parcels for 01811111111' })
+    expect(r).toEqual({ ok: true, message: 'RedX: signed in — 4 of 5 parcels delivered for 01811111111' })
 
     const always400 = panelFetch({ 'customer-success-return-rate': () => withCookie({ message: 'Invalid phone number' }, undefined, 400) })
     const bad = await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: always400, store: freshStore() })
@@ -454,36 +455,93 @@ describe('Steadfast\'s new fraud answer, firewall retry, couriers\' own error re
         ? new Response('', { status: 302, headers: new Headers({ 'set-cookie': 'sf_auth=2; Path=/' }) })
         : fetchFn(input, init)))
     const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn: posting, store: freshStore(), retryPauseMs: 0 })
-    expect(r).toEqual({ ok: true, message: 'Steadfast: signed in, 10 parcels for 01811111111' })
+    expect(r).toEqual({ ok: true, message: 'Steadfast: signed in — 8 of 10 parcels delivered for 01811111111' })
   })
 
-  it('Carrybee: a 400 shows Carrybee\'s own reason, tries +88 once, and "no order found" is no history', async () => {
-    const urls: string[] = []
-    const reasons = panelFetch({
-      '/fraud-check/': () => (urls[urls.length - 1].includes('%2B88')
-        ? withCookie({ data: { total_order: 4, cancelled_order: 1, success_rate: 75 } })
-        : withCookie({ errors: { phone: ['The phone format is invalid.'] } }, undefined, 400)),
-    })
-    const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => { urls.push(String(input)); return reasons(input, init) })
-    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: spy, store: freshStore() }))
-      .toEqual({ ok: true, message: 'Carrybee: signed in, 4 parcels for 01811111111' })
+  it('Carrybee: reads /customers/+8801…, and a 404 about the customer is no history', async () => {
+    const fetchFn = panelFetch({ '/customers/': () => withCookie({ data: { total_order: 4, cancelled_order: 1, success_rate: 75, fraud_count: 2 } }) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn, store: freshStore() }))
+      .toEqual({ ok: true, message: 'Carrybee: signed in — 3 of 4 parcels delivered for 01811111111, 2 fraud reports' })
+    const read = fetchFn.mock.calls.find(([u]) => String(u).includes('/customers/'))!
+    expect(read[1]!.headers).toMatchObject({ Origin: 'https://merchant.carrybee.com', Referer: 'https://merchant.carrybee.com/' })
+    // Only the new address was needed.
+    expect(fetchFn.mock.calls.some(([u]) => String(u).includes('/fraud-check/'))).toBe(false)
 
-    const refused = panelFetch({ '/fraud-check/': () => withCookie({ error: { message: 'Business is not verified' } }, undefined, 400) })
-    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: refused, store: freshStore() }))
-      .toEqual({ ok: false, message: 'Carrybee answered HTTP 400: Business is not verified' })
+    const notCarried = panelFetch({ '/customers/': () => withCookie({ message: 'Customer not found' }, undefined, 404) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: notCarried, store: freshStore() }))
+      .toEqual({ ok: true, message: 'Carrybee: signed in — no parcels on record for 01811111111. To be sure the lookup reads real data, test once with a number that has Carrybee parcels.' })
+  })
 
-    const silent = panelFetch({ '/fraud-check/': () => new Response('', { status: 400 }) })
-    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: silent, store: freshStore() }))
-      .toEqual({ ok: false, message: 'Carrybee answered HTTP 400 without saying why' })
+  it('Carrybee: when the new address is missing or refuses, the older fraud-check address is tried', async () => {
+    // A missing route is not "no history".
+    const noRoute = panelFetch({ '/customers/': () => new Response('Cannot GET /api/v2/businesses/biz-9/customers', { status: 404 }) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: noRoute, store: freshStore() }))
+      .toEqual({ ok: true, message: 'Carrybee: signed in — 10 of 10 parcels delivered for 01811111111' })
+    expect(noRoute.mock.calls.some(([u]) => String(u).endsWith('/fraud-check/01811111111'))).toBe(true)
 
-    const none = panelFetch({ '/fraud-check/': () => withCookie({ message: 'No order found for this number' }, undefined, 404) })
-    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: none, store: freshStore() }))
-      .toEqual({ ok: true, message: 'Carrybee: signed in, 0 parcels for 01811111111' })
+    // Both refuse: the new address's reason is shown, whatever field it is in.
+    const both = (res: () => Response) => panelFetch({ '/customers/': res, '/fraud-check/': () => new Response('', { status: 400 }) })
+    const said = async (res: () => Response) => (await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: both(res), store: freshStore() })).message
+    expect(await said(() => withCookie({ errors: { phone: ['The phone format is invalid.'] } }, undefined, 400))).toBe('Carrybee answered HTTP 400: The phone format is invalid.')
+    expect(await said(() => withCookie({ status: 'failed', code: 'E12' }, undefined, 400))).toBe('Carrybee answered HTTP 400: status: failed, code: E12')
+    expect(await said(() => new Response('', { status: 400 }))).toBe('Carrybee answered HTTP 400: empty answer')
+    expect(await said(() => withCookie({ message: 'No order found for +8801811111111' }, undefined, 400)))
+      .toBe('Carrybee: signed in — no parcels on record for 01811111111. To be sure the lookup reads real data, test once with a number that has Carrybee parcels.')
+  })
 
-    // A 200 that carries an error is a failure, not zero parcels.
-    const hidden = panelFetch({ '/fraud-check/': () => withCookie({ error: true, message: 'Token expired' }) })
+  it('Carrybee: errors inside a 200, a refused session, an expired cached session, and the business id', async () => {
+    const hidden = panelFetch({ '/customers/': () => withCookie({ error: true, message: 'Token expired' }) })
     expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: hidden, store: freshStore() }))
       .toEqual({ ok: false, message: 'Carrybee: Token expired' })
+
+    const odd = panelFetch({ '/customers/': () => withCookie({ customer: { id: 1 } }) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: odd, store: freshStore() }))
+      .toEqual({ ok: false, message: 'Carrybee gave an unexpected answer (fields: customer)' })
+
+    const refused = panelFetch({ '/customers/': () => withCookie({ message: 'Unauthenticated.' }, undefined, 401) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: refused, store: freshStore() }))
+      .toEqual({ ok: false, message: 'Carrybee signed in, but refused the new session for the lookup (HTTP 401)' })
+
+    // The business id can sit under merchantBusinesses instead of selectedBusinessId.
+    const listed = panelFetch({ 'merchant.carrybee.com/api/auth/session': () => withCookie({ accessToken: 'cb-tok', user: { merchantBusinesses: [{ businessId: 'biz-7' }] } }) })
+    expect((await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: listed, store: freshStore() })).ok).toBe(true)
+    expect(listed.mock.calls.some(([u]) => String(u).includes('/businesses/biz-7/customers/'))).toBe(true)
+    const noBusiness = panelFetch({ 'merchant.carrybee.com/api/auth/session': () => withCookie({ accessToken: 'cb-tok', user: {} }) })
+    expect((await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: noBusiness, store: freshStore() })).message)
+      .toMatch(/no business selected/)
+
+    // A cached session that Carrybee no longer accepts signs in again instead of failing.
+    let answers = 0
+    const fetchFn = panelFetch({
+      '/customers/': () => (++answers === 2 ? withCookie({}, undefined, 401) : withCookie({ data: { total_order: 2, cancelled_order: 0, success_rate: 100 } })),
+    })
+    const p = new CourierPanelProvider({ carrybee: allCreds.carrybee }, { fetchFn, store: freshStore() })
+    await p.lookup('01811111111') // signs in (answer 1) and keeps the session
+    const s = await p.lookup('01811111111') // the kept session gets a 401 (answer 2) → signs in again (answer 3)
+    expect(s.couriers[0]).toMatchObject({ courier: 'carrybee', orders: 2, delivered: 2 })
+    expect(fetchFn.mock.calls.filter(([u]) => String(u).includes('/api/auth/session')).length).toBe(2)
+  })
+
+  it('RedX: sends the headers its own site sends, and shows what a refusal said', async () => {
+    const fetchFn = panelFetch()
+    await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn, store: freshStore() })
+    const read = fetchFn.mock.calls.find(([u]) => String(u).includes('customer-success-return-rate'))!
+    expect(read[1]!.headers).toMatchObject({ Origin: 'https://redx.com.bd', Referer: 'https://redx.com.bd/' })
+    expect((read[1]!.headers as Record<string, string>)['User-Agent']).toMatch(/Chrome\/\d+/)
+
+    const page = panelFetch({ 'customer-success-return-rate': () => new Response('<html><title>400 Bad Request</title></html>', { status: 400 }) })
+    expect(await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: page, store: freshStore() }))
+      .toEqual({ ok: false, message: 'RedX answered HTTP 400: 400 Bad Request' })
+    const coded = panelFetch({ 'customer-success-return-rate': () => withCookie({ isError: true, errorCode: 'PHONE_MISMATCH', phone: '8801811111111' }, undefined, 400) })
+    expect(await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: coded, store: freshStore() }))
+      .toEqual({ ok: false, message: 'RedX answered HTTP 400: isError: true, errorCode: PHONE_MISMATCH, phone: …' })
+  })
+
+  it('Steadfast: "none" is no history, and total_reports counts the reports', () => {
+    expect(parseSteadfast({ delivery_ratio: null, cancellation_ratio: null, volume_band: 'none', total_reports: 0 }))
+      .toEqual({ ok: true, success: 0, cancel: 0, total: 0, success_ratio: null })
+    expect(parseSteadfast({ delivery_ratio: 70, cancellation_ratio: 30, volume_band: 'low', volume_range: '1-5', total_reports: 3 }))
+      .toMatchObject({ success_ratio: 70, parcel_range: '1–5', reports: 3 })
   })
 
   it('reads a courier\'s reason from whichever field it uses', () => {
