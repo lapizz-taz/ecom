@@ -27,9 +27,12 @@ const VERDICT_TONE: Record<string, string> = {
   high: 'border-red-300 bg-red-50 text-red-900',
 }
 
-/** Read the courier-history result stored with a fraud check (staff only). */
+/** Read the courier-history result stored with a fraud check (staff only).
+ * Either source works: the platform's BD Courier (`courier_history`) or the
+ * merchant's own courier-panel logins (`courier_panel`). */
 export function courierHistoryOf(providerResponse: unknown): CourierHistoryResult | null {
-  const r = (providerResponse as { courier_history?: unknown } | null)?.courier_history as CourierHistoryResult | undefined
+  const pr = providerResponse as { courier_history?: unknown; courier_panel?: unknown } | null
+  const r = (pr?.courier_history ?? pr?.courier_panel) as CourierHistoryResult | undefined
   return r && Array.isArray(r.couriers) ? r : null
 }
 
