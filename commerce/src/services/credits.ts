@@ -147,7 +147,7 @@ export const testBdCourier = (phone: string) => invokeFunction<{ ok: boolean; re
 export const disconnectBdCourier = () => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'bd_courier_disconnect' })
 
 // Courier sign-in accounts (platform), managed from the BD Courier page.
-export type CourierPanelProvider = 'steadfast' | 'pathao' | 'redx' | 'carrybee' | 'paperfly'
+export type CourierPanelProvider = 'steadfast' | 'pathao' | 'redx' | 'carrybee'
 export interface CourierPanelAccount {
   id: string
   hint: string

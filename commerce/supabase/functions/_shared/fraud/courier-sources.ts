@@ -55,11 +55,15 @@ export function mergeCourierSummaries(history: CourierHistorySummary | null, pan
 export class CourierSourcesProvider implements FraudProvider {
   readonly name = 'courier_history'
 
-  constructor(private readonly history: CourierSource | null, private readonly panel: CourierSource | null) {}
+  /** The courier sign-ins get this long (a checkout is waiting); BD Courier keeps its own timeout. */
+  constructor(private readonly history: CourierSource | null, private readonly panel: CourierSource | null, private readonly panelWaitMs = 12_000) {}
 
   async lookup(phone: string): Promise<CourierHistorySummary> {
     const ask = (s: CourierSource | null) => (s ? s.lookup(phone) : Promise.resolve(null))
-    const [h, p] = await Promise.allSettled([ask(this.history), ask(this.panel)])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const capped = <T>(p: Promise<T>) => Promise.race([p, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('took too long')), this.panelWaitMs) })])
+    const [h, p] = await Promise.allSettled([ask(this.history), capped(ask(this.panel))])
+    clearTimeout(timer)
     const value = (r: PromiseSettledResult<CourierHistorySummary | null>) => (r.status === 'fulfilled' ? r.value : null)
     const failures = [[h, 'BD Courier'], [p, 'Courier sign-ins']]
       .filter(([r]) => (r as PromiseSettledResult<unknown>).status === 'rejected')

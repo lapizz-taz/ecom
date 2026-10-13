@@ -156,11 +156,11 @@ export function lookupCourierHistory(phone: string) {
 
 // ---------------------------------------------------------------------------
 // Courier sign-in accounts — the platform's logins to the courier panels
-// (Steadfast, Pathao, RedX, Carrybee, Paperfly), connected once in Super Admin
+// (Steadfast, Pathao, RedX, Carrybee), connected once in Super Admin
 // and used for every store. A second source next to BD Courier, metered the
 // same way. Merchants only see whether it is available and turn it on.
 // ---------------------------------------------------------------------------
-export type CourierPanelProviderId = 'steadfast' | 'pathao' | 'redx' | 'carrybee' | 'paperfly'
+export type CourierPanelProviderId = 'steadfast' | 'pathao' | 'redx' | 'carrybee'
 
 export interface CourierPanelProviderStatus {
   provider: CourierPanelProviderId
