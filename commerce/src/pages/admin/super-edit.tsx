@@ -40,7 +40,7 @@ export default function SuperEditPage() {
   const [state, update] = useUrlState({ order: '' })
   const [q, setQ] = useState('')
   const term = useDebounce(q.trim(), 250)
-  const results = useQuery({ queryKey: ['global-search', term], queryFn: () => globalSearch(term), enabled: term.length >= 3 })
+  const results = useQuery({ queryKey: ['global-search', term], queryFn: () => globalSearch(term), enabled: term.length >= 2 })
   const picks = [
     ...(results.data?.orders ?? []).map((o) => ({ id: o.id, title: o.order_number, detail: `${o.customer_name} · ${o.customer_phone}`, status: o.status })),
     ...(results.data?.parcels ?? []).map((p) => ({ id: p.order_id, title: p.order_number, detail: `${p.courier} · ${p.consignment_id || p.tracking_number}`, status: null })),
@@ -65,7 +65,7 @@ export default function SuperEditPage() {
                 <Input className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. ISO-10233, 01712345678, CN123…" aria-label="Find an order" />
               </div>
               {results.isFetching && <Spinner />}
-              {term.length >= 3 && !results.isFetching && picks.length === 0 && <p className="text-sm text-muted-foreground">No order matches “{term}”.</p>}
+              {term.length >= 2 && !results.isFetching && picks.length === 0 && <p className="text-sm text-muted-foreground">No order matches “{term}”.</p>}
               <ul className="grid gap-1">
                 {picks.map((p) => (
                   <li key={p.id}>

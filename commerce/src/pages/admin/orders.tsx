@@ -53,6 +53,18 @@ import type { CheckoutLead, OrderListItem, OrderStatus, ReviewStatus } from '@/t
 
 type View = 'all' | 'web' | 'approved'
 const PAGE_SIZE = 25
+/** "Rows per page" on the order lists; 200 is the most one request returns. */
+const ROW_CHOICES = [20, 50, 100, 200]
+const rowsKey = (view: View) => `orders.rows.${view}`
+/** The rows-per-page last picked on this list in this browser (20 when none, or storage is blocked). */
+function savedRows(view: View): string {
+  try {
+    const v = Number(localStorage.getItem(rowsKey(view)))
+    return ROW_CHOICES.includes(v) ? String(v) : '20'
+  } catch {
+    return '20'
+  }
+}
 const CLOSED: OrderStatus[] = ['CANCELLED', 'REJECTED_FRAUD']
 const ALL_MOVES: Array<{ to: OrderStatus; label: string }> = [
   { to: 'READY_TO_SHIP', label: 'RTS' }, { to: 'SHIPPED', label: 'Shipped' }, { to: 'DELIVERED', label: 'Delivered' },
@@ -92,9 +104,15 @@ export function OrdersPage({ view }: { view: View }) {
   const [state, update] = useUrlState({
     ...EMPTY_FILTERS,
     tab: view === 'web' ? 'PROCESSING' : view === 'approved' ? 'PENDING' : 'all', q: '', sort: 'created_at', dir: 'desc', page: '1', print: '', due: '', dupes: '', advance: '',
+    rows: savedRows(view),
   })
   const filterValues = useMemo(() => Object.fromEntries(Object.keys(EMPTY_FILTERS).map((k) => [k, state[k as keyof FilterValues]])) as FilterValues, [state])
   const page = Number(state.page) || 1
+  const perPage = ROW_CHOICES.includes(Number(state.rows)) ? Number(state.rows) : 20
+  const setPerPage = (n: number) => {
+    try { localStorage.setItem(rowsKey(view), String(n)) } catch { /* the choice still applies to this visit */ }
+    update({ rows: String(n) })
+  }
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkTarget, setBulkTarget] = useState<OrderStatus | null>(null)
   const [approveIds, setApproveIds] = useState<string[] | null>(null)
@@ -154,10 +172,10 @@ export function OrdersPage({ view }: { view: View }) {
 
   const showLeads = view === 'web' && state.tab === 'incomplete'
   const orders = useQuery({
-    queryKey: ['orders', 'list', view, filters, sort, dir, page],
+    queryKey: ['orders', 'list', view, filters, sort, dir, page, perPage],
     placeholderData: keepPreviousData,
     enabled: !showLeads,
-    queryFn: () => searchOrders(filters, sort, dir as 'asc' | 'desc', PAGE_SIZE, (page - 1) * PAGE_SIZE),
+    queryFn: () => searchOrders(filters, sort, dir as 'asc' | 'desc', perPage, (page - 1) * perPage),
     // A new order's courier check lands a few seconds after the order: look again until it does.
     refetchInterval: (q) => (q.state.data?.items.some(awaitingCheck) ? 5_000 : false),
   })
@@ -529,7 +547,8 @@ export function OrdersPage({ view }: { view: View }) {
           selected={can('orders.status') || can('orders.export') || can('orders.fulfill') ? selected : undefined}
           onSelectedChange={setSelected}
           empty={<EmptyState title={state.q ? 'No orders match' : 'Nothing here'} description={state.q ? 'Try a different search.' : emptyHint(view, state.tab)} />}
-          footer={<Pagination page={page} pageSize={PAGE_SIZE} total={orders.data?.total ?? 0} onPage={(p) => update({ page: String(p) }, { resetPage: false })} />}
+          footer={<Pagination page={page} pageSize={perPage} total={orders.data?.total ?? 0} onPage={(p) => update({ page: String(p) }, { resetPage: false })}
+            pageSizes={ROW_CHOICES} onPageSize={setPerPage} />}
         />
         </OrderCallStatesProvider>
       )}
