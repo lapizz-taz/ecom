@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, LogIn, LogOut, Pencil } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { CalendarCheck, CalendarDays, Clock, Coffee, LogIn, LogOut, Pencil, Timer } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/common/states'
@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/features/auth/auth-context'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useNow, useWorkdayActions } from '@/features/hr/workday'
 import {
-  ATTENDANCE, type AttendanceStatus, attendanceBoard, type BoardRow, type BoardState, checkIn, checkOut, minutesLabel, myDay, setAttendance,
+  ATTENDANCE, type AttendanceStatus, attendanceBoard, type BoardRow, type BoardState, minutesLabel, type MyDay, myDay, setAttendance,
   timeLabel, zonedHm, zonedIso, zonedTime,
 } from '@/services/hr'
 
@@ -22,48 +23,101 @@ export function useMyDay() {
   return useQuery({ queryKey: ['hr', 'me'], queryFn: myDay, staleTime: 30_000 })
 }
 
-/** Today's check-in / check-out for the signed-in staff member. */
+/** Today's check-in, breaks and check-out for the signed-in staff member. */
 export function MyDayCard({ className }: { className?: string }) {
-  const queryClient = useQueryClient()
   const me = useMyDay()
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t) }, [])
-  const done = () => { void queryClient.invalidateQueries({ queryKey: ['hr'] }) }
-  const inM = useMutation({ mutationFn: () => checkIn(), onSuccess: (r) => { toast.success(r.late_minutes ? `Checked in · ${minutesLabel(r.late_minutes)} late` : 'Checked in on time'); done() }, onError: (e) => toast.error((e as Error).message) })
-  const outM = useMutation({ mutationFn: () => checkOut(), onSuccess: (r) => { toast.success(`Checked out · ${minutesLabel(r.worked_minutes)} worked`); done() }, onError: (e) => toast.error((e as Error).message) })
+  const now = useNow(1000)
+  const actions = useWorkdayActions()
   if (me.isLoading) return <Card className={cn('p-4', className)}><Spinner /></Card>
   if (me.error || !me.data) return null
   const d = me.data
   const r = d.record
-  const working = r?.check_in_at && !r.check_out_at
-  const sinceIn = working ? Math.floor((now - new Date(r!.check_in_at!).getTime()) / 60000) : null
+  const working = Boolean(r?.check_in_at && !r.check_out_at)
+  const onBreak = d.breaks.some((b) => !b.ended_at)
+  const net = netMinutes(d, now)
+  const state = !r ? (d.work_day ? 'Not checked in' : 'Day off') : r.check_out_at ? 'Done for today' : onBreak ? 'On break' : r.check_in_at ? 'Working' : ATTENDANCE[r.status].label
   return (
-    <Card className={cn('gap-3 p-4', className)}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">My attendance · {formatDate(d.date)}</p>
-          <p className="mt-0.5 text-lg font-semibold">
-            {!r ? (d.work_day ? 'Not checked in' : 'Day off') : r.check_out_at ? 'Done for today' : r.check_in_at ? 'Working' : ATTENDANCE[r.status].label}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {d.shift ? `${d.shift.name}: ${timeLabel(d.shift.start_time)} – ${timeLabel(d.shift.end_time)} · ${d.shift.grace_minutes} min grace` : 'No shift assigned yet'}
-          </p>
+    <Card className={cn('gap-0 overflow-hidden p-0', className)}>
+      <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-semibold"><CalendarDays className="size-4 text-primary" /> Attendance</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(d.date)} · {d.shift ? `${d.shift.name} ${timeLabel(d.shift.start_time)} – ${timeLabel(d.shift.end_time)}` : 'No shift assigned'}</p>
         </div>
-        {r && <Badge variant={ATTENDANCE[r.status].variant}>{ATTENDANCE[r.status].label}{r.late_minutes ? ` · ${minutesLabel(r.late_minutes)}` : ''}</Badge>}
+        <span className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
+          working && !onBreak ? 'bg-primary text-primary-foreground' : onBreak ? 'bg-amber-500 text-white' : 'bg-muted text-muted-foreground')}>{state}</span>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-        <div className="rounded-lg bg-muted/50 p-2"><p className="font-semibold tabular-nums">{zonedTime(r?.check_in_at, d.tz)}</p><p className="text-muted-foreground">In</p></div>
-        <div className="rounded-lg bg-muted/50 p-2"><p className="font-semibold tabular-nums">{zonedTime(r?.check_out_at, d.tz)}</p><p className="text-muted-foreground">Out</p></div>
-        <div className="rounded-lg bg-muted/50 p-2"><p className="font-semibold tabular-nums">{minutesLabel(r?.worked_minutes ?? sinceIn)}</p><p className="text-muted-foreground">Worked</p></div>
+      <div className="grid grid-cols-2 gap-3 px-4 py-3">
+        <div><p className="text-xs text-muted-foreground">Check in</p><p className="text-lg font-semibold tabular-nums">{r?.check_in_at ? zonedTime(r.check_in_at, d.tz) : '--:--'}</p></div>
+        <div><p className="text-xs text-muted-foreground">Check out</p><p className="text-lg font-semibold tabular-nums">{r?.check_out_at ? zonedTime(r.check_out_at, d.tz) : '--:--'}</p></div>
       </div>
-      {d.self_check_in ? (
-        !r?.check_in_at ? (
-          <Button onClick={() => inM.mutate()} disabled={inM.isPending}>{inM.isPending ? <Spinner /> : <LogIn />} Check in</Button>
-        ) : working ? (
-          <Button variant="outline" onClick={() => outM.mutate()} disabled={outM.isPending}>{outM.isPending ? <Spinner /> : <LogOut />} Check out</Button>
-        ) : null
-      ) : <p className="text-xs text-muted-foreground">Attendance is recorded by HR in this store.</p>}
+      {r?.check_in_at && (
+        <div className="mx-4 mb-3 flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
+          <span className="flex items-center gap-2 text-muted-foreground"><Clock className="size-4" /> Work hours</span>
+          <span className="font-semibold tabular-nums">{minutesLabel(net)}</span>
+        </div>
+      )}
+      <div className="px-4 pb-4">
+        {!d.self_check_in ? <p className="text-xs text-muted-foreground">Attendance is recorded by HR in this store.</p>
+          : !r?.check_in_at ? (
+            <Button className="w-full" size="lg" onClick={() => actions.checkIn.mutate()} disabled={actions.checkIn.isPending}>
+              {actions.checkIn.isPending ? <Spinner /> : <LogIn />} Check in
+            </Button>
+          ) : working ? (
+            <div className="grid grid-cols-2 gap-2">
+              {onBreak ? (
+                <Button variant="outline" onClick={() => actions.endBreak.mutate()} disabled={actions.endBreak.isPending}><Coffee /> End break</Button>
+              ) : (
+                <Button variant="outline" onClick={() => actions.startBreak.mutate()} disabled={actions.startBreak.isPending}><Coffee /> Start break</Button>
+              )}
+              <Button variant="destructive" onClick={() => actions.checkOut.mutate()} disabled={actions.checkOut.isPending}>{actions.checkOut.isPending ? <Spinner /> : <LogOut />} Check out</Button>
+            </div>
+          ) : <p className="text-center text-xs text-muted-foreground">{r.checkout_source === 'AUTO' ? 'Checked out automatically at the end of the day.' : 'See you tomorrow.'}</p>}
+        {working && d.rules.auto_checkout && d.scheduled_end && (
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            {r?.keep_open_today ? 'Automatic check-out is off for today.' : <>Automatic check-out at {zonedTime(d.scheduled_end, d.tz)} · <button type="button" className="underline" onClick={() => actions.keepWorking.mutate()}>keep working today</button></>}
+          </p>
+        )}
+      </div>
     </Card>
+  )
+}
+
+/** Net minutes worked so far: check-in to check-out (or now), minus breaks. */
+function netMinutes(d: MyDay, now: number) {
+  const r = d.record
+  if (!r?.check_in_at) return null
+  if (r.check_out_at) return r.worked_minutes
+  const breaks = d.breaks.reduce((t, b) => t + ((b.ended_at ? new Date(b.ended_at).getTime() : now) - new Date(b.started_at).getTime()), 0)
+  return Math.max(0, Math.floor((now - new Date(r.check_in_at).getTime() - breaks) / 60_000))
+}
+
+/** Check-in time, total, breaks and net hours for today. */
+export function MyDayStats() {
+  const me = useMyDay()
+  const now = useNow(30_000)
+  if (!me.data) return null
+  const d = me.data
+  const r = d.record
+  const gross = r?.check_in_at ? Math.max(0, Math.floor(((r.check_out_at ? new Date(r.check_out_at).getTime() : now) - new Date(r.check_in_at).getTime()) / 60_000)) : 0
+  const net = netMinutes(d, now) ?? 0
+  const breakMin = Math.max(0, gross - net)
+  const items = [
+    { label: 'Check-in time', icon: <Clock />, value: r?.check_in_at ? zonedTime(r.check_in_at, d.tz) : '--:--',
+      hint: r?.late_minutes ? `${minutesLabel(r.late_minutes)} late` : r?.check_in_at ? 'On time' : d.shift ? `Starts ${timeLabel(d.shift.start_time)}` : '—', warn: Boolean(r?.late_minutes) },
+    { label: 'Total hours', icon: <Timer />, value: minutesLabel(gross), hint: r?.check_out_at ? 'Work completed' : r?.check_in_at ? 'Still working' : 'Not started' },
+    { label: 'Break time', icon: <Coffee />, value: minutesLabel(breakMin), hint: `${d.breaks.length} break${d.breaks.length === 1 ? '' : 's'} · limit ${minutesLabel(d.rules.max_break_minutes)}`, warn: breakMin > d.rules.max_break_minutes },
+    { label: 'Net work hours', icon: <CalendarCheck />, value: minutesLabel(net), hint: 'Total − breaks' },
+  ]
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {items.map((x) => (
+        <Card key={x.label} className="gap-1 p-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">{x.label}<span className="[&_svg]:size-4">{x.icon}</span></div>
+          <p className="text-2xl font-semibold tabular-nums">{x.value}</p>
+          <p className={cn('text-xs', x.warn ? 'text-amber-600' : 'text-muted-foreground')}>{x.hint}</p>
+        </Card>
+      ))}
+    </div>
   )
 }
 

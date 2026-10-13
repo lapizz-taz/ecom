@@ -4,14 +4,16 @@ import { Fragment, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
 import { PageHeader } from '@/components/common/page-header'
-import { StatCard } from '@/components/common/stat-card'
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DatePicker } from '@/components/ui/date-picker'
 import { useAuth } from '@/features/auth/auth-context'
-import { AttendanceBoard, MyDayCard, useMyDay } from '@/features/hr/attendance'
+import { AttendanceBoard, MyDayCard, MyDayStats, useMyDay } from '@/features/hr/attendance'
+import { LiveDashboardView } from '@/features/hr/live-dashboard'
+import { MyChecklists, RequestsView } from '@/features/hr/requests'
+import { AttendanceReview } from '@/features/hr/review'
 import { DepartmentsSop, HrSettingsView, ShiftManagement } from '@/features/hr/setup'
 import { downloadCsv } from '@/lib/csv'
 import { type DateRange, rangeFor } from '@/lib/dates'
@@ -20,12 +22,13 @@ import { cn } from '@/lib/utils'
 import { ATTENDANCE, attendanceReport, hrDashboard, minutesLabel, type ReportStaff, zonedTime } from '@/services/hr'
 
 const SECTIONS = {
-  '/admin/hr': { title: 'HR dashboard', description: 'Who is in today, late arrivals and attendance over the last two weeks.' },
-  '/admin/hr/attendance': { title: 'Attendance', description: 'Check in and out, and see everyone’s day.' },
-  '/admin/hr/report': { title: 'Attendance report', description: 'Present, late, absent and hours per staff member for any period.' },
+  '/admin/hr': { title: 'HR dashboard', description: 'Who is working, on a break or away right now, and attendance over the last two weeks.' },
+  '/admin/hr/attendance': { title: 'Attendance', description: 'Track your own attendance and breaks, and see everyone’s day.' },
+  '/admin/hr/report': { title: 'Attendance report', description: 'One person’s month at a glance, or everyone’s totals for any period.' },
+  '/admin/hr/requests': { title: 'Leave & requests', description: 'Leave, attendance corrections and late excuses, decided by HR.' },
   '/admin/hr/shifts': { title: 'Shift management', description: 'Working hours, grace time and work days.' },
-  '/admin/hr/departments': { title: 'Departments & SOP', description: 'Teams, their standard operating procedures and who works where.' },
-  '/admin/hr/settings': { title: 'HR settings', description: 'Attendance rules and holidays.' },
+  '/admin/hr/departments': { title: 'Departments & SOP', description: 'Teams, their leads, standard operating procedures and daily checklists.' },
+  '/admin/hr/settings': { title: 'Workforce settings', description: 'Attendance access, work schedule, breaks, holidays and per-person overrides.' },
 } as const
 
 export default function HrPage() {
@@ -37,22 +40,32 @@ export default function HrPage() {
       <PageHeader title={meta.title} description={meta.description}
         actions={can('users.manage') ? <Button size="sm" variant="outline" asChild><Link to="/admin/users">User & Role <ChevronRight /></Link></Button> : undefined} />
       {path === '/admin/hr/attendance' ? <AttendanceView />
-        : path === '/admin/hr/report' ? <ReportView />
+        : path === '/admin/hr/report' ? <ReportTabs />
+          : path === '/admin/hr/requests' ? <RequestsView />
           : path === '/admin/hr/shifts' ? <ShiftManagement />
             : path === '/admin/hr/departments' ? <DepartmentsSop />
               : path === '/admin/hr/settings' ? <HrSettingsView />
-                : can('hr.view') ? <DashboardView /> : <MyDayCard className="max-w-md" />}
+                : can('hr.view') ? <DashboardView /> : <AttendanceView />}
     </div>
   )
 }
 
 function DashboardView() {
+  return (
+    <div className="space-y-4">
+      <LiveDashboardView />
+      <HistoryView />
+    </div>
+  )
+}
+
+/** Last 14 days, today's check-ins and departments. */
+function HistoryView() {
   const dash = useQuery({ queryKey: ['hr', 'dashboard'], queryFn: hrDashboard, refetchInterval: 60_000 })
   const me = useMyDay()
   if (dash.isLoading) return <LoadingState />
   if (dash.error || !dash.data) return <ErrorState error={dash.error} onRetry={() => dash.refetch()} />
   const d = dash.data
-  const t = d.today
   const peak = Math.max(1, ...d.trend.map((x) => x.present + x.late + x.absent + x.leave))
   const tz = me.data?.tz ?? 'Asia/Dhaka'
   return (
@@ -62,14 +75,6 @@ function DashboardView() {
           <AlertTriangle className="size-4 shrink-0" /> {d.unassigned} staff have no department or shift yet, so late and absent cannot be worked out for them. Set them up <ChevronRight className="ml-auto size-4" />
         </Link>
       )}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Staff" value={t.staff} hint={`${t.off} off today`} />
-        <StatCard label="Present" value={t.present + t.half_day} tone="positive" hint={`${t.checked_out} checked out`} />
-        <StatCard label="Late" value={t.late} tone={t.late ? 'warning' : undefined} />
-        <StatCard label="Not in yet" value={t.not_in} />
-        <StatCard label="Absent" value={t.absent} tone={t.absent ? 'negative' : undefined} />
-        <StatCard label="Leave / holiday" value={t.leave} />
-      </div>
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <Card className="gap-3 p-4">
           <div className="flex items-center justify-between"><p className="font-medium">Last 14 days</p>
@@ -137,8 +142,12 @@ function AttendanceView() {
   const day = date || me.data?.date || ''
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
         <MyDayCard />
+        <MyDayStats />
+      </div>
+      <MyChecklists />
+      <div className="max-w-xl">
         {can('hr.view') && (
           <Card className="gap-2 p-4">
             <p className="text-sm font-medium">Day</p>
@@ -151,6 +160,20 @@ function AttendanceView() {
         )}
       </div>
       {can('hr.view') && day && me.data && <AttendanceBoard date={day} tz={me.data.tz} />}
+    </div>
+  )
+}
+
+function ReportTabs() {
+  const [tab, setTab] = useState<'review' | 'summary'>('review')
+  return (
+    <div className="space-y-3">
+      <div className="flex w-fit rounded-lg border p-0.5">
+        {([['review', 'Review'], ['summary', 'Team summary']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setTab(k)} className={cn('rounded-md px-3 py-1 text-sm', tab === k ? 'bg-muted font-medium' : 'text-muted-foreground')}>{l}</button>
+        ))}
+      </div>
+      {tab === 'review' ? <AttendanceReview /> : <ReportView />}
     </div>
   )
 }

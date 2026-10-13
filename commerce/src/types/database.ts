@@ -7,6 +7,50 @@ export type Database = {
   __InternalSupabase: { PostgrestVersion: "12.2.3" }
   public: {
     Tables: {
+      account_removals: {
+        Row: {
+          id: number
+          user_id: string
+          from_merchant: string | null
+          reason: string
+          status: string
+          attempts: number
+          last_error: string | null
+          created_at: string
+          done_at: string | null
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          from_merchant?: string | null
+          reason: string
+          status?: string
+          attempts?: number
+          last_error?: string | null
+          created_at?: string
+          done_at?: string | null
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          from_merchant?: string | null
+          reason?: string
+          status?: string
+          attempts?: number
+          last_error?: string | null
+          created_at?: string
+          done_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_removals_from_merchant_fkey"
+            columns: ["from_merchant"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_accounts: {
         Row: {
           id: string
@@ -144,6 +188,66 @@ export type Database = {
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_event_queue: {
+        Row: {
+          id: string
+          merchant_id: string
+          order_id: string
+          event: string
+          event_id: string
+          status: string
+          attempts: number
+          next_at: string
+          results: Json | null
+          last_error: string | null
+          created_at: string
+          done_at: string | null
+        }
+        Insert: {
+          id?: string
+          merchant_id: string
+          order_id: string
+          event: string
+          event_id: string
+          status?: string
+          attempts?: number
+          next_at?: string
+          results?: Json | null
+          last_error?: string | null
+          created_at?: string
+          done_at?: string | null
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          order_id?: string
+          event?: string
+          event_id?: string
+          status?: string
+          attempts?: number
+          next_at?: string
+          results?: Json | null
+          last_error?: string | null
+          created_at?: string
+          done_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_event_queue_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_event_queue_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
@@ -3236,6 +3340,9 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          break_minutes: number
+          checkout_source: string | null
+          keep_open_today: boolean
         }
         Insert: {
           id?: string
@@ -3252,6 +3359,9 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          break_minutes?: number
+          checkout_source?: string | null
+          keep_open_today?: boolean
         }
         Update: {
           id?: string
@@ -3268,6 +3378,9 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          break_minutes?: number
+          checkout_source?: string | null
+          keep_open_today?: boolean
         }
         Relationships: [
           {
@@ -3287,6 +3400,64 @@ export type Database = {
           {
             foreignKeyName: "hr_attendance_updated_by_fkey"
             columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hr_breaks: {
+        Row: {
+          id: string
+          merchant_id: string
+          attendance_id: string
+          profile_id: string
+          kind: string
+          started_at: string
+          ended_at: string | null
+          ended_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          attendance_id: string
+          profile_id: string
+          kind?: string
+          started_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          attendance_id?: string
+          profile_id?: string
+          kind?: string
+          started_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_breaks_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "hr_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_breaks_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_breaks_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -3355,6 +3526,10 @@ export type Database = {
           emergency_contact: string | null
           updated_at: string
           merchant_id: string
+          attendance_exempt: boolean
+          max_break_minutes: number | null
+          auto_break: boolean | null
+          auto_checkout: boolean | null
         }
         Insert: {
           profile_id: string
@@ -3366,6 +3541,10 @@ export type Database = {
           emergency_contact?: string | null
           updated_at?: string
           merchant_id?: string
+          attendance_exempt?: boolean
+          max_break_minutes?: number | null
+          auto_break?: boolean | null
+          auto_checkout?: boolean | null
         }
         Update: {
           profile_id?: string
@@ -3377,6 +3556,10 @@ export type Database = {
           emergency_contact?: string | null
           updated_at?: string
           merchant_id?: string
+          attendance_exempt?: boolean
+          max_break_minutes?: number | null
+          auto_break?: boolean | null
+          auto_checkout?: boolean | null
         }
         Relationships: [
           {
@@ -3441,6 +3624,82 @@ export type Database = {
           },
         ]
       }
+      hr_requests: {
+        Row: {
+          id: string
+          merchant_id: string
+          profile_id: string
+          kind: string
+          from_date: string
+          to_date: string
+          check_in: string | null
+          check_out: string | null
+          reason: string
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          profile_id: string
+          kind: string
+          from_date: string
+          to_date: string
+          check_in?: string | null
+          check_out?: string | null
+          reason: string
+          status?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          profile_id?: string
+          kind?: string
+          from_date?: string
+          to_date?: string
+          check_in?: string | null
+          check_out?: string | null
+          reason?: string
+          status?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_requests_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_requests_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hr_shifts: {
         Row: {
           id: string
@@ -3491,6 +3750,61 @@ export type Database = {
           },
         ]
       }
+      hr_sop_checks: {
+        Row: {
+          merchant_id: string
+          sop_id: string
+          profile_id: string
+          work_date: string
+          done: number[]
+          items_total: number
+          sop_version: number
+          updated_at: string
+        }
+        Insert: {
+          merchant_id?: string
+          sop_id: string
+          profile_id: string
+          work_date: string
+          done?: number[]
+          items_total: number
+          sop_version: number
+          updated_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          sop_id?: string
+          profile_id?: string
+          work_date?: string
+          done?: number[]
+          items_total?: number
+          sop_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hr_sop_checks_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_sop_checks_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hr_sop_checks_sop_id_fkey"
+            columns: ["sop_id"]
+            isOneToOne: false
+            referencedRelation: "hr_sops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hr_sops: {
         Row: {
           id: string
@@ -3503,6 +3817,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          kind: string
         }
         Insert: {
           id?: string
@@ -3515,6 +3830,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          kind?: string
         }
         Update: {
           id?: string
@@ -3527,6 +3843,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          kind?: string
         }
         Relationships: [
           {
@@ -4128,6 +4445,7 @@ export type Database = {
           onboarded_at: string | null
           status_changed_at: string | null
           status_changed_by: string | null
+          deleted_at: string | null
         }
         Insert: {
           id?: string
@@ -4152,6 +4470,7 @@ export type Database = {
           onboarded_at?: string | null
           status_changed_at?: string | null
           status_changed_by?: string | null
+          deleted_at?: string | null
         }
         Update: {
           id?: string
@@ -4176,6 +4495,7 @@ export type Database = {
           onboarded_at?: string | null
           status_changed_at?: string | null
           status_changed_by?: string | null
+          deleted_at?: string | null
         }
         Relationships: [
           {
@@ -4745,6 +5065,7 @@ export type Database = {
           note: string | null
           attributed_at: string
           merchant_id: string
+          browser_ids: Json | null
         }
         Insert: {
           order_id: string
@@ -4782,6 +5103,7 @@ export type Database = {
           note?: string | null
           attributed_at?: string
           merchant_id?: string
+          browser_ids?: Json | null
         }
         Update: {
           order_id?: string
@@ -4819,6 +5141,7 @@ export type Database = {
           note?: string | null
           attributed_at?: string
           merchant_id?: string
+          browser_ids?: Json | null
         }
         Relationships: [
           {
@@ -5504,7 +5827,6 @@ export type Database = {
           manual_discount: number
           discount_total: number
           delivery_charge: number
-          tax_amount: number
           delivery_discount: number
           return_charge: number
           total_amount: number
@@ -5559,6 +5881,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
         Insert: {
           id?: string
@@ -5589,7 +5912,6 @@ export type Database = {
           manual_discount?: number
           discount_total?: number
           delivery_charge?: number
-          tax_amount?: number
           delivery_discount?: number
           return_charge?: number
           total_amount?: number
@@ -5644,6 +5966,7 @@ export type Database = {
           external_order_number?: string | null
           duplicate_reason?: string | null
           merchant_id?: string
+          tax_amount?: number
         }
         Update: {
           id?: string
@@ -5674,7 +5997,6 @@ export type Database = {
           manual_discount?: number
           discount_total?: number
           delivery_charge?: number
-          tax_amount?: number
           delivery_discount?: number
           return_charge?: number
           total_amount?: number
@@ -5729,6 +6051,7 @@ export type Database = {
           external_order_number?: string | null
           duplicate_reason?: string | null
           merchant_id?: string
+          tax_amount?: number
         }
         Relationships: [
           {
@@ -7396,6 +7719,7 @@ export type Database = {
           decision_note: string | null
           result: Json | null
           error: string | null
+          self_approved: boolean
         }
         Insert: {
           id?: string
@@ -7414,6 +7738,7 @@ export type Database = {
           decision_note?: string | null
           result?: Json | null
           error?: string | null
+          self_approved?: boolean
         }
         Update: {
           id?: string
@@ -7432,6 +7757,7 @@ export type Database = {
           decision_note?: string | null
           result?: Json | null
           error?: string | null
+          self_approved?: boolean
         }
         Relationships: [
           {
@@ -7622,6 +7948,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      platform_contact_messages: {
+        Row: {
+          id: number
+          name: string
+          email: string | null
+          phone: string | null
+          business: string | null
+          topic: string
+          message: string
+          page: string | null
+          status: string
+          note: string | null
+          handled_by: string | null
+          handled_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          email?: string | null
+          phone?: string | null
+          business?: string | null
+          topic?: string
+          message: string
+          page?: string | null
+          status?: string
+          note?: string | null
+          handled_by?: string | null
+          handled_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          email?: string | null
+          phone?: string | null
+          business?: string | null
+          topic?: string
+          message?: string
+          page?: string | null
+          status?: string
+          note?: string | null
+          handled_by?: string | null
+          handled_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
       platform_cost_entries: {
         Row: {
@@ -8098,6 +8472,7 @@ export type Database = {
           title: string | null
           phone: string | null
           last_seen_at: string | null
+          removed_at: string | null
         }
         Insert: {
           user_id: string
@@ -8112,6 +8487,7 @@ export type Database = {
           title?: string | null
           phone?: string | null
           last_seen_at?: string | null
+          removed_at?: string | null
         }
         Update: {
           user_id?: string
@@ -8126,6 +8502,7 @@ export type Database = {
           title?: string | null
           phone?: string | null
           last_seen_at?: string | null
+          removed_at?: string | null
         }
         Relationships: [
           {
@@ -8652,6 +9029,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          deleted_at: string | null
         }
         Insert: {
           id: string
@@ -8664,6 +9042,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          deleted_at?: string | null
         }
         Update: {
           id?: string
@@ -8676,6 +9055,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          deleted_at?: string | null
         }
         Relationships: [
           {
@@ -9828,6 +10208,35 @@ export type Database = {
           },
         ]
       }
+      store_ad_tracking: {
+        Row: {
+          merchant_id: string
+          config: Json
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          merchant_id: string
+          config?: Json
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          config?: Json
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_ad_tracking_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: true
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       store_carts: {
         Row: {
           id: string
@@ -10686,6 +11095,41 @@ export type Database = {
         }
         Relationships: []
       }
+      user_presence: {
+        Row: {
+          user_id: string
+          area: string
+          merchant_id: string | null
+          path: string | null
+          device: string | null
+          last_seen_at: string
+        }
+        Insert: {
+          user_id: string
+          area: string
+          merchant_id?: string | null
+          path?: string | null
+          device?: string | null
+          last_seen_at?: string
+        }
+        Update: {
+          user_id?: string
+          area?: string
+          merchant_id?: string | null
+          path?: string | null
+          device?: string | null
+          last_seen_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_presence_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       ad_spend_facts: {
@@ -10860,16 +11304,6 @@ export type Database = {
       }
     }
     Functions: {
-      _announcement_optional_kinds: {
-        Args: Record<PropertyKey, never>
-        Returns: string[]
-      }
-      _billing_interval: {
-        Args: {
-          p_interval: string
-        }
-        Returns: string
-      }
       _canonical_district: {
         Args: {
           p_text: string
@@ -10903,18 +11337,8 @@ export type Database = {
         }
         Returns: string
       }
-      _platform_automation_catalog: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
       _platform_support_session_info: {
         Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      _plugin_config: {
-        Args: {
-          p_settings: Json
-        }
         Returns: Json
       }
       _store_reset_active: {
@@ -10935,10 +11359,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
-      _tenancy_global_tables: {
-        Args: Record<PropertyKey, never>
-        Returns: string[]
-      }
       _tracking_url: {
         Args: {
           p_provider: string
@@ -10946,25 +11366,6 @@ export type Database = {
           p_tracking: string
         }
         Returns: string
-      }
-      _usage_feature: {
-        Args: {
-          p_service: string
-        }
-        Returns: string
-      }
-      _usage_module: {
-        Args: {
-          p_service: string
-        }
-        Returns: string
-      }
-      _usage_policy_validate: {
-        Args: {
-          p_service: string
-          p: Json
-        }
-        Returns: Json
       }
       abandoned_counts: {
         Args: Record<PropertyKey, never>
@@ -11284,6 +11685,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       admin_create_production_order: {
@@ -11400,6 +11802,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       admin_duplicate_order: {
@@ -11489,6 +11892,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       admin_duplicate_orders: {
@@ -11677,7 +12081,15 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
+      }
+      admin_online_store_answer: {
+        Args: {
+          p_open: boolean
+          p_slug?: string
+        }
+        Returns: Json
       }
       admin_order_customer_record: {
         Args: {
@@ -11999,6 +12411,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       admin_set_order_source: {
@@ -12043,12 +12456,19 @@ export type Database = {
           note: string | null
           attributed_at: string
           merchant_id: string
+          browser_ids: Json | null
         }
       }
       admin_set_store_mode: {
         Args: {
           p_mode: string
           p_redirect_url?: string
+        }
+        Returns: Json
+      }
+      admin_set_store_slug: {
+        Args: {
+          p_slug: string
         }
         Returns: Json
       }
@@ -12069,6 +12489,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          deleted_at: string | null
         }
       }
       admin_shopify_abandoned: {
@@ -12261,6 +12682,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       admin_update_setting: {
@@ -12452,6 +12874,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       apply_shipment_status: {
@@ -12839,12 +13262,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
-      feature_enabled: {
+      file_access: {
         Args: {
-          p_code: string
-          p_merchant?: string
+          p_bucket: string
+          p_action: string
         }
-        Returns: boolean
+        Returns: string
       }
       finance_account_move: {
         Args: {
@@ -13073,6 +13496,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       get_my_access: {
@@ -13122,7 +13546,20 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          break_minutes: number
+          checkout_source: string | null
+          keep_open_today: boolean
         }
+      }
+      hr_break_end: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      hr_break_start: {
+        Args: {
+          p_kind?: string
+        }
+        Returns: Json
       }
       hr_check_in: {
         Args: {
@@ -13143,6 +13580,9 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          break_minutes: number
+          checkout_source: string | null
+          keep_open_today: boolean
         }
       }
       hr_check_out: {
@@ -13164,11 +13604,35 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          break_minutes: number
+          checkout_source: string | null
+          keep_open_today: boolean
         }
+      }
+      hr_checklist_compliance: {
+        Args: {
+          p_date?: string
+        }
+        Returns: Json
+      }
+      hr_checklist_tick: {
+        Args: {
+          p_sop: string
+          p_item: number
+          p_done: boolean
+        }
+        Returns: Json
       }
       hr_dashboard: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      hr_department_members_set: {
+        Args: {
+          p_department: string
+          p_profiles: string[]
+        }
+        Returns: number
       }
       hr_department_save: {
         Args: {
@@ -13186,6 +13650,13 @@ export type Database = {
           merchant_id: string
         }
       }
+      hr_employee_month: {
+        Args: {
+          p_profile: string
+          p_month: string
+        }
+        Returns: Json
+      }
       hr_employee_save: {
         Args: {
           p_profile: string
@@ -13201,6 +13672,10 @@ export type Database = {
           emergency_contact: string | null
           updated_at: string
           merchant_id: string
+          attendance_exempt: boolean
+          max_break_minutes: number | null
+          auto_break: boolean | null
+          auto_checkout: boolean | null
         }
       }
       hr_holiday_save: {
@@ -13217,8 +13692,114 @@ export type Database = {
           merchant_id: string
         }
       }
+      hr_keep_working_today: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          profile_id: string
+          work_date: string
+          check_in_at: string | null
+          check_out_at: string | null
+          status: Database["public"]["Enums"]["hr_attendance_status"]
+          late_minutes: number
+          worked_minutes: number | null
+          note: string | null
+          source: string
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+          merchant_id: string
+          break_minutes: number
+          checkout_source: string | null
+          keep_open_today: boolean
+        }
+      }
+      hr_live_dashboard: {
+        Args: {
+          p_date?: string
+        }
+        Returns: Json
+      }
+      hr_my_checklists: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       hr_my_day: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      hr_request_cancel: {
+        Args: {
+          p_id: string
+        }
+        Returns: {
+          id: string
+          merchant_id: string
+          profile_id: string
+          kind: string
+          from_date: string
+          to_date: string
+          check_in: string | null
+          check_out: string | null
+          reason: string
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_request_decide: {
+        Args: {
+          p_id: string
+          p_approve: boolean
+          p_note?: string
+        }
+        Returns: {
+          id: string
+          merchant_id: string
+          profile_id: string
+          kind: string
+          from_date: string
+          to_date: string
+          check_in: string | null
+          check_out: string | null
+          reason: string
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_request_submit: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          merchant_id: string
+          profile_id: string
+          kind: string
+          from_date: string
+          to_date: string
+          check_in: string | null
+          check_out: string | null
+          reason: string
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      hr_requests_list: {
+        Args: {
+          p_status?: string
+        }
         Returns: Json
       }
       hr_settings_save: {
@@ -13260,6 +13841,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          kind: string
         }
       }
       import_courier_invoice: {
@@ -13325,28 +13907,14 @@ export type Database = {
         }
         Returns: Json
       }
-      merchant_entitlements: {
-        Args: {
-          p_merchant?: string
-        }
-        Returns: Json
-      }
-      merchant_limits: {
-        Args: {
-          p_merchant?: string
-        }
-        Returns: Json
-      }
       merchant_self_onboard: {
         Args: {
           p: Json
         }
         Returns: Json
       }
-      merchant_usage: {
-        Args: {
-          p_merchant?: string
-        }
+      merchant_store_address: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       meta_accounts_list: {
@@ -13867,6 +14435,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      platform_capacity: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       platform_config_history: {
         Args: {
           p_kind?: string
@@ -13879,6 +14451,27 @@ export type Database = {
         Args: {
           p_version: number
           p_reason: string
+        }
+        Returns: Json
+      }
+      platform_contact_message_update: {
+        Args: {
+          p_id: number
+          p_status: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      platform_contact_messages_list: {
+        Args: {
+          p_status?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_contact_submit: {
+        Args: {
+          p: Json
         }
         Returns: Json
       }
@@ -14069,6 +14662,10 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_live_users: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       platform_me: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -14088,6 +14685,14 @@ export type Database = {
       platform_merchant_credits: {
         Args: {
           p_merchant: string
+        }
+        Returns: Json
+      }
+      platform_merchant_delete_request: {
+        Args: {
+          p_merchant: string
+          p_confirm_name: string
+          p_reason: string
         }
         Returns: Json
       }
@@ -14157,6 +14762,14 @@ export type Database = {
         Args: {
           p_id: string
           p: Json
+        }
+        Returns: Json
+      }
+      platform_merchant_user_delete: {
+        Args: {
+          p_merchant: string
+          p_user: string
+          p_reason: string
         }
         Returns: Json
       }
@@ -14446,6 +15059,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      platform_staff_remove: {
+        Args: {
+          p_user: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       platform_staff_save: {
         Args: {
           p: Json
@@ -14464,6 +15084,13 @@ export type Database = {
         Args: {
           p_user: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      platform_store_domains_save: {
+        Args: {
+          p_value: Json
+          p_reason?: string
         }
         Returns: Json
       }
@@ -14607,6 +15234,14 @@ export type Database = {
         }
         Returns: Json
       }
+      presence_ping: {
+        Args: {
+          p_area: string
+          p_path?: string
+          p_device?: string
+        }
+        Returns: undefined
+      }
       process_order_return: {
         Args: {
           p_order_id: string
@@ -14696,6 +15331,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       production_action: {
@@ -14960,6 +15596,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       record_purchase_payment: {
@@ -15154,18 +15791,6 @@ export type Database = {
         }
         Returns: Json
       }
-      require_feature: {
-        Args: {
-          p_code: string
-        }
-        Returns: undefined
-      }
-      require_limit: {
-        Args: {
-          p_key: string
-        }
-        Returns: undefined
-      }
       retain_order_advance: {
         Args: {
           p_order_id: string
@@ -15254,6 +15879,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       retry_courier_webhook: {
@@ -15441,6 +16067,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      store_domain_guard: {
+        Args: {
+          p_domain: string
+          p_action: string
+        }
+        Returns: undefined
+      }
       store_domain_set_primary: {
         Args: {
           p_domain: string
@@ -15448,6 +16081,22 @@ export type Database = {
         Returns: Json
       }
       store_domains_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      store_slug_check: {
+        Args: {
+          p_slug: string
+        }
+        Returns: Json
+      }
+      store_slug_suggest: {
+        Args: {
+          p_name: string
+        }
+        Returns: string
+      }
+      storefront_ad_tracking: {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
@@ -15523,42 +16172,6 @@ export type Database = {
       storefront_resolve_slug: {
         Args: {
           p_slug: string
-        }
-        Returns: Json
-      }
-      store_slug_check: {
-        Args: {
-          p_slug: string
-        }
-        Returns: Json
-      }
-      store_slug_suggest: {
-        Args: {
-          p_name: string
-        }
-        Returns: string
-      }
-      merchant_store_address: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      admin_online_store_answer: {
-        Args: {
-          p_open: boolean
-          p_slug?: string
-        }
-        Returns: Json
-      }
-      admin_set_store_slug: {
-        Args: {
-          p_slug: string
-        }
-        Returns: Json
-      }
-      platform_store_domains_save: {
-        Args: {
-          p_value: Json
-          p_reason?: string
         }
         Returns: Json
       }
@@ -15784,6 +16397,7 @@ export type Database = {
           external_order_number: string | null
           duplicate_reason: string | null
           merchant_id: string
+          tax_amount: number
         }
       }
       update_my_profile: {
@@ -15802,6 +16416,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          deleted_at: string | null
         }
       }
       update_shipment: {

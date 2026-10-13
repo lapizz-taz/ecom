@@ -16,6 +16,7 @@ import {
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { PhoneProvider } from '@/features/voicedrive/phone-context'
 import { PhoneWidget } from '@/features/voicedrive/phone-widget'
+import { WorkdayLayer, WorkGate } from '@/features/hr/workday'
 import { useAuth } from '@/features/auth/auth-context'
 import { AccountRestricted, ReadOnlyBanner } from '@/features/billing/account-restricted'
 import { SupportViewBanner } from '@/features/support/support-view-banner'
@@ -397,7 +398,7 @@ export default function AdminLayout() {
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
             {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}
-            {allowed ? <Outlet /> : <PermissionDenied />}
+            {allowed ? <WorkGate><Outlet /></WorkGate> : <PermissionDenied />}
           </div>
         </main>
         </div>
@@ -408,6 +409,7 @@ export default function AdminLayout() {
       <ContactDialog open={dialog === 'contact'} onOpenChange={(o) => setDialog(o ? 'contact' : null)} />
       <ReportIssueDialog open={dialog === 'report'} onOpenChange={(o) => setDialog(o ? 'report' : null)} />
       {can('pbx.call') && <PhoneWidget />}
+      <WorkdayLayer />
     </div>
     </PhoneProvider>
   )

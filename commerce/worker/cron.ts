@@ -27,6 +27,7 @@ export const JOBS: CronJob[] = [
   { name: 'courier-webhook-retry', schedule: '*/5 * * * *', run: (r) => r.rpc('for_each_merchant', { p_job: 'retry_courier_webhooks' }) },
   { name: 'expire-unpaid-advance-orders', schedule: '*/15 * * * *', run: (r) => r.rpc('for_each_merchant', { p_job: 'expire_unpaid_advance_orders' }) },
   { name: 'voicedrive-sweep', schedule: '* * * * *', run: (r) => r.rpc('for_each_merchant', { p_job: 'pbx_sweep' }) },
+  { name: 'hr-auto-checkout', schedule: '*/5 * * * *', run: (r) => r.rpc('for_each_merchant', { p_job: 'hr_auto_checkout' }) },
   // Backend functions, called as a scheduled caller.
   {
     name: 'account-removals', schedule: '* * * * *',
