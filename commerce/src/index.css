@@ -47,10 +47,10 @@
   --warning: #d97706;
   --border: #e7e7ea;
   --input: #e2e2e6;
-  --ring: #2142e7;
-  --brand: #2142e7;
+  --ring: #2563eb;
+  --brand: #2563eb;
   --brand-foreground: #ffffff;
-  --brand-soft: rgb(33 66 231 / 0.08);
+  --brand-soft: rgb(37 99 235 / 0.08);
   --shell: #f4f4f5;
   --shadow-color: 17 24 39;
   /* Categorical chart palette (validated order — never cycle or reorder). */
@@ -69,15 +69,15 @@
   --sidebar-accent: rgb(24 24 27 / 0.05);
   --sidebar-active: #ffffff;
   --sidebar-border: #e4e4e7;
-  --selection: rgb(33 66 231 / 0.14);
+  --selection: rgb(37 99 235 / 0.14);
   /* Raised ("3D") buttons: a light top edge, a darker bottom lip and a soft glow of the
      button's own colour. Ink = black buttons, brand = blue, paper = white, danger = red. */
   --b3d-ink: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 18px -8px rgb(0 0 0 / 0.55);
   --b3d-ink-hover: inset 0 1px 0 rgb(255 255 255 / 0.2), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 2px 4px rgb(0 0 0 / 0.16), 0 12px 24px -10px rgb(0 0 0 / 0.6);
   --b3d-ink-press: inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.18);
-  --b3d-brand: inset 0 1px 0 rgb(255 255 255 / 0.24), inset 0 -2.5px 0 rgb(12 26 120 / 0.5), 0 1px 2px rgb(33 66 231 / 0.3), 0 10px 22px -8px rgb(33 66 231 / 0.6);
-  --b3d-brand-hover: inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -2.5px 0 rgb(12 26 120 / 0.5), 0 2px 4px rgb(33 66 231 / 0.3), 0 14px 28px -10px rgb(33 66 231 / 0.7);
-  --b3d-brand-press: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 -1px 0 rgb(12 26 120 / 0.45), 0 1px 2px rgb(33 66 231 / 0.3);
+  --b3d-brand: inset 0 1px 0 rgb(255 255 255 / 0.24), inset 0 -2.5px 0 rgb(12 26 120 / 0.5), 0 1px 2px rgb(37 99 235 / 0.3), 0 10px 22px -8px rgb(37 99 235 / 0.6);
+  --b3d-brand-hover: inset 0 1px 0 rgb(255 255 255 / 0.28), inset 0 -2.5px 0 rgb(12 26 120 / 0.5), 0 2px 4px rgb(37 99 235 / 0.3), 0 14px 28px -10px rgb(37 99 235 / 0.7);
+  --b3d-brand-press: inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 -1px 0 rgb(12 26 120 / 0.45), 0 1px 2px rgb(37 99 235 / 0.3);
   --b3d-paper: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2px 0 rgb(24 24 27 / 0.07), 0 1px 2px rgb(24 24 27 / 0.07), 0 6px 14px -8px rgb(24 24 27 / 0.22);
   --b3d-paper-hover: inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -2px 0 rgb(24 24 27 / 0.08), 0 2px 4px rgb(24 24 27 / 0.08), 0 10px 20px -10px rgb(24 24 27 / 0.28);
   --b3d-paper-press: inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 -1px 0 rgb(24 24 27 / 0.06), 0 1px 1px rgb(24 24 27 / 0.06);

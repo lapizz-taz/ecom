@@ -8,9 +8,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Raised like a physical key (index.css, .btn-3d): black on light, white on dark.
-        default: 'btn-3d btn-3d-ink bg-primary text-primary-foreground hover:bg-primary/92',
+        // Raised like a physical key (index.css, .btn-3d): the primary action is blue.
+        default: 'btn-3d btn-3d-brand bg-brand text-brand-foreground hover:bg-brand/95',
         brand: 'btn-3d btn-3d-brand bg-brand text-brand-foreground hover:bg-brand/95',
+        // The old black/ink key, kept for the rare place that wants a neutral primary.
+        ink: 'btn-3d btn-3d-ink bg-primary text-primary-foreground hover:bg-primary/92',
         destructive: 'btn-3d btn-3d-danger bg-destructive text-white hover:bg-destructive/92 focus-visible:ring-destructive/25',
         outline: 'btn-3d btn-3d-paper border border-input bg-card text-foreground hover:border-foreground/15 hover:bg-accent/60',
         secondary: 'btn-3d btn-3d-paper bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:hover:bg-accent',
