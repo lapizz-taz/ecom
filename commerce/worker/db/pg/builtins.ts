@@ -84,8 +84,15 @@ const POSIX: Record<string, string> = {
   xdigit: '0-9A-Fa-f', word: '\\w', blank: ' \\t', cntrl: '\\x00-\\x1F',
 }
 
+// A user-supplied regex (the match/imatch filters and the regexp_* functions)
+// runs in the single-threaded database engine, where a long pattern with nested
+// quantifiers can backtrack catastrophically and stall every other query. Real
+// patterns are short; cap the length so a crafted one can't be a CPU DoS.
+const MAX_REGEX_PATTERN = 1000
+
 /** A Postgres (ARE) regular expression as a JavaScript one. */
 export function pgRegex(pattern: string, flags = ''): RegExp {
+  if (pattern.length > MAX_REGEX_PATTERN) return err('2201B', `invalid regular expression: pattern too long (max ${MAX_REGEX_PATTERN})`)
   let p = pattern
   let f = flags.replace(/[^gi]/g, '')
   const embedded = /^\(\?([a-z]+)\)/.exec(p)
@@ -104,6 +111,7 @@ export function pgRegex(pattern: string, flags = ''): RegExp {
 
 /** LIKE / ILIKE pattern as a regular expression. */
 export function likeRegex(pattern: string, ci: boolean, escape = '\\'): RegExp {
+  if (pattern.length > MAX_REGEX_PATTERN) return err('2201B', `invalid regular expression: pattern too long (max ${MAX_REGEX_PATTERN})`)
   let out = ''
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i]

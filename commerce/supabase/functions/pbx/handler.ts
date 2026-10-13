@@ -55,6 +55,10 @@ const FIRST_MERCHANT = '00000000-0000-4000-8000-000000000001'
 
 async function handleWebhook(req: Request, token: string, merchant: string | null): Promise<Response> {
   rateLimit(`pbx:${clientIp(req)}`, 600)
+  // Reject a token that cannot be one we issued before touching the database.
+  // newToken() is 24 random bytes = 48 lowercase hex chars; anything else is a
+  // probe, so a flood of junk tokens can't force a Vault read on each request.
+  if (!/^[0-9a-f]{48}$/.test(token)) throw new HttpError(401, 'Unknown webhook token', 'UNAUTHORIZED')
   const merchantId = merchant && /^[0-9a-f-]{36}$/i.test(merchant) ? merchant : FIRST_MERCHANT
   const admin = adminClient(merchantId)
   const secret = await readSecret(admin)

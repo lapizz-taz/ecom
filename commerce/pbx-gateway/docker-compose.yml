@@ -31,7 +31,14 @@ services:
     image: coturn/coturn:4.6.3
     restart: unless-stopped
     network_mode: host
-    env_file: .env
+    # Only the three TURN variables — never the whole .env. This public-facing
+    # third-party image must not receive VD_GATEWAY_TOKEN, DB_PASSWORD or
+    # ARI_PASSWORD (a coturn compromise would otherwise leak the gateway token,
+    # which can read every tenant's SIP trunk passwords, plus the DB creds).
+    environment:
+      EXTERNAL_IP: ${EXTERNAL_IP}
+      TURN_REALM: ${TURN_REALM}
+      TURN_SECRET: ${TURN_SECRET}
     volumes:
       - ./coturn/turnserver.conf.template:/etc/turnserver.conf.template:ro
       - ${TLS_DIR:-./certs}:/certs:ro
