@@ -133,7 +133,9 @@ export function answerDetail(body: unknown): string {
  * Long digit runs (phone numbers, account numbers) are left out.
  */
 export async function explainAnswer(res: Response): Promise<string> {
-  const raw = await res.text().catch(() => '')
+  return explainText(await res.text().catch(() => ''))
+}
+function explainText(raw: string): string {
   if (!raw.trim()) return 'empty answer'
   let said = ''
   try {
@@ -408,18 +410,25 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
   }
   let res = await read(token)
   if (res.status === 401) { d.store.drop(key); return redx(login, phone, d) }
-  // RedX has answered 400 for one way of writing the number; try the others before giving up.
+  type Body = { isError?: unknown; data?: Record<string, unknown> | null }
+  const take = async (r: Response) => {
+    const raw = await r.text().catch(() => '')
+    let body: Body | null = null
+    try { body = JSON.parse(raw) as Body } catch { body = null }
+    return { raw, body }
+  }
+  // RedX can send HTTP 400 with a body that says it is not an error ({ code: 200, isError: false, … }):
+  // that body is the answer. A real refusal is tried again with the other ways of writing the number.
+  const answered = (r: Response, body: Body | null) => r.ok || body?.isError === false
+  let got = await take(res)
   for (const other of [phone, `+88${phone}`]) {
-    if (res.status !== 400) break
-    await res.body?.cancel().catch(() => undefined)
+    if (answered(res, got.body) || res.status !== 400) break
     res = await read(token, other)
+    got = await take(res)
   }
   if (res.status === 429) return { ok: false, success: 0, cancel: 0, total: 0, error: 'RedX rate limit — try again in a minute' }
-  if (!res.ok) {
-    const why = await explainAnswer(res)
-    return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}: ${why}` }
-  }
-  const data = ((await res.json().catch(() => ({})) as { data?: Record<string, unknown> }).data) ?? {}
+  if (!answered(res, got.body)) return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}: ${explainText(got.raw)}` }
+  const data = got.body?.data ?? {}
   const success = num(data.deliveredParcels), total = num(data.totalParcels), cancel = Math.max(0, total - success)
   return { ok: true, success, cancel, total, success_ratio: ratio(success, total) }
 }

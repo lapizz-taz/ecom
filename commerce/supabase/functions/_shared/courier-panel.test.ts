@@ -537,6 +537,24 @@ describe('Steadfast\'s new fraud answer, firewall retry, couriers\' own error re
       .toEqual({ ok: false, message: 'RedX answered HTTP 400: isError: true, errorCode: PHONE_MISMATCH, phone: …' })
   })
 
+  it('RedX: an HTTP 400 whose body says isError: false is the answer, not a refusal', async () => {
+    const counted = panelFetch({ 'customer-success-return-rate': () => withCookie({ code: 200, isError: false, message: '', data: { deliveredParcels: '3', totalParcels: '4' } }, undefined, 400) })
+    expect(await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: counted, store: freshStore() }))
+      .toEqual({ ok: true, message: 'RedX: signed in — 3 of 4 parcels delivered for 01811111111' })
+    // Taken at once: no other way of writing the number was tried.
+    expect(counted.mock.calls.filter(([u]) => String(u).includes('customer-success-return-rate'))).toHaveLength(1)
+
+    const empty = panelFetch({ 'customer-success-return-rate': () => withCookie({ code: 200, isError: false, message: '' }, undefined, 400) })
+    expect(await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: empty, store: freshStore() }))
+      .toEqual({ ok: true, message: 'RedX: signed in — no parcels on record for 01811111111. To be sure the lookup reads real data, test once with a number that has RedX parcels.' })
+
+    // isError: true is still a refusal, tried with each way of writing the number.
+    const refused = panelFetch({ 'customer-success-return-rate': () => withCookie({ code: 400, isError: true, message: 'Invalid phone number' }, undefined, 400) })
+    expect(await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: refused, store: freshStore() }))
+      .toEqual({ ok: false, message: 'RedX answered HTTP 400: Invalid phone number' })
+    expect(refused.mock.calls.filter(([u]) => String(u).includes('customer-success-return-rate'))).toHaveLength(3)
+  })
+
   it('Steadfast: "none" is no history, and total_reports counts the reports', () => {
     expect(parseSteadfast({ delivery_ratio: null, cancellation_ratio: null, volume_band: 'none', total_reports: 0 }))
       .toEqual({ ok: true, success: 0, cancel: 0, total: 0, success_ratio: null })
