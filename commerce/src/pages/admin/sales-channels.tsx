@@ -87,6 +87,8 @@ export default function SalesChannelsPage() {
           const paused = mine.length > 0 && mode !== p
           return (
             <SourceCard key={p} mark={PLATFORM[p].mark} title={PLATFORM[p].name}
+              onOpen={manage ? () => setDialog(p) : undefined}
+              flow={<SyncFlow platform={p} live={!paused && mine.some((c) => c.status === 'CONNECTED')} />}
               subtitle={mine.length ? `${mine.length} store${mine.length === 1 ? '' : 's'} connected${paused ? ' · paused' : ''}` : 'Not connected'}
               status={paused ? <Pill className="bg-muted text-muted-foreground">Paused</Pill>
                 : mine.length ? <Pill className={STATUS[mine.some((c) => c.status !== 'CONNECTED') ? 'ERROR' : 'CONNECTED'].className}>{mine.some((c) => c.status !== 'CONNECTED') ? 'Check' : 'Connected'}</Pill> : null}
@@ -94,8 +96,8 @@ export default function SalesChannelsPage() {
                 {manage && <Button size="sm" variant={mine.length ? 'outline' : 'default'} onClick={() => setDialog(p)}><Plug /> {mine.length ? 'Add store' : 'Connect'}</Button>}
                 {p === 'WOOCOMMERCE' && <Button size="sm" variant="outline" asChild><a href={WOO_PLUGIN_DOWNLOAD} download><Download /> Plugin</a></Button>}
               </>}>
-              {p === 'SHOPIFY' ? 'Orders from your Shopify store arrive here within seconds, with the ad they came from.'
-                : 'Connect a WordPress store with WooCommerce. Install our plugin, then approve on your own site — nothing to copy.'}
+              {p === 'SHOPIFY' ? 'Orders arrive in seconds; shipping, delivery and returns go back to Shopify.'
+                : 'Install our plugin, approve on your site. Orders, stock and returns stay in sync.'}
             </SourceCard>
           )
         })}
@@ -209,9 +211,16 @@ function Pill({ className, children }: { className?: string; children: ReactNode
   return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', className)}>{children}</span>
 }
 
-function SourceCard({ mark, title, subtitle, status, actions, children }: { mark: ReactNode; title: string; subtitle: string; status: ReactNode; actions: ReactNode; children: ReactNode }) {
+function SourceCard({ mark, title, subtitle, status, actions, children, flow, onOpen }: {
+  mark: ReactNode; title: string; subtitle: string; status: ReactNode; actions: ReactNode; children: ReactNode
+  /** A small live picture of what syncs. */
+  flow?: ReactNode
+  /** Clicking anywhere on the card (outside its buttons) opens the connect dialog. */
+  onOpen?: () => void
+}) {
   return (
-    <Card className="gap-3">
+    <Card className={cn('group gap-3 transition-[border-color,box-shadow,transform] duration-200', onOpen && 'cursor-pointer hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm')}
+      onClick={onOpen ? (e) => { if (!(e.target as HTMLElement).closest('button, a')) onOpen() } : undefined}>
       <CardContent className="space-y-3">
         <div className="flex items-start gap-3">
           <span className="grid size-9 shrink-0 place-items-center rounded-lg border text-sm font-semibold">{mark}</span>
@@ -222,9 +231,28 @@ function SourceCard({ mark, title, subtitle, status, actions, children }: { mark
           {status}
         </div>
         <p className="text-sm text-muted-foreground">{children}</p>
+        {flow}
         <div className="flex flex-wrap gap-2">{actions}</div>
       </CardContent>
     </Card>
+  )
+}
+
+/** Store ⇄ Fullfilio with what travels each way; the dots move while the connection is live. */
+function SyncFlow({ platform, live }: { platform: ChannelPlatform; live: boolean }) {
+  const items = [['Orders', '→'], ['Status', '←'], ['Stock', '⇄'], ['Returns', '←']] as const
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-2.5 py-2">
+      <span className="grid size-6 shrink-0 place-items-center">{PLATFORM[platform].mark}</span>
+      <span className="relative h-px flex-1 bg-border">
+        <span className={cn('absolute -top-[2px] size-[5px] rounded-full bg-foreground/70', live ? 'animate-[sync-dot_2.2s_linear_infinite]' : 'left-0 opacity-0 group-hover:animate-[sync-dot_2.2s_linear_infinite] group-hover:opacity-100')} />
+        <span className={cn('absolute -top-[2px] size-[5px] rounded-full bg-foreground/40', live ? 'animate-[sync-dot-back_2.2s_linear_infinite_1.1s]' : 'opacity-0 group-hover:animate-[sync-dot-back_2.2s_linear_infinite_1.1s] group-hover:opacity-100')} />
+      </span>
+      <LogoMark className="size-5 shrink-0" />
+      <span className="ml-1 hidden gap-1 xl:flex">
+        {items.map(([l, d]) => <span key={l} className="rounded-md border bg-card px-1.5 py-px text-[10px] text-muted-foreground">{d} {l}</span>)}
+      </span>
+    </div>
   )
 }
 
