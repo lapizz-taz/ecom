@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
-import { SuccessPanel } from '@/features/orders/success-panel'
+import { CourierRecordCards } from '@/features/orders/courier-record-cards'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -129,6 +129,8 @@ export default function OrderEditPage() {
         <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">This order can't be edited any more. Use <Link to={`/admin/orders/super-edit?order=${o.id}`} className="text-foreground underline">Super Edit</Link>.</p>
       )}
 
+      <CourierRecordCards orderId={o.id} phone={o.customer_phone} />
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-4">
           <Card>
@@ -190,7 +192,6 @@ export default function OrderEditPage() {
         </div>
 
         <div className="min-w-0 space-y-4">
-          <Card><CardContent><SuccessPanel orderId={o.id} phone={o.customer_phone} compact /></CardContent></Card>
           <Card>
             <CardContent>
               <dl className="space-y-1.5 text-sm">

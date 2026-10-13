@@ -142,7 +142,11 @@ describe('courier panel provider', () => {
     const none = providersFromSettings({ providers: ['internal', 'courier_panel'] }, fetch, { panel: {} })
     expect(none.map((p) => p.name)).not.toContain('courier_panel')
     const on = providersFromSettings({ providers: ['internal', 'courier_panel'] }, fetch, { panel: { redx: allCreds.redx } })
-    expect(on.map((p) => p.name)).toContain('courier_panel')
+    // Stored as the courier_history result, so every screen shows the lines.
+    expect(on.map((p) => p.name)).toEqual(['internal', 'courier_history'])
+    // Either switch asks both sources, once: never two separate (twice-charged) providers.
+    const both = providersFromSettings({ providers: ['courier_history', 'courier_panel'] }, fetch, { panel: { redx: allCreds.redx }, courierHistory: { api_key: 'k', service: 'bdcourier' } })
+    expect(both.map((p) => p.name)).toEqual(['courier_history'])
   })
 
   it('rotates between several accounts of one courier, one login per lookup', async () => {
@@ -253,6 +257,17 @@ describe('courier relay (the Worker sends courier work to Supabase)', () => {
     }
   })
 
+  it('a relay that refuses or cannot be reached fails the login test with its reason, never a crash', async () => {
+    const test = vi.fn(async () => { throw new Error('Courier check service refused this site — its server key was not accepted') })
+    setPanelRelay({ lookup: vi.fn(), test })
+    try {
+      expect(await testPanelLogin('pathao', allCreds.pathao as never, '01811111111'))
+        .toEqual({ ok: false, message: 'Courier check service refused this site — its server key was not accepted' })
+    } finally {
+      setPanelRelay(null)
+    }
+  })
+
   it('the HTTP relay sends the shared secret and only the phone for a lookup', async () => {
     const summary = { couriers: [], total: 1, delivered: 1, cancelled: 0, success_ratio: 100, ratio_source: 'counts', name_on_record: null, parcel_floor: 1 }
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: true, summary }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
@@ -266,7 +281,7 @@ describe('courier relay (the Worker sends courier work to Supabase)', () => {
 
   it('the HTTP relay turns a refusal or a failed lookup into a readable error', async () => {
     const refused = httpPanelRelay({ url: 'https://x/courier-relay', fetchFn: vi.fn(async () => new Response(JSON.stringify({ error: { message: 'Not allowed' } }), { status: 401 })) })
-    await expect(refused.lookup('01811111111')).rejects.toThrow('Courier check service: Not allowed')
+    await expect(refused.lookup('01811111111')).rejects.toThrow('Courier check service refused this site')
     const failed = httpPanelRelay({ url: 'https://x/courier-relay', fetchFn: vi.fn(async () => new Response(JSON.stringify({ ok: false, message: 'RedX: rate limit' }), { status: 200 })) })
     await expect(failed.lookup('01811111111')).rejects.toThrow('RedX: rate limit')
   })

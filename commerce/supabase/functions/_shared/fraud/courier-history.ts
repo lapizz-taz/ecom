@@ -85,6 +85,8 @@ export interface CourierHistorySummary {
    * of any reported range ("50+" → 50). Used only for the "enough history" check.
    */
   parcel_floor?: number
+  /** When BD Courier and the courier sign-ins are asked together: the side that failed, and why. */
+  source_notes?: string[]
 }
 
 /** 01XXXXXXXXX for a Bangladeshi mobile number (+880 / 880 / 0 prefixes), else null. */

@@ -66,6 +66,8 @@ export async function setOrderTags(ids: string[], add: string[], remove: string[
 export interface CourierLineRecord {
   courier: string; name?: string; orders: number; delivered: number; cancelled: number
   success_ratio?: number | null; rate_only?: boolean; parcel_range?: string | null
+  /** Why this courier could not be checked (its sign-in failed). */
+  notice?: string | null
 }
 export interface OrderCustomerRecord {
   ours: { total: number; delivered: number; cancelled: number; returned: number; in_progress: number; by_stage: Record<string, number> | null }

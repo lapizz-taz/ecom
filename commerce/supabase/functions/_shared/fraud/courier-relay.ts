@@ -37,6 +37,7 @@ export function httpPanelRelay(c: RelayConfig): PanelRelay {
       clearTimeout(timer)
     }
     const data = (await res.json().catch(() => null)) as (T & { error?: unknown }) | null
+    if (res.status === 401 || res.status === 403) throw new Error('Courier check service refused this site — its server key was not accepted')
     if (!res.ok || !data) {
       const msg = (data?.error as { message?: string } | undefined)?.message
       throw new Error(msg ? `Courier check service: ${msg}` : `Courier check service answered HTTP ${res.status}`)

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { env } from '../env.ts'
 import { type CourierHistoryConfig, CourierHistoryProvider, type CourierHistoryService } from './courier-history.ts'
 import { type CourierPanelCreds, CourierPanelProvider } from './courier-panel.ts'
+import { CourierSourcesProvider } from './courier-sources.ts'
 import { HttpCourierHistoryProvider, type HttpProviderConfig, InternalHistoryProvider } from './providers.ts'
 import type { FraudCheckInput, FraudProvider, FraudProviderResult, OutcomeCounts, RecordFraudCheckPayload } from './types.ts'
 
@@ -104,28 +105,24 @@ export class MeteredProvider implements FraudProvider {
 export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch, secrets: FraudSecrets = {}, meter?: UsageMeter): FraudProvider[] {
   const names = settings.providers?.length ? settings.providers : ['internal']
   const providers: FraudProvider[] = []
+  let courierSourceAdded = false
   for (const name of names) {
     if (name === 'internal') providers.push(new InternalHistoryProvider())
-    if (name === 'courier_history') {
+    if (name === 'courier_history' || name === 'courier_panel') {
+      // The platform's two courier sources work as one: turning on either asks both
+      // (each only when connected), merged per courier and metered once per check.
+      if (courierSourceAdded) continue
+      courierSourceAdded = true
       const config = courierHistoryConfig(secrets.courierHistory, settings.courier_history?.timeout_ms)
-      if (!config) {
-        console.warn('Courier history check is enabled but no API key is connected; skipping it')
+      const history = config ? new CourierHistoryProvider(config, fetchFn) : null
+      const signIns = secrets.panel ? new CourierPanelProvider(secrets.panel, { fetchFn }) : null
+      const panel = signIns?.connected.length ? signIns : null
+      if (!history && !panel) {
+        console.warn('Courier checks are enabled but neither BD Courier nor a courier sign-in is connected; skipping them')
         continue
       }
-      const provider = new CourierHistoryProvider(config, fetchFn)
+      const provider = panel ? new CourierSourcesProvider(history, panel) : history!
       providers.push(meter ? new MeteredProvider(provider, meter) : provider)
-    }
-    if (name === 'courier_panel') {
-      // The merchant's own courier panel logins. It uses the merchant's own
-      // courier accounts, not the platform's BD Courier account, so it costs no
-      // credits and is never metered.
-      const panel = secrets.panel ? new CourierPanelProvider(secrets.panel, { fetchFn }) : null
-      if (!panel || !panel.connected.length) {
-        console.warn('Courier panel check is enabled but no courier panel logins are connected; skipping it')
-        continue
-      }
-      // Runs on the platform's courier accounts, so it is metered like BD Courier.
-      providers.push(meter ? new MeteredProvider(panel, meter) : panel)
     }
     if (name === 'http') {
       const urlTemplate = env('FRAUD_API_URL')
@@ -170,10 +167,10 @@ export async function platformPanelCreds(admin: SupabaseClient): Promise<FraudSe
   return (data as FraudSecrets['panel']) ?? null
 }
 
-/** Providers for a check: the platform's BD Courier and courier-panel connections, metered for the merchant on `admin`. */
+/** Providers for a check: the platform's BD Courier and courier sign-ins (together when either is on), metered for the merchant on `admin`. */
 export async function loadFraudProviders(admin: SupabaseClient, settings: FraudSettings, fetchFn: typeof fetch = fetch): Promise<FraudProvider[]> {
-  const courierHistory = settings.providers?.includes('courier_history') ? await platformCourierHistorySecret(admin) : null
-  const panel = settings.providers?.includes('courier_panel') ? await platformPanelCreds(admin) : null
+  const couriers = settings.providers?.some((p) => p === 'courier_history' || p === 'courier_panel') ?? false
+  const [courierHistory, panel] = couriers ? await Promise.all([platformCourierHistorySecret(admin), platformPanelCreds(admin)]) : [null, null]
   return providersFromSettings(settings, fetchFn, { courierHistory, panel }, databaseMeter(admin))
 }
 
