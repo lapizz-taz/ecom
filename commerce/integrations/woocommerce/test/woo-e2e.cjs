@@ -10,6 +10,8 @@ require('fs').mkdirSync(`${SP}/shots`, { recursive: true })
 const STORE = process.env.WOO_STORE_URL || 'http://172.18.0.1:8090'
 const APP = process.env.APP_URL || 'http://localhost:5173'
 const ZIP = path.resolve(__dirname, '../../../public/downloads/fullfilio-connect.zip')
+// The version the plugin reports in its heartbeat (from its own header).
+const PLUGIN_VERSION = require('fs').readFileSync(path.resolve(__dirname, '../fullfilio-connect/fullfilio-connect.php'), 'utf8').match(/Version:\s+([\d.]+)/)[1]
 // SQL runs as the database owner inside Merchant #1 (the store this test connects).
 const MERCHANT = '00000000-0000-4000-8000-000000000001'
 const sql = (q) => execSync(`PGPASSWORD=postgres PGOPTIONS='-c app.merchant_id=${MERCHANT}' psql -h localhost -p 54322 -U postgres -d postgres -tAc "${q.replace(/"/g, '\\"')}"`).toString().trim()
@@ -68,6 +70,8 @@ async function wpLogin(p) {
 
     // ------------------------------------------------------------------ 2. connect from the SaaS (download link, wizard, approval)
     const staffCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    // The one-time "We just updated Fullfilio" notice would cover the page; mark it as seen.
+    await staffCtx.addInitScript(() => { try { localStorage.setItem('admin-major-update-seen', '9999-12-31') } catch {} })
     const app = await staffCtx.newPage()
     app.on('pageerror', (e) => errors.push(String(e).slice(0, 200)))
     await app.goto(`${APP}/admin/login`)
@@ -76,8 +80,14 @@ async function wpLogin(p) {
     await app.goto(`${APP}/admin/channels`)
     const zip = await fetch(`${APP}/downloads/fullfilio-connect.zip`)
     assert(zip.ok && (await zip.arrayBuffer()).byteLength > 10000, 'plugin zip downloadable from the app')
-    const card = app.locator('div', { hasText: 'Install our plugin, then approve' }).last()
-    await card.getByRole('button', { name: /Connect|Add store/ }).click()
+    // Only the store picked under "Where do customers buy?" syncs: pick WooCommerce first.
+    await app.getByRole('radio', { name: /You sell on your WordPress store/ }).click()
+    await app.getByPlaceholder('https://yourshop.com').fill('https://demo-store.test') // where visitors are sent (https only)
+    await app.getByRole('button', { name: /^Save$/ }).click()
+    await waitFor(() => sql(`select value ->> 'mode' from settings where key = 'storefront'`) === 'WOOCOMMERCE', 15000, 'store mode WooCommerce')
+    assert(true, 'customers buy on WooCommerce (picked under "Where do customers buy?")')
+    const card = app.locator('[data-slot=card]', { hasText: 'Install our plugin, approve on your site' })
+    await card.getByRole('button', { name: /^Connect$|Add store/ }).click()
     await app.getByRole('link', { name: /Download plugin/ }).waitFor()
     await shot(app, 'wizard')
     await app.fill('#wc-url', STORE)
@@ -99,11 +109,11 @@ async function wpLogin(p) {
     const hooks = JSON.parse(sql(`select webhooks from sales_channels where id = '${channelId}'`))
     assert(hooks.length >= 2, `WooCommerce webhooks registered (${hooks.map((h) => h.topic).join(', ')})`)
     await cron()
-    await waitFor(() => sql(`select settings #>> '{plugin,plugin_version}' from sales_channels where id = '${channelId}'`) === '1.2.0', 15000, 'heartbeat')
-    assert(true, 'heartbeat arrived: plugin 1.2.0 reported its health')
+    await waitFor(() => sql(`select settings #>> '{plugin,plugin_version}' from sales_channels where id = '${channelId}'`) === PLUGIN_VERSION, 15000, 'heartbeat')
+    assert(true, `heartbeat arrived: plugin ${PLUGIN_VERSION} reported its health`)
     await app.goto(`${APP}/admin/channels`); await app.waitForTimeout(2500)
     await shot(app, 'channel-card')
-    assert((await app.textContent('body')).includes('Plugin 1.2.0'), 'channel card shows the plugin version')
+    assert((await app.textContent('body')).includes(`Plugin ${PLUGIN_VERSION}`), 'channel card shows the plugin version')
 
     // ------------------------------------------------------------------ 3. unfinished checkout (lead) with attribution
     const shirt = wpsql(`select id from wp_standin_products where data like '%Linen Shirt%'`)
@@ -385,7 +395,7 @@ async function wpLogin(p) {
     const gone = await send('heartbeat', {}, crypto.randomUUID())
     assert(gone.status === 410 || gone.status === 401, `events from a disconnected store are refused (${gone.status})`)
     await app.goto(`${APP}/admin/channels`)
-    await app.locator('div', { hasText: 'Install our plugin, then approve' }).last().getByRole('button', { name: /Connect|Add store/ }).click()
+    await app.locator('[data-slot=card]', { hasText: 'Install our plugin, approve on your site' }).getByRole('button', { name: /^Connect$|Add store|Reconnect/ }).click()
     await app.fill('#wc-url', STORE)
     await app.getByRole('button', { name: 'Continue to my site' }).click()
     await app.locator('#wc-auth-approve').click()
@@ -397,6 +407,10 @@ async function wpLogin(p) {
   } catch (e) {
     failures++
     console.error('ERROR', e.message)
+    for (const [i, pg] of browser.contexts().flatMap((c) => c.pages()).entries()) {
+      await pg.screenshot({ path: `${SP}/shots/woo-error-${i}.png` }).catch(() => {})
+      console.error(`page ${i}: ${pg.url()}`)
+    }
   } finally {
     if (errors.length) console.log('browser errors:', errors.join('\n'))
     await browser.close()

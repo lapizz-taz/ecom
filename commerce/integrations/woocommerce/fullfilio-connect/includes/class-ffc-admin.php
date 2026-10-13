@@ -1,8 +1,11 @@
 <?php
 /**
  * WooCommerce → Fullfilio: connection, what is switched on, the delivery
- * queue, troubleshooting checks and the debug log. Everything is set up from
- * Fullfilio; this page shows the state and offers the manual fallbacks.
+ * queue, checkout protection, ad tracking, troubleshooting and the debug log.
+ *
+ * The page uses WordPress's own light look: a white header band with the page
+ * name, version and a round mark, pill tabs, and module cards (title, what it
+ * does, then a footer with its status and switch).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -59,8 +62,12 @@ class FFC_Admin {
 		check_admin_referer( 'ffc_' . $action );
 	}
 
-	private static function back( $notice, $type = 'success' ) {
-		wp_safe_redirect( self::url( array( 'ffc_notice' => rawurlencode( $notice ), 'ffc_type' => $type ) ) );
+	private static function back( $notice, $type = 'success', $tab = '' ) {
+		$args = array( 'ffc_notice' => rawurlencode( $notice ), 'ffc_type' => $type );
+		if ( $tab ) {
+			$args['tab'] = $tab;
+		}
+		wp_safe_redirect( self::url( $args ) );
 		exit;
 	}
 
@@ -70,12 +77,12 @@ class FFC_Admin {
 		$parsed = FFC_Settings::parse_code( $code );
 		$saved  = is_wp_error( $parsed ) ? $parsed : FFC_Settings::save_connection( $parsed );
 		if ( is_wp_error( $saved ) ) {
-			self::back( $saved->get_error_message(), 'error' );
+			self::back( $saved->get_error_message(), 'error', 'connect' );
 		}
 		FFC_Health::schedule();
 		$r = FFC_Api::send( 'heartbeat', FFC_Health::report(), null, 15 );
 		FFC_Log::info( 'Connected with a connection code' );
-		self::back( $r['ok'] ? 'Connected. Fullfilio received this store\'s first report.' : 'Saved, but Fullfilio could not be reached: ' . $r['error'], $r['ok'] ? 'success' : 'warning' );
+		self::back( $r['ok'] ? 'Connected. Fullfilio received this store\'s first report.' : 'Saved, but Fullfilio could not be reached: ' . $r['error'], $r['ok'] ? 'success' : 'warning', 'connect' );
 	}
 
 	public static function handle_retry() {
@@ -88,27 +95,28 @@ class FFC_Admin {
 	public static function handle_test() {
 		self::guard( 'test' );
 		$r = FFC_Api::send( 'heartbeat', FFC_Health::report(), null, 15 );
-		self::back( $r['ok'] ? 'Fullfilio answered. The connection works.' : 'Fullfilio did not answer: ' . $r['error'], $r['ok'] ? 'success' : 'error' );
+		self::back( $r['ok'] ? 'Fullfilio answered. The connection works.' : 'Fullfilio did not answer: ' . $r['error'], $r['ok'] ? 'success' : 'error', 'connect' );
 	}
 
 	public static function handle_disconnect() {
 		self::guard( 'disconnect' );
 		FFC_Settings::forget_connection();
 		FFC_Log::info( 'Disconnected on the plugin page' );
-		self::back( 'Disconnected. Orders still reach Fullfilio through WooCommerce webhooks until you disconnect the store there too.' );
+		self::back( 'Disconnected. Orders still reach Fullfilio through WooCommerce webhooks until you disconnect the store there too.', 'success', 'connect' );
 	}
 
 	public static function handle_clear_log() {
 		self::guard( 'clear_log' );
 		FFC_Log::clear();
-		self::back( 'Log cleared.' );
+		self::back( 'Log cleared.', 'success', 'logs' );
 	}
 
-	private static function button( $action, $label, $class = 'button' ) {
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline-block;margin-right:6px">';
+	/** A one-button form (admin-post with its own nonce). */
+	private static function button( $action, $label, $class = 'ffc-btn', $icon = '' ) {
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="ffc-inline">';
 		wp_nonce_field( 'ffc_' . $action );
 		echo '<input type="hidden" name="action" value="ffc_' . esc_attr( $action ) . '">';
-		echo '<button type="submit" class="' . esc_attr( $class ) . '">' . esc_html( $label ) . '</button></form>';
+		echo '<button type="submit" class="' . esc_attr( $class ) . '">' . ( $icon ? self::icon( $icon ) : '' ) . esc_html( $label ) . '</button></form>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- icon() returns fixed SVG.
 	}
 
 	public static function handle_protect_save() {
@@ -121,40 +129,46 @@ class FFC_Admin {
 		// phpcs:enable
 		FFC_Protect::save( $in );
 		FFC_Log::info( 'Checkout protection settings saved' );
-		wp_safe_redirect( self::url( array( 'tab' => 'protect', 'ffc_notice' => rawurlencode( 'Checkout protection saved.' ), 'ffc_type' => 'success' ) ) );
-		exit;
+		self::back( 'Checkout protection saved.', 'success', 'protect' );
 	}
 
 	public static function handle_tracking_save() {
 		self::guard( 'tracking_save' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard() checked the nonce.
-		$keys = array(
-			'meta_on', 'meta_pixel', 'meta_token', 'meta_token_clear', 'meta_test',
-			'tiktok_on', 'tiktok_pixel', 'tiktok_token', 'tiktok_token_clear', 'tiktok_test',
-			'google_on', 'google_conv_id', 'google_conv_label', 'google_ga4_id', 'google_ga4_secret', 'google_ga4_secret_clear',
-			'trigger', 'exclude_low_rr', 'min_rr', 'browser_events', 'browser_purchase',
+		$keys = array_merge(
+			array(
+				'meta_on', 'meta_pixel', 'meta_token', 'meta_token_clear', 'meta_test',
+				'tiktok_on', 'tiktok_pixel', 'tiktok_token', 'tiktok_token_clear', 'tiktok_test',
+				'google_on', 'google_conv_id', 'google_conv_label', 'google_ga4_id', 'google_ga4_secret', 'google_ga4_secret_clear',
+				'trigger', 'min_rr', 'dup_hours',
+			),
+			FFC_Tracking::FLAGS
 		);
 		$in = array();
 		foreach ( $keys as $k ) {
 			$in[ $k ] = isset( $_POST[ $k ] ) ? sanitize_text_field( wp_unslash( $_POST[ $k ] ) ) : '';
 		}
+		$test = isset( $_POST['ffc_test'] ) ? sanitize_key( wp_unslash( $_POST['ffc_test'] ) ) : '';
 		// phpcs:enable
 		FFC_Tracking::save( $in );
 		FFC_Log::info( 'Ad tracking settings saved' );
-		wp_safe_redirect( self::url( array( 'tab' => 'tracking', 'ffc_notice' => rawurlencode( 'Ad tracking saved.' ), 'ffc_type' => 'success' ) ) );
-		exit;
+		if ( in_array( $test, array( 'meta', 'tiktok', 'google' ), true ) ) {
+			$r = FFC_Tracking::test( $test );
+			self::back( 'Saved. ' . $r['message'], $r['ok'] ? 'success' : ( ! empty( $r['hint'] ) ? 'warning' : 'error' ), 'tracking' );
+		}
+		self::back( 'Ad tracking saved.', 'success', 'tracking' );
 	}
 
-	// --- page --------------------------------------------------------------------------------------
+	// --- look ----------------------------------------------------------------------------------
 
 	const TABS = array(
-		'overview' => array( 'Overview', 'Main' ),
-		'orders'   => array( 'Orders', 'Main' ),
-		'stock'    => array( 'Stock', 'Main' ),
-		'protect'  => array( 'Checkout protection', 'Protect' ),
-		'tracking' => array( 'Ad tracking', 'Marketing' ),
-		'connect'  => array( 'Connection', 'Setup' ),
-		'logs'     => array( 'Logs & help', 'Setup' ),
+		'overview' => array( 'Overview', 'dashboard', 'Orders, unfinished checkouts and delivery to %s at a glance.' ),
+		'orders'   => array( 'Orders', 'orders', 'The latest WooCommerce orders and the statuses %s sets on them.' ),
+		'stock'    => array( 'Stock', 'stock', 'Who keeps the stock count, what is running low and what came back.' ),
+		'protect'  => array( 'Checkout protection', 'shield', 'Stop wrong numbers, bots and fake orders before they are placed.' ),
+		'tracking' => array( 'Ad tracking', 'target', 'Meta, TikTok and Google — browser and server, de-duplicated, counted when the order really counts.' ),
+		'connect'  => array( 'Connection', 'plug', 'How this store is connected to %s and what it shares.' ),
+		'logs'     => array( 'Logs & help', 'help', 'Checks, the delivery queue and the debug log.' ),
 	);
 
 	const STATUS_TONE = array(
@@ -162,6 +176,36 @@ class FFC_Admin {
 		'completed' => 'green', 'delivered' => 'green', 'partial-delivered' => 'teal', 'returning' => 'orange',
 		'returned' => 'rose', 'cancelled' => 'red', 'refunded' => 'red', 'failed' => 'red',
 	);
+
+	/** Lucide-style line icons (fixed markup). */
+	const ICONS = array(
+		'dashboard' => '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+		'orders'    => '<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+		'stock'     => '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>',
+		'shield'    => '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+		'target'    => '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+		'plug'      => '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+		'help'      => '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/>',
+		'truck'     => '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+		'refresh'   => '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+		'check'     => '<path d="M20 6 9 17l-5-5"/>',
+		'external'  => '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+		'download'  => '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+		'phone'     => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
+		'bot'       => '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+		'cloud'     => '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+		'inbox'     => '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+		'cart'      => '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+		'megaphone' => '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+		'tag'       => '<path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.41l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1"/>',
+		'power'     => '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+		'trash'     => '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+		'send'      => '<path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0-.03.94l7.93 3.18a2 2 0 0 1 1.11 1.11z"/><path d="m21.85 2.15-10.94 10.94"/>',
+	);
+
+	private static function icon( $name ) {
+		return isset( self::ICONS[ $name ] ) ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . self::ICONS[ $name ] . '</svg>' : '';
+	}
 
 	private static function money( $amount ) {
 		$symbol = function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ) : ( function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() . ' ' : '' );
@@ -187,17 +231,13 @@ class FFC_Admin {
 		return '<svg class="ffc-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="' . esc_attr( implode( ' ', $pts ) ) . '" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
 	}
 
-	/** Half-circle gauge in 20 segments, like a fuel meter. */
+	/** Half-circle gauge in 20 segments. */
 	private static function gauge( $pct ) {
 		$out = '<svg viewBox="0 0 200 110" class="ffc-gauge" aria-hidden="true">';
 		for ( $i = 0; $i < 20; $i++ ) {
 			$a   = M_PI - ( $i + 0.5 ) * M_PI / 20;
-			$x1  = 100 + cos( $a ) * 62;
-			$y1  = 100 - sin( $a ) * 62;
-			$x2  = 100 + cos( $a ) * 90;
-			$y2  = 100 - sin( $a ) * 90;
 			$on  = ( $i + 0.5 ) * 5 <= $pct;
-			$out .= '<line x1="' . round( $x1, 1 ) . '" y1="' . round( $y1, 1 ) . '" x2="' . round( $x2, 1 ) . '" y2="' . round( $y2, 1 ) . '" stroke="' . ( $on ? '#f5c242' : '#2a2a31' ) . '" stroke-width="7" stroke-linecap="round"/>';
+			$out .= '<line x1="' . round( 100 + cos( $a ) * 62, 1 ) . '" y1="' . round( 100 - sin( $a ) * 62, 1 ) . '" x2="' . round( 100 + cos( $a ) * 90, 1 ) . '" y2="' . round( 100 - sin( $a ) * 90, 1 ) . '" stroke="' . ( $on ? '#2563eb' : '#e5e7eb' ) . '" stroke-width="7" stroke-linecap="round"/>';
 		}
 		return $out . '</svg>';
 	}
@@ -206,6 +246,16 @@ class FFC_Admin {
 		$tone  = isset( self::STATUS_TONE[ $status ] ) ? self::STATUS_TONE[ $status ] : 'gray';
 		$label = function_exists( 'wc_get_order_status_name' ) ? wc_get_order_status_name( $status ) : $status;
 		return '<span class="ffc-badge ffc-' . esc_attr( $tone ) . '">' . esc_html( $label ) . '</span>';
+	}
+
+	/** A big switch, as in WordPress module screens. */
+	private static function switch_input( $field, $on, $disabled = false ) {
+		return '<label class="ffc-switch"><input type="checkbox" name="' . esc_attr( $field ) . '" value="1"' . checked( $on, true, false ) . disabled( $disabled, true, false ) . ' aria-label="' . esc_attr( $field ) . '"><span></span></label>';
+	}
+
+	/** Footer line: "Status: Active" (green) or "Status: Off". */
+	private static function status_text( $on, $extra = '' ) {
+		return '<span class="ffc-status">Status: <b class="' . ( $on ? 'ffc-ok' : 'ffc-off' ) . '" data-on="Active" data-off="Off">' . ( $on ? 'Active' : 'Off' ) . '</b>' . $extra . '</span>';
 	}
 
 	private static function recent_orders( $limit ) {
@@ -217,10 +267,10 @@ class FFC_Admin {
 
 	private static function orders_table( $orders ) {
 		if ( ! $orders ) {
-			echo '<p class="ffc-muted ffc-pad">No orders yet.</p>';
+			echo '<p class="ffc-muted">No orders yet.</p>';
 			return;
 		}
-		echo '<table class="ffc-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Placed</th></tr></thead><tbody>';
+		echo '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Placed</th></tr></thead><tbody>';
 		foreach ( $orders as $o ) {
 			if ( ! $o instanceof WC_Order ) {
 				continue;
@@ -235,50 +285,97 @@ class FFC_Admin {
 				. '<td>' . esc_html( self::money( $o->get_total() ) ) . '</td><td>' . self::badge( $o->get_status() ) . '</td>' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- badge() escapes.
 				. '<td class="ffc-muted">' . esc_html( $date ? $date->date_i18n( 'M j, H:i' ) : '' ) . '</td></tr>';
 		}
-		echo '</tbody></table>';
+		echo '</tbody></table></div>';
 	}
 
 	private static function styles() {
 		echo '<style>
-.ffc-app{--bg:#0c0c0f;--panel:#141418;--line:#24242b;--text:#ececf1;--muted:#8d8d98;--accent:#9aa5ff;display:grid;grid-template-columns:210px minmax(0,1fr);background:var(--bg);color:var(--text);border-radius:18px;margin:14px 20px 0 0;min-height:680px;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;overflow:hidden}
-.ffc-app a{color:var(--accent)}.ffc-side{border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:4px}
-.ffc-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px;font-weight:600;font-size:14px}.ffc-brand img{height:28px;max-width:120px;object-fit:contain}
-.ffc-mark{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:#fff;color:#000;font-weight:800}
-.ffc-group{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:14px 10px 4px}
-.ffc-nav{display:block;padding:8px 10px;border-radius:9px;color:#c9c9d2!important;text-decoration:none}.ffc-nav:hover{background:#1a1a20}.ffc-nav.on{background:#1f1f27;color:#fff!important;box-shadow:inset 3px 0 0 var(--accent)}
-.ffc-version{margin-top:auto;padding:10px;color:var(--muted);font-size:11px}
-.ffc-main{padding:22px 24px;min-width:0}.ffc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}.ffc-head h1{color:#fff;font-size:20px;margin:0;font-weight:600}
-.ffc-cols{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px}@media(max-width:1280px){.ffc-cols{grid-template-columns:1fr}}
-.ffc-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}@media(max-width:1100px){.ffc-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.ffc-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}.ffc-card h2{color:#fff;font-size:14px;font-weight:600;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
-.ffc-stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;gap:8px}.ffc-stat>div{min-width:0}.ffc-stat small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ffc-stat b{font-size:22px;color:#fff;font-weight:600;white-space:nowrap}.ffc-stat .ffc-chg{font-size:11px;color:#57d38c;margin-left:6px}.ffc-stat .ffc-chg.down{color:#ff7a7a}
-.ffc-spark{width:64px;height:30px;flex:none;color:var(--accent);align-self:end}
-.ffc-bars{display:flex;align-items:flex-end;gap:8px;height:190px;padding-top:8px}.ffc-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}.ffc-bar i{display:block;width:100%;max-width:38px;border-radius:9px;background:#2a2a33;min-height:4px}.ffc-bar.top i{background:var(--accent)}.ffc-bar span{font-size:10px;color:var(--muted)}
-.ffc-tbl{width:100%;border-collapse:collapse}.ffc-tbl th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:500;padding:8px 10px;border-bottom:1px solid var(--line)}.ffc-tbl td{padding:10px;border-bottom:1px solid #1d1d23;color:#dcdce3}.ffc-tbl tr:last-child td{border-bottom:0}
-.ffc-badge{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:6px;background:#26262e;color:#c8c8d2}
-.ffc-green{background:#10331f;color:#5ee08f}.ffc-blue{background:#112640;color:#6fb1ff}.ffc-indigo{background:#1d1f45;color:#a3acff}.ffc-cyan{background:#0f3138;color:#5ad8e8}.ffc-teal{background:#0f3330;color:#4fd1b8}.ffc-amber{background:#3a2a0c;color:#f5c242}.ffc-orange{background:#3b220f;color:#ff9f5a}.ffc-rose{background:#3d1525;color:#ff7aa8}.ffc-red{background:#3d1414;color:#ff7a7a}
-.ffc-muted{color:var(--muted)}.ffc-mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}.ffc-pad{padding:6px 2px}
-.ffc-btn{display:inline-flex;align-items:center;gap:6px;border-radius:10px;border:1px solid var(--line);background:#1c1c23;color:#fff;padding:8px 12px;font-size:12px;cursor:pointer;text-decoration:none}.ffc-btn.primary{background:var(--accent);border-color:var(--accent);color:#0c0c0f;font-weight:600}.ffc-btn:hover{filter:brightness(1.1)}
-.ffc-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.ffc-dot{display:inline-block;width:8px;height:8px;border-radius:4px;background:#57d38c;margin-right:6px}.ffc-dot.warn{background:#f5c242}.ffc-dot.fail{background:#ff7a7a}
-.ffc-gauge{width:100%;max-width:220px;display:block;margin:0 auto}.ffc-gauge-n{text-align:center;margin-top:-34px;font-size:26px;color:#fff;font-weight:600}
-.ffc-feed{list-style:none;margin:0;padding:0}.ffc-feed li{background:#1a1a20;border-radius:10px;padding:9px 11px;margin-bottom:8px}.ffc-feed small{display:block;color:var(--muted);font-size:11px}
-.ffc-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.ffc-feat{background:#1a1a20;border-radius:10px;padding:10px 12px}
-.ffc-form label{display:block;color:#fff;font-weight:600;margin:14px 0 6px}.ffc-form select,.ffc-form input[type=text],.ffc-form input[type=number],.ffc-form input[type=password],.ffc-app textarea{background:#0f0f13;border:1px solid var(--line);color:#fff;border-radius:9px;padding:7px 10px;min-width:260px}
-.ffc-choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}.ffc-choice label{margin:0;font-weight:400;background:#1a1a20;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}.ffc-choice b{display:block;color:#fff}.ffc-choice input{margin-right:6px}
-.ffc-app details summary{cursor:pointer;color:var(--accent)}
-.ffc-mods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px}@media(max-width:1100px){.ffc-mods{grid-template-columns:1fr}}
-.ffc-mod{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
-.ffc-mod-h{display:flex;align-items:flex-start;gap:12px}.ffc-mod-h>div{min-width:0;flex:1}.ffc-mod-h h3{margin:0;color:#fff;font-size:14px;font-weight:600}.ffc-mod-h p{margin:3px 0 0;color:var(--muted);font-size:12px;line-height:1.4}
-.ffc-mod-ic{width:38px;height:38px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:18px}
-.ffc-mod-body{display:grid;gap:10px}.ffc-mod-body .ffc-field{margin:0}.ffc-mod-body input[type=text],.ffc-mod-body input[type=password]{min-width:0;width:100%}
-.ffc-field{display:grid;gap:5px}.ffc-field small{color:var(--muted);font-size:11px}.ffc-field label.ffc-switch{margin:0}
-.ffc-switch{position:relative;display:inline-block;width:42px;height:24px;flex:none}.ffc-switch input{opacity:0;width:0;height:0;position:absolute}
-.ffc-switch span{position:absolute;inset:0;background:#2a2a33;border-radius:999px;transition:.2s;cursor:pointer}
-.ffc-switch span:before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
-.ffc-switch input:checked+span{background:#2f6bff}.ffc-switch input:checked+span:before{transform:translateX(18px)}
-.ffc-status{font-size:11px;font-weight:600;margin-top:2px}
+.ffc-wrap{--ink:#1d2327;--muted:#646970;--line:#dcdcde;--soft:#f6f7f7;--brand:#2563eb;--brand-soft:#eff4ff;--ok:#008a20;margin:0 0 0 -20px;color:var(--ink);font-size:14px}
+@media(max-width:782px){.ffc-wrap{margin-left:-10px}}
+.ffc-wrap *{box-sizing:border-box}.ffc-wrap a{color:var(--brand)}
+.ffc-in{max-width:1180px;margin:0 auto;padding:0 32px}@media(max-width:782px){.ffc-in{padding:0 14px}}
+.ffc-hero{background:#fff;border-bottom:1px solid var(--line);padding:36px 0 0}
+.ffc-hero-top{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.ffc-eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.ffc-hero h1{font-size:34px;line-height:1.15;font-weight:600;margin:0;padding:0;color:var(--ink);display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.ffc-ver{font-size:14px;font-weight:400;color:#50575e;background:#dcdcde;border-radius:4px;padding:4px 10px;line-height:1.3}
+.ffc-sub{font-size:17px;color:#50575e;margin:12px 0 0;max-width:720px}
+.ffc-orb{width:100px;height:100px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 14px 30px -12px rgba(37,99,235,.65)}
+.ffc-orb svg{width:48px;height:48px;color:#fff}.ffc-orb img{width:62px;height:62px;object-fit:contain;border-radius:14px;background:#fff;padding:7px}
+@media(max-width:782px){.ffc-orb{width:64px;height:64px}.ffc-orb svg{width:30px;height:30px}.ffc-hero h1{font-size:26px}}
+.ffc-tabs{display:flex;gap:10px;flex-wrap:wrap;padding:24px 0 22px}
+.ffc-body{padding:24px 0 48px}
+.ffc-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 16px;border-radius:999px;border:1px solid #e4e4e7;background:#fff;color:#18181b!important;font-size:13px;font-weight:500;line-height:1;cursor:pointer;text-decoration:none!important;white-space:nowrap;transition:box-shadow .15s,border-color .15s,background-color .15s,transform .15s;box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(24,24,27,.07),0 1px 2px rgba(24,24,27,.07),0 6px 14px -8px rgba(24,24,27,.22)}
+.ffc-btn:hover{border-color:#d4d4d8;box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(24,24,27,.08),0 2px 4px rgba(24,24,27,.08),0 10px 20px -10px rgba(24,24,27,.28)}
+.ffc-btn:active{transform:translateY(1px)}.ffc-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ffc-btn svg{width:16px;height:16px;flex:none}
+.ffc-btn.primary,.ffc-btn.on{background:var(--brand);border-color:var(--brand);color:#fff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.24),inset 0 -2.5px 0 rgba(12,26,120,.5),0 1px 2px rgba(37,99,235,.3),0 10px 22px -8px rgba(37,99,235,.6)}
+.ffc-btn.primary:hover,.ffc-btn.on:hover{background:#1d4ed8;border-color:#1d4ed8}
+.ffc-btn.danger{color:#b32d2e!important}.ffc-btn.sm{height:30px;padding:0 12px;font-size:12px}
+.ffc-inline{display:inline-block;margin:0}
+.ffc-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.ffc-card{background:#fff;border:1px solid var(--line);margin-bottom:24px}
+.ffc-card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line)}
+.ffc-card-h{flex-wrap:wrap}.ffc-card-h h2{min-width:0;font-size:17px;font-weight:500;line-height:1.3;margin:0;display:flex;align-items:center;gap:12px;color:var(--ink)}
+.ffc-card-h h2 svg{width:24px;height:24px;color:#50575e;flex:none}
+.ffc-card-b{padding:20px 22px}.ffc-card-b>:first-child{margin-top:0}.ffc-card-b>:last-child{margin-bottom:0}
+.ffc-card-f{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px;background:var(--soft);border-top:1px solid var(--line);min-height:62px}
+.ffc-mods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-bottom:24px}@media(max-width:1000px){.ffc-mods{grid-template-columns:minmax(0,1fr)}}
+.ffc-mods .ffc-card{margin:0;display:flex;flex-direction:column}.ffc-mods .ffc-card-b{flex:1}
+.ffc-mod-ic{width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:800;font-size:16px;color:#fff}
+.ffc-mod-ic svg{width:18px;height:18px;color:#fff}
+.ffc-desc{color:#3c434a;margin:0 0 16px;line-height:1.55}
+.ffc-status{font-size:14px;color:#3c434a;min-width:0;flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:6px}.ffc-card-f .ffc-badge{white-space:normal}.ffc-ok{color:var(--ok)}.ffc-off{color:#8c8f94}.ffc-bad{color:#d63638}
+.ffc-switch{position:relative;display:inline-block;width:60px;height:34px;flex:none;margin:0}
+.ffc-wrap .ffc-switch input[type=checkbox]{position:absolute;inset:0;width:100%;height:100%;opacity:0!important;margin:0;cursor:pointer;z-index:1;-webkit-appearance:none;appearance:none;border:0;box-shadow:none}.ffc-wrap .ffc-switch input[type=checkbox]::before{display:none!important}
+.ffc-switch span{position:absolute;inset:0;background:#c3c4c7;border-radius:999px;transition:background .2s}
+.ffc-switch span:before{content:"";position:absolute;width:26px;height:26px;left:4px;top:4px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.ffc-switch input:checked+span{background:var(--brand)}.ffc-switch input:checked+span:before{transform:translateX(26px)}
+.ffc-switch input:focus-visible+span{outline:2px solid var(--brand);outline-offset:2px}.ffc-switch input:disabled{cursor:default}.ffc-switch input:disabled+span{opacity:.55}
+.ffc-switch.sm{width:46px;height:26px}.ffc-switch.sm span:before{width:20px;height:20px;left:3px;top:3px}.ffc-switch.sm input:checked+span:before{transform:translateX(20px)}
+.ffc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;margin-bottom:24px}@media(max-width:1100px){.ffc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.ffc-stats{gap:12px}.ffc-stat{padding:14px}.ffc-stat b{font-size:20px}.ffc-spark{display:none}}
+.ffc-stat{background:#fff;border:1px solid var(--line);padding:18px 20px;display:flex;justify-content:space-between;align-items:flex-end;gap:8px}.ffc-stat>div{min-width:0}
+.ffc-stat small{color:var(--muted);display:block;font-size:13px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ffc-stat b{font-size:26px;font-weight:600;white-space:nowrap}
+.ffc-chg{font-size:12px;font-weight:600;color:var(--ok);margin-left:6px}.ffc-chg.down{color:#d63638}
+.ffc-spark{width:70px;height:30px;flex:none;color:var(--brand)}
+.ffc-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px}.ffc-cols>div{min-width:0}@media(max-width:1200px){.ffc-cols{grid-template-columns:minmax(0,1fr)}}
+.ffc-bars{display:flex;align-items:flex-end;gap:8px;height:190px}.ffc-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}.ffc-bar i{display:block;width:100%;max-width:36px;border-radius:8px 8px 3px 3px;background:#e5e7eb;min-height:4px}.ffc-bar.top i{background:var(--brand)}.ffc-bar span{font-size:11px;color:var(--muted)}
+.ffc-scroll{overflow-x:auto}
+.ffc-tbl{width:100%;border-collapse:collapse}.ffc-tbl th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.ffc-tbl td{padding:11px 12px;border-bottom:1px solid #f0f0f1;vertical-align:middle}.ffc-tbl tr:last-child td{border-bottom:0}.ffc-tbl tbody tr:hover td{background:#fafafa}
+.ffc-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;background:#f0f0f1;color:#50575e;white-space:nowrap}
+.ffc-badge svg{width:12px;height:12px}.ffc-green{background:#edfaef;color:#007017}.ffc-blue{background:#e8f0fe;color:#1d4ed8}.ffc-indigo{background:#eef2ff;color:#4338ca}.ffc-cyan{background:#ecfeff;color:#0e7490}.ffc-teal{background:#f0fdfa;color:#0f766e}.ffc-amber{background:#fcf9e8;color:#8a5a00}.ffc-orange{background:#fff4ec;color:#c2410c}.ffc-rose{background:#fff1f2;color:#be123c}.ffc-red{background:#fcf0f1;color:#b32d2e}
+.ffc-muted{color:var(--muted)}.ffc-mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.ffc-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#00a32a;margin-right:7px;vertical-align:middle}.ffc-dot.warn{background:#dba617}.ffc-dot.fail{background:#d63638}
+.ffc-gauge{width:100%;max-width:220px;display:block;margin:0 auto}.ffc-gauge-n{text-align:center;margin-top:-36px;font-size:28px;font-weight:600}
+.ffc-feed{list-style:none;margin:0;padding:0}.ffc-feed li{background:var(--soft);border-radius:10px;padding:10px 12px;margin-bottom:8px}.ffc-feed small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.ffc-field{display:grid;gap:6px;margin-bottom:14px}.ffc-field>label{font-weight:600;font-size:13px}.ffc-field small,.ffc-hint{color:var(--muted);font-size:12px;line-height:1.45}
+.ffc-wrap input[type=text],.ffc-wrap input[type=number],.ffc-wrap input[type=password],.ffc-wrap textarea,.ffc-wrap select{border:1px solid #8c8f94;border-radius:8px;min-height:38px;padding:0 12px;font-size:14px;width:100%;max-width:460px;background:#fff;box-shadow:none}
+.ffc-wrap textarea{padding:10px 12px;max-width:100%}.ffc-wrap input:focus,.ffc-wrap textarea:focus,.ffc-wrap select:focus{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);outline:0}
+.ffc-wrap input.ffc-num{width:96px}
+.ffc-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:400}
+.ffc-choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px}
+.ffc-choice label{position:relative;display:block;border:1px solid var(--line);border-radius:12px;padding:16px 16px 16px 46px;cursor:pointer;background:#fff;transition:border-color .15s,box-shadow .15s,background-color .15s}
+.ffc-choice label:hover{border-color:#a7aaad}.ffc-choice input{position:absolute;left:16px;top:18px;margin:0}
+.ffc-choice label:has(input:checked){border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);background:var(--brand-soft)}
+.ffc-choice b{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px}.ffc-choice span{display:block;color:var(--muted);font-size:13px;line-height:1.45}
+.ffc-opt{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:16px 0;border-top:1px solid #f0f0f1}.ffc-opt:first-child{border-top:0;padding-top:0}
+.ffc-opt b{display:block;font-size:14px;margin-bottom:3px}.ffc-opt p{margin:0;color:var(--muted);font-size:13px;line-height:1.5;max-width:720px}.ffc-opt .ffc-row{margin-top:10px}
+.ffc-section{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:26px 0 12px}
+.ffc-mq{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:center}@media(max-width:900px){.ffc-mq{grid-template-columns:minmax(0,1fr)}}
+.ffc-mq-n{font-size:46px;font-weight:600;line-height:1}.ffc-mq-n small{font-size:18px;color:var(--muted);font-weight:400}
+.ffc-meter{height:8px;border-radius:99px;background:#e5e7eb;overflow:hidden;margin:12px 0 6px}.ffc-meter i{display:block;height:100%;background:var(--brand);border-radius:99px}
+.ffc-keys{display:flex;flex-wrap:wrap;gap:8px}.ffc-key{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;background:#fff}
+.ffc-key i{width:8px;height:8px;border-radius:50%;background:#c3c4c7}.ffc-key.full i{background:#00a32a}.ffc-key.part i{background:#dba617}.ffc-key em{font-style:normal;color:var(--muted)}
+.ffc-update{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:var(--brand-soft);border:1px solid #c7d7fe;border-radius:12px;padding:12px 16px;margin-top:22px}
+.ffc-update p{margin:0;font-size:14px}
+.ffc-wrap details summary{cursor:pointer;color:var(--brand)}
 </style>';
+	}
+
+	private static function script() {
+		// "Status: Active/Off" follows its switch before saving.
+		echo '<script>document.addEventListener("change",function(e){var i=e.target;if(!i.matches||!i.matches(".ffc-card-f .ffc-switch input"))return;var b=i.closest(".ffc-card-f").querySelector(".ffc-status b");if(!b)return;b.textContent=i.checked?b.dataset.on:b.dataset.off;b.className=i.checked?"ffc-ok":"ffc-off"});</script>';
 	}
 
 	public static function page() {
@@ -294,25 +391,36 @@ class FFC_Admin {
 		$c    = FFC_Settings::connection();
 		$logo = $c && ! empty( $c['app_logo'] ) ? $c['app_logo'] : '';
 		$name = $c && ! empty( $c['app_name'] ) ? $c['app_name'] : 'Fullfilio';
+		$t    = self::TABS[ $tab ];
 
-		echo '<div class="wrap ffc-wrap"><h1 class="screen-reader-text">' . esc_html( $name ) . ' Connect</h1>';
-		if ( $notice ) {
-			echo '<div class="notice notice-' . esc_attr( in_array( $type, array( 'success', 'error', 'warning' ), true ) ? $type : 'info' ) . '"><p>' . esc_html( $notice ) . '</p></div>';
-		}
 		self::styles();
-		echo '<div class="ffc-app"><nav class="ffc-side"><div class="ffc-brand">' . ( $logo ? '<img src="' . esc_url( $logo ) . '" alt="">' : '<span class="ffc-mark">' . esc_html( strtoupper( substr( $name, 0, 1 ) ) ) . '</span>' ) . '<span>' . esc_html( $name ) . ' Connect</span></div>';
-		$group = '';
-		foreach ( self::TABS as $key => $t ) {
-			if ( $t[1] !== $group ) {
-				$group = $t[1];
-				echo '<div class="ffc-group">' . esc_html( $group ) . '</div>';
-			}
-			echo '<a class="ffc-nav' . ( $key === $tab ? ' on' : '' ) . '" href="' . esc_url( self::url( array( 'tab' => $key ) ) ) . '">' . esc_html( $t[0] ) . '</a>';
+		echo '<div class="wrap ffc-wrap"><div class="ffc-hero"><div class="ffc-in"><div class="ffc-hero-top"><div>';
+		echo '<p class="ffc-eyebrow">' . esc_html( $name ) . ' Connect ' . self::connection_chip( $c ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- connection_chip() escapes.
+		echo '<h1>' . esc_html( $t[0] ) . ' <span class="ffc-ver">' . esc_html( FFC_VERSION ) . '</span></h1>';
+		echo '<p class="ffc-sub">' . esc_html( sprintf( $t[2], $name ) ) . '</p></div>';
+		echo '<div class="ffc-orb">' . ( $logo ? '<img src="' . esc_url( $logo ) . '" alt="">' : self::icon( 'truck' ) ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- icon() returns fixed SVG.
+
+		$update = class_exists( 'FFC_Updater' ) && current_user_can( 'update_plugins' ) ? FFC_Updater::available() : null;
+		if ( $update ) {
+			echo '<div class="ffc-update"><p><strong>Version ' . esc_html( $update['version'] ) . ' is available.</strong> You have ' . esc_html( FFC_VERSION ) . '.</p><div class="ffc-row">'
+				. '<a class="ffc-btn primary" href="' . esc_url( FFC_Updater::update_url() ) . '">' . self::icon( 'download' ) . 'Update now</a>' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+				. '<a class="ffc-btn" href="' . esc_url( self_admin_url( 'plugins.php' ) ) . '">What\'s new</a></div></div>';
 		}
-		echo '<div class="ffc-version">Version ' . esc_html( FFC_VERSION ) . '</div></nav><main class="ffc-main">';
-		echo '<div class="ffc-head"><h1>' . esc_html( self::TABS[ $tab ][0] ) . '</h1>' . self::connection_chip( $c ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- connection_chip() escapes.
+
+		echo '<nav class="ffc-tabs" aria-label="Fullfilio Connect">';
+		foreach ( self::TABS as $key => $tt ) {
+			echo '<a class="ffc-btn' . ( $key === $tab ? ' on' : '' ) . '" href="' . esc_url( self::url( array( 'tab' => $key ) ) ) . '"' . ( $key === $tab ? ' aria-current="page"' : '' ) . '>' . self::icon( $tt[1] ) . esc_html( $tt[0] ) . '</a>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		}
+		echo '</nav></div></div>';
+
+		echo '<div class="ffc-body"><div class="ffc-in">';
+		if ( $notice ) {
+			echo '<div class="notice notice-' . esc_attr( in_array( $type, array( 'success', 'error', 'warning' ), true ) ? $type : 'info' ) . ' inline" style="margin:0 0 20px"><p>' . esc_html( $notice ) . '</p></div>';
+		}
 		call_user_func( array( __CLASS__, 'tab_' . $tab ), $c, $name );
-		echo '</main></div></div>';
+		echo '<p class="ffc-muted" style="margin-top:28px">' . esc_html( $name ) . ' Connect ' . esc_html( FFC_VERSION ) . ( class_exists( 'FFC_Updater' ) && current_user_can( 'update_plugins' ) ? ' · <a href="' . esc_url( FFC_Updater::check_url() ) . '">Check for updates</a>' : '' ) . '</p>';
+		echo '</div></div></div>';
+		self::script();
 	}
 
 	private static function connection_chip( $c ) {
@@ -324,90 +432,100 @@ class FFC_Admin {
 	}
 
 	private static function connect_steps() {
-		echo '<ol style="margin-left:18px"><li>In Fullfilio open <strong>Sales channels → WooCommerce → Connect</strong>.</li><li>Enter this store\'s address: <code>' . esc_html( home_url() ) . '</code> and approve the access WooCommerce asks for.</li><li>Fullfilio connects this plugin by itself. Nothing to copy.</li></ol>';
-		echo '<details><summary>Fullfilio cannot reach this site? Paste the connection code instead</summary><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="margin-top:8px">';
+		echo '<ol style="margin:0 0 14px 18px;line-height:1.7"><li>In Fullfilio open <strong>Sales channels → WooCommerce → Connect</strong>.</li><li>Enter this store\'s address: <code>' . esc_html( home_url() ) . '</code> and approve the access WooCommerce asks for.</li><li>Fullfilio connects this plugin by itself. Nothing to copy.</li></ol>';
+		echo '<details><summary>Fullfilio cannot reach this site? Paste the connection code instead</summary><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="margin-top:12px">';
 		wp_nonce_field( 'ffc_code' );
-		echo '<input type="hidden" name="action" value="ffc_code"><textarea name="code" rows="3" style="width:100%;max-width:640px" placeholder="ffc1.…" required></textarea><p><button class="ffc-btn primary" type="submit">Connect with code</button></p></form></details>';
+		echo '<input type="hidden" name="action" value="ffc_code"><textarea name="code" rows="3" placeholder="ffc1.…" required></textarea><p><button class="ffc-btn primary" type="submit">' . self::icon( 'plug' ) . 'Connect with code</button></p></form></details>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	private static function card_open( $title, $icon = '', $right = '' ) {
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2>' . ( $icon ? self::icon( $icon ) : '' ) . esc_html( $title ) . '</h2>' . $right . '</div><div class="ffc-card-b">'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- icon() fixed SVG; $right is built by callers from escaped parts.
+	}
+
+	private static function card_close( $footer = '' ) {
+		echo '</div>' . ( $footer ? '<div class="ffc-card-f">' . $footer . '</div>' : '' ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped parts.
 	}
 
 	// --- tabs ------------------------------------------------------------------------------------
 
 	private static function tab_overview( $c, $name ) {
-		$week     = FFC_Stats::series( 14 );
-		$orders   = wp_list_pluck( $week, 'orders' );
-		$revenue  = wp_list_pluck( $week, 'revenue' );
-		$leads    = wp_list_pluck( $week, 'leads' );
-		$stopped  = array_map( static function ( $d ) { return $d['blocked'] + $d['flagged']; }, $week );
-		$cards    = array(
-			array( 'Orders', FFC_Stats::total( 'orders' ), FFC_Stats::total( 'orders', 7, 7 ), $orders, false ),
-			array( 'Order value', FFC_Stats::total( 'revenue' ), FFC_Stats::total( 'revenue', 7, 7 ), $revenue, true ),
+		$week    = FFC_Stats::series( 14 );
+		$orders  = wp_list_pluck( $week, 'orders' );
+		$revenue = wp_list_pluck( $week, 'revenue' );
+		$leads   = wp_list_pluck( $week, 'leads' );
+		$stopped = array_map( static function ( $d ) { return $d['blocked'] + $d['flagged']; }, $week );
+		$cards   = array(
+			array( 'Orders · 7 days', FFC_Stats::total( 'orders' ), FFC_Stats::total( 'orders', 7, 7 ), $orders, false ),
+			array( 'Order value · 7 days', FFC_Stats::total( 'revenue' ), FFC_Stats::total( 'revenue', 7, 7 ), $revenue, true ),
 			array( 'Unfinished checkouts', FFC_Stats::total( 'leads' ), FFC_Stats::total( 'leads', 7, 7 ), $leads, false ),
 			array( 'Stopped or flagged', FFC_Stats::total( 'blocked' ) + FFC_Stats::total( 'flagged' ), FFC_Stats::total( 'blocked', 7, 7 ) + FFC_Stats::total( 'flagged', 7, 7 ), $stopped, false ),
 		);
 		if ( ! $c ) {
-			echo '<div class="ffc-card"><h2>Connect this store</h2>';
+			self::card_open( 'Connect this store', 'plug' );
 			self::connect_steps();
-			echo '</div>';
+			self::card_close();
 		}
-		echo '<p class="ffc-muted" style="margin:-8px 0 10px">Last 7 days, compared with the 7 days before</p><div class="ffc-cards">';
+		echo '<div class="ffc-stats">';
 		foreach ( $cards as $k ) {
 			$chg = self::change( $k[1], $k[2] );
 			echo '<div class="ffc-stat"><div><small>' . esc_html( $k[0] ) . '</small><b>' . esc_html( $k[4] ? self::money( $k[1] ) : number_format_i18n( $k[1] ) ) . '</b>' . ( $chg ? '<span class="ffc-chg' . ( '-' === $chg[0] ? ' down' : '' ) . '">' . esc_html( $chg ) . '</span>' : '' ) . '</div>' . self::spark( array_slice( $k[3], -7 ) ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- spark() builds numbers only.
 		}
 		echo '</div><div class="ffc-cols"><div>';
 
-		// Orders per day.
 		$max = max( 1, max( $orders ) );
 		$top = array_search( max( $orders ), $orders, true );
-		echo '<div class="ffc-card"><h2>Orders, last 14 days <span class="ffc-muted" style="font-weight:400;font-size:12px">counted since the plugin was installed</span></h2><div class="ffc-bars">';
+		self::card_open( 'Orders, last 14 days', 'dashboard', '<span class="ffc-muted" style="font-size:12px">counted since the plugin was installed</span>' );
+		echo '<div class="ffc-bars">';
 		foreach ( $week as $i => $d ) {
 			$h = max( 3, round( $d['orders'] / $max * 100 ) );
 			echo '<div class="ffc-bar' . ( $d['orders'] > 0 && $i === $top ? ' top' : '' ) . '" title="' . esc_attr( sprintf( '%s: %d orders · %s', wp_date( 'M j', strtotime( $d['day'] ) ), $d['orders'], self::money( $d['revenue'] ) ) ) . '"><i style="height:' . esc_attr( (string) $h ) . '%"></i><span>' . esc_html( wp_date( 'j', strtotime( $d['day'] ) ) ) . '</span></div>';
 		}
-		echo '</div></div>';
+		echo '</div>';
+		self::card_close();
 
-		echo '<div class="ffc-card"><h2>Recent orders <a class="ffc-btn" href="' . esc_url( self::url( array( 'tab' => 'orders' ) ) ) . '">All</a></h2>';
+		self::card_open( 'Recent orders', 'orders', '<a class="ffc-btn sm" href="' . esc_url( self::url( array( 'tab' => 'orders' ) ) ) . '">All orders</a>' );
 		self::orders_table( self::recent_orders( 8 ) );
-		echo '</div></div><div>';
+		self::card_close();
+		echo '</div><div>';
 
-		// Right column: connection, delivery health, activity.
 		$state = FFC_Settings::state();
-		echo '<div class="ffc-card"><h2>' . esc_html( $name ) . '</h2>';
+		self::card_open( $name, 'plug' );
 		if ( $c ) {
 			echo '<p><span class="ffc-dot' . ( empty( $state['last_error'] ) ? '' : ' warn' ) . '"></span>Connected since ' . esc_html( wp_date( 'M j, Y', strtotime( $c['paired_at'] ) ) ) . '</p><p class="ffc-muted">Last contact ' . esc_html( isset( $state['last_ok_at'] ) ? $state['last_ok_at'] : 'never' ) . '</p><div class="ffc-row">';
-			self::button( 'test', 'Test connection', 'ffc-btn primary' );
+			self::button( 'test', 'Test connection', 'ffc-btn primary', 'refresh' );
 			if ( $c['app_url'] ) {
-				echo '<a class="ffc-btn" href="' . esc_url( $c['app_url'] ) . '" target="_blank" rel="noopener">Open ' . esc_html( $name ) . '</a>';
+				echo '<a class="ffc-btn" href="' . esc_url( $c['app_url'] ) . '" target="_blank" rel="noopener">' . self::icon( 'external' ) . 'Open ' . esc_html( $name ) . '</a>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			}
 			echo '</div>';
 		} else {
-			echo '<p class="ffc-muted">Not connected yet.</p>';
+			echo '<p class="ffc-muted">Not connected yet. Ad tracking and checkout protection work without it.</p>';
 		}
-		echo '</div>';
+		self::card_close();
 
 		$q    = FFC_Outbox::stats();
 		$done = $q['sent'] + $q['failed'];
 		$pct  = $done > 0 ? round( $q['sent'] / $done * 100, 1 ) : 100;
-		echo '<div class="ffc-card"><h2>Delivery to ' . esc_html( $name ) . '</h2>' . self::gauge( $pct ) . '<div class="ffc-gauge-n">' . esc_html( (string) $pct ) . '%</div><p class="ffc-muted" style="text-align:center">' . esc_html( sprintf( 'delivered · %d waiting · %d failed', $q['pending'] + $q['sending'], $q['failed'] ) ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- gauge() builds numbers only.
+		self::card_open( 'Delivery to ' . $name, 'send' );
+		echo self::gauge( $pct ) . '<div class="ffc-gauge-n">' . esc_html( (string) $pct ) . '%</div><p class="ffc-muted" style="text-align:center">' . esc_html( sprintf( 'delivered · %d waiting · %d failed', $q['pending'] + $q['sending'], $q['failed'] ) ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- gauge() builds numbers only.
 		if ( $q['failed'] > 0 ) {
 			echo '<div class="ffc-row" style="justify-content:center">';
-			self::button( 'retry', 'Send again', 'ffc-btn primary' );
+			self::button( 'retry', 'Send again', 'ffc-btn primary', 'refresh' );
 			echo '</div>';
 		}
-		echo '</div>';
+		self::card_close();
 
 		$feed = array();
 		foreach ( FFC_Log::recent( 6 ) as $l ) {
-			$feed[] = array( 'at' => $l['at'], 'text' => $l['message'], 'kind' => $l['level'] );
+			$feed[] = array( 'at' => $l['at'], 'text' => $l['message'] );
 		}
 		foreach ( FFC_Protect::recent( 4 ) as $p ) {
-			$feed[] = array( 'at' => $p['at'] . 'Z', 'text' => ( 'bot_flagged' === $p['kind'] ? 'Flagged ' : 'Stopped ' ) . $p['phone'] . ': ' . $p['why'], 'kind' => 'protect' );
+			$feed[] = array( 'at' => $p['at'] . 'Z', 'text' => ( 'bot_flagged' === $p['kind'] ? 'Flagged ' : 'Stopped ' ) . $p['phone'] . ': ' . $p['why'] );
 		}
 		foreach ( FFC_Stock::recent( 4 ) as $m ) {
-			$feed[] = array( 'at' => $m['at'] . 'Z', 'text' => sprintf( '+%d %s back in stock (#%s)', $m['added'], $m['product'], $m['order'] ), 'kind' => 'stock' );
+			$feed[] = array( 'at' => $m['at'] . 'Z', 'text' => sprintf( '+%d %s back in stock (#%s)', $m['added'], $m['product'], $m['order'] ) );
 		}
 		usort( $feed, static function ( $a, $b ) { return strcmp( $b['at'], $a['at'] ); } );
-		echo '<div class="ffc-card"><h2>Activity</h2>';
+		self::card_open( 'Activity', 'inbox' );
 		if ( ! $feed ) {
 			echo '<p class="ffc-muted">Nothing yet.</p>';
 		} else {
@@ -417,236 +535,301 @@ class FFC_Admin {
 			}
 			echo '</ul>';
 		}
-		echo '</div></div></div>';
+		self::card_close();
+		echo '</div></div>';
 	}
 
 	private static function tab_orders( $c, $name ) {
-		echo '<div class="ffc-card"><h2>Latest orders</h2>';
+		self::card_open( 'Latest orders', 'orders' );
 		self::orders_table( self::recent_orders( 25 ) );
-		echo '</div><div class="ffc-card"><h2>Statuses ' . esc_html( $name ) . ' sets</h2><div class="ffc-row">';
+		self::card_close();
+		self::card_open( 'Statuses ' . $name . ' sets', 'tag' );
+		echo '<div class="ffc-row" style="margin-bottom:12px">';
 		foreach ( array( 'confirmed', 'shipped', 'delivered', 'partial-delivered', 'returning', 'returned', 'cancelled' ) as $st ) {
 			echo self::badge( $st ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- badge() escapes.
 		}
-		echo '</div><p class="ffc-muted">The WooCommerce order follows the order in ' . esc_html( $name ) . ' from Confirmed on. A status set by ' . esc_html( $name ) . ' is not sent back to it.</p></div>';
+		echo '</div><p class="ffc-muted">The WooCommerce order follows the order in ' . esc_html( $name ) . ' from Confirmed on. A status set by ' . esc_html( $name ) . ' is not sent back to it.</p>';
+		self::card_close();
 	}
 
 	private static function tab_stock( $c, $name ) {
 		$st = FFC_Stock::summary();
-		echo '<div class="ffc-cards">';
+		echo '<div class="ffc-stats">';
 		foreach ( array( array( 'Tracked products', $st['tracked'] ), array( 'Low (≤ ' . $st['threshold'] . ')', $st['low'] ), array( 'Out of stock', $st['out'] ), array( 'Put back · 7 days', array_sum( array_map( static function ( $m ) { return strtotime( $m['at'] . ' UTC' ) > time() - WEEK_IN_SECONDS ? (int) $m['added'] : 0; }, FFC_Stock::recent( 200 ) ) ) ) ) as $k ) {
 			echo '<div class="ffc-stat"><div><small>' . esc_html( $k[0] ) . '</small><b>' . esc_html( number_format_i18n( $k[1] ) ) . '</b></div></div>';
 		}
-		echo '</div><div class="ffc-card"><h2>Who keeps the count</h2><p>' . ( FFC_Stock::managed_by_fullfilio()
+		echo '</div>';
+		self::card_open( 'Who keeps the count', 'stock' );
+		echo '<p>' . ( FFC_Stock::managed_by_fullfilio()
 			? '<strong>' . esc_html( $name ) . ' keeps the count.</strong> <span class="ffc-muted">It sends each product\'s stock here. Orders still take stock off at checkout; cancels and returns are counted in ' . esc_html( $name ) . ', so they are not put back here twice.</span>'
-			: '<strong>WooCommerce keeps the count.</strong> <span class="ffc-muted">A cancel puts items back the WooCommerce way. Items that come back to ' . esc_html( $name ) . ' (a return, or the undelivered part of a partial delivery) are put back here automatically, once.</span>' ) . '</p></div>';
+			: '<strong>WooCommerce keeps the count.</strong> <span class="ffc-muted">A cancel puts items back the WooCommerce way. Items that come back to ' . esc_html( $name ) . ' (a return, or the undelivered part of a partial delivery) are put back here automatically, once.</span>' ) . '</p>';
+		self::card_close();
 		if ( $st['low_items'] ) {
-			echo '<div class="ffc-card"><h2>Low or out of stock</h2><table class="ffc-tbl"><thead><tr><th>Product</th><th>SKU</th><th>Stock</th></tr></thead><tbody>';
+			self::card_open( 'Low or out of stock', 'stock' );
+			echo '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>Product</th><th>SKU</th><th>Stock</th></tr></thead><tbody>';
 			foreach ( $st['low_items'] as $it ) {
 				echo '<tr><td>' . ( $it['edit'] ? '<a href="' . esc_url( $it['edit'] ) . '">' . esc_html( $it['name'] ) . '</a>' : esc_html( $it['name'] ) ) . '</td><td class="ffc-mono">' . esc_html( (string) $it['sku'] ) . '</td><td>' . esc_html( (string) $it['stock'] ) . '</td></tr>';
 			}
 			echo '</tbody></table></div>';
+			self::card_close();
 		}
 		$moves = FFC_Stock::recent( 15 );
-		echo '<div class="ffc-card"><h2>Put back by ' . esc_html( $name ) . '</h2>';
+		self::card_open( 'Put back by ' . $name, 'refresh' );
 		if ( ! $moves ) {
 			echo '<p class="ffc-muted">Nothing yet. Returned items show here when they are put back.</p>';
 		} else {
-			echo '<table class="ffc-tbl"><thead><tr><th>When (UTC)</th><th>Order</th><th>Product</th><th>Added</th><th>Stock after</th><th>Why</th></tr></thead><tbody>';
+			echo '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>When (UTC)</th><th>Order</th><th>Product</th><th>Added</th><th>Stock after</th><th>Why</th></tr></thead><tbody>';
 			foreach ( $moves as $m ) {
 				$order = ! empty( $m['order_id'] ) && function_exists( 'wc_get_order' ) ? wc_get_order( $m['order_id'] ) : null;
 				$link  = $order ? $order->get_edit_order_url() : '';
 				echo '<tr><td>' . esc_html( $m['at'] ) . '</td><td>' . ( $link ? '<a href="' . esc_url( $link ) . '">#' . esc_html( (string) $m['order'] ) . '</a>' : '#' . esc_html( (string) $m['order'] ) ) . '</td><td>' . esc_html( $m['product'] ) . '</td><td>+' . esc_html( (string) $m['added'] ) . '</td><td>' . esc_html( null === $m['stock'] ? '?' : (string) $m['stock'] ) . '</td><td class="ffc-muted">' . esc_html( $m['reason'] ) . '</td></tr>';
 			}
-			echo '</tbody></table>';
+			echo '</tbody></table></div>';
 		}
-		echo '</div>';
+		self::card_close();
 	}
 
 	private static function tab_protect( $c, $name ) {
 		$s     = FFC_Protect::settings();
 		$radio = static function ( $field, $value, $title, $text ) use ( $s ) {
-			return '<label><input type="radio" name="' . esc_attr( $field ) . '" value="' . esc_attr( $value ) . '"' . checked( $s[ $field ], $value, false ) . '><b>' . esc_html( $title ) . '</b><span class="ffc-muted">' . esc_html( $text ) . '</span></label>';
+			return '<label><input type="radio" name="' . esc_attr( $field ) . '" value="' . esc_attr( $value ) . '"' . checked( $s[ $field ], $value, false ) . '><b>' . esc_html( $title ) . '</b><span>' . esc_html( $text ) . '</span></label>';
 		};
-		echo '<form class="ffc-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( 'ffc_protect_save' );
-		echo '<input type="hidden" name="action" value="ffc_protect_save">';
-		echo '<div class="ffc-card"><h2>Phone number check</h2><p class="ffc-muted">Checked on the server when the order is placed (it cannot be skipped from the browser). The order keeps the clean 01XXXXXXXXX number.</p><div class="ffc-choice">'
+		echo '<input type="hidden" name="action" value="ffc_protect_save"><div class="ffc-mods">';
+
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#2563eb">' . self::icon( 'phone' ) . '</span>Phone number check</h2></div><div class="ffc-card-b"><p class="ffc-desc">Checked on the server when the order is placed (it cannot be skipped from the browser). The order keeps the clean 01XXXXXXXXX number.</p><div class="ffc-choice">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			. $radio( 'phone_mode', 'off', 'Off', 'Any number is accepted.' )
-			. $radio( 'phone_mode', 'normal', 'Normal', 'Only Bangladeshi mobile numbers (01[3-9] and 8 digits; +880 is fine).' )
-			. $radio( 'phone_mode', 'strict', 'Strict', 'Also refuses made-up numbers like 01711111111 or 01712345678.' )
-			. '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $radio escapes.
-		echo '<div class="ffc-card"><h2>Bot and fake order protection</h2><p class="ffc-muted">Looks for no typing or tapping on the checkout, an order sent within seconds, a script instead of a browser, a hidden field filled in, and many orders from one IP.</p><div class="ffc-choice">'
+			. $radio( 'phone_mode', 'normal', 'Normal', 'Only Bangladeshi mobile numbers (01[3-9] + 8 digits; +880 is fine).' )
+			. $radio( 'phone_mode', 'strict', 'Strict', 'Also refuses made-up numbers like 01711111111.' )
+			. '</div></div><div class="ffc-card-f">' . self::status_text( 'off' !== $s['phone_mode'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $radio and status_text() escape.
+
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#7c3aed">' . self::icon( 'bot' ) . '</span>Bots and fake orders</h2></div><div class="ffc-card-b"><p class="ffc-desc">Looks for no typing or tapping, an order sent within seconds, a script instead of a browser, a hidden field filled in, and many orders from one IP.</p><div class="ffc-choice">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			. $radio( 'bot_mode', 'off', 'Off', 'No bot check.' )
-			. $radio( 'bot_mode', 'flag', 'Flag only', 'The order goes through; it gets a risk note you can see on the order.' )
-			. $radio( 'bot_mode', 'block', 'Block', 'High-risk checkouts are refused with a friendly message.' )
-			. '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $radio escapes.
-		echo '<label for="ffc-min">Seconds a person needs at least</label><input id="ffc-min" type="number" min="0" max="60" name="min_seconds" value="' . esc_attr( (string) $s['min_seconds'] ) . '"> <span class="ffc-muted">from opening the checkout to placing the order (0 = no limit)</span>';
-		echo '<label for="ffc-ip">Orders per IP per hour</label><input id="ffc-ip" type="number" min="1" max="50" name="ip_hourly" value="' . esc_attr( (string) $s['ip_hourly'] ) . '"> <span class="ffc-muted">more than this counts as a risk</span>';
-		echo '<label for="ffc-ts">Cloudflare Turnstile (optional)</label><p class="ffc-muted" style="margin-top:0">A free invisible check from Cloudflare on the classic checkout. Create a widget at dash.cloudflare.com → Turnstile and paste its keys.</p>';
-		echo '<input id="ffc-ts" type="text" name="turnstile_site" placeholder="Site key" value="' . esc_attr( $s['turnstile_site'] ) . '"> <input type="password" name="turnstile_secret" autocomplete="new-password" placeholder="' . esc_attr( $s['turnstile_secret'] ? 'Secret key saved — leave empty to keep it' : 'Secret key' ) . '">';
-		if ( $s['turnstile_secret'] ) {
-			echo ' <label style="display:inline;font-weight:400"><input type="checkbox" name="turnstile_clear" value="1"> Remove the keys</label>';
-		}
-		echo '</div><p><button class="ffc-btn primary" type="submit">Save protection</button></p></form>';
+			. $radio( 'bot_mode', 'flag', 'Flag only', 'The order goes through with a risk note.' )
+			. $radio( 'bot_mode', 'block', 'Block', 'High-risk checkouts are refused politely.' )
+			. '</div><div class="ffc-row" style="margin-top:16px;gap:24px"><div class="ffc-field" style="margin:0"><label for="ffc-min">Seconds a person needs at least</label><input id="ffc-min" class="ffc-num" type="number" min="0" max="60" name="min_seconds" value="' . esc_attr( (string) $s['min_seconds'] ) . '"><small>from opening the checkout to placing the order (0 = no limit)</small></div>'
+			. '<div class="ffc-field" style="margin:0"><label for="ffc-ip">Orders per IP per hour</label><input id="ffc-ip" class="ffc-num" type="number" min="1" max="50" name="ip_hourly" value="' . esc_attr( (string) $s['ip_hourly'] ) . '"><small>more than this counts as a risk</small></div></div>'
+			. '</div><div class="ffc-card-f">' . self::status_text( 'off' !== $s['bot_mode'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#f38020">' . self::icon( 'cloud' ) . '</span>Cloudflare Turnstile</h2></div><div class="ffc-card-b"><p class="ffc-desc">A free, invisible human check from Cloudflare on the classic checkout. Create a widget at dash.cloudflare.com → Turnstile and paste its keys.</p>' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			. '<div class="ffc-field"><label for="ffc-ts">Site key</label><input id="ffc-ts" type="text" name="turnstile_site" value="' . esc_attr( $s['turnstile_site'] ) . '"></div>'
+			. '<div class="ffc-field"><label for="ffc-tss">Secret key</label><input id="ffc-tss" type="password" name="turnstile_secret" autocomplete="new-password" placeholder="' . esc_attr( $s['turnstile_secret'] ? 'Saved — leave empty to keep it' : 'Secret key' ) . '">'
+			. ( $s['turnstile_secret'] ? '<label class="ffc-check"><input type="checkbox" name="turnstile_clear" value="1"> Remove the keys</label>' : '' ) . '</div>'
+			. '</div><div class="ffc-card-f">' . self::status_text( FFC_Protect::turnstile_on() ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+
+		echo '</div><p><button class="ffc-btn primary" type="submit">' . self::icon( 'check' ) . 'Save protection</button></p></form>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 		$log = FFC_Protect::recent( 25 );
-		echo '<div class="ffc-card"><h2>Stopped or flagged</h2>';
+		self::card_open( 'Stopped or flagged', 'shield' );
 		if ( ! $log ) {
 			echo '<p class="ffc-muted">Nothing stopped or flagged yet.</p>';
 		} else {
-			echo '<table class="ffc-tbl"><thead><tr><th>When (UTC)</th><th>What</th><th>Phone</th><th>Risk</th><th>Why</th></tr></thead><tbody>';
+			echo '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>When (UTC)</th><th>What</th><th>Phone</th><th>Risk</th><th>Why</th></tr></thead><tbody>';
 			$what = array( 'phone' => array( 'Wrong number', 'red' ), 'bot_blocked' => array( 'Blocked', 'red' ), 'bot_flagged' => array( 'Flagged', 'amber' ) );
 			foreach ( $log as $l ) {
 				$w = isset( $what[ $l['kind'] ] ) ? $what[ $l['kind'] ] : array( $l['kind'], 'gray' );
 				echo '<tr><td>' . esc_html( $l['at'] ) . '</td><td><span class="ffc-badge ffc-' . esc_attr( $w[1] ) . '">' . esc_html( $w[0] ) . '</span></td><td class="ffc-mono">' . esc_html( $l['phone'] ) . '</td><td>' . esc_html( null === $l['score'] ? '—' : (string) $l['score'] ) . '</td><td class="ffc-muted">' . esc_html( $l['why'] ) . '</td></tr>';
 			}
-			echo '</tbody></table>';
+			echo '</tbody></table></div>';
 		}
-		echo '</div>';
+		self::card_close();
+	}
+
+	/** Footer for one ad platform: status, last connection result, switch. */
+	private static function platform_footer( $platform, $on ) {
+		$st    = FFC_Tracking::status( $platform );
+		$extra = '';
+		if ( $st ) {
+			if ( $st['ok'] ) {
+				$extra = ' <span class="ffc-badge ffc-green" title="' . esc_attr( 'Last check ' . $st['at'] . ' UTC' ) . '">' . self::icon( 'check' ) . 'Connected</span>';
+			} elseif ( 'hint' === $st['kind'] ) {
+				$extra = ' <span class="ffc-badge ffc-amber" title="' . esc_attr( $st['message'] ) . '">Not checked yet</span>';
+			} else {
+				$extra = ' <span class="ffc-badge ffc-red" title="' . esc_attr( $st['message'] . ' (' . $st['at'] . ' UTC)' ) . '">Problem: ' . esc_html( wp_html_excerpt( $st['message'], 60, '…' ) ) . '</span>';
+			}
+		}
+		return self::status_text( $on, $extra ) . self::switch_input( $platform . '_on', $on );
 	}
 
 	private static function tab_tracking( $c, $name ) {
 		$s   = FFC_Tracking::settings();
-		$sw  = static function ( $field, $on ) {
-			return '<label class="ffc-switch"><input type="checkbox" name="' . esc_attr( $field ) . '" value="1"' . checked( $on, true, false ) . '><span></span></label>';
-		};
-		$tok = static function ( $field, $has ) {
-			return '<input type="password" name="' . esc_attr( $field ) . '" autocomplete="new-password" placeholder="' . esc_attr( $has ? 'Saved — leave empty to keep it' : 'Access token' ) . '">'
-				. ( $has ? '<label style="font-weight:400;color:var(--muted)"><input type="checkbox" name="' . esc_attr( $field ) . '_clear" value="1"> Remove the token</label>' : '' );
-		};
-		$icon = static function ( $bg, $letter ) {
-			return '<span class="ffc-mod-ic" style="background:' . esc_attr( $bg ) . ';color:#fff;font-weight:800">' . esc_html( $letter ) . '</span>';
+		$tok = static function ( $field, $has, $label ) {
+			return '<input type="password" name="' . esc_attr( $field ) . '" autocomplete="new-password" placeholder="' . esc_attr( $has ? 'Saved — leave empty to keep it' : $label ) . '">'
+				. ( $has ? '<label class="ffc-check"><input type="checkbox" name="' . esc_attr( $field ) . '_clear" value="1"> Remove</label>' : '' );
 		};
 		$field = static function ( $label, $input, $hint = '' ) {
-			return '<div class="ffc-field"><small>' . esc_html( $label ) . '</small>' . $input . ( $hint ? '<small>' . esc_html( $hint ) . '</small>' : '' ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $input is built from esc_attr'd fields above.
+			return '<div class="ffc-field"><label>' . esc_html( $label ) . '</label>' . $input . ( $hint ? '<small>' . esc_html( $hint ) . '</small>' : '' ) . '</div>';
+		};
+		$test = static function ( $platform ) {
+			return '<button type="submit" class="ffc-btn" name="ffc_test" value="' . esc_attr( $platform ) . '">' . self::icon( 'refresh' ) . 'Save &amp; test connection</button>';
 		};
 
-		echo '<form class="ffc-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-		wp_nonce_field( 'ffc_tracking_save' );
-		echo '<input type="hidden" name="action" value="ffc_tracking_save">';
-		echo '<p class="ffc-muted" style="margin:-4px 0 12px">Turn on your own ad pixels. The conversion is <strong>held</strong> and only sent once the order is call-confirmed — and never for a low-receive-rate customer — so the ad platforms learn from orders that actually get received.</p>';
+		// Match quality (our estimate from the keys actually sent).
+		$mq     = FFC_Tracking::match_summary();
+		$labels = array(
+			'em' => 'Email', 'ph' => 'Phone', 'fbc' => 'Click id (fbc)', 'external_id' => 'Visitor id', 'fbp' => 'Browser id (fbp)',
+			'client_ip_address' => 'IP address', 'client_user_agent' => 'Browser', 'fn' => 'First name', 'ln' => 'Last name',
+			'ct' => 'City', 'st' => 'District', 'zp' => 'Postcode', 'country' => 'Country',
+		);
+		self::card_open( 'Match quality', 'target', '<span class="ffc-badge ffc-blue">Meta · estimate</span>' );
+		echo '<div class="ffc-mq"><div><div class="ffc-mq-n">' . esc_html( $mq ? number_format_i18n( $mq['score'], 1 ) : '—' ) . ' <small>/ 10</small></div><div class="ffc-meter"><i style="width:' . esc_attr( (string) ( $mq ? $mq['score'] * 10 : 0 ) ) . '%"></i></div><small class="ffc-hint">' . esc_html( $mq ? sprintf( 'From the last %d purchases sent', $mq['orders'] ) : 'Shows after the first purchase is sent' ) . '</small></div><div><div class="ffc-keys">';
+		foreach ( $labels as $k => $l ) {
+			$pct = $mq ? (int) $mq['coverage'][ $k ] : null;
+			$cls = null === $pct ? '' : ( $pct >= 80 ? ' full' : ( $pct > 0 ? ' part' : '' ) );
+			echo '<span class="ffc-key' . esc_attr( $cls ) . '"><i></i>' . esc_html( $l ) . ( null === $pct ? '' : ' <em>' . esc_html( $pct . '%' ) . '</em>' ) . '</span>';
+		}
+		echo '</div><p class="ffc-hint" style="margin:12px 0 0">Every purchase carries all of these when the store has them, hashed. Meta shows its own Event Match Quality in Events Manager → your pixel → Overview; email is the biggest gap for most cash-on-delivery stores — an optional email field at checkout lifts the score above 8.</p></div></div>';
+		self::card_close();
 
-		echo '<div class="ffc-mods">';
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		wp_nonce_field( 'ffc_tracking_save' );
+		echo '<input type="hidden" name="action" value="ffc_tracking_save"><div class="ffc-mods">';
 
 		// Meta
-		$on = $s['meta']['on'] ? 'Active' : 'Off';
-		echo '<div class="ffc-mod"><div class="ffc-mod-h">' . $icon( '#1877f2', 'f' ) . '<div><h3>Meta — Pixel + Conversions API</h3><p>Facebook & Instagram. Browser Pixel plus server-side CAPI with fbc/fbp click ids and one event id to de-duplicate.</p></div>' . $sw( 'meta_on', $s['meta']['on'] ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<div class="ffc-mod-body">'
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#1877f2">f</span>Meta — Pixel + Conversions API</h2></div><div class="ffc-card-b">'
+			. '<p class="ffc-desc">Facebook and Instagram. The browser Pixel and the Conversions API send every event with one event id, so Meta counts it once.</p>'
 			. $field( 'Pixel ID (dataset ID)', '<input type="text" name="meta_pixel" value="' . esc_attr( $s['meta']['pixel'] ) . '" placeholder="123456789012345">' )
-			. $field( 'Conversions API access token', $tok( 'meta_token', ! empty( $s['meta']['token'] ) ) )
-			. $field( 'Test event code (optional)', '<input type="text" name="meta_test" value="' . esc_attr( $s['meta']['test'] ) . '" placeholder="TEST12345">', 'From Events Manager → Test events. Leave empty for live.' )
-			. '</div><div class="ffc-status ffc-muted">Status: ' . esc_html( $on ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			. $field( 'Conversions API access token', $tok( 'meta_token', ! empty( $s['meta']['token'] ), 'Access token' ), 'Events Manager → your pixel → Settings → Conversions API → Generate access token.' )
+			. $field( 'Test event code (optional)', '<input type="text" name="meta_test" value="' . esc_attr( $s['meta']['test'] ) . '" placeholder="TEST12345">', 'Events Manager → Test events. Leave empty for live.' )
+			. $test( 'meta' ) . '</div><div class="ffc-card-f">' . self::platform_footer( 'meta', $s['meta']['on'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped parts.
 
 		// TikTok
-		$on = $s['tiktok']['on'] ? 'Active' : 'Off';
-		echo '<div class="ffc-mod"><div class="ffc-mod-h">' . $icon( '#000', 'T' ) . '<div><h3>TikTok — Pixel + Events API</h3><p>Browser Pixel plus server-side Events API with the ttclid click id. CompletePayment on confirm.</p></div>' . $sw( 'tiktok_on', $s['tiktok']['on'] ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<div class="ffc-mod-body">'
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#000">' . self::icon( 'megaphone' ) . '</span>TikTok — Pixel + Events API</h2></div><div class="ffc-card-b">'
+			. '<p class="ffc-desc">The browser Pixel and the Events API with the ttclid click id and the _ttp cookie; CompletePayment when the order counts.</p>'
 			. $field( 'Pixel ID', '<input type="text" name="tiktok_pixel" value="' . esc_attr( $s['tiktok']['pixel'] ) . '" placeholder="CXXXXXXXXXXXXXXXXXXX">' )
-			. $field( 'Events API access token', $tok( 'tiktok_token', ! empty( $s['tiktok']['token'] ) ) )
-			. $field( 'Test event code (optional)', '<input type="text" name="tiktok_test" value="' . esc_attr( $s['tiktok']['test'] ) . '" placeholder="TEST12345">' )
-			. '</div><div class="ffc-status ffc-muted">Status: ' . esc_html( $on ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			. $field( 'Events API access token', $tok( 'tiktok_token', ! empty( $s['tiktok']['token'] ), 'Access token' ), 'Events Manager → your pixel → Settings → Generate access token.' )
+			. $field( 'Test event code', '<input type="text" name="tiktok_test" value="' . esc_attr( $s['tiktok']['test'] ) . '" placeholder="TEST12345">', 'Needed for the connection test. Remove it to go live.' )
+			. $test( 'tiktok' ) . '</div><div class="ffc-card-f">' . self::platform_footer( 'tiktok', $s['tiktok']['on'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 		// Google
-		$on = $s['google']['on'] ? 'Active' : 'Off';
-		echo '<div class="ffc-mod"><div class="ffc-mod-h">' . $icon( '#ea4335', 'G' ) . '<div><h3>Google — Ads + GA4 (Enhanced Conversions)</h3><p>gtag in the browser plus server-side GA4 Measurement Protocol with hashed customer data; the purchase imports into Google Ads.</p></div>' . $sw( 'google_on', $s['google']['on'] ) . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<div class="ffc-mod-body">'
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#fff;border:1px solid #dcdcde;color:#4285f4">G</span>Google — Ads + GA4 (Enhanced Conversions)</h2></div><div class="ffc-card-b">'
+			. '<p class="ffc-desc">gtag in the browser and the GA4 Measurement Protocol from the server with hashed email, phone and address; the purchase imports into Google Ads.</p>'
 			. $field( 'Google Ads conversion ID', '<input type="text" name="google_conv_id" value="' . esc_attr( $s['google']['conv_id'] ) . '" placeholder="AW-123456789">' )
-			. $field( 'Conversion label (optional)', '<input type="text" name="google_conv_label" value="' . esc_attr( $s['google']['conv_label'] ) . '" placeholder="abcDEF123">' )
+			. $field( 'Conversion label', '<input type="text" name="google_conv_label" value="' . esc_attr( $s['google']['conv_label'] ) . '" placeholder="abcDEF123">' )
 			. $field( 'GA4 Measurement ID', '<input type="text" name="google_ga4_id" value="' . esc_attr( $s['google']['ga4_id'] ) . '" placeholder="G-XXXXXXX">' )
-			. $field( 'GA4 Measurement Protocol API secret', str_replace( 'Access token', 'API secret', $tok( 'google_ga4_secret', ! empty( $s['google']['ga4_secret'] ) ) ) )
-			. '</div><div class="ffc-status ffc-muted">Status: ' . esc_html( $on ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			. $field( 'GA4 Measurement Protocol API secret', $tok( 'google_ga4_secret', ! empty( $s['google']['ga4_secret'] ), 'API secret' ), 'GA4 → Admin → Data streams → your stream → Measurement Protocol API secrets.' )
+			. $test( 'google' ) . '</div><div class="ffc-card-f">' . self::platform_footer( 'google', $s['google']['on'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
+		// Sending rules (fourth tile spans the grid on narrow screens).
+		$opt = static function ( $field, $on, $title, $text, $more = '' ) {
+			return '<div class="ffc-opt"><div><b>' . esc_html( $title ) . '</b><p>' . esc_html( $text ) . '</p>' . $more . '</div><label class="ffc-switch sm"><input type="checkbox" name="' . esc_attr( $field ) . '" value="1"' . checked( $on, true, false ) . ' aria-label="' . esc_attr( $title ) . '"><span></span></label></div>';
+		};
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#0f766e">' . self::icon( 'shield' ) . '</span>Which orders count</h2></div><div class="ffc-card-b">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			. $opt( 'exclude_low_rr', $s['exclude_low_rr'], 'Skip low-receive-rate customers', 'A customer whose courier receive rate is below the limit is not counted. ' . $name . ' sends the rate when it confirms; a shield "advance" or "block" counts as low.', '<div class="ffc-row"><input class="ffc-num" type="number" min="0" max="100" name="min_rr" value="' . esc_attr( (string) $s['min_rr'] ) . '" aria-label="Lowest receive rate"><span class="ffc-muted">% lowest receive rate</span></div>' )
+			. $opt( 'skip_duplicates', $s['skip_duplicates'], 'Skip duplicate orders', 'The same customer (phone, else email) ordering again soon is counted once — like a double-tapped checkout or a re-order after a call.', '<div class="ffc-row"><input class="ffc-num" type="number" min="1" max="168" name="dup_hours" value="' . esc_attr( (string) $s['dup_hours'] ) . '" aria-label="Hours"><span class="ffc-muted">hours</span></div>' )
+			. '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '</div>'; // /ffc-mods
 
-		// Sending rules
-		echo '<div class="ffc-card"><h2>Sending rules</h2>';
-		echo '<label>When to count the conversion</label><div class="ffc-choice">'
-			. '<label><input type="radio" name="trigger" value="confirmed"' . checked( $s['trigger'], 'confirmed', false ) . '><b>On call confirmation</b><span class="ffc-muted">Sent when the order reaches Confirmed (the call confirmed it). Recommended.</span></label>'
-			. '<label><input type="radio" name="trigger" value="delivered"' . checked( $s['trigger'], 'delivered', false ) . '><b>On delivery only</b><span class="ffc-muted">Held until the parcel is Delivered. The purest signal, but slower.</span></label>'
-			. '</div>';
-		echo '<div class="ffc-field" style="margin-top:12px"><label class="ffc-row" style="font-weight:600;color:#fff">' . $sw( 'exclude_low_rr', $s['exclude_low_rr'] ) . '<span style="margin-left:4px">Skip low-receive-rate customers</span></label><small class="ffc-muted">Do not send a conversion for a customer whose courier receive rate is below the limit (Fullfilio provides the rate; a shield "advance/block" also counts as low).</small></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<label for="ffc-rr">Lowest receive rate to send (%)</label><input id="ffc-rr" type="number" min="0" max="100" name="min_rr" value="' . esc_attr( (string) $s['min_rr'] ) . '"> <span class="ffc-muted">orders below this are not sent</span>';
-		echo '<div class="ffc-field" style="margin-top:12px"><label class="ffc-row" style="font-weight:600;color:#fff">' . $sw( 'browser_events', $s['browser_events'] ) . '<span style="margin-left:4px">Fire funnel events in the browser</span></label><small class="ffc-muted">PageView, ViewContent, InitiateCheckout and AddToCart. Purchase stays server-side.</small></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<div class="ffc-field" style="margin-top:8px"><label class="ffc-row" style="font-weight:600;color:#fff">' . $sw( 'browser_purchase', $s['browser_purchase'] ) . '<span style="margin-left:4px">Also fire Purchase in the browser on the thank-you page</span></label><small class="ffc-muted">Off by default — this would count orders that are not yet confirmed. The same event id de-duplicates with the server event if you turn it on.</small></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo '<p style="margin-top:14px"><button class="ffc-btn primary" type="submit">Save ad tracking</button></p></div></form>';
+		self::card_open( 'Sending rules', 'send' );
+		$choice = static function ( $value, $title, $text, $tag = '' ) use ( $s ) {
+			return '<label><input type="radio" name="trigger" value="' . esc_attr( $value ) . '"' . checked( $s['trigger'], $value, false ) . '><b>' . esc_html( $title ) . ( $tag ? ' <span class="ffc-badge ffc-blue">' . esc_html( $tag ) . '</span>' : '' ) . '</b><span>' . esc_html( $text ) . '</span></label>';
+		};
+		echo '<p class="ffc-section" style="margin-top:0">When the Purchase counts</p><div class="ffc-choice">'
+			. $choice( 'placed', 'When the order is placed', 'The normal way: every new order goes to your pixels at once (browser and server, one event id). Learns fastest, but also counts orders that are later cancelled.' )
+			. $choice( 'confirmed', 'On call confirmation', 'Held until your team confirms the order on the phone (status Confirmed). The ad platforms learn from real buyers.', 'Recommended' )
+			. $choice( 'delivered', 'On delivery', 'Held until the parcel is delivered. The purest signal, but slower to arrive.' )
+			. '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo '<p class="ffc-section">Browser and server</p>'
+			. $opt( 'browser_events', $s['browser_events'], 'Browser pixel events', 'PageView, ViewContent, AddToCart and InitiateCheckout from the shopper\'s browser.' )
+			. $opt( 'server_events', $s['server_events'], 'Server events (Conversions API / Events API)', 'The same events from your server with the same event id — ad blockers and iOS lose nothing and nothing is counted twice. Works with page caching.' )
+			. $opt( 'advanced_matching', $s['advanced_matching'], 'Advanced matching in the browser', 'Hashed email, phone, name and address for signed-in customers and on the buyer\'s own thank-you page, plus a first-party visitor id on every page.' )
+			. $opt( 'browser_purchase', $s['browser_purchase'], 'Also fire Purchase in the browser on the thank-you page', 'For "On call confirmation" and "On delivery" only — it counts the order before it is confirmed. "When the order is placed" always fires it (de-duplicated).' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo '<p style="margin:18px 0 0"><button class="ffc-btn primary" type="submit">' . self::icon( 'check' ) . 'Save ad tracking</button></p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		self::card_close();
+		echo '</form>';
 
-		// Recent sends
-		$rows = FFC_Tracking::recent( 20 );
-		echo '<div class="ffc-card"><h2>Recently sent</h2>';
+		// Recent purchases: sent or not counted, and why.
+		$rows = FFC_Tracking::recent( 25 );
+		self::card_open( 'Recent purchases', 'inbox' );
 		if ( ! $rows ) {
-			echo '<p class="ffc-muted">Nothing sent yet. Conversions appear here when a confirmed order is sent to your pixels.</p>';
+			echo '<p class="ffc-muted">Nothing yet. Each order shows here when it is sent to your pixels — or held, and why.</p>';
 		} else {
-			echo '<table class="ffc-tbl"><thead><tr><th>When (UTC)</th><th>Order</th><th>Sent to</th><th>Problems</th></tr></thead><tbody>';
+			echo '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>When (UTC)</th><th>Order</th><th>Result</th><th>Match (est.)</th></tr></thead><tbody>';
 			foreach ( $rows as $r ) {
-				echo '<tr><td>' . esc_html( $r['at'] ) . '</td><td>#' . esc_html( $r['order'] ) . '</td><td>' . esc_html( $r['sent'] ? implode( ', ', $r['sent'] ) : '—' ) . '</td><td class="ffc-muted">' . esc_html( $r['errors'] ? implode( ' | ', $r['errors'] ) : '' ) . '</td></tr>';
+				if ( ! empty( $r['skipped'] ) ) {
+					$result = '<span class="ffc-badge ffc-amber">Not counted</span> <span class="ffc-muted">' . esc_html( $r['skipped'] ) . '</span>';
+				} else {
+					$result = ( $r['sent'] ? '<span class="ffc-badge ffc-green">Sent to ' . esc_html( implode( ', ', $r['sent'] ) ) . '</span>' : '' )
+						. ( $r['errors'] ? ' <span class="ffc-badge ffc-red" title="' . esc_attr( implode( ' | ', $r['errors'] ) ) . '">' . esc_html( wp_html_excerpt( implode( ' | ', $r['errors'] ), 70, '…' ) ) . '</span>' : '' );
+				}
+				$mqv = ! empty( $r['mq'] ) && is_array( $r['mq'] ) ? number_format_i18n( (float) $r['mq']['score'], 1 ) : '—';
+				echo '<tr><td>' . esc_html( $r['at'] ) . '</td><td>#' . esc_html( $r['order'] ) . '</td><td>' . $result . '</td><td>' . esc_html( $mqv ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $result is built from escaped parts.
 			}
-			echo '</tbody></table>';
+			echo '</tbody></table></div>';
 		}
-		echo '</div>';
+		self::card_close();
 	}
 
 	private static function tab_connect( $c, $name ) {
 		$state = FFC_Settings::state();
 		$cfg   = FFC_Settings::config();
-		echo '<div class="ffc-card"><h2>Connection</h2>';
+		self::card_open( 'Connection', 'plug', self::connection_chip( $c ) );
 		if ( $c ) {
 			echo '<p><span class="ffc-dot' . ( empty( $state['last_error'] ) ? '' : ' warn' ) . '"></span>Connected to <strong>' . esc_html( $c['app_name'] ) . '</strong>' . ( $c['app_url'] ? ' (<a href="' . esc_url( $c['app_url'] ) . '" target="_blank" rel="noopener">open</a>)' : '' ) . ' since ' . esc_html( $c['paired_at'] ) . '.</p>';
 			echo '<p class="ffc-muted">Store id ' . esc_html( $c['channel_id'] ) . ' · last contact ' . esc_html( isset( $state['last_ok_at'] ) ? $state['last_ok_at'] : 'never' ) . ( ! empty( $state['last_error'] ) ? ' · last problem: ' . esc_html( $state['last_error'] ) : '' ) . '</p><div class="ffc-row">';
-			self::button( 'test', 'Test connection', 'ffc-btn primary' );
-			self::button( 'disconnect', 'Disconnect', 'ffc-btn' );
+			self::button( 'test', 'Test connection', 'ffc-btn primary', 'refresh' );
+			self::button( 'disconnect', 'Disconnect', 'ffc-btn danger', 'power' );
 			echo '</div>';
 		} else {
 			self::connect_steps();
 		}
-		echo '</div>';
-		$labels = array(
-			'order_events'    => array( 'Instant orders', 'New orders and status changes are queued for ' . $name . ' the moment they happen.' ),
-			'capture_leads'   => array( 'Unfinished checkouts', 'Phone, name, address and cart from checkouts that were not completed.' ),
-			'attribution'     => array( 'Ad attribution', 'UTM tags, click ids and Meta cookies saved on each order.' ),
-			'shield'          => array( 'Order shield', 'Block-listed numbers are stopped; low delivery success asks for an advance (no cash on delivery).' ),
-			'custom_statuses' => array( 'Order statuses', 'Confirmed, Shipped, Delivered, Partially delivered, Return in transit and Returned follow the order in ' . $name . '.' ),
-			'stock_sync'      => array( $name . ' keeps the stock', $name . ' sends the stock count; WooCommerce does not put stock back on a cancel (no double count).' ),
+		self::card_close();
+
+		$mods = array(
+			'order_events'    => array( 'Instant orders', 'inbox', '#2563eb', 'New orders and status changes are queued for ' . $name . ' the moment they happen, and retried until they arrive.' ),
+			'capture_leads'   => array( 'Unfinished checkouts', 'cart', '#7c3aed', 'Phone, name, address and cart from checkouts that were not completed, so your team can call back.' ),
+			'attribution'     => array( 'Ad attribution', 'megaphone', '#db2777', 'UTM tags, click ids and ad cookies saved on each order.' ),
+			'shield'          => array( 'Order shield', 'shield', '#0f766e', 'Block-listed numbers are stopped; low delivery success asks for an advance instead of cash on delivery.' ),
+			'custom_statuses' => array( 'Order statuses', 'tag', '#ea580c', 'Confirmed, Shipped, Delivered, Partially delivered, Return in transit and Returned follow the order in ' . $name . '.' ),
+			'stock_sync'      => array( $name . ' keeps the stock', 'stock', '#0891b2', $name . ' sends the stock count; WooCommerce does not put stock back on a cancel (no double count).' ),
 		);
-		echo '<div class="ffc-card"><h2>What is switched on</h2><p class="ffc-muted">Change these in ' . esc_html( $name ) . ' (the store\'s page). They arrive here with the next contact.</p><div class="ffc-grid2">';
-		foreach ( $labels as $key => $l ) {
-			echo '<div class="ffc-feat"><span class="ffc-dot' . ( ! empty( $cfg[ $key ] ) ? '' : ' warn' ) . '"></span><strong>' . esc_html( $l[0] ) . '</strong><br><span class="ffc-muted">' . esc_html( ! empty( $cfg[ $key ] ) ? $l[1] : 'Off' ) . '</span></div>';
+		echo '<p class="ffc-section">What this store shares <span style="text-transform:none;letter-spacing:0;font-weight:400">— switched in ' . esc_html( $name ) . ' (the store\'s page); changes arrive with the next contact</span></p><div class="ffc-mods">';
+		foreach ( $mods as $key => $m ) {
+			$on = ! empty( $cfg[ $key ] ) && ( $c || 'custom_statuses' === $key );
+			echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:' . esc_attr( $m[2] ) . '">' . self::icon( $m[1] ) . '</span>' . esc_html( $m[0] ) . '</h2></div><div class="ffc-card-b"><p class="ffc-desc">' . esc_html( $m[3] ) . '</p></div><div class="ffc-card-f">' . self::status_text( $on ) . self::switch_input( 'ro_' . $key, $on, true ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- icon() fixed SVG; status_text()/switch_input() escape.
 		}
-		echo '</div></div>';
+		echo '</div>';
 	}
 
 	private static function tab_logs( $c, $name ) {
-		echo '<div class="ffc-card"><h2>Troubleshooting</h2><table class="ffc-tbl"><tbody>';
+		self::card_open( 'Troubleshooting', 'help' );
+		echo '<div class="ffc-scroll"><table class="ffc-tbl"><tbody>';
 		foreach ( FFC_Health::checks() as $check ) {
 			echo '<tr><td style="width:20px"><span class="ffc-dot' . ( 'ok' === $check['status'] ? '' : ( 'fail' === $check['status'] ? ' fail' : ' warn' ) ) . '"></span></td><td><strong>' . esc_html( $check['label'] ) . '</strong></td><td class="ffc-muted">' . esc_html( $check['detail'] ) . '</td></tr>';
 		}
 		echo '</tbody></table></div>';
+		self::card_close();
 
 		$stats = FFC_Outbox::stats();
-		echo '<div class="ffc-card"><h2>Delivery queue</h2><p>' . esc_html( sprintf( '%d waiting · %d failed · %d sent in the last week', $stats['pending'] + $stats['sending'], $stats['failed'], $stats['sent'] ) ) . '</p>';
+		self::card_open( 'Delivery queue', 'send' );
+		echo '<p>' . esc_html( sprintf( '%d waiting · %d failed · %d sent in the last week', $stats['pending'] + $stats['sending'], $stats['failed'], $stats['sent'] ) ) . '</p>';
 		if ( $stats['failed'] > 0 ) {
-			self::button( 'retry', 'Send again', 'ffc-btn primary' );
+			self::button( 'retry', 'Send again', 'ffc-btn primary', 'refresh' );
 		}
 		$rows = FFC_Outbox::recent( 15 );
 		if ( $rows ) {
-			echo '<table class="ffc-tbl" style="margin-top:8px"><thead><tr><th>Event</th><th>Status</th><th>Tries</th><th>Created (UTC)</th><th>Problem</th></tr></thead><tbody>';
+			echo '<div class="ffc-scroll"><table class="ffc-tbl" style="margin-top:8px"><thead><tr><th>Event</th><th>Status</th><th>Tries</th><th>Created (UTC)</th><th>Problem</th></tr></thead><tbody>';
 			foreach ( $rows as $r ) {
 				echo '<tr><td>' . esc_html( $r['type'] ) . '</td><td>' . esc_html( $r['status'] ) . '</td><td>' . esc_html( $r['attempts'] ) . '</td><td>' . esc_html( $r['created_at'] ) . '</td><td class="ffc-muted">' . esc_html( (string) $r['last_error'] ) . '</td></tr>';
 			}
-			echo '</tbody></table>';
+			echo '</tbody></table></div>';
 		}
-		echo '</div><div class="ffc-card"><h2>Debug log</h2>';
+		self::card_close();
+
 		$log = FFC_Log::recent( 40 );
+		self::card_open( 'Debug log', 'orders' );
 		if ( ! $log ) {
 			echo '<p class="ffc-muted">Nothing logged yet.</p>';
 		} else {
-			echo '<table class="ffc-tbl"><tbody>';
+			echo '<div class="ffc-scroll"><table class="ffc-tbl"><tbody>';
 			foreach ( $log as $line ) {
 				echo '<tr><td style="white-space:nowrap">' . esc_html( $line['at'] ) . '</td><td>' . esc_html( $line['level'] ) . '</td><td>' . esc_html( $line['message'] ) . ( $line['context'] ? ' <span class="ffc-muted">' . esc_html( wp_json_encode( $line['context'] ) ) . '</span>' : '' ) . '</td></tr>';
 			}
-			echo '</tbody></table><p>';
-			self::button( 'clear_log', 'Clear log', 'ffc-btn' );
+			echo '</tbody></table></div><p style="margin-top:12px">';
+			self::button( 'clear_log', 'Clear log', 'ffc-btn danger', 'trash' );
 			echo '</p>';
 		}
-		echo '</div>';
+		self::card_close();
 	}
 }

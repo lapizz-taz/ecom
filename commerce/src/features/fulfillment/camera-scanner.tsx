@@ -21,15 +21,32 @@ type TorchTrack = Omit<MediaStreamTrack, 'getCapabilities'> & { getCapabilities?
  * torch on where the camera has one. The same code read again within 2.5 s
  * is ignored.
  */
-export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => void; onClose: () => void }) {
+export type TorchState = { supported: boolean; on: boolean }
+
+/**
+ * `torchOn` lets the page drive the flashlight (a button next to "Camera");
+ * `onTorchState` reports whether this camera has one and whether it is on.
+ */
+export function CameraScanner({ onScan, onClose, torchOn, onTorchState }: {
+  onScan: (code: string) => void
+  onClose: () => void
+  torchOn?: boolean
+  onTorchState?: (state: TorchState) => void
+}) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const trackRef = useRef<TorchTrack | null>(null)
   const last = useRef<{ code: string; at: number }>({ code: '', at: 0 })
   const [error, setError] = useState<string | null>(null)
-  const [torch, setTorch] = useState<{ supported: boolean; on: boolean }>({ supported: false, on: false })
+  const [torch, setTorchState] = useState<TorchState>({ supported: false, on: false })
   const [flash, setFlash] = useState(0)
   const onScanRef = useRef(onScan)
   onScanRef.current = onScan
+  const reportRef = useRef(onTorchState)
+  reportRef.current = onTorchState
+  const wantTorch = useRef(Boolean(torchOn))
+  wantTorch.current = Boolean(torchOn)
+  const setTorch = (next: TorchState) => { setTorchState(next); reportRef.current?.(next) }
+  const applyRef = useRef<((on: boolean) => Promise<void>) | null>(null)
 
   useEffect(() => {
     let stopped = false
@@ -58,7 +75,10 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
         trackRef.current = track ?? null
         // Continuous focus where the camera allows it (labels are read up close).
         await track?.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }).catch(() => undefined)
-        setTorch({ supported: Boolean(track?.getCapabilities?.().torch), on: false })
+        const hasTorch = Boolean(track?.getCapabilities?.().torch)
+        setTorch({ supported: hasTorch, on: false })
+        // The page asked for the light before the camera was ready.
+        if (hasTorch && wantTorch.current) await applyTorch(true)
         const video = videoRef.current
         video.srcObject = stream
         await video.play()
@@ -105,6 +125,17 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
           : 'No camera available. Use a USB / Bluetooth scanner or type the code.')
       }
     }
+    const applyTorch = async (on: boolean) => {
+      const track = trackRef.current
+      if (!track) return
+      try {
+        await track.applyConstraints({ advanced: [{ torch: on } as MediaTrackConstraintSet] })
+        setTorch({ supported: true, on })
+      } catch {
+        setTorch({ supported: false, on: false })
+      }
+    }
+    applyRef.current = applyTorch
     void start()
     return () => {
       stopped = true
@@ -115,17 +146,13 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
     }
   }, [])
 
-  const toggleTorch = async () => {
-    const track = trackRef.current
-    if (!track) return
-    const on = !torch.on
-    try {
-      await track.applyConstraints({ advanced: [{ torch: on } as MediaTrackConstraintSet] })
-      setTorch({ supported: true, on })
-    } catch {
-      setTorch({ supported: false, on: false })
-    }
-  }
+  // The page's flashlight button.
+  useEffect(() => {
+    if (torchOn === undefined || !torch.supported || torchOn === torch.on) return
+    void applyRef.current?.(torchOn)
+  }, [torchOn, torch.supported, torch.on])
+
+  const toggleTorch = () => void applyRef.current?.(!torch.on)
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-black">
@@ -144,7 +171,7 @@ export function CameraScanner({ onScan, onClose }: { onScan: (code: string) => v
       <div className="absolute top-3 right-3 flex gap-2">
         {torch.supported && !error && (
           <Button type="button" size="icon-sm" variant="secondary" className={cn('rounded-full', torch.on && 'bg-amber-300 text-black hover:bg-amber-200')}
-            onClick={() => void toggleTorch()} aria-pressed={torch.on} aria-label={torch.on ? 'Turn torch off' : 'Turn torch on'}>
+            onClick={toggleTorch} aria-pressed={torch.on} aria-label={torch.on ? 'Turn torch off' : 'Turn torch on'}>
             {torch.on ? <FlashlightOff /> : <Flashlight />}
           </Button>
         )}

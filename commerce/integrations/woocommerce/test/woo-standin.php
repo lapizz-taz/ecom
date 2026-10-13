@@ -131,6 +131,9 @@ class Standin_Product {
 	public function __construct( $p ) {
 		$this->p = $p;
 	}
+	public function get_id() {
+		return isset( $this->p['id'] ) ? (int) $this->p['id'] : 0;
+	}
 	public function get_name() {
 		return $this->p['name'];
 	}
@@ -289,6 +292,10 @@ class WC_Product_Standin {
 	public function get_sku() {
 		$r = $this->row();
 		return $r ? (string) $r['sku'] : '';
+	}
+	public function get_price() {
+		$r = $this->row();
+		return $r && isset( $r['price'] ) ? (string) $r['price'] : '';
 	}
 	public function is_type( $type ) {
 		$r = $this->row();
