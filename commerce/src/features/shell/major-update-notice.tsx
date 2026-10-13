@@ -8,9 +8,16 @@ import { RELEASES } from '@/features/support/releases'
 // When a release is marked `major`, every merchant user gets a one-time notice
 // the first time they open the admin after it ships — so a big update reaches
 // people instead of waiting to be found in the ✨ menu. It is per-browser and
-// shows once per major release (keyed by its date).
+// shows once per major release (keyed by date + title, so two on one day both show).
 const KEY = 'admin-major-update-seen'
 const latestMajor = RELEASES.find((r) => r.major)
+const latestKey = latestMajor ? `${latestMajor.date}|${latestMajor.title}` : ''
+
+/** True when this browser has not yet seen the latest major release (a later date also counts as seen). */
+export function majorUnseen(seenValue: string, key = latestKey): boolean {
+  if (!key || seenValue === key) return false
+  return !(seenValue.split('|')[0] > key.split('|')[0])
+}
 
 function seen(): string {
   try {
@@ -23,7 +30,7 @@ function seen(): string {
 export function MajorUpdateNotice() {
   const [open, setOpen] = useState(false)
   useEffect(() => {
-    if (latestMajor && latestMajor.date > seen()) {
+    if (majorUnseen(seen())) {
       setOpen(true)
     }
   }, [])
@@ -31,7 +38,7 @@ export function MajorUpdateNotice() {
   if (!latestMajor) return null
 
   const dismiss = () => {
-    try { localStorage.setItem(KEY, latestMajor.date) } catch { /* private mode */ }
+    try { localStorage.setItem(KEY, latestKey) } catch { /* private mode */ }
     setOpen(false)
   }
 

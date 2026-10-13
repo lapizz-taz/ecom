@@ -135,6 +135,19 @@ describe('WooCommerce', () => {
     expect(siteUrl('https://user:pw@shop.com')).toBeNull()
   })
 
+  it('refuses private and internal addresses; only an exact local-test host:port may be one', () => {
+    for (const u of ['https://10.0.0.5', 'https://127.0.0.1', 'https://169.254.169.254', 'http://172.18.0.1:8090']) expect(siteUrl(u)).toBeNull()
+    vi.stubEnv('CHANNELS_ALLOW_HTTP_HOSTS', '172.18.0.1:8090')
+    try {
+      expect(siteUrl('http://172.18.0.1:8090')).toBe('http://172.18.0.1:8090')
+      expect(siteUrl('http://172.18.0.1:8091')).toBeNull()
+      expect(siteUrl('https://10.0.0.5')).toBeNull()
+      expect(siteUrl('http://169.254.169.254')).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('asks the owner to approve Read/Write keys on their own site', () => {
     const url = new URL(wooAuthUrl('https://shop.com', 'OMS', 'st', 'https://admin.app/admin/channels', 'https://x/functions/v1/channels/callback/woocommerce'))
     expect(url.origin + url.pathname).toBe('https://shop.com/wc-auth/v1/authorize')

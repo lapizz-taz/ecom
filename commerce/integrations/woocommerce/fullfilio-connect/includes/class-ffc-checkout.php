@@ -170,9 +170,19 @@ class FFC_Checkout {
 			// so server events join the same visitor as the browser pixels.
 			'ttp'         => $cookie( '_ttp' ),
 			'ga_cid'      => preg_match( '/^GA\d\.\d+\.(\d+\.\d+)$/', (string) $cookie( '_ga' ), $ga ) ? $ga[1] : null,
+			// First-party visitor id set by the tracking script: the external_id the browser pixels use too.
+			'vid'         => preg_match( '/^[A-Za-z0-9]{12,40}$/', (string) $cookie( 'ffc_vid' ) ) ? $cookie( 'ffc_vid' ) : null,
+			// The checkout page the order was placed on (same store only).
+			'checkout_url' => self::same_site_referer(),
 			'ip'          => class_exists( 'WC_Geolocation' ) ? WC_Geolocation::get_ip_address() : ( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : null ),
 			'user_agent'  => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 300 ) : null,
 		);
+	}
+
+	private static function same_site_referer() {
+		$ref = wp_get_raw_referer();
+		$ref = $ref ? esc_url_raw( $ref ) : '';
+		return '' !== $ref && wp_parse_url( $ref, PHP_URL_HOST ) === wp_parse_url( home_url(), PHP_URL_HOST ) ? substr( $ref, 0, 300 ) : null;
 	}
 
 	/** Saves attribution on the new order and closes the unfinished checkout. */

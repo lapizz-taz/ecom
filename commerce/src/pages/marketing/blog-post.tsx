@@ -24,8 +24,8 @@ export default function BlogPostPage() {
         <div className="mt-14 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-(--s-line) bg-(--s-panel) p-6">
           <p className="text-[15px] font-medium">Try it with your own orders</p>
           <div className="flex gap-2">
-            <Link to="/start" className="rounded-full bg-(--s-cta) px-4 py-2 text-[13px] font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Start for free</Link>
-            <Link to="/contact" className="rounded-full border border-(--s-line-strong) px-4 py-2 text-[13px] text-(--s-fg2) hover:bg-(--s-tint) btn-3d btn-3d-site-ghost">Talk to us</Link>
+            <Link to="/start" className="inline-flex h-10 items-center gap-2 rounded-full bg-(--s-cta) px-4 text-[13px] font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Start for free</Link>
+            <Link to="/contact" className="inline-flex h-10 items-center gap-2 rounded-full border border-(--s-line-strong) px-4 text-[13px] text-(--s-fg2) hover:bg-(--s-tint) btn-3d btn-3d-site-ghost">Talk to us</Link>
           </div>
         </div>
       </article>

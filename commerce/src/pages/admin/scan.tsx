@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, CircleAlert, CircleCheck, CircleX, PackageCheck, PackageSearch, RotateCcw, ScanBarcode, Truck, Volume2, VolumeX } from 'lucide-react'
+import { Camera, CircleAlert, CircleCheck, CircleX, Flashlight, FlashlightOff, PackageCheck, PackageSearch, RotateCcw, ScanBarcode, Truck, Volume2, VolumeX } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Money } from '@/components/common/money'
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { CameraScanner } from '@/features/fulfillment/camera-scanner'
+import { CameraScanner, type TorchState } from '@/features/fulfillment/camera-scanner'
 import { toUserMessage } from '@/lib/errors'
 import { scanFeedback } from '@/lib/feedback'
 import { formatDateTime, timeAgo } from '@/lib/format'
@@ -46,6 +46,10 @@ export default function ScanPage() {
   const [courierId, setCourierId] = useState<string>(() => sessionStorage.getItem('scan_courier') ?? '')
   const [code, setCode] = useState('')
   const [camera, setCamera] = useState(false)
+  // Flashlight: what the page asks for, and what the camera says it can do.
+  const [torch, setTorch] = useState(false)
+  const [torchState, setTorchState] = useState<TorchState | null>(null)
+  const [askedTorch, setAskedTorch] = useState(false)
   const [sound, setSound] = useState(() => localStorage.getItem('scan_sound') !== 'off')
   const [last, setLast] = useState<ScanResult | null>(null)
   const [session, setSession] = useState({ ok: 0, already: 0, error: 0 })
@@ -167,20 +171,29 @@ export default function ScanPage() {
               </div>
             )}
             <form onSubmit={submit} className="flex gap-2">
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <ScanBarcode className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground" />
                 <Input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCorrect="off" spellCheck={false}
                   placeholder="Scan or type order / tracking no."
-                  className="h-14 rounded-xl pl-12 font-mono text-lg" aria-label="Barcode" />
+                  className="h-14 rounded-full pl-12 font-mono text-lg" aria-label="Barcode" />
               </div>
-              <Button type="submit" size="lg" className="h-14 rounded-xl px-6" disabled={!code.trim()}>
+              <Button type="submit" size="lg" className="h-14 px-7" disabled={!code.trim()}>
                 {busy ? <Spinner /> : 'Go'}
               </Button>
-              <Button type="button" size="lg" variant="outline" className="h-14 rounded-xl" onClick={() => setCamera((c) => !c)} aria-pressed={camera}>
+              <Button type="button" size="lg" variant="outline" className="h-14" onClick={() => { setCamera((c) => !c); setTorch(false); setTorchState(null); setAskedTorch(false) }} aria-pressed={camera}>
                 <Camera /> <span className="hidden sm:inline">Camera</span>
               </Button>
+              {/* The flashlight: opens the camera with the light on, or switches it while scanning. */}
+              <Button type="button" size="icon" variant="outline" aria-pressed={torch} disabled={camera && torchState?.supported === false}
+                aria-label="Flashlight" title={camera && torchState?.supported === false ? 'This camera has no flashlight' : torch ? 'Turn the flashlight off' : 'Turn the flashlight on'}
+                className={cn('size-14 shrink-0 [&_svg:not([class*=size-])]:size-5', torch && 'border-amber-300 bg-amber-300 text-black hover:bg-amber-200')}
+                onClick={() => { setAskedTorch(true); if (!camera) { setCamera(true); setTorch(true) } else setTorch((t) => !t) }}>
+                {torch ? <FlashlightOff /> : <Flashlight />}
+              </Button>
             </form>
-            {camera && <CameraScanner onScan={enqueue} onClose={() => { setCamera(false); inputRef.current?.focus() }} />}
+            {camera && <CameraScanner onScan={enqueue} torchOn={torch} onTorchState={(st) => { setTorchState(st); setTorch(st.on) }}
+              onClose={() => { setCamera(false); setTorch(false); setTorchState(null); setAskedTorch(false); inputRef.current?.focus() }} />}
+            {camera && askedTorch && torchState?.supported === false && <p className="text-xs text-muted-foreground" role="status">This camera has no flashlight the browser can switch on.</p>}
             {waiting > 0 && <p className="text-xs text-muted-foreground" role="status">{waiting} more scan{waiting === 1 ? '' : 's'} being saved…</p>}
 
             {last && style ? (

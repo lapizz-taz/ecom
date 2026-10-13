@@ -4,8 +4,10 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
-  { date: '2026-10-13', tag: 'New', area: 'Marketing', major: true, title: 'Advanced ad tracking for WooCommerce',
-    body: 'The WooCommerce plugin now sends conversions to Meta (Pixel + CAPI), TikTok and Google — matched by click id, and held until the order is call-confirmed, never for a low-receive-rate customer. Update to plugin 1.3.1 (Sales channels → download), then turn it on under WooCommerce → Fullfilio → Ad tracking.', to: '/admin/channels' },
+  { date: '2026-10-13', tag: 'New', area: 'Marketing', major: true, title: 'WooCommerce plugin 1.4: new look, browser + server tracking, updates in WordPress',
+    body: 'Meta, TikTok and Google now get every event from the browser and from your server with one event id (no double counting, nothing lost to ad blockers), with hashed customer data for a higher match quality. Choose when a purchase counts — when placed, on call confirmation or on delivery — and duplicate or low-receive-rate orders are skipped. WordPress now shows when a new plugin version is out. Download 1.4 once from Sales channels; after that, updates arrive in WordPress.', to: '/admin/channels' },
+  { date: '2026-10-13', tag: 'New', area: 'Marketing', title: 'Advanced ad tracking for WooCommerce',
+    body: 'The WooCommerce plugin sends conversions to Meta (Pixel + CAPI), TikTok and Google — matched by click id, and held until the order is call-confirmed, never for a low-receive-rate customer. Turn it on under WooCommerce → Fullfilio → Ad tracking.', to: '/admin/channels' },
   { date: '2026-10-11', tag: 'New', area: 'Billing', title: 'Plan & Billing, SMS and courier checks without keys',
     body: 'SMS and the BD Courier history check now run on our accounts — no provider keys to enter. Free messages and checks come with your plan, then you buy credits online. See your plan, invoices and credits under Settings → Plan & Billing.', to: '/admin/settings/billing' },
   { date: '2026-10-10', tag: 'New', area: 'Settings', title: 'Device approvals, app integrations and VoiceDrive PBX',

@@ -51,8 +51,8 @@ export default function ContactPage() {
                 <p className="mt-5 text-[22px] font-medium tracking-[-0.02em]">Thanks, {form.name.trim().split(' ')[0]}</p>
                 <p className="mt-2 text-[14px] text-(--s-muted)">We have your message and will reply to {form.email?.trim() || form.phone?.trim()}.</p>
                 <div className="mt-6 flex justify-center gap-3">
-                  <Link to="/" className="rounded-full border border-(--s-line-strong) px-4 py-2 text-[13px] text-(--s-fg2) hover:bg-(--s-tint) btn-3d btn-3d-site-ghost">Back to the website</Link>
-                  <Link to="/start" className="rounded-full bg-(--s-cta) px-4 py-2 text-[13px] font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Start for free</Link>
+                  <Link to="/" className="inline-flex h-10 items-center gap-2 rounded-full border border-(--s-line-strong) px-4 text-[13px] text-(--s-fg2) hover:bg-(--s-tint) btn-3d btn-3d-site-ghost">Back to the website</Link>
+                  <Link to="/start" className="inline-flex h-10 items-center gap-2 rounded-full bg-(--s-cta) px-4 text-[13px] font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Start for free</Link>
                 </div>
               </div>
             </div>

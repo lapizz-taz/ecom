@@ -52,7 +52,9 @@ export function siteUrl(input: string): string | null {
     const httpOk = u.protocol === 'http:' && httpAllowed(u.host)
     // Reject private, loopback, link-local and metadata hosts (SSRF): the store
     // URL is used to fetch and to receive the plugin secret, so it must be public.
-    if (!isPublicHttpUrl(u.origin, { allowHttp: httpOk })) return null
+    // Only an exact host:port on the local-test allowlist (never set in production)
+    // may be a private address — the docker test store.
+    if (!httpOk && !isPublicHttpUrl(u.origin)) return null
     if (u.protocol === 'http:') return httpOk ? `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}` : null
     if (u.protocol !== 'https:' || !u.hostname.includes('.')) return null
     return `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}`

@@ -31,6 +31,33 @@ captured, and the store owner gets a troubleshooting page.
 - The plugin keeps failed sends in its own queue (`wp_ffc_outbox`), retries after 30 s, 2 min, 5 min …
   up to 12 h (10 tries) and does not retry a request Fullfilio refused (4xx).
 
+## Ad tracking (WooCommerce → Fullfilio → Ad tracking)
+
+Works with or without the Fullfilio connection. The merchant enters their own Pixel ids and tokens.
+
+- **Browser + server, de-duplicated.** PageView, ViewContent, AddToCart and InitiateCheckout fire in the
+  browser pixels and the page posts the same event id to `wc-ajax=ffc_px`; the store sends the server copy
+  (Meta Conversions API, TikTok Events API). Values come from the store, never from the browser. The
+  endpoint is capped site-wide per minute (one reused row) and per IP when a persistent object cache exists.
+- **When the Purchase counts:** when the order is placed (normal), on call confirmation (status Confirmed,
+  recommended for COD) or on delivery. One event id per order (`ffc_ord_<id>`) for browser and server.
+- **Not counted:** a customer below the receive-rate limit (Fullfilio sends the rate with Confirmed; a shield
+  advance/block counts as low) and the same customer again within N hours (phone in +880 form, else email).
+- **Matching:** hashed email, phone (Meta `880…`, Google/TikTok E.164), name, city, district, postcode,
+  country and a first-party visitor id (`ffc_vid`, the external_id in browser and server), plus fbc/fbp
+  (created in Meta's format when missing), ttclid/_ttp, gclid, IP and user agent. The page shows an
+  estimated match quality from the keys sent; Meta's real Event Match Quality is in Events Manager.
+- **Save & test connection:** Meta reads the pixel with the token (nothing counted); TikTok needs a test
+  event code; Google uses GA4's validation server (it does not check the API secret).
+
+## Updates
+
+`scripts/build-woo-plugin.mjs` also writes `public/downloads/fullfilio-connect.json` (version, package URL,
+SHA-256, changelog from `readme.txt`). Installed plugins (`FFC_Updater`) read it over HTTPS, so WordPress
+shows "a new version is available" with Update now, View details and auto-updates. The package must be on
+the manifest's host and match its SHA-256, or it is not installed. Bump `Version`/`FFC_VERSION` and the
+readme `Stable tag` together; the build refuses a mismatch.
+
 ## Building the zip
 
 ```sh
@@ -52,6 +79,9 @@ the classic and the block checkout.**
 cd integrations/woocommerce/test && docker compose up -d   # store on http://172.18.0.1:8090
 # install WordPress once (admin / admin-pass-123, permalinks "Post name"), then:
 CHROMIUM_PATH=… FUNCTIONS_ENV_FILE=supabase/functions/.env node integrations/woocommerce/test/woo-e2e.cjs
+# ad tracking + updates in WordPress, no Fullfilio needed (ad-platform calls captured locally, port 8080 free):
+CHROMIUM_PATH=… node integrations/woocommerce/test/track-e2e.cjs
+php integrations/woocommerce/test/track-sim.php      # offline: rules and payloads
 ```
 
 The edge functions must allow the plain-http test store: `CHANNELS_ALLOW_HTTP_HOSTS=172.18.0.1:8090`.

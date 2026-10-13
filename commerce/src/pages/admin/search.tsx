@@ -113,7 +113,7 @@ export default function SearchPage() {
                 className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>
             ) : <kbd className="hidden shrink-0 rounded-md border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline">/</kbd>}
           </label>
-          <Button type="button" variant="outline" className="h-12 shrink-0 rounded-xl px-3.5" aria-pressed={camera} onClick={() => setCamera((c) => !c)}>
+          <Button type="button" variant="outline" className="h-12 shrink-0 px-3.5" aria-pressed={camera} onClick={() => setCamera((c) => !c)}>
             <Camera /> <span className="hidden sm:inline">Scan</span>
           </Button>
         </div>

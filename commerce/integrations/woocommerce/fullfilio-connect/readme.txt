@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.3.1
+Stable tag: 1.4.0
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,15 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.4.0 =
+* New look: a clean WordPress-style page with module cards, status and switches, and pill buttons.
+* Ad tracking, browser and server: PageView, ViewContent, AddToCart and InitiateCheckout fire in the browser and are sent from the server too, with one event id, so ad blockers lose nothing and nothing is counted twice.
+* Better matching for a higher Event Match Quality: hashed email, phone, name, city, district, postcode, country and a first-party visitor id, plus fbc/fbp (created when missing), ttclid/_ttp, gclid, IP and browser. The page shows an estimate from the keys actually sent.
+* "When the order is placed" sending rule (the normal way), next to call confirmation and delivery.
+* Duplicate orders are not counted twice: the same customer again within 24 hours (you choose the hours).
+* "Save & test connection" for Meta, TikTok and Google.
+* Updates: WordPress now shows when a new Fullfilio Connect version is available, with Update now, View details and auto-updates. Each download is checked against its published SHA-256 before it is installed.
 
 = 1.3.1 =
 * Ad tracking works without connecting to Fullfilio: pixels load, click ids and browser cookies are saved on the order, and the conversion is sent when you mark the order Confirmed (or Delivered) yourself.

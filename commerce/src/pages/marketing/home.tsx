@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, MessageCircle, PlayCircle, Rocket } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
@@ -62,8 +62,8 @@ export default function MarketingHome() {
               </a>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/start" className="rounded-full bg-(--s-cta) px-5 py-2.5 text-sm font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Start for free</Link>
-              <a href="#tour" className="rounded-full border border-(--s-line-strong) px-5 py-2.5 text-sm text-(--s-fg2) hover:bg-(--s-tint) btn-3d btn-3d-site-ghost">Watch the tour</a>
+              <Link to="/start" className="inline-flex h-11 items-center gap-2 rounded-full bg-(--s-cta) px-5 text-sm font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site"><Rocket className="size-4" />Start for free</Link>
+              <a href="#tour" className="inline-flex h-11 items-center gap-2 rounded-full border border-(--s-line-strong) px-5 text-sm font-medium text-(--s-fg2) hover:bg-(--s-tint) btn-3d btn-3d-site-ghost"><PlayCircle className="size-4" />Watch the tour</a>
             </div>
           </div>
           <div className="relative mx-auto max-w-6xl px-5 pb-24 [perspective:2000px]">
@@ -176,8 +176,8 @@ export default function MarketingHome() {
             <Reveal>
               <h2 className="text-[36px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[56px]">Built for how you sell.<br />Available today.</h2>
               <div className="mt-8 flex justify-center gap-3">
-                <Link to="/start" className="rounded-full bg-(--s-cta) px-5 py-2.5 text-sm font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site">Get started</Link>
-                <Link to="/contact" className="rounded-full border border-(--s-line-strong) bg-(--s-tint) px-5 py-2.5 text-sm text-(--s-fg2) hover:bg-(--s-tint-strong) btn-3d btn-3d-site-ghost">Contact us</Link>
+                <Link to="/start" className="inline-flex h-11 items-center gap-2 rounded-full bg-(--s-cta) px-5 text-sm font-medium text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d btn-3d-site"><Rocket className="size-4" />Get started</Link>
+                <Link to="/contact" className="inline-flex h-11 items-center gap-2 rounded-full border border-(--s-line-strong) bg-(--s-tint) px-5 text-sm font-medium text-(--s-fg2) hover:bg-(--s-tint-strong) btn-3d btn-3d-site-ghost"><MessageCircle className="size-4" />Contact us</Link>
               </div>
             </Reveal>
           </div>
