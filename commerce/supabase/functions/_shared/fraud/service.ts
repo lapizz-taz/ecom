@@ -26,6 +26,12 @@ export interface FraudSecrets {
 export const PLATFORM_BD_COURIER_SECRET = 'bd_courier'
 
 /**
+ * The platform's courier merchant-panel logins, saved from Super Admin → BD
+ * Courier Integration → Courier sign-in accounts. One set for every merchant.
+ */
+export const PLATFORM_COURIER_PANEL_SECRET = 'courier_panel'
+
+/**
  * The courier-history connection: the platform key from the Super Admin panel,
  * else a function secret (BDCOURIER_API_KEY, or COURIER_HISTORY_API_KEY for
  * LLCG). Keys saved before BD Courier was supported carry no service and are LLCG keys.
@@ -118,7 +124,8 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
         console.warn('Courier panel check is enabled but no courier panel logins are connected; skipping it')
         continue
       }
-      providers.push(panel)
+      // Runs on the platform's courier accounts, so it is metered like BD Courier.
+      providers.push(meter ? new MeteredProvider(panel, meter) : panel)
     }
     if (name === 'http') {
       const urlTemplate = env('FRAUD_API_URL')
@@ -153,9 +160,9 @@ export async function platformCourierHistorySecret(admin: SupabaseClient): Promi
   return (data as FraudSecrets['courierHistory']) ?? null
 }
 
-/** The merchant's own courier panel logins (service role only), or null. */
-export async function merchantPanelCreds(admin: SupabaseClient): Promise<FraudSecrets['panel']> {
-  const { data, error } = await admin.rpc('courier_panel_get')
+/** The platform's courier merchant-panel logins (service role only), or null. */
+export async function platformPanelCreds(admin: SupabaseClient): Promise<FraudSecrets['panel']> {
+  const { data, error } = await admin.rpc('platform_secret_get', { p_key: PLATFORM_COURIER_PANEL_SECRET })
   if (error) {
     console.error('Could not load courier panel logins', error.message)
     return null
@@ -163,10 +170,10 @@ export async function merchantPanelCreds(admin: SupabaseClient): Promise<FraudSe
   return (data as FraudSecrets['panel']) ?? null
 }
 
-/** Providers for a check: the platform's BD Courier connection, metered for the merchant on `admin`. */
+/** Providers for a check: the platform's BD Courier and courier-panel connections, metered for the merchant on `admin`. */
 export async function loadFraudProviders(admin: SupabaseClient, settings: FraudSettings, fetchFn: typeof fetch = fetch): Promise<FraudProvider[]> {
   const courierHistory = settings.providers?.includes('courier_history') ? await platformCourierHistorySecret(admin) : null
-  const panel = settings.providers?.includes('courier_panel') ? await merchantPanelCreds(admin) : null
+  const panel = settings.providers?.includes('courier_panel') ? await platformPanelCreds(admin) : null
   return providersFromSettings(settings, fetchFn, { courierHistory, panel }, databaseMeter(admin))
 }
 

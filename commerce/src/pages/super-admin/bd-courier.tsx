@@ -20,7 +20,10 @@ import { UsageReportPanel } from '@/features/platform/services/usage-report'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { connectBdCourier, disconnectBdCourier, serviceStatus, type ServiceStatus, testBdCourier } from '@/services/credits'
+import {
+  type CourierPanelAccountStatus, type CourierPanelProvider, connectBdCourier, connectCourierPanel, courierPanelPlatformStatus,
+  disconnectBdCourier, disconnectCourierPanel, serviceStatus, type ServiceStatus, testBdCourier, testCourierPanel,
+} from '@/services/credits'
 import { COURIER_HISTORY_SERVICES, type CourierHistoryResult, type CourierHistoryService } from '@/services/settings'
 
 function ConnectDialog({ onClose, onDone }: { onClose: () => void; onDone: (r: CourierHistoryResult) => void }) {
@@ -110,6 +113,93 @@ function Connection({ status }: { status: ServiceStatus }) {
   )
 }
 
+function PanelConnectDialog({ account, onClose, onDone }: { account: CourierPanelAccountStatus; onClose: () => void; onDone: () => void }) {
+  const [identifier, setIdentifier] = useState('')
+  const [password, setPassword] = useState('')
+  const [phone, setPhone] = useState('')
+  const idLabel = account.login_field === 'email' ? 'Account email' : account.login_field === 'phone' ? 'Login phone' : 'Username'
+  const idPlaceholder = account.login_field === 'email' ? 'you@company.com' : account.login_field === 'phone' ? '01XXXXXXXXX' : 'username'
+  const connect = useMutation({
+    meta: { silent: true },
+    mutationFn: () => {
+      const login: { email?: string; phone?: string; user?: string; password: string } = { password: password.trim() }
+      if (account.login_field === 'email') login.email = identifier.trim()
+      else if (account.login_field === 'phone') login.phone = identifier.trim()
+      else login.user = identifier.trim()
+      return connectCourierPanel(account.provider, login, phone.trim())
+    },
+    onSuccess: (r) => { toast.success(r.message || `${account.label} connected`); onDone(); onClose() },
+  })
+  return (
+    <FormDialog open onOpenChange={(o) => !o && onClose()} title={`Connect ${account.label}`} submitLabel="Test and connect"
+      description="The company's own login for this courier's merchant panel. We sign in and read the fraud page to prove it before saving. The password is stored encrypted and never shown again."
+      busy={connect.isPending} disabled={!identifier.trim() || !password.trim() || !phone.trim()} onSubmit={() => connect.mutate()}>
+      <Field label={idLabel} required><Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder={idPlaceholder} autoComplete="off" /></Field>
+      <Field label="Password" required><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" /></Field>
+      <Field label="Test with this number" required hint="A real customer number, to confirm the courier's fraud page answers"><Input inputMode="tel" placeholder="01XXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+      {connect.error && <p className="rounded-md bg-red-500/10 p-3 text-sm text-red-500" role="alert">{connect.error.message}</p>}
+    </FormDialog>
+  )
+}
+
+function CourierPanelAccounts() {
+  const { can } = usePlatform()
+  const queryClient = useQueryClient()
+  const panel = useQuery({ queryKey: ['platform-courier-panel'], queryFn: courierPanelPlatformStatus })
+  const [connect, setConnect] = useState<CourierPanelAccountStatus | null>(null)
+  const [remove, setRemove] = useState<CourierPanelProvider | null>(null)
+  const [testing, setTesting] = useState<CourierPanelProvider | null>(null)
+  const [phone, setPhone] = useState('')
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['platform-courier-panel'] })
+  const test = useMutation({
+    meta: { silent: true },
+    mutationFn: (provider: CourierPanelProvider) => testCourierPanel(provider, phone.trim()),
+    onSuccess: (r) => { toast.success(r.message); setTesting(null); refresh() },
+    onError: () => refresh(),
+  })
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Courier sign-in accounts</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          A second delivery-history source next to BD Courier, using the company's own courier logins (Steadfast, Pathao, RedX, Carrybee, Paperfly).
+          Checks are metered on the same free allowance and credits as BD Courier. Unofficial — a courier can change its site or lock an account from too many sign-ins, so each shows its own status.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {!panel.data ? <LoadingState /> : panel.data.providers.map((p) => (
+          <div key={p.provider} className="rounded-lg border p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`size-2.5 rounded-full ${p.connected ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{p.label} {p.connected ? <Badge variant="success">Connected</Badge> : <Badge variant="neutral">Not connected</Badge>}</p>
+                {p.connected && <p className="truncate text-xs text-muted-foreground">{p.hint ?? '••••'}{p.last_test_at ? ` · last test ${timeAgo(p.last_test_at)}: ${p.last_test_ok ? 'worked' : `failed — ${p.last_error ?? 'no detail'}`}` : ''}</p>}
+              </div>
+              {can('bd_courier', 'manage') && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setConnect(p)}>{p.connected ? 'Change login' : 'Connect'}</Button>
+                  {p.connected && <Button size="sm" variant="ghost" onClick={() => { setTesting(p.provider); setPhone('') }}><Search /> Test</Button>}
+                  {p.connected && <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setRemove(p.provider)}><Unplug /> Remove</Button>}
+                </div>
+              )}
+            </div>
+            {testing === p.provider && (
+              <form className="mt-2 flex gap-2 border-t pt-2" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) test.mutate(p.provider) }}>
+                <Input aria-label="Number to test" inputMode="tel" placeholder="01XXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <Button type="submit" size="sm" variant="outline" disabled={!phone.trim() || test.isPending}>{test.isPending ? <Spinner /> : <Search />} Test</Button>
+              </form>
+            )}
+          </div>
+        ))}
+      </CardContent>
+      {connect && <PanelConnectDialog account={connect} onClose={() => setConnect(null)} onDone={refresh} />}
+      <ConfirmDialog open={!!remove} onOpenChange={(o) => !o && setRemove(null)} destructive confirmLabel="Remove"
+        title="Remove this courier login?" description="Checks stop using this courier. The saved login is erased."
+        onConfirm={async () => { if (remove) { try { await disconnectCourierPanel(remove); toast.success('Removed'); setRemove(null); refresh() } catch (e) { toast.error((e as Error).message); throw e } } }} />
+    </Card>
+  )
+}
+
 export default function BdCourierPage() {
   const [state, update] = useUrlState({ tab: 'overview' })
   const status = useQuery({ queryKey: ['platform-service', 'BD_COURIER'], queryFn: () => serviceStatus('BD_COURIER') })
@@ -130,6 +220,7 @@ export default function BdCourierPage() {
               <GlobalSwitchCard service="BD_COURIER" status={status.data} />
               <ChargingRules service="BD_COURIER" />
             </div>
+            <CourierPanelAccounts />
           </TabsContent>
           <TabsContent value="policy"><UsagePolicyCard key={JSON.stringify(status.data.policy)} service="BD_COURIER" status={status.data} /></TabsContent>
           <TabsContent value="merchants"><MerchantExceptions service="BD_COURIER" status={status.data} /></TabsContent>

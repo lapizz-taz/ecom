@@ -20,7 +20,14 @@ import { env, runtimeVersion } from '../_shared/env.ts'
 import { clerkEnabled, ensureClerkAccount } from '../_shared/clerk.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { COURIER_HISTORY_SERVICES, CourierHistoryProvider } from '../_shared/fraud/courier-history.ts'
-import { courierHistoryConfig, platformCourierHistorySecret, PLATFORM_BD_COURIER_SECRET } from '../_shared/fraud/service.ts'
+import {
+  COURIER_PANEL_LABELS, COURIER_PANEL_LOGIN_FIELD, COURIER_PANEL_PROVIDERS, type CourierPanelCreds,
+  type CourierPanelProviderId, type PanelLogin, testPanelLogin,
+} from '../_shared/fraud/courier-panel.ts'
+import {
+  courierHistoryConfig, platformCourierHistorySecret, platformPanelCreds,
+  PLATFORM_BD_COURIER_SECRET, PLATFORM_COURIER_PANEL_SECRET,
+} from '../_shared/fraud/service.ts'
 import { billingCallbackBase, PLATFORM_GATEWAYS, platformGateway, platformGatewaySecret } from '../_shared/platform-billing.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
@@ -35,6 +42,39 @@ const person = {
   email: z.email().max(160).transform((e) => e.toLowerCase()),
   full_name: z.string().trim().min(2).max(100),
   password: z.string().min(10).max(72).optional(),
+}
+
+/** The identifier to show masked next to a connected panel, e.g. ra•••@shop.com or 017•••78. */
+function panelHint(provider: CourierPanelProviderId, login: PanelLogin): string {
+  const field = COURIER_PANEL_LOGIN_FIELD[provider]
+  const value = String((field === 'email' ? login.email : field === 'phone' ? login.phone : login.user) ?? '')
+  if (field === 'email') {
+    const [u, domain] = value.split('@')
+    return domain ? `${u.slice(0, 2)}•••@${domain}` : `${value.slice(0, 2)}•••`
+  }
+  return value.length > 5 ? `${value.slice(0, 3)}•••${value.slice(-2)}` : '•••'
+}
+
+/** Per-courier connection + last-test status for the Super Admin screen (no secrets). */
+async function courierPanelStatus(admin: SupabaseClient) {
+  const creds = (await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {}
+  const { data } = await admin.from('platform_settings').select('value').eq('key', 'courier_panel').maybeSingle()
+  const status = ((data?.value as { providers?: Record<string, Record<string, unknown>> } | null)?.providers) ?? {}
+  return COURIER_PANEL_PROVIDERS.map((p) => {
+    const c = creds[p]
+    const s = status[p] ?? {}
+    return {
+      provider: p,
+      label: COURIER_PANEL_LABELS[p],
+      login_field: COURIER_PANEL_LOGIN_FIELD[p],
+      connected: !!c && !!String(c.password ?? '').trim() && !!String(c.email ?? c.phone ?? c.user ?? '').trim(),
+      hint: (s.hint as string | undefined) ?? null,
+      connected_at: (s.connected_at as string | undefined) ?? null,
+      last_test_at: (s.last_test_at as string | undefined) ?? null,
+      last_test_ok: (s.last_test_ok as boolean | undefined) ?? null,
+      last_error: (s.last_error as string | undefined) ?? null,
+    }
+  })
 }
 
 const schema = z.discriminatedUnion('action', [
@@ -73,6 +113,20 @@ const schema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('bd_courier_test'), test_phone: phoneSchema }),
   z.object({ action: z.literal('bd_courier_disconnect') }),
+  z.object({
+    action: z.literal('courier_panel_connect'),
+    provider: z.enum(COURIER_PANEL_PROVIDERS),
+    login: z.object({
+      email: z.string().trim().max(160).optional(),
+      phone: z.string().trim().max(20).optional(),
+      user: z.string().trim().max(160).optional(),
+      password: z.string().min(1).max(200),
+    }),
+    test_phone: phoneSchema,
+  }),
+  z.object({ action: z.literal('courier_panel_test'), provider: z.enum(COURIER_PANEL_PROVIDERS), test_phone: phoneSchema }),
+  z.object({ action: z.literal('courier_panel_disconnect'), provider: z.enum(COURIER_PANEL_PROVIDERS) }),
+  z.object({ action: z.literal('courier_panel_status') }),
   z.object({
     action: z.literal('sms_connect'),
     provider: z.enum(SMS_PROVIDER_CODES),
@@ -257,6 +311,46 @@ export default (
         await rpc(admin, 'platform_secret_clear', { p_key: PLATFORM_BD_COURIER_SECRET, p_actor: user.id })
         const settings = await rpc(admin, 'platform_bd_courier_set_connection', { p_service: null, p_hint: null, p_actor: user.id, p_test_ok: null, p_error: null })
         return json(req, { ok: true, settings })
+      }
+
+      // ------------------------------------- Courier sign-in accounts (platform, under BD Courier)
+      case 'courier_panel_status': {
+        await require(client, 'bd_courier', 'view')
+        return json(req, { providers: await courierPanelStatus(admin) })
+      }
+      case 'courier_panel_connect': {
+        await require(client, 'bd_courier', 'manage')
+        const login = input.login as PanelLogin
+        // Sign in (and read the fraud page) to prove the login before saving it.
+        const tested = await testPanelLogin(input.provider, login, input.test_phone)
+        if (!tested.ok) throw new HttpError(422, tested.message, 'CONNECTION_FAILED')
+        const creds = ((await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {})
+        creds[input.provider] = login
+        await rpc(admin, 'platform_secret_store', { p_key: PLATFORM_COURIER_PANEL_SECRET, p_value: creds, p_hint: `${COURIER_PANEL_LABELS[input.provider]} connected`, p_actor: user.id })
+        await rpc(admin, 'platform_courier_panel_set', { p_provider: input.provider, p_hint: panelHint(input.provider, login), p_actor: user.id, p_connected: true, p_test_ok: true, p_error: null })
+        return json(req, { ok: true, message: tested.message, providers: await courierPanelStatus(admin) })
+      }
+      case 'courier_panel_test': {
+        await require(client, 'bd_courier', 'edit')
+        const creds = ((await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {})
+        const login = creds[input.provider]
+        if (!login) throw new HttpError(422, `Connect ${COURIER_PANEL_LABELS[input.provider]} first`, 'NOT_CONNECTED')
+        const tested = await testPanelLogin(input.provider, login, input.test_phone)
+        await rpc(admin, 'platform_courier_panel_set', { p_provider: input.provider, p_hint: null, p_actor: user.id, p_connected: null, p_test_ok: tested.ok, p_error: tested.ok ? null : tested.message })
+        if (!tested.ok) throw new HttpError(422, tested.message, 'LOOKUP_FAILED')
+        return json(req, { ok: true, message: tested.message, providers: await courierPanelStatus(admin) })
+      }
+      case 'courier_panel_disconnect': {
+        await require(client, 'bd_courier', 'manage')
+        const creds = ((await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {})
+        delete creds[input.provider]
+        if (Object.keys(creds).length) {
+          await rpc(admin, 'platform_secret_store', { p_key: PLATFORM_COURIER_PANEL_SECRET, p_value: creds, p_hint: 'Courier sign-in accounts', p_actor: user.id })
+        } else {
+          await rpc(admin, 'platform_secret_clear', { p_key: PLATFORM_COURIER_PANEL_SECRET, p_actor: user.id })
+        }
+        await rpc(admin, 'platform_courier_panel_set', { p_provider: input.provider, p_hint: null, p_actor: user.id, p_connected: false, p_test_ok: null, p_error: null })
+        return json(req, { ok: true, providers: await courierPanelStatus(admin) })
       }
 
       // ------------------------------------------------- SMS (platform account)

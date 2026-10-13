@@ -145,6 +145,28 @@ export const connectBdCourier = (input: { service: 'bdcourier' | 'llcg'; api_key
   invokeFunction<{ ok: boolean; hint: string; result: unknown }>('platform-admin', { action: 'bd_courier_connect', ...input })
 export const testBdCourier = (phone: string) => invokeFunction<{ ok: boolean; result: unknown }>('platform-admin', { action: 'bd_courier_test', test_phone: phone })
 export const disconnectBdCourier = () => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'bd_courier_disconnect' })
+
+// Courier sign-in accounts (platform), managed from the BD Courier page.
+export type CourierPanelProvider = 'steadfast' | 'pathao' | 'redx' | 'carrybee' | 'paperfly'
+export interface CourierPanelAccountStatus {
+  provider: CourierPanelProvider
+  label: string
+  login_field: 'email' | 'phone' | 'user'
+  connected: boolean
+  hint: string | null
+  connected_at: string | null
+  last_test_at: string | null
+  last_test_ok: boolean | null
+  last_error: string | null
+}
+export const courierPanelPlatformStatus = () =>
+  invokeFunction<{ providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_status' })
+export const connectCourierPanel = (provider: CourierPanelProvider, login: { email?: string; phone?: string; user?: string; password: string }, testPhone: string) =>
+  invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_connect', provider, login, test_phone: testPhone })
+export const testCourierPanel = (provider: CourierPanelProvider, testPhone: string) =>
+  invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_test', provider, test_phone: testPhone })
+export const disconnectCourierPanel = (provider: CourierPanelProvider) =>
+  invokeFunction<{ ok: boolean; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_disconnect', provider })
 export const connectGateway = (provider: 'bkash' | 'paystation', sandbox: boolean, credentials: Record<string, string>) =>
   invokeFunction<{ ok: boolean; message: string }>('platform-admin', { action: 'gateway_connect', provider, sandbox, credentials })
 export const disconnectGateway = (provider: 'bkash' | 'paystation') => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'gateway_disconnect', provider })

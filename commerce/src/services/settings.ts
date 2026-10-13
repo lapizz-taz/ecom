@@ -155,49 +155,35 @@ export function lookupCourierHistory(phone: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Courier panel accounts — the merchant's OWN logins to the courier panels
-// (Steadfast, Pathao, RedX, Carrybee, Paperfly). Passwords are kept in Vault;
-// checks run on the merchant's own courier accounts, so they cost no credits.
+// Courier sign-in accounts — the platform's logins to the courier panels
+// (Steadfast, Pathao, RedX, Carrybee, Paperfly), connected once in Super Admin
+// and used for every store. A second source next to BD Courier, metered the
+// same way. Merchants only see whether it is available and turn it on.
 // ---------------------------------------------------------------------------
 export type CourierPanelProviderId = 'steadfast' | 'pathao' | 'redx' | 'carrybee' | 'paperfly'
 
-export interface CourierPanelAccount {
+export interface CourierPanelProviderStatus {
   provider: CourierPanelProviderId
   label: string
   /** Which field this courier signs in with. */
   login_field: 'email' | 'phone' | 'user'
   connected: boolean
-  hint: string | null
-  updated_at: string | null
 }
 
+/** Merchant-side status: the platform provides the accounts. */
 export interface CourierPanelStatus {
-  providers: CourierPanelAccount[]
-  /** This business uses the panel logins in checks (Fraud → Providers). */
+  provided_by_platform: true
+  connected: boolean
+  providers: CourierPanelProviderStatus[]
+  /** This business uses the courier accounts in checks (Fraud → Providers). */
   enabled: boolean
-}
-
-export interface CourierPanelLogin {
-  email?: string
-  phone?: string
-  user?: string
-  password: string
 }
 
 export function courierPanelStatus() {
   return invokeFunction<CourierPanelStatus>('fraud-check', { action: 'courier_panel_status' })
 }
 
-/** Signs in to the courier panel to verify the login, then saves it in Vault. */
-export function saveCourierPanel(provider: CourierPanelProviderId, login: CourierPanelLogin, testPhone?: string) {
-  return invokeFunction<{ ok: boolean; message: string }>('fraud-check', { action: 'save_courier_panel', provider, login, test_phone: testPhone })
-}
-
-export function clearCourierPanel(provider: CourierPanelProviderId) {
-  return invokeFunction<{ ok: boolean }>('fraud-check', { action: 'clear_courier_panel', provider })
-}
-
-/** One lookup across the merchant's connected courier panels (no credits). */
+/** One lookup across the platform's connected courier accounts (counts as one check, like BD Courier). */
 export function lookupCourierPanel(phone: string) {
   return invokeFunction<{ ok: boolean; result: CourierHistoryResult }>('fraud-check', { action: 'lookup_courier_panel', phone })
 }
