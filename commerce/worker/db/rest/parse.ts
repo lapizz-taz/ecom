@@ -147,11 +147,26 @@ function parseLogicItem(text: string, depth = 0): Filter {
   const t = text.trim()
   const logic = /^(not\.)?(and|or)\(([\s\S]*)\)$/.exec(t)
   if (logic) return { kind: 'logic', negate: Boolean(logic[1]), op: logic[2] as 'and' | 'or', items: splitTop(logic[3]).map((x) => parseLogicItem(x, depth + 1)) }
-  // The column ends at the first dot that is not inside a JSON path.
-  const m = /^((?:"[^"]*"|[^.])+?)\.((?:not\.)?[a-z]+(?:\((?:any|all)\))?\.[\s\S]*)$/.exec(t)
-  if (!m) bad(`"failed to parse logic tree (${t})"`)
-  const field = parseField(m![1])
-  return { kind: 'cond', column: field.name, json: field.json, ...parseOperation(m![2]) }
+  // The column ends at the first dot that is not inside a double-quoted segment.
+  // A linear scan, NOT a regex alternation like /(?:"[^"]*"|[^.])+?/: that pattern
+  // lets a double-quote match either branch, so a crafted run of quotes backtracks
+  // catastrophically (tens of ms at 36 chars, seconds at 44) and stalls the
+  // single-threaded engine before any grant/RLS check runs.
+  const dot = firstUnquotedDot(t)
+  if (dot < 0) bad(`"failed to parse logic tree (${t})"`)
+  const field = parseField(t.slice(0, dot))
+  return { kind: 'cond', column: field.name, json: field.json, ...parseOperation(t.slice(dot + 1)) }
+}
+
+/** Index of the first '.' not inside a double-quoted segment, or -1. Linear-time. */
+function firstUnquotedDot(t: string): number {
+  let quoted = false
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i]
+    if (c === '"') quoted = !quoted
+    else if (c === '.' && !quoted) return i
+  }
+  return -1
 }
 
 export function parseLogic(op: 'and' | 'or', negate: boolean, value: string): Filter {

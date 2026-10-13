@@ -125,3 +125,62 @@ endpoints, no real DoS against production, detailed repro kept out of the repo.
 - Staging-only Cloudflare-DB DoS surfaces (statement budget, realtime socket
   cap, per-merchant upload quota) to be handled at the DB switch-over (D1-8).
 - The approval-gated L2 re-ownership still needs explicit owner approval.
+
+---
+
+# Round 4 — Full re-audit (cloudflare/security-audit-skill, run-2)
+
+A second full pass with the installed security-audit skill: 5 isolated hunters
+(DB tenancy/money, edge authz/cross-tenant, Cloudflare Worker PG engine,
+integration SSRF/payments, frontend) over the whole app at commit 8d150a9,
+building on run-1. Source-first, sandbox-only, no live probing. Every confirmed
+finding was independently re-verified before fixing.
+
+## Confirmed and fixed
+
+| # | sev | finding | fix |
+|---|-----|---------|-----|
+| R2-01 | high | `domains/handler.ts` ran the shared Cloudflare/Vercel add/remove/check on the staffer-supplied domain BEFORE any merchant-ownership check — a merchant could detach another merchant's live custom domain (cross-tenant DoS). | New `store_domain_guard(domain, action)` (explicit `merchant_id = current_merchant_id()` check) called before every provider mutation; `add` claims via the global-unique domain so a domain held by another store is refused. (DB + handler) |
+| R2-02 | high* | PostgREST logic-tree parser `parseLogicItem` used an ambiguous `(?:"[^"]*"|[^.])+?` alternation → catastrophic regex backtracking on a crafted `?or=("""…)` string (48 quotes ≈ 16 s), pinning the single-threaded engine before any auth check. | Replaced with a linear first-unquoted-dot scan (O(n); 100k quotes now < 3 ms). `worker/db/rest/parse.ts`. *Staging-only today (engine returns 503 in prod); live at the Cloudflare switch-over. |
+| R2-03 | medium | `platform-admin/handler.ts` still derived the invite/reset link base from the raw `Origin` header (the run-1 Origin-hardening missed this one file). | Use the allow-listed `appBase(req)`, like the other handlers. |
+| R2-04 | medium | WooCommerce client used `redirect:'follow'` on the merchant-controlled store URL — a 3xx to an internal address would be chased (SSRF); the per-hop re-validation believed fixed in round 2 was never actually implemented. | New `safeFetch` (manual redirects, each hop re-checked with the SSRF guard) wired into the Woo client. `net.ts`, `woocommerce.ts`. |
+| R2-05 | low | `domain-check.ts` TLS probe hit `https://<merchant-domain>/` with no guard on the resolved IP — a domain pointed at an internal address became an SSRF oracle. | Skip the probe when the domain resolves (A/AAAA) to a private/loopback/ULA address (`isPrivateIp`). |
+| R2-06 | low | Clerk token check enforced `azp` only when the claim was present and never required it. | Require `azp` present and allow-listed when authorized parties are configured. `clerk.ts`. |
+| R2-07 | low | Theme-preview `theme-navigate` accepted a `//evil.com` path (protocol-relative open redirect; latent — nothing sends that message). | Reject `//` and `/\` paths. `theme.ts`. |
+
+## Re-verified clean (no change needed)
+
+- **DB:** all run-1 fixes confirmed present and complete (merchant_access_mode,
+  sms_log_test, meta_account_save, `_vd_cfg`/`_store_root_domain` grants); the
+  new `capture_checkout_lead` cap is sound; no cross-tenant SECURITY DEFINER
+  path, no self-credit / unverified-paid / ledger-deletion money path, no
+  merchant→platform_staff escalation, destructive RPCs properly gated.
+- **Edge:** every service-role staff read carries a `merchant_id` filter; the
+  external API refuses secret keys from a browser and enforces scopes; the new
+  PBX webhook token gate is correct; all webhooks verify signatures (constant
+  time) before privileged logic.
+- **Worker engine:** no SQL injection (bound params throughout), no RLS-shadow
+  bypass, `current_merchant_id` not caller-overridable, no JWT alg confusion.
+- **Frontend:** no `dangerouslySetInnerHTML`/`eval`, print-frame re-serializes
+  escaped DOM, postMessage origins pinned, the main.tsx fragment-strip holds,
+  only public keys shipped, Sentry sends no tokens/PII.
+
+## Deploy (round 4)
+
+- **Database (live Supabase):** `store_domain_guard` applied; no L2 re-ownership
+  run. Correct regardless of function ownership (explicit merchant comparison).
+- **Worker/edge (Cloudflare):** parser, SSRF, Origin, azp and theme fixes via
+  the `claude/sweet-lovelace-ilswnx` build branch.
+- **Regression:** 366 unit tests, app+worker typecheck, edge deno check, and the
+  Cloudflare production build all pass; the Cloudflare-DB replay shows only the
+  3 pre-existing engine-gap failures (unchanged by this round).
+
+## Remaining (owner / needs validation)
+
+- Staging-only Worker-engine items for the DB switch-over: a regex *subject*-
+  length / step budget (the pattern-length cap alone is incomplete, but no
+  attacker-controlled-pattern path exists today), realtime concurrent-socket
+  cap, and immediate-logout token revocation (currently matches Supabase's
+  stateless model).
+- The report-only CSP still awaits one live console check before enforcing.
+- The approval-gated L2 re-ownership still needs explicit owner approval.

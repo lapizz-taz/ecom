@@ -8,7 +8,7 @@ import { type Check, ChannelError, clean, hmacBase64, money, type NormalizedOrde
 import type { CatalogItem } from './shopify.ts'
 import { pluginAttribution, PLUGIN_SLUG } from './woo-plugin.ts'
 import { env } from '../env.ts'
-import { isPublicHttpUrl } from '../net.ts'
+import { isPublicHttpUrl, safeFetch } from '../net.ts'
 
 type FetchFn = typeof fetch
 
@@ -100,7 +100,9 @@ export class WooClient {
       }
       if (body !== undefined) headers['Content-Type'] = 'application/json'
       try {
-        return await this.fetchFn(url.toString(), { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000), redirect: 'follow' })
+        // safeFetch re-validates every redirect hop: the store URL is merchant-
+        // controlled, so a 3xx to an internal address must not be followed (SSRF).
+        return await safeFetch(url.toString(), { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30_000) }, { allowHttp: true, fetchImpl: this.fetchFn })
       } catch (error) {
         throw new ChannelError((error as Error).name === 'TimeoutError' ? `${new URL(this.site).hostname} did not answer in time` : `Could not reach ${new URL(this.site).hostname}`)
       }
