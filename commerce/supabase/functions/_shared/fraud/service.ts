@@ -112,20 +112,21 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
         console.warn('Fraud provider "http" is enabled but FRAUD_API_URL is not set; skipping it')
         continue
       }
-      providers.push(
-        new HttpCourierHistoryProvider(
-          {
-            urlTemplate,
-            apiKey: env('FRAUD_API_KEY'),
-            authHeader: env('FRAUD_API_AUTH_HEADER'),
-            authScheme: env('FRAUD_API_AUTH_SCHEME'),
-            method: settings.http?.method,
-            timeoutMs: settings.http?.timeout_ms,
-            mapping: settings.http?.mapping ?? {},
-          },
-          fetchFn,
-        ),
+      const httpProvider = new HttpCourierHistoryProvider(
+        {
+          urlTemplate,
+          apiKey: env('FRAUD_API_KEY'),
+          authHeader: env('FRAUD_API_AUTH_HEADER'),
+          authScheme: env('FRAUD_API_AUTH_SCHEME'),
+          method: settings.http?.method,
+          timeoutMs: settings.http?.timeout_ms,
+          mapping: settings.http?.mapping ?? {},
+        },
+        fetchFn,
       )
+      // Like courier_history, a paid external lookup: meter it so it can never
+      // make unmetered operator-paid calls (e.g. from the public quote path).
+      providers.push(meter ? new MeteredProvider(httpProvider, meter) : httpProvider)
     }
   }
   return providers.length ? providers : [new InternalHistoryProvider()]

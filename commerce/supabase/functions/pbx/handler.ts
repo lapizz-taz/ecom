@@ -114,7 +114,9 @@ export default (
       return json(req, { ok: true, has_api_secret: !!next.api_secret, url: webhookUrl(next.webhook_token!, staff.merchantId) })
     }
 
-    // call
+    // call — per-user cap so an order viewer cannot drive the merchant's PBX to
+    // robo-dial arbitrary numbers at the merchant's minute cost.
+    rateLimit(`pbx-call:${staff.user.id}`, 30)
     const settings = await getSettings<PbxSettings>(admin, 'pbx')
     if (!settings.enabled) throw new HttpError(422, 'The PBX is switched off in Settings → VoiceDrive PBX', 'NOT_ENABLED')
     if (settings.click_mode !== 'api') throw new HttpError(422, 'Click-to-call through the PBX is not set up — calls use the phone link', 'NOT_CONFIGURED')

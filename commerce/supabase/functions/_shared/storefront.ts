@@ -61,9 +61,26 @@ export async function storefrontBase(admin: SupabaseClient): Promise<string> {
  */
 export function appBase(req?: Request): string {
   for (const v of [env('APP_URL'), env('PLATFORM_URL')]) if (isUrl(v)) return clean(v)
+  // The request Origin is attacker-controllable, and this base builds invite and
+  // password-reset links that carry one-time tokens: only trust Origin when it is
+  // an explicitly allow-listed host (never "*"), so a forged Origin cannot capture
+  // a new account's tokens. In production APP_URL/PLATFORM_URL is set and wins above.
   const origin = req?.headers.get('origin')
-  if (isUrl(origin) && (origin.startsWith('https://') || isLocalBackend())) return clean(origin)
+  if (isUrl(origin) && (origin.startsWith('https://') || isLocalBackend()) && originAllowed(origin!)) return clean(origin)
   const store = env('STOREFRONT_URL')
   if (isUrl(store)) return clean(store)
   return isLocalBackend() ? LOCAL_APP : missing('The app address')
+}
+
+/** True only when the origin is named in ALLOWED_ORIGINS (an exact list, never "*"). */
+function originAllowed(origin: string): boolean {
+  if (isLocalBackend()) return true
+  const list = (env('ALLOWED_ORIGINS') ?? '').split(',').map((o) => o.trim()).filter(Boolean)
+  if (list.length === 0 || list.includes('*')) return false
+  try {
+    const want = new URL(origin).origin
+    return list.some((o) => { try { return new URL(o).origin === want } catch { return false } })
+  } catch {
+    return false
+  }
 }

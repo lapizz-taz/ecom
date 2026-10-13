@@ -1,6 +1,7 @@
 // Bangladesh SMS gateways behind one interface (SmsProvider). Credentials
 // come from Vault (saved on the SMS page) and never reach a browser.
 import { env } from '../env.ts'
+import { isPublicHttpUrl } from '../net.ts'
 
 export type SmsDelivery = 'PENDING' | 'DELIVERED' | 'FAILED' | 'UNKNOWN'
 
@@ -85,10 +86,15 @@ export function smsCredentialHint(code: SmsProviderCode, creds: SmsCredentials):
   return main ? `••••${main.slice(-4)}` : '••••'
 }
 
-/** Credentials only travel over https (a local mock can opt out). */
+/** Credentials only travel over https to a public host; a local mock can opt out entirely. */
 export function assertSecureUrl(url: string | undefined): void {
-  if (url && !url.startsWith('https://') && env('ALLOW_INSECURE_GATEWAY_URL') !== 'true') {
-    throw new SmsError('The API address must start with https://', true)
+  if (!url) return
+  // The operator can point SMS at a local/insecure gateway on purpose (mocks, tests).
+  if (env('ALLOW_INSECURE_GATEWAY_URL') === 'true') return
+  // For a URL template, check the host with placeholders blanked out.
+  const probe = url.replace(/\{[a-z]+\}/gi, 'x')
+  if (!isPublicHttpUrl(probe)) {
+    throw new SmsError('The API address must be a public https:// address (private and internal hosts are not allowed)', true)
   }
 }
 

@@ -23,11 +23,17 @@ interface FraudCheckRow {
   id: string | null
 }
 
-export async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Record<string, unknown>): Promise<string | null> {
+export async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Record<string, unknown>, opts: { cacheOnly?: boolean } = {}): Promise<string | null> {
   const settings = await getSettings<FraudSettings>(admin, 'fraud')
   if (settings.enabled === false) return null
   const cached = await rpc<FraudCheckRow | null>(admin, 'recent_fraud_check', { p_phone: phone })
   if (cached?.id) return cached.id
+  // The price preview (quote) reuses a recent check but never starts a NEW paid
+  // courier-history lookup: the quote endpoint is public and anonymous, so starting
+  // a lookup per phone there let an attacker drain a store's courier credits (and,
+  // once exhausted, make screening fail open). The authoritative lookup runs when
+  // the order is actually placed (placeOrder), which is far lower volume.
+  if (opts.cacheOnly) return null
   const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check(
     { phone, district: context.district as string | undefined, orderValue: context.order_value as number | undefined },
     { context },
@@ -63,7 +69,7 @@ export async function quoteCart(admin: SupabaseClient, input: QuoteInput) {
         district: input.district,
         area: input.area,
         payment_method: input.payment_method,
-      })
+      }, { cacheOnly: true })
     } catch (error) {
       // A risk check that cannot run must not block the price preview.
       void logEvent({ level: 'ERROR', category: 'FRAUD', source: 'checkout', message: 'Fraud check failed during quote', error })
