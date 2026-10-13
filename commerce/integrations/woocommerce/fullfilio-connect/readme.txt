@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.4.0
+Stable tag: 1.4.2
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,12 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.4.2 =
+* Cleaner, minimal look in the Poppins typeface (bundled with the plugin, nothing loaded from outside).
+* The Fullfilio logo in the page header, linking to your Fullfilio account.
+* Quieter tabs, cards, buttons and switches that work the same at phone width.
+* Updates read version numbers with two or three parts and any number of digits (1.5, 1.4.3, 1.4.10).
 
 = 1.4.0 =
 * New look: a clean WordPress-style page with module cards, status and switches, and pill buttons.

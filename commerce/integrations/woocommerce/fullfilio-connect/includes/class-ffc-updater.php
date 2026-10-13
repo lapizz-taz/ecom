@@ -72,7 +72,7 @@ class FFC_Updater {
 		$version = (string) $m['version'];
 		$package = esc_url_raw( (string) $m['package'] );
 		$sha     = strtolower( (string) $m['sha256'] );
-		if ( ! preg_match( '/^\d+\.\d+\.\d+$/', $version ) || ! preg_match( '/^[a-f0-9]{64}$/', $sha ) || ! self::allowed( $package )
+		if ( ! preg_match( '/^\d+\.\d+(\.\d+)?$/', $version ) || ! preg_match( '/^[a-f0-9]{64}$/', $sha ) || ! self::allowed( $package )
 			|| wp_parse_url( $package, PHP_URL_HOST ) !== wp_parse_url( $manifest_url, PHP_URL_HOST ) ) {
 			return null;
 		}
@@ -92,10 +92,24 @@ class FFC_Updater {
 		);
 	}
 
+	/**
+	 * "1.5" → "1.5.0", so a two-part version compares like its three-part twin
+	 * (PHP alone ranks "1.5" below "1.5.0"). Parts may have any number of digits.
+	 */
+	public static function normalize( $version ) {
+		$parts = array_map( 'intval', explode( '.', (string) $version ) );
+		return implode( '.', array_pad( array_slice( $parts, 0, 3 ), 3, 0 ) );
+	}
+
+	/** True when $version is newer than the installed one. */
+	public static function newer( $version ) {
+		return version_compare( self::normalize( $version ), self::normalize( FFC_VERSION ), '>' );
+	}
+
 	/** The newer version, or null when this one is current. */
 	public static function available() {
 		$m = self::manifest();
-		return $m && version_compare( $m['version'], FFC_VERSION, '>' ) ? $m : null;
+		return $m && self::newer( $m['version'] ) ? $m : null;
 	}
 
 	private static function item( $m, $current ) {
@@ -122,7 +136,7 @@ class FFC_Updater {
 			return $transient;
 		}
 		$file = plugin_basename( FFC_FILE );
-		if ( version_compare( $m['version'], FFC_VERSION, '>' ) ) {
+		if ( self::newer( $m['version'] ) ) {
 			$transient->response        = isset( $transient->response ) && is_array( $transient->response ) ? $transient->response : array();
 			$transient->response[ $file ] = self::item( $m, false );
 		} else {
