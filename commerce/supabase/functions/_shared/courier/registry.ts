@@ -3,6 +3,7 @@ import { env } from '../env.ts'
 import { HttpError } from '../http.ts'
 import { ManualCourierProvider, PathaoProvider, RedxProvider, SteadfastProvider } from './providers.ts'
 import type { CourierProvider } from './types.ts'
+import { checkedBaseUrl } from '../net.ts'
 
 export interface CourierRow {
   id: string
@@ -101,7 +102,7 @@ export function buildCourierProvider(provider: string, creds: CourierCredentials
     case 'steadfast':
       return new SteadfastProvider({
         apiKey: text(creds.api_key), secretKey: text(creds.secret_key),
-        baseUrl: text(creds.base_url) || env('STEADFAST_BASE_URL'), trackingTemplate,
+        baseUrl: checkedBaseUrl(text(creds.base_url), 'Steadfast API URL') ?? env('STEADFAST_BASE_URL'), trackingTemplate,
       })
     case 'pathao':
       return new PathaoProvider({

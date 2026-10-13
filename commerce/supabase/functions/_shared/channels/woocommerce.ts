@@ -8,6 +8,7 @@ import { type Check, ChannelError, clean, hmacBase64, money, type NormalizedOrde
 import type { CatalogItem } from './shopify.ts'
 import { pluginAttribution, PLUGIN_SLUG } from './woo-plugin.ts'
 import { env } from '../env.ts'
+import { isPublicHttpUrl } from '../net.ts'
 
 type FetchFn = typeof fetch
 
@@ -47,8 +48,13 @@ export function siteUrl(input: string): string | null {
   if (!/^[a-z]+:\/\//i.test(v)) v = `https://${v}`
   try {
     const u = new URL(v)
-    if (u.protocol === 'http:' && httpAllowed(u.host)) return `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}`
-    if (u.protocol !== 'https:' || !u.hostname.includes('.') || u.username || u.password) return null
+    if (u.username || u.password) return null // no credentials smuggled in the authority
+    const httpOk = u.protocol === 'http:' && httpAllowed(u.host)
+    // Reject private, loopback, link-local and metadata hosts (SSRF): the store
+    // URL is used to fetch and to receive the plugin secret, so it must be public.
+    if (!isPublicHttpUrl(u.origin, { allowHttp: httpOk })) return null
+    if (u.protocol === 'http:') return httpOk ? `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}` : null
+    if (u.protocol !== 'https:' || !u.hostname.includes('.')) return null
     return `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/wp-admin.*$/, '')}`
   } catch {
     return null
