@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useMyDay } from '@/features/hr/attendance'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import { checkIn, checkOut, clock, endBreak, keepWorkingToday, minutesLabel, type MyDay, startBreak, zonedTime } from '@/services/hr'
+import { checkIn, checkOut, endBreak, keepWorkingToday, minutesLabel, type MyDay, startBreak, zonedTime } from '@/services/hr'
 
 /** The current time, ticking every `ms`. */
 export function useNow(ms = 1000) {
@@ -43,8 +43,21 @@ export function useWorkdayActions() {
   }
 }
 
-// ---------------------------------------------------------------- Break overlay
-/** While on a break: a full-screen card with the running timer, which can be shrunk to a pill. */
+// ---------------------------------------------------------------- Break screen
+/** "12:04" under an hour, "1:02:04" after. */
+const short = (sec: number) => {
+  const t = Math.max(0, Math.floor(sec))
+  const h = Math.floor(t / 3600)
+  const mm = String(Math.floor((t % 3600) / 60)).padStart(h ? 2 : 1, '0')
+  const ss = String(t % 60).padStart(2, '0')
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
+/**
+ * While on a break: a calm full-screen view with a ring that fills against today's
+ * break allowance (green, then amber near the limit, red past it). It can be tucked
+ * away into a small pill and brought back.
+ */
 function BreakOverlay({ day }: { day: MyDay }) {
   const b = openBreak(day)
   const now = useNow(1000)
@@ -53,39 +66,68 @@ function BreakOverlay({ day }: { day: MyDay }) {
   useEffect(() => { setSmall(false) }, [b?.id])
   if (!b) return null
   const secs = (now - new Date(b.started_at).getTime()) / 1000
-  const limit = day.rules.max_break_minutes * 60
   const closed = day.breaks.filter((x) => x.ended_at).reduce((t, x) => t + (new Date(x.ended_at!).getTime() - new Date(x.started_at).getTime()) / 1000, 0)
   const used = closed + secs
+  const limit = day.rules.max_break_minutes * 60
+  const share = limit > 0 ? used / limit : 0
   const over = limit > 0 && used > limit
+  const tone = over ? '#ef4444' : share > 0.8 ? '#f59e0b' : '#10b981'
+  const idle = b.kind === 'IDLE'
+  const R = 104
+  const C = 2 * Math.PI * R
+  const count = day.breaks.length
   if (small) {
     return (
-      <button type="button" onClick={() => setSmall(false)}
-        className="fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-lg">
-        <Coffee className="size-4" /> {b.kind === 'IDLE' ? 'Away' : 'On break'} <span className="tabular-nums">{clock(secs)}</span>
+      <button type="button" onClick={() => setSmall(false)} aria-label="Show break timer"
+        className="fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5 rounded-full border bg-card/95 py-1.5 pr-4 pl-1.5 text-sm shadow-lg backdrop-blur">
+        <span className="flex size-7 items-center justify-center rounded-full" style={{ background: `${tone}22`, color: tone }}><Coffee className="size-3.5" /></span>
+        <span className="font-medium">{idle ? 'Away' : 'On break'}</span>
+        <span className="font-mono tabular-nums" style={{ color: tone }}>{short(secs)}</span>
       </button>
     )
   }
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="break-title">
-      <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-amber-500/30 p-6 text-center text-white shadow-2xl"
-        style={{ background: 'radial-gradient(120% 70% at 50% 0%, #78350f 0%, #1c1206 55%, #0c0a09 100%)' }}>
-        <button type="button" onClick={() => setSmall(true)} className="absolute top-3 right-3 rounded-full p-2 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Shrink">
-          <Minimize2 className="size-4" />
-        </button>
-        <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-gradient-to-b from-amber-400 to-orange-500 shadow-[0_0_40px_rgba(245,158,11,.45)]">
-          <Coffee className="size-9" />
+    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="break-title">
+      <div className="flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+        <span className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          <span className="size-1.5 animate-pulse rounded-full" style={{ background: tone }} /> {idle ? 'Auto break' : 'Break'} · since {zonedTime(b.started_at, day.tz)}
+        </span>
+        <Button variant="ghost" size="sm" onClick={() => setSmall(true)}><Minimize2 /> Minimize</Button>
+      </div>
+
+      <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
+        <div className="relative flex size-64 items-center justify-center">
+          <span className="absolute inset-6 rounded-full opacity-25 blur-2xl motion-safe:animate-[pulse_4s_ease-in-out_infinite]" style={{ background: tone }} />
+          <svg viewBox="0 0 240 240" className="absolute inset-0 -rotate-90" aria-hidden>
+            <circle cx="120" cy="120" r={R} fill="none" strokeWidth="10" className="stroke-muted" />
+            <circle cx="120" cy="120" r={R} fill="none" strokeWidth="10" strokeLinecap="round" stroke={tone}
+              strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(1, share))} className="transition-[stroke-dashoffset] duration-1000 ease-linear" />
+          </svg>
+          <div className="relative text-center">
+            <p id="break-title" className="text-sm text-muted-foreground">{idle ? 'You were away' : 'On a break'}</p>
+            <p className="font-mono text-5xl font-semibold tracking-tight tabular-nums">{short(secs)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{limit ? `${minutesLabel(Math.floor(used / 60))} of ${minutesLabel(day.rules.max_break_minutes)} today` : 'No daily limit'}</p>
+          </div>
         </div>
-        <p id="break-title" className="text-lg font-semibold">{b.kind === 'IDLE' ? 'You were away' : 'You’re taking a break'}</p>
-        <p className="mt-1 text-xs text-white/60">{b.kind === 'IDLE' ? `No activity for ${day.rules.auto_break_after} minutes, so a break started automatically.` : `Started at ${zonedTime(b.started_at, day.tz)}`}</p>
-        <div className="mx-auto mt-5 w-fit rounded-2xl border border-white/10 bg-black/40 px-6 py-3 font-mono text-4xl font-semibold tracking-wider text-amber-400 tabular-nums">{clock(secs)}</div>
-        <p className={cn('mt-3 text-xs', over ? 'text-red-300' : 'text-white/70')}>
-          {over ? `Over today’s ${minutesLabel(day.rules.max_break_minutes)} break limit` : 'Enjoy your break! Your time is being tracked.'}
+
+        <div className="grid w-full max-w-sm grid-cols-3 divide-x rounded-2xl border bg-card text-center">
+          <div className="px-2 py-3"><p className="text-[11px] text-muted-foreground">Started</p><p className="text-sm font-semibold tabular-nums">{zonedTime(b.started_at, day.tz)}</p></div>
+          <div className="px-2 py-3"><p className="text-[11px] text-muted-foreground">Breaks today</p><p className="text-sm font-semibold tabular-nums">{count}</p></div>
+          <div className="px-2 py-3"><p className="text-[11px] text-muted-foreground">{over ? 'Over by' : 'Left'}</p>
+            <p className="text-sm font-semibold tabular-nums" style={{ color: over ? tone : undefined }}>{limit ? minutesLabel(Math.ceil(Math.abs(limit - used) / 60)) : '—'}</p></div>
+        </div>
+
+        <p className="max-w-xs text-center text-sm text-muted-foreground">
+          {idle ? `No activity for ${day.rules.auto_break_after} minutes, so this break started on its own. Tap below when you’re back.`
+            : over ? 'You’re past today’s break allowance. HR sees break time in the report.' : 'Take your time. Your break is being recorded.'}
         </p>
-        <Button className="mt-5 w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-500 hover:to-orange-500" size="lg"
-          onClick={() => actions.endBreak.mutate()} disabled={actions.endBreak.isPending}>
-          {actions.endBreak.isPending ? <Spinner /> : <Coffee />} End break
+      </div>
+
+      <div className="mx-auto w-full max-w-sm space-y-2 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <Button size="lg" className="h-12 w-full rounded-full text-base" onClick={() => actions.endBreak.mutate()} disabled={actions.endBreak.isPending}>
+          {actions.endBreak.isPending ? <Spinner /> : <LogIn />} I’m back
         </Button>
-        {day.rules.block_during_breaks && day.rules.require_check_in && <p className="mt-3 text-[11px] text-white/50">Work pages open again when the break ends.</p>}
+        {day.rules.block_during_breaks && day.rules.require_check_in && <p className="text-center text-[11px] text-muted-foreground">Work pages open again when the break ends.</p>}
       </div>
     </div>
   )
