@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, setPanelRelay, testPanelLogin,
+  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, parseSteadfast, readLoginForm, setPanelRelay, testPanelLogin,
 } from './fraud/courier-panel.ts'
 import { httpPanelRelay } from './fraud/courier-relay.ts'
 import { providersFromSettings } from './fraud/service.ts'
@@ -43,9 +43,6 @@ function panelFetch(overrides: Record<string, () => Response> = {}) {
     if (url.includes('merchant.carrybee.com/api/auth/callback/login')) return new Response('', { status: 302, headers: new Headers({ 'set-cookie': 'cb_auth=2; Path=/' }) })
     if (url.includes('merchant.carrybee.com/api/auth/session')) return withCookie({ accessToken: 'cb-tok', user: { selectedBusinessId: 'biz-9' } })
     if (url.includes('api-merchant.carrybee.com') && url.includes('/fraud-check/')) return withCookie({ data: { total_order: 10, cancelled_order: 0, success_rate: 100 } })
-    // Paperfly
-    if (url.includes('login_using_password.php')) return withCookie({ token: 'pf-tok' })
-    if (url.includes('smart-check/list.php')) return withCookie({ totalRecords: 3, records: [{ status: 'Delivered' }, { status: 'Delivered' }, { status: 'Returned' }] })
     // Steadfast (its login path is a bare /login, so it must be matched last).
     if (url.includes('steadfast.com.bd/login') && method === 'GET') return htmlRes('<input type="hidden" name="_token" value="tok-sf">', 'sf_sess=1; Path=/')
     if (url.includes('steadfast.com.bd/login') && method === 'POST') return new Response('', { status: 302, headers: new Headers({ 'set-cookie': 'sf_auth=2; Path=/' }) })
@@ -59,7 +56,6 @@ const allCreds: CourierPanelCreds = {
   pathao: { email: 'shop@x.com', password: 'p2' },
   redx: { phone: '01712345678', password: 'p3' },
   carrybee: { phone: '01712345678', password: 'p4' },
-  paperfly: { user: 'shopuser', password: 'p5' },
 }
 
 describe('courier panel provider', () => {
@@ -72,14 +68,14 @@ describe('courier panel provider', () => {
     const fetchFn = panelFetch()
     const p = new CourierPanelProvider(allCreds, { fetchFn, store: freshStore() })
     const summary = await p.lookup('01811111111')
-    // Steadfast 8/10, Pathao 5/7, RedX 20/25, Carrybee 10/10, Paperfly total 3 (2 delivered,1 cancel)
+    // Steadfast 8/10, Pathao 5/7, RedX 20/25, Carrybee 10/10
     const by = Object.fromEntries(summary.couriers.map((c) => [c.courier, c]))
     expect(by.steadfast).toMatchObject({ orders: 10, delivered: 8, cancelled: 2 })
     expect(by.pathao).toMatchObject({ orders: 7, delivered: 5, cancelled: 2 })
     expect(by.redx).toMatchObject({ orders: 25, delivered: 20, cancelled: 5 })
     expect(by.carrybee).toMatchObject({ orders: 10, delivered: 10, cancelled: 0 })
-    expect(summary.total).toBe(10 + 7 + 25 + 10 + 3)
-    expect(summary.delivered).toBe(8 + 5 + 20 + 10 + 2)
+    expect(summary.total).toBe(10 + 7 + 25 + 10)
+    expect(summary.delivered).toBe(8 + 5 + 20 + 10)
     expect(summary.success_ratio).toBeGreaterThan(80)
     expect(summary.ratio_source).toBe('counts')
   })
@@ -97,7 +93,7 @@ describe('courier panel provider', () => {
     expect(pathao.notice).toMatch(/Pathao/)
     expect(pathao.orders).toBe(0)
     // The others still counted.
-    expect(summary.total).toBe(10 + 25 + 10 + 3)
+    expect(summary.total).toBe(10 + 25 + 10)
   })
 
   it('throws only when every courier fails', async () => {
@@ -120,7 +116,7 @@ describe('courier panel provider', () => {
     const p = new CourierPanelProvider(allCreds, { fetchFn: panelFetch(), store: freshStore() })
     const r = await p.checkCustomer({ phone: '01811111111' })
     expect(r.ok).toBe(true)
-    expect(r.counts.total).toBe(55)
+    expect(r.counts.total).toBe(52)
     expect(r.counts.returned).toBe(summaryCancelled())
     expect(r.raw).toBeTruthy()
   })
@@ -193,13 +189,13 @@ describe('courier panel provider', () => {
   })
 
   it('covers every courier id', () => {
-    expect(COURIER_PANEL_PROVIDERS).toHaveLength(5)
+    expect(COURIER_PANEL_PROVIDERS).toEqual(['steadfast', 'pathao', 'redx', 'carrybee'])
   })
 })
 
 function summaryCancelled(): number {
-  // steadfast 2 + pathao 2 + redx 5 + carrybee 0 + paperfly 1 = 10
-  return 10
+  // steadfast 2 + pathao 2 + redx 5 + carrybee 0 = 9
+  return 9
 }
 
 describe('courier sign-in fixes', () => {
@@ -284,5 +280,68 @@ describe('courier relay (the Worker sends courier work to Supabase)', () => {
     await expect(refused.lookup('01811111111')).rejects.toThrow('Courier check service refused this site')
     const failed = httpPanelRelay({ url: 'https://x/courier-relay', fetchFn: vi.fn(async () => new Response(JSON.stringify({ ok: false, message: 'RedX: rate limit' }), { status: 200 })) })
     await expect(failed.lookup('01811111111')).rejects.toThrow('RedX: rate limit')
+  })
+})
+
+describe('Steadfast new sign-in page and RedX 400', () => {
+  const newPage = `<html><head><title>Merchant sign-in</title><meta name="csrf-token" content="meta-tok"></head><body>
+    <form method="POST" action="/merchant/login"><input type="text" name="login" placeholder="Email or phone">
+    <input type="password" name="password"><input type="checkbox" name="remember"></form></body></html>`
+
+  it('reads the newer form: email-or-phone field, token from the meta tag, its own action', () => {
+    expect(readLoginForm(newPage, 'https://steadfast.com.bd/login')).toEqual({
+      action: 'https://steadfast.com.bd/merchant/login', fields: { _token: 'meta-tok' }, idField: 'login', passwordField: 'password',
+    })
+    expect(readLoginForm('<form action="/login"><input type="hidden" name="_token" value="a&amp;b"><input type="email" name="email"><input type="password" name="password"></form>', 'https://steadfast.com.bd/login'))
+      .toMatchObject({ fields: { _token: 'a&b' }, idField: 'email' })
+    expect(readLoginForm('<p>maintenance</p>', 'https://steadfast.com.bd/login')).toBeNull()
+  })
+
+  it('signs in through the newer page and reads the fraud page', async () => {
+    const posts: Array<{ url: string; body: string }> = []
+    const fetchFn = panelFetch({
+      'steadfast.com.bd/merchant/login': () => new Response('', { status: 302, headers: new Headers({ location: '/dashboard', 'set-cookie': 'sf_auth=2; Path=/' }) }),
+      'steadfast.com.bd/login': () => htmlRes(newPage, 'XSRF-TOKEN=x%3Dy; Path=/'),
+    })
+    const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'POST') posts.push({ url: String(input), body: String(init?.body) })
+      return fetchFn(input, init)
+    })
+    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn: spy, store: freshStore() })
+    expect(r).toEqual({ ok: true, message: 'Steadfast: signed in, 10 parcels for 01811111111' })
+    expect(posts[0].url).toBe('https://steadfast.com.bd/merchant/login')
+    expect(new URLSearchParams(posts[0].body).get('login')).toBe('shop@x.com')
+    expect(new URLSearchParams(posts[0].body).get('_token')).toBe('meta-tok')
+  })
+
+  it('says when Steadfast shows a firewall check instead of the sign-in page', async () => {
+    const fetchFn = panelFetch({ 'steadfast.com.bd/login': () => htmlRes('<title>Just a moment...</title><div id="challenge-platform"></div>') })
+    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn, store: freshStore() })
+    expect(r).toEqual({ ok: false, message: 'Steadfast sign-in: its firewall asked for a browser check — try again in a minute' })
+  })
+
+  it('reads the fraud numbers from a nested answer, and names what came back when they are missing', () => {
+    expect(parseSteadfast({ status: 200, data: { total_delivered: '12', total_cancelled: 3 } })).toMatchObject({ ok: true, success: 12, cancel: 3, total: 15 })
+    expect(parseSteadfast({ message: 'Unauthenticated.' }).error).toBe("Steadfast's fraud page gave an unexpected answer: Unauthenticated.")
+    expect(parseSteadfast({ foo: 1, bar: 2 }).error).toBe("Steadfast's fraud page gave an unexpected answer (fields: foo, bar)")
+  })
+
+  it('RedX: a 400 for one way of writing the number tries the others', async () => {
+    const urls: string[] = []
+    const fetchFn = panelFetch({
+      'customer-success-return-rate': () => {
+        const last = urls[urls.length - 1]
+        return last.endsWith('phoneNumber=01811111111')
+          ? withCookie({ data: { deliveredParcels: 4, totalParcels: 5 } })
+          : withCookie({ message: 'Invalid phone number' }, undefined, 400)
+      },
+    })
+    const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => { urls.push(String(input)); return fetchFn(input, init) })
+    const r = await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: spy, store: freshStore() })
+    expect(r).toEqual({ ok: true, message: 'RedX: signed in, 5 parcels for 01811111111' })
+
+    const always400 = panelFetch({ 'customer-success-return-rate': () => withCookie({ message: 'Invalid phone number' }, undefined, 400) })
+    const bad = await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: always400, store: freshStore() })
+    expect(bad).toEqual({ ok: false, message: 'RedX answered HTTP 400: Invalid phone number' })
   })
 })

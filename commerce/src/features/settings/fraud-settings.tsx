@@ -102,7 +102,7 @@ function CourierHistorySettings() {
 
 /**
  * The merchant's OWN logins to the courier merchant panels (Steadfast, Pathao,
- * RedX, Carrybee, Paperfly). We sign in to each panel and read its customer
+ * RedX, Carrybee). We sign in to each panel and read its customer
  * success / fraud page — the real courier numbers, using the merchant's own
  * accounts, so it costs no credits. Unofficial: a courier can change its site
  * or lock an account from too many sign-ins, so each courier shows its own
@@ -126,7 +126,7 @@ function CourierPanelSettings() {
       <CardHeader>
         <CardTitle className="text-base">Courier sign-in accounts</CardTitle>
         <CardDescription>
-          A second delivery-history source next to BD Courier. Fullfilio signs in to Steadfast, Pathao, RedX, Carrybee and Paperfly
+          A second delivery-history source next to BD Courier. Fullfilio signs in to Steadfast, Pathao, RedX and Carrybee
           with the company's own accounts and reads each courier's customer success page for the number. Connected and managed by the
           platform; each lookup counts as one check, the same as BD Courier.
         </CardDescription>
@@ -227,11 +227,14 @@ function FraudGeneral() {
   const s = useSettingDraft('fraud')
   const providers = (s.get(['providers']) as string[] | undefined) ?? []
   const toggleProvider = (name: string, on: boolean) => s.set(['providers'], on ? [...new Set([...providers, name])] : providers.filter((p) => p !== name))
-  // BD Courier and the courier sign-ins run as one source: either name turns both on.
-  const courierRecord = providers.includes('courier_history') || providers.includes('courier_panel')
-  const setCourierRecord = (on: boolean) => s.set(['providers'], on
-    ? [...new Set([...providers.filter((p) => p !== 'courier_panel'), 'courier_history'])]
-    : providers.filter((p) => p !== 'courier_history' && p !== 'courier_panel'))
+  // BD Courier and the courier sign-ins run as one source, on unless the store switched it off.
+  const courierRecord = s.get(['courier_record']) !== false
+  const setCourierRecord = (on: boolean) => {
+    s.set(['courier_record'], on)
+    s.set(['providers'], on
+      ? [...new Set([...providers.filter((p) => p !== 'courier_panel'), 'courier_history'])]
+      : providers.filter((p) => p !== 'courier_history' && p !== 'courier_panel'))
+  }
   const t = (k: string) => Number(s.get(['thresholds', k]))
   const validate = () => {
     if (!(0 <= t('medium') && t('medium') < t('high') && t('high') < t('critical') && t('critical') <= 100)) return 'Thresholds must satisfy 0 ≤ medium < high < critical ≤ 100'
@@ -251,7 +254,7 @@ function FraudGeneral() {
         <label className="flex items-start gap-2 text-sm">
           <Checkbox checked={courierRecord} onCheckedChange={(v) => setCourierRecord(v === true)} className="mt-0.5" />
           <span>
-            Courier record (Pathao, Steadfast, RedX, CarryBee, Paperfly)
+            Courier record (Pathao, Steadfast, RedX, CarryBee)
             <span className="block text-xs text-muted-foreground">BD Courier and the couriers' own panels, asked together and merged per courier — counts as one check</span>
           </span>
         </label>

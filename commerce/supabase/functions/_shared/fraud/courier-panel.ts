@@ -1,5 +1,5 @@
 // Courier merchant-panel lookups: the merchant's OWN logins to Steadfast,
-// Pathao, RedX, Carrybee and Paperfly, used to read each courier's customer
+// Pathao, RedX and Carrybee, used to read each courier's customer
 // success / fraud-check page for a phone number. This is a second source for
 // the delivery-success check, next to the platform's BD Courier connection.
 //
@@ -15,16 +15,16 @@ import type { FraudCheckInput, FraudProvider, FraudProviderResult } from './type
 
 type FetchFn = typeof fetch
 
-export const COURIER_PANEL_PROVIDERS = ['steadfast', 'pathao', 'redx', 'carrybee', 'paperfly'] as const
+export const COURIER_PANEL_PROVIDERS = ['steadfast', 'pathao', 'redx', 'carrybee'] as const
 export type CourierPanelProviderId = (typeof COURIER_PANEL_PROVIDERS)[number]
 
 export const COURIER_PANEL_LABELS: Record<CourierPanelProviderId, string> = {
-  steadfast: 'Steadfast', pathao: 'Pathao', redx: 'RedX', carrybee: 'Carrybee', paperfly: 'Paperfly',
+  steadfast: 'Steadfast', pathao: 'Pathao', redx: 'RedX', carrybee: 'Carrybee',
 }
 
 /** The identifier field each courier logs in with (shown masked as the hint). */
 export const COURIER_PANEL_LOGIN_FIELD: Record<CourierPanelProviderId, 'email' | 'phone' | 'user'> = {
-  steadfast: 'email', pathao: 'email', redx: 'phone', carrybee: 'phone', paperfly: 'user',
+  steadfast: 'email', pathao: 'email', redx: 'phone', carrybee: 'phone',
 }
 
 export type PanelLogin = { id?: string; email?: string; phone?: string; user?: string; password?: string }
@@ -133,15 +133,74 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 export interface PanelDeps { fetchFn?: FetchFn; store?: SessionStore; timeoutMs?: number }
 
 // ------------------------------- Steadfast -----------------------------------
+const attr = (tag: string, name: string) => new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, 'i').exec(tag)?.slice(2).find((v) => v !== undefined)
+const decodeHtml = (v: string) => v.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+
+/**
+ * The sign-in form on a page, whatever its shape: Steadfast has served a Laravel
+ * form (email + hidden _token) and a newer "Merchant sign-in" page (email or phone,
+ * CSRF token in a meta tag). Returns where to post and the fields to send.
+ */
+export function readLoginForm(html: string, pageUrl: string): { action: string; fields: Record<string, string>; idField: string; passwordField: string } | null {
+  const forms = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/gi)].map((m) => m[0])
+  const form = forms.find((f) => /type\s*=\s*["']?password/i.test(f))
+  const meta = /<meta[^>]+name\s*=\s*["']csrf-token["'][^>]*>/i.exec(html)?.[0]
+  const csrf = meta ? attr(meta, 'content') : undefined
+  const loose = /<input\b[^>]*name\s*=\s*["']_token["'][^>]*>/i.exec(html)?.[0]
+  const looseToken = loose ? attr(loose, 'value') : undefined
+  if (!form && !csrf && !looseToken) return null
+  const fields: Record<string, string> = {}
+  let idField = '', passwordField = 'password'
+  for (const input of form?.match(/<input\b[^>]*>/gi) ?? []) {
+    const name = attr(input, 'name')
+    if (!name) continue
+    const type = (attr(input, 'type') ?? 'text').toLowerCase()
+    if (type === 'hidden') fields[name] = decodeHtml(attr(input, 'value') ?? '')
+    else if (type === 'password') passwordField = name
+    else if (!idField && ['email', 'text', 'tel'].includes(type)) idField = name
+  }
+  if (!fields._token && (looseToken ?? csrf)) fields._token = decodeHtml((looseToken ?? csrf)!)
+  const action = form ? attr(/<form\b[^>]*>/i.exec(form)![0], 'action') : undefined
+  return { action: new URL(action ? decodeHtml(action) : '/login', pageUrl).toString(), fields, idField: idField || 'email', passwordField }
+}
+
+/** Why a page is not a sign-in form, in a few words, for the error shown to Super Admin. */
+function describePage(status: number, html: string): string {
+  if (/challenge-platform|cf-chl|Just a moment|Attention Required/i.test(html)) return 'its firewall asked for a browser check — try again in a minute'
+  const title = /<title[^>]*>([^<]{0,80})/i.exec(html)?.[1]?.trim()
+  return `no sign-in form on the page (HTTP ${status}${title ? `, "${title}"` : ''})`
+}
+
+/** Delivered / cancelled from the fraud page, wherever the answer keeps them. */
+export function parseSteadfast(body: unknown): PanelStat {
+  const top = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  const scopes = [top, top.data, top.result, top.summary].filter((v): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v))
+  const pick = (...keys: string[]) => {
+    for (const o of scopes) for (const k of keys) if (k in o) return o[k]
+    return undefined
+  }
+  const delivered = pick('total_delivered', 'delivered', 'total_delivery', 'success')
+  const cancelled = pick('total_cancelled', 'cancelled', 'total_cancel', 'cancel')
+  if (delivered === undefined && cancelled === undefined) {
+    const keys = Object.keys(top).slice(0, 6).join(', ')
+    const message = typeof top.message === 'string' ? `: ${top.message.slice(0, 120)}` : keys ? ` (fields: ${keys})` : ''
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `Steadfast's fraud page gave an unexpected answer${message}` }
+  }
+  const success = num(delivered), cancel = num(cancelled)
+  const total = success + cancel
+  return { ok: true, success, cancel, total, success_ratio: ratio(success, total) }
+}
+
 async function steadfast(login: PanelLogin, phone: string, d: Required<PanelDeps>): Promise<PanelStat> {
-  const email = text(login.email), password = text(login.password)
+  const email = text(login.email ?? login.phone), password = text(login.password)
   if (!email || !password) return { ok: false, success: 0, cancel: 0, total: 0, error: 'No Steadfast login saved' }
   const key = await sessionKey('steadfast', login)
   const base = 'https://steadfast.com.bd'
+  const fail = (error: string): PanelStat => ({ ok: false, success: 0, cancel: 0, total: 0, error })
   // A signed-out session is redirected to the login page instead of answering JSON.
   const read = async (cookie: string): Promise<Response> =>
     timedFetch(d.fetchFn, `${base}/user/frauds/check/${phone}`, {
-      redirect: 'manual', headers: { Cookie: cookie, Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'User-Agent': UA },
+      redirect: 'manual', headers: { Cookie: cookie, Accept: 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest', 'User-Agent': UA },
     }, d.timeoutMs)
   const answered = (res: Response) => res.ok && (res.headers.get('content-type') ?? '').includes('json')
 
@@ -153,36 +212,37 @@ async function steadfast(login: PanelLogin, phone: string, d: Required<PanelDeps
   }
 
   const jar = new Jar()
-  const loginPage = await timedFetch(d.fetchFn, `${base}/login`, { headers: { 'User-Agent': UA } }, d.timeoutMs)
-  jar.absorb(loginPage)
-  const token = /<input[^>]+name="_token"[^>]+value="([^"]+)"/.exec(await loginPage.text().catch(() => ''))?.[1]
-  if (!token) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Steadfast login page did not load' }
-  const form = new URLSearchParams({ _token: token, email, password })
-  const loginRes = await timedFetch(d.fetchFn, `${base}/login`, {
+  const page = await timedFetch(d.fetchFn, `${base}/login`, { headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' } }, d.timeoutMs)
+  jar.absorb(page)
+  const html = await page.text().catch(() => '')
+  const form = readLoginForm(html, page.url || `${base}/login`)
+  if (!form) return fail(`Steadfast sign-in: ${describePage(page.status, html)}`)
+  const body = new URLSearchParams({ ...form.fields, [form.idField]: email, [form.passwordField]: password })
+  // Laravel also accepts the XSRF-TOKEN cookie as a header.
+  const xsrf = /(?:^|;\s*)XSRF-TOKEN=([^;]+)/.exec(jar.header())?.[1]
+  const loginRes = await timedFetch(d.fetchFn, form.action, {
     method: 'POST', redirect: 'manual',
-    headers: { Cookie: jar.header(), 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA },
-    body: form.toString(),
+    headers: {
+      Cookie: jar.header(), 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA,
+      Accept: 'text/html,application/xhtml+xml', Origin: base, Referer: `${base}/login`,
+      ...(xsrf ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) } : {}),
+    },
+    body: body.toString(),
   }, d.timeoutMs)
   jar.absorb(loginRes)
-  // Laravel sends a wrong login back to /login; a good one goes on to the panel.
+  // A wrong login is sent back to the login page; a good one goes on to the panel.
   const back = loginRes.headers.get('location') ?? ''
   const toLogin = /\/login\/?$/.test(back ? new URL(back, base).pathname : '')
-  if (!(loginRes.ok || (loginRes.status >= 300 && loginRes.status < 400)) || toLogin) {
-    return { ok: false, success: 0, cancel: 0, total: 0, error: loginRes.status === 419 ? 'Steadfast refused the sign-in (session expired) — try again' : 'Steadfast rejected the email or password' }
-  }
+  if (loginRes.status === 419) return fail('Steadfast refused the sign-in (session expired) — try again')
+  if (loginRes.status === 422 || toLogin) return fail('Steadfast rejected the email or password')
+  if (!(loginRes.ok || (loginRes.status >= 300 && loginRes.status < 400))) return fail(`Steadfast sign-in answered HTTP ${loginRes.status}`)
   const cookie = jar.header()
   const res = await read(cookie)
-  if (res.status >= 300 && res.status < 400) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Steadfast rejected the email or password' }
-  if (!answered(res)) return { ok: false, success: 0, cancel: 0, total: 0, error: `Steadfast answered HTTP ${res.status}` }
-  d.store.set(key, cookie, 10 * 60_000)
-  return parseSteadfast(await res.json().catch(() => null))
-}
-function parseSteadfast(body: unknown): PanelStat {
-  const o = (body ?? {}) as Record<string, unknown>
-  if (!('total_delivered' in o) && !('total_cancelled' in o)) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Steadfast fraud page gave an unexpected answer' }
-  const success = num(o.total_delivered), cancel = num(o.total_cancelled)
-  const total = success + cancel
-  return { ok: true, success, cancel, total, success_ratio: ratio(success, total) }
+  if (res.status >= 300 && res.status < 400) return fail('Steadfast rejected the email or password')
+  if (!answered(res)) return fail(`Steadfast's fraud page answered HTTP ${res.status}${res.ok ? ' with a web page instead of data' : ''}`)
+  const stat = parseSteadfast(await res.json().catch(() => null))
+  if (stat.ok) d.store.set(key, cookie, 10 * 60_000)
+  return stat
 }
 
 // -------------------------------- Pathao -------------------------------------
@@ -219,9 +279,9 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
   const loginPhone = bdMobile(login.phone ?? ''), password = text(login.password)
   if (!loginPhone || !password) return { ok: false, success: 0, cancel: 0, total: 0, error: 'No RedX login saved' }
   const key = await sessionKey('redx', login)
-  const read = async (token: string): Promise<Response> =>
-    timedFetch(d.fetchFn, `https://redx.com.bd/api/redx_se/admin/parcel/customer-success-return-rate?phoneNumber=88${phone}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': UA },
+  const read = async (token: string, number = `88${phone}`): Promise<Response> =>
+    timedFetch(d.fetchFn, `https://redx.com.bd/api/redx_se/admin/parcel/customer-success-return-rate?phoneNumber=${encodeURIComponent(number)}`, {
+      headers: { Accept: 'application/json, text/plain, */*', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': UA },
     }, d.timeoutMs)
 
   let token = d.store.get(key)?.value
@@ -235,10 +295,19 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
     if (!token) return { ok: false, success: 0, cancel: 0, total: 0, error: 'RedX gave no access token' }
     d.store.set(key, token, 50 * 60_000)
   }
-  const res = await read(token)
+  let res = await read(token)
   if (res.status === 401) { d.store.drop(key); return redx(login, phone, d) }
+  // RedX has answered 400 for one way of writing the number; try the others before giving up.
+  for (const other of [phone, `+88${phone}`]) {
+    if (res.status !== 400) break
+    await res.body?.cancel().catch(() => undefined)
+    res = await read(token, other)
+  }
   if (res.status === 429) return { ok: false, success: 0, cancel: 0, total: 0, error: 'RedX rate limit — try again in a minute' }
-  if (!res.ok) return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}` }
+  if (!res.ok) {
+    const why = text(((await res.json().catch(() => ({}))) as { message?: unknown; error?: unknown }).message ?? '').slice(0, 120)
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}${why ? `: ${why}` : ''}` }
+  }
   const data = ((await res.json().catch(() => ({})) as { data?: Record<string, unknown> }).data) ?? {}
   const success = num(data.deliveredParcels), total = num(data.totalParcels), cancel = Math.max(0, total - success)
   return { ok: true, success, cancel, total, success_ratio: ratio(success, total) }
@@ -296,42 +365,8 @@ function parseCarrybee(body: unknown): PanelStat {
   return { ok: true, success, cancel, total, success_ratio: total > 0 ? Math.round(r * 100) / 100 : null }
 }
 
-// -------------------------------- Paperfly -----------------------------------
-async function paperfly(login: PanelLogin, phone: string, d: Required<PanelDeps>): Promise<PanelStat> {
-  const username = text(login.user), password = text(login.password)
-  if (!username || !password) return { ok: false, success: 0, cancel: 0, total: 0, error: 'No Paperfly login saved' }
-  const key = await sessionKey('paperfly', login)
-  const base = 'https://go-app.paperfly.com.bd/merchant/api/react'
-
-  let token = d.store.get(key)?.value
-  if (!token) {
-    const res = await timedFetch(d.fetchFn, `${base}/authentication/login_using_password.php`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': UA }, body: JSON.stringify({ username, password }),
-    }, d.timeoutMs)
-    token = text((await res.json().catch(() => ({})) as Record<string, unknown>).token)
-    if (!res.ok || !token) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Paperfly rejected the username or password' }
-    d.store.set(key, token, 55 * 60_000)
-  }
-  const res = await timedFetch(d.fetchFn, `${base}/smart-check/list.php`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': UA },
-    body: JSON.stringify({ search_text: phone, limit: 50, page: 1 }),
-  }, d.timeoutMs)
-  if (res.status === 401) { d.store.drop(key); return paperfly(login, phone, d) }
-  if (!res.ok) return { ok: false, success: 0, cancel: 0, total: 0, error: `Paperfly answered HTTP ${res.status}` }
-  const data = (await res.json().catch(() => ({}))) as { totalRecords?: unknown; records?: unknown }
-  const total = num(data.totalRecords)
-  let success = 0, cancel = 0
-  for (const rec of Array.isArray(data.records) ? data.records : []) {
-    const status = String((rec as Record<string, unknown>).status ?? '').toLowerCase()
-    if (status.includes('delivered') || status.includes('success')) success++
-    else if (status.includes('return') || status.includes('cancel') || status.includes('fail')) cancel++
-  }
-  const parsed = success + cancel
-  return { ok: true, success, cancel, total, success_ratio: parsed > 0 ? ratio(success, parsed) : null }
-}
-
 const RUNNERS: Record<CourierPanelProviderId, (login: PanelLogin, phone: string, d: Required<PanelDeps>) => Promise<PanelStat>> = {
-  steadfast, pathao, redx, carrybee, paperfly,
+  steadfast, pathao, redx, carrybee,
 }
 
 function deps(d: PanelDeps): Required<PanelDeps> {

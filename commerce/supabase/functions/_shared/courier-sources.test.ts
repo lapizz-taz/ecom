@@ -61,3 +61,20 @@ describe('BD Courier + courier sign-ins merged per courier', () => {
     expect(await panelOnly.checkCustomer({ phone: '01711111111' })).toMatchObject({ ok: true, counts: { total: 72, delivered: 71, returned: 1 }, courierScore: undefined })
   })
 })
+
+describe('the courier record is on unless the store turned it off', () => {
+  it('adds BD Courier + courier sign-ins to a store that never chose, and keeps them out when switched off', async () => {
+    const { checkProviderNames } = await import('./fraud/service.ts')
+    expect(checkProviderNames({ providers: ['internal'] })).toEqual(['internal', 'courier_history'])
+    expect(checkProviderNames({})).toEqual(['internal', 'courier_history'])
+    expect(checkProviderNames({ providers: ['internal', 'courier_panel'] })).toEqual(['internal', 'courier_panel'])
+    expect(checkProviderNames({ providers: ['internal', 'courier_history'], courier_record: false })).toEqual(['internal'])
+  })
+
+  it('a slow courier sign-in does not hold the check: BD Courier answers alone, with a note', async () => {
+    const slow = { name: 'p', lookup: () => new Promise<CourierHistorySummary>(() => undefined) }
+    const r = await new CourierSourcesProvider({ name: 'h', lookup: async () => bd }, slow, 30).lookup('01711111111')
+    expect(r.total).toBe(39)
+    expect(r.source_notes).toEqual(['Courier sign-ins: took too long'])
+  })
+})

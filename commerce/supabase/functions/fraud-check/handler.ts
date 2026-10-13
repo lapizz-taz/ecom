@@ -13,7 +13,7 @@ import {
   COURIER_PANEL_LABELS, COURIER_PANEL_LOGIN_FIELD, COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider, panelAccounts,
 } from '../_shared/fraud/courier-panel.ts'
 import {
-  courierHistoryConfig, databaseMeter, FraudDetectionService, type FraudSettings, loadFraudProviders,
+  checkProviderNames, courierHistoryConfig, databaseMeter, FraudDetectionService, type FraudSettings, loadFraudProviders,
   platformCourierHistorySecret, platformPanelCreds,
 } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -97,7 +97,7 @@ export default (
         provided_by_platform: true,
         connected: !!config,
         service: config ? COURIER_HISTORY_SERVICES[config.service ?? 'bdcourier'].label : null,
-        enabled: (settings.providers ?? []).includes('courier_history'),
+        enabled: checkProviderNames(settings).includes('courier_history') || checkProviderNames(settings).includes('courier_panel'),
       })
     }
 
@@ -116,7 +116,7 @@ export default (
         provided_by_platform: true,
         connected: providers.some((p) => p.connected),
         providers,
-        enabled: (settings.providers ?? []).includes('courier_panel'),
+        enabled: checkProviderNames(settings).includes('courier_history') || checkProviderNames(settings).includes('courier_panel'),
       })
     }
 

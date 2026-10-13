@@ -11,12 +11,27 @@ export interface FraudSettings {
   providers?: string[]
   http?: { mapping?: HttpProviderConfig['mapping']; method?: 'GET' | 'POST'; timeout_ms?: number }
   courier_history?: { timeout_ms?: number }
+  /**
+   * The courier record (the platform's BD Courier and courier sign-ins, together).
+   * On unless the store switched it off: it runs whenever the platform has a source
+   * connected, without the store having to find a setting first.
+   */
+  courier_record?: boolean
+}
+
+const COURIER_SOURCES = ['courier_history', 'courier_panel']
+
+/** The providers a check runs: the store's list, plus the courier record unless the store turned it off. */
+export function checkProviderNames(settings: FraudSettings): string[] {
+  const names = settings.providers?.length ? [...settings.providers] : ['internal']
+  if (settings.courier_record === false) return names.filter((n) => !COURIER_SOURCES.includes(n))
+  return names.some((n) => COURIER_SOURCES.includes(n)) ? names : [...names, 'courier_history']
 }
 
 /** Keys loaded from Vault by the service role (see loadFraudProviders). */
 export interface FraudSecrets {
   courierHistory?: { api_key?: string; base_url?: string; service?: CourierHistoryService } | null
-  /** The merchant's own courier merchant-panel logins (Steadfast, Pathao, RedX, Carrybee, Paperfly). */
+  /** The merchant's own courier merchant-panel logins (Steadfast, Pathao, RedX, Carrybee). */
   panel?: CourierPanelCreds | null
 }
 
@@ -103,7 +118,7 @@ export class MeteredProvider implements FraudProvider {
 
 /** Builds the configured providers. Credentials come from platform credentials or secrets only. */
 export function providersFromSettings(settings: FraudSettings, fetchFn: typeof fetch = fetch, secrets: FraudSecrets = {}, meter?: UsageMeter): FraudProvider[] {
-  const names = settings.providers?.length ? settings.providers : ['internal']
+  const names = checkProviderNames(settings)
   const providers: FraudProvider[] = []
   let courierSourceAdded = false
   for (const name of names) {
@@ -117,10 +132,7 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
       const history = config ? new CourierHistoryProvider(config, fetchFn) : null
       const signIns = secrets.panel ? new CourierPanelProvider(secrets.panel, { fetchFn }) : null
       const panel = signIns?.connected.length ? signIns : null
-      if (!history && !panel) {
-        console.warn('Courier checks are enabled but neither BD Courier nor a courier sign-in is connected; skipping them')
-        continue
-      }
+      if (!history && !panel) continue // nothing connected on the platform yet
       const provider = panel ? new CourierSourcesProvider(history, panel) : history!
       providers.push(meter ? new MeteredProvider(provider, meter) : provider)
     }
@@ -169,7 +181,7 @@ export async function platformPanelCreds(admin: SupabaseClient): Promise<FraudSe
 
 /** Providers for a check: the platform's BD Courier and courier sign-ins (together when either is on), metered for the merchant on `admin`. */
 export async function loadFraudProviders(admin: SupabaseClient, settings: FraudSettings, fetchFn: typeof fetch = fetch): Promise<FraudProvider[]> {
-  const couriers = settings.providers?.some((p) => p === 'courier_history' || p === 'courier_panel') ?? false
+  const couriers = checkProviderNames(settings).some((n) => COURIER_SOURCES.includes(n))
   const [courierHistory, panel] = couriers ? await Promise.all([platformCourierHistorySecret(admin), platformPanelCreds(admin)]) : [null, null]
   return providersFromSettings(settings, fetchFn, { courierHistory, panel }, databaseMeter(admin))
 }
