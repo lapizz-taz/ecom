@@ -23,7 +23,7 @@ class FFC_Tracking {
 	const SENT    = '_ffc_track_sent';
 	const RR_META = '_ffc_receive_rate';
 	const LOG_OPT = 'ffc_track_log';
-	const GRAPH   = 'https://graph.facebook.com/v19.0';
+	const GRAPH   = 'https://graph.facebook.com/v22.0';
 	const TIKTOK  = 'https://business-api.tiktok.com/open_api/v1.3/event/track/';
 	const GA4_MP  = 'https://www.google-analytics.com/mp/collect';
 
@@ -279,7 +279,7 @@ class FFC_Tracking {
 			array(
 				'email'       => $ud['email_h'],
 				'phone'       => $ud['phone_h'],
-				'external_id' => hash( 'sha256', (string) $order->get_customer_id() ? (string) $order->get_customer_id() : $ud['phone_h'] ),
+				'external_id' => $order->get_customer_id() ? hash( 'sha256', (string) $order->get_customer_id() ) : $ud['phone_h'],
 				'ttclid'      => $attr['ttclid'],
 				'ttp'         => $attr['ttp'],
 				'ip'          => $attr['ip'],
@@ -329,7 +329,7 @@ class FFC_Tracking {
 			'user_data'       => array_filter(
 				array(
 					'sha256_email_address' => $ud['email_h'],
-					'sha256_phone_number'  => $ud['phone_h'],
+					'sha256_phone_number'  => $ud['phone_e164_h'],
 				)
 			),
 			'events'          => array(
@@ -419,10 +419,11 @@ class FFC_Tracking {
 		}
 		return array(
 			'email_h'   => self::h( $order->get_billing_email() ),
-			'phone_h'   => $phone ? hash( 'sha256', $phone ) : null,
+			'phone_h'   => $phone ? hash( 'sha256', $phone ) : null,        // Meta/TikTok: digits with country code
+			'phone_e164_h' => $phone ? hash( 'sha256', '+' . $phone ) : null, // Google: E.164 with '+'
 			'fn_h'      => self::h( $order->get_billing_first_name() ),
 			'ln_h'      => self::h( $order->get_billing_last_name() ),
-			'city_h'    => self::h( $order->get_billing_city() ),
+			'city_h'    => self::h( preg_replace( '/[^a-z]/', '', strtolower( (string) $order->get_billing_city() ) ) ),
 			'country_h' => self::h( $order->get_billing_country() ),
 		);
 	}

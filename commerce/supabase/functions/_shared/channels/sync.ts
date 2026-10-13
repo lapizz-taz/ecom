@@ -41,7 +41,9 @@ interface SyncState {
 interface RestockLine { external_variant_id: string | null; sku: string | null; name: string; quantity: number }
 interface FulfillContext {
   order: { id: string; order_number: string; status: string; external_order_id: string; customer_email: string | null; delivered_at?: string | null
-    own_status?: string; merged_into?: string | null; payment_method?: string | null; was_delivered?: boolean }
+    own_status?: string; merged_into?: string | null; payment_method?: string | null; was_delivered?: boolean
+    /** Courier receive rate from the order's fraud check (0–100), when known. */
+    receive_rate?: number | string | null }
   sync?: SyncState | null
   settings?: { inventory_sync: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; status_sync?: boolean; fulfill_on_ship?: boolean }
   /** Items received back as good, per line (totals so far). */
@@ -349,7 +351,10 @@ async function wooStatusStep(job: Job, ctx: FulfillContext, rpc: Rpc, woo: () =>
   const label = target.replace(/-/g, ' ')
   const note = ctx.order.merged_into ? `${label} (merged into ${ctx.order.merged_into})` : label
   try {
-    const r = await woo().pluginOrderStatus({ order_id: ctx.order.external_order_id, status: target, note, stock_sync: !!ctx.settings?.inventory_sync, restock })
+    // jsonb numerics can arrive as strings; send only a real 0–100 number.
+    const rr = ctx.order.receive_rate == null ? NaN : Number(ctx.order.receive_rate)
+    const r = await woo().pluginOrderStatus({ order_id: ctx.order.external_order_id, status: target, note, stock_sync: !!ctx.settings?.inventory_sync, restock,
+      ...(Number.isFinite(rr) && rr >= 0 && rr <= 100 && { receive_rate: rr }) })
     await save({ store_status: r.status, store_status_error: '', store_restock: restock, restocked: r.restocked ?? [] })
     return { outcome: 'DONE', result: { store_status: r.status, changed: r.changed, restocked: (r.restocked ?? []).reduce((n, x) => n + (x.added ?? 0), 0) } }
   } catch (error) {

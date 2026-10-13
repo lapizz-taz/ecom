@@ -496,6 +496,33 @@ class WC_Order {
 	public function get_payment_method() {
 		return $this->data['payment_method'];
 	}
+	public function get_currency() {
+		return $this->data['currency'];
+	}
+	public function get_customer_id() {
+		return isset( $this->data['customer_id'] ) ? (int) $this->data['customer_id'] : 0;
+	}
+	public function get_billing_email() {
+		return $this->data['billing']['email'];
+	}
+	public function get_billing_country() {
+		return $this->data['billing']['country'];
+	}
+	public function get_item_count() {
+		return array_sum( array_map( static function ( $l ) { return (int) $l['quantity']; }, $this->data['line_items'] ) );
+	}
+	/** Like WC_Order::get_item_total( $item, $inc_tax, $round ): the line total per unit. */
+	public function get_item_total( $item, $inc_tax = false, $round = true ) {
+		foreach ( $this->data['line_items'] as $l ) {
+			if ( (int) $l['id'] === $item->get_id() ) {
+				return $l['quantity'] ? (float) $l['total'] / (int) $l['quantity'] : 0.0;
+			}
+		}
+		return 0.0;
+	}
+	public function get_checkout_order_received_url() {
+		return add_query_arg( 'order-received', $this->get_id(), wc_get_checkout_url() );
+	}
 	public function get_billing_phone() {
 		return $this->data['billing']['phone'];
 	}
