@@ -154,6 +154,54 @@ export function lookupCourierHistory(phone: string) {
   return invokeFunction<{ ok: boolean; result: CourierHistoryResult }>('fraud-check', { action: 'lookup_courier_history', phone })
 }
 
+// ---------------------------------------------------------------------------
+// Courier panel accounts — the merchant's OWN logins to the courier panels
+// (Steadfast, Pathao, RedX, Carrybee, Paperfly). Passwords are kept in Vault;
+// checks run on the merchant's own courier accounts, so they cost no credits.
+// ---------------------------------------------------------------------------
+export type CourierPanelProviderId = 'steadfast' | 'pathao' | 'redx' | 'carrybee' | 'paperfly'
+
+export interface CourierPanelAccount {
+  provider: CourierPanelProviderId
+  label: string
+  /** Which field this courier signs in with. */
+  login_field: 'email' | 'phone' | 'user'
+  connected: boolean
+  hint: string | null
+  updated_at: string | null
+}
+
+export interface CourierPanelStatus {
+  providers: CourierPanelAccount[]
+  /** This business uses the panel logins in checks (Fraud → Providers). */
+  enabled: boolean
+}
+
+export interface CourierPanelLogin {
+  email?: string
+  phone?: string
+  user?: string
+  password: string
+}
+
+export function courierPanelStatus() {
+  return invokeFunction<CourierPanelStatus>('fraud-check', { action: 'courier_panel_status' })
+}
+
+/** Signs in to the courier panel to verify the login, then saves it in Vault. */
+export function saveCourierPanel(provider: CourierPanelProviderId, login: CourierPanelLogin, testPhone?: string) {
+  return invokeFunction<{ ok: boolean; message: string }>('fraud-check', { action: 'save_courier_panel', provider, login, test_phone: testPhone })
+}
+
+export function clearCourierPanel(provider: CourierPanelProviderId) {
+  return invokeFunction<{ ok: boolean }>('fraud-check', { action: 'clear_courier_panel', provider })
+}
+
+/** One lookup across the merchant's connected courier panels (no credits). */
+export function lookupCourierPanel(phone: string) {
+  return invokeFunction<{ ok: boolean; result: CourierHistoryResult }>('fraud-check', { action: 'lookup_courier_panel', phone })
+}
+
 export type Gateway = 'bkash' | 'paystation'
 export interface GatewayCredentials {
   app_key?: string
