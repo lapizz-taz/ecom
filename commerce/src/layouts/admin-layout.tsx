@@ -24,6 +24,7 @@ import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
 import { type ShellAction, SidebarNav } from '@/features/shell/sidebar'
 import { ContactDialog, HelpDialog, ReportIssueDialog } from '@/features/shell/support-dialogs'
 import { AnnouncementBanner, AnnouncementsButton } from '@/features/shell/platform-announcements'
+import { MajorUpdateNotice } from '@/features/shell/major-update-notice'
 import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -346,6 +347,7 @@ export default function AdminLayout() {
             )}
             <AnnouncementsButton />
             <WhatsNew />
+            <MajorUpdateNotice />
             {can('orders.view') && (
               <Button variant="ghost" size="icon" className="relative" aria-label={alerts.unseen ? `${alerts.unseen} new orders` : 'New orders'}
                 onClick={() => { alerts.reset(); navigate('/admin/orders/web') }}>
