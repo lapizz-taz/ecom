@@ -47,6 +47,10 @@ export interface CourierLine {
   /** e.g. "50+" when the courier only reports a range. */
   parcel_range?: string | null
   notice?: string | null
+  /** Where the line came from: BD Courier, or our sign-in to the courier's own merchant panel. */
+  source?: 'bd_courier' | 'sign_in'
+  /** Fraud reports other merchants filed on the number, as the courier counts them. */
+  fraud_reports?: number
 }
 
 /** The service's own verdict for the number (BD Courier). Staff only. */

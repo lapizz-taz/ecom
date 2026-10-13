@@ -68,7 +68,13 @@ export interface CourierLineRecord {
   success_ratio?: number | null; rate_only?: boolean; parcel_range?: string | null
   /** Why this courier could not be checked (its sign-in failed). */
   notice?: string | null
+  /** BD Courier, or our sign-in to the courier's own merchant panel. */
+  source?: 'bd_courier' | 'sign_in'
+  /** Fraud reports other merchants filed on the number, as the courier counts them. */
+  fraud_reports?: number
 }
+/** The store's delivery-success thresholds (Settings → Fraud). */
+export interface DeliveryPolicy { good_min: number; mid_min: number; min_parcels: number }
 export interface OrderCustomerRecord {
   ours: { total: number; delivered: number; cancelled: number; returned: number; in_progress: number; by_stage: Record<string, number> | null }
   check: {
@@ -76,7 +82,16 @@ export interface OrderCustomerRecord {
     total: number; delivered: number; cancelled: number
     couriers: CourierLineRecord[] | null
     verdict: { label?: string | null; reasons?: string[] } | null
+    status?: 'SUCCESS' | 'PARTIAL' | 'ERROR'
+    parcels?: number | null
+    returned?: number; failed?: number
+    service?: string | null
+    /** Sources that could not be reached for this check. */
+    notes?: string[] | null
   } | null
+  /** A newer check for this phone that failed. */
+  last_failure?: { at: string; error: string } | null
+  policy?: DeliveryPolicy | null
   shipment: { courier: string; provider: string; tracking_number: string | null; consignment_id: string | null; cod_amount: number | null; uploaded: boolean; tracking_url: string | null } | null
 }
 

@@ -10,7 +10,10 @@
 --   Delivered, cancelled, returned and lost orders keep the record they had.
 --
 --   The order page's delivery record prefers a complete check from the last
---   day over a newer partial one, for the same reason.
+--   day over a newer partial one, for the same reason, and now also says how
+--   sure it is: the check's status, the sources it could not reach, returned
+--   and failed counts, a newer failed attempt, and the store's thresholds
+--   (Settings → Fraud → delivery success) the risk label is judged against.
 -- =============================================================================
 
 create or replace function public._courier_check_to_open_orders()
@@ -87,13 +90,28 @@ begin
             from public.orders x where x.customer_phone = v_order.customer_phone group by 1) s))
       from public.orders o where o.customer_phone = v_order.customer_phone),
     'check', case when v_check.id is null then null else jsonb_build_object(
-        'id', v_check.id, 'checked_at', v_check.created_at, 'provider', v_check.provider,
+        'id', v_check.id, 'checked_at', v_check.created_at, 'provider', v_check.provider, 'status', v_check.status,
         'rate', coalesce((v_check.metrics ->> 'receive_rate')::numeric, v_check.courier_score),
         'tier', v_check.metrics ->> 'receive_rate_tier',
+        'parcels', (v_check.metrics ->> 'parcel_count')::int,
         'total', v_check.previous_orders, 'delivered', v_check.delivered_orders,
         'cancelled', v_check.returned_orders + v_check.failed_delivery_orders,
+        'returned', v_check.returned_orders, 'failed', v_check.failed_delivery_orders,
+        'service', v_check.provider_response -> 'courier_history' ->> 'service',
+        'notes', v_check.provider_response -> 'courier_history' -> 'source_notes',
         'couriers', v_check.provider_response -> 'courier_history' -> 'couriers',
         'verdict', v_check.provider_response -> 'courier_history' -> 'verdict') end,
+    -- A courier check for this phone that failed after the one shown (or with none shown).
+    'last_failure', (select jsonb_build_object('at', f.created_at, 'error', left(coalesce(f.error, ''), 300))
+                     from public.fraud_checks f
+                     where f.phone = v_order.customer_phone and f.status = 'ERROR' and f.provider <> 'internal'
+                       and f.created_at > coalesce(v_check.created_at, '-infinity'::timestamptz)
+                     order by f.created_at desc limit 1),
+    'policy', (select jsonb_build_object(
+                 'good_min', coalesce((r ->> 'good_min')::numeric, 80),
+                 'mid_min', coalesce((r ->> 'mid_min')::numeric, 50),
+                 'min_parcels', coalesce((r ->> 'min_parcels')::int, 1))
+               from (select coalesce(public.get_setting('fraud') -> 'receive_rate', '{}'::jsonb) as r) x),
     'shipment', (select jsonb_build_object('courier', c.name, 'provider', c.provider, 'tracking_number', s.tracking_number,
                           'consignment_id', s.consignment_id, 'cod_amount', s.cod_amount, 'uploaded', c.api_enabled and coalesce(s.consignment_id, s.tracking_number) is not null,
                           'tracking_url', public._tracking_url(c.provider, c.tracking_url_template, coalesce(s.tracking_number, s.consignment_id)))

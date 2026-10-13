@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, parseSteadfast, readLoginForm, setPanelRelay, testPanelLogin,
+  answerDetail, COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, parseSteadfast, readLoginForm, setPanelRelay,
+  testPanelLogin,
 } from './fraud/courier-panel.ts'
 import { CourierHistoryProvider, setHistoryRelay } from './fraud/courier-history.ts'
 import { httpPanelRelay } from './fraud/courier-relay.ts'
@@ -379,8 +380,10 @@ describe('Steadfast new sign-in page and RedX 400', () => {
 
   it('says when Steadfast shows a firewall check instead of the sign-in page', async () => {
     const fetchFn = panelFetch({ 'steadfast.com.bd/login': () => htmlRes('<title>Just a moment...</title><div id="challenge-platform"></div>') })
-    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn, store: freshStore() })
+    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn, store: freshStore(), retryPauseMs: 0 })
     expect(r).toEqual({ ok: false, message: 'Steadfast sign-in: its firewall asked for a browser check — try again in a minute' })
+    // It looked twice before giving up.
+    expect(fetchFn.mock.calls.filter(([u]) => String(u).includes('steadfast.com.bd/login'))).toHaveLength(2)
   })
 
   it('reads the fraud numbers from a nested answer, and names what came back when they are missing', () => {
@@ -406,5 +409,89 @@ describe('Steadfast new sign-in page and RedX 400', () => {
     const always400 = panelFetch({ 'customer-success-return-rate': () => withCookie({ message: 'Invalid phone number' }, undefined, 400) })
     const bad = await testPanelLogin('redx', allCreds.redx as never, '01811111111', { fetchFn: always400, store: freshStore() })
     expect(bad).toEqual({ ok: false, message: 'RedX answered HTTP 400: Invalid phone number' })
+  })
+})
+
+describe('Steadfast\'s new fraud answer, firewall retry, couriers\' own error reasons', () => {
+  const newAnswer = { delivery_ratio: 92.5, cancellation_ratio: 7.5, volume_band: '100+', volume_range: { min: 100, max: null }, fraud_reports: [{ id: 1 }, { id: 2 }], fraud_categories: ['Fake order'] }
+
+  it('reads delivery_ratio, the volume band and the reports — and makes up no parcel counts', () => {
+    expect(parseSteadfast(newAnswer)).toEqual({ ok: true, success: 0, cancel: 0, total: 0, success_ratio: 92.5, rate_only: true, parcel_range: '100+', reports: 2 })
+    // Written as text, nested, or with a range instead of a band.
+    expect(parseSteadfast({ data: { delivery_ratio: '88.2%', cancellation_ratio: '11.8%', volume_range: '51-100' } }))
+      .toMatchObject({ ok: true, success_ratio: 88.2, rate_only: true, parcel_range: '51–100' })
+    // Written as fractions.
+    expect(parseSteadfast({ delivery_ratio: 0.9, cancellation_ratio: 0.1, volume_band: 'High' })).toMatchObject({ success_ratio: 90, parcel_range: 'High' })
+    // Only the cancellation rate.
+    expect(parseSteadfast({ cancellation_ratio: 20, volume_band: '11-50' })).toMatchObject({ success_ratio: 80, parcel_range: '11–50' })
+    // No history: no rate, no band — "no parcels", not 0 %.
+    expect(parseSteadfast({ delivery_ratio: 0, cancellation_ratio: 0, volume_band: '0', fraud_reports: [] }))
+      .toEqual({ ok: true, success: 0, cancel: 0, total: 0, success_ratio: null })
+    // The old counts still win when Steadfast sends them.
+    expect(parseSteadfast({ total_delivered: 8, total_cancelled: 2, fraud_reports: 1 })).toMatchObject({ ok: true, success: 8, cancel: 2, total: 10, reports: 1 })
+  })
+
+  it('a check with only Steadfast\'s rate uses that rate and its band as the evidence', async () => {
+    const fetchFn = panelFetch({ '/user/frauds/check/': () => withCookie(newAnswer) })
+    const p = new CourierPanelProvider({ steadfast: allCreds.steadfast }, { fetchFn, store: freshStore() })
+    const s = await p.lookup('01811111111')
+    expect(s.couriers[0]).toMatchObject({ courier: 'steadfast', rate_only: true, parcel_range: '100+', success_ratio: 92.5, fraud_reports: 2, source: 'sign_in' })
+    expect(s).toMatchObject({ total: 0, success_ratio: 92.5, ratio_source: 'provider', parcel_floor: 100 })
+    expect(await p.checkCustomer({ phone: '01811111111' })).toMatchObject({ ok: true, courierScore: 92.5, parcelFloor: 100 })
+    expect(await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn, store: freshStore() }))
+      .toEqual({ ok: true, message: 'Steadfast: signed in — 92.5% delivered, volume 100+, 2 fraud reports for 01811111111 (rate only, no parcel counts)' })
+  })
+
+  it('looks again once when the firewall asks for a browser check, then signs in', async () => {
+    let page = 0
+    const fetchFn = panelFetch({
+      'steadfast.com.bd/login': () => (++page === 1
+        ? htmlRes('<title>Just a moment...</title><div id="challenge-platform"></div>')
+        : htmlRes('<input type="hidden" name="_token" value="tok-sf">', 'sf_sess=1; Path=/')),
+    })
+    const posting = vi.fn(async (input: string | URL | Request, init?: RequestInit) =>
+      (String(input).includes('steadfast.com.bd/login') && init?.method === 'POST'
+        ? new Response('', { status: 302, headers: new Headers({ 'set-cookie': 'sf_auth=2; Path=/' }) })
+        : fetchFn(input, init)))
+    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn: posting, store: freshStore(), retryPauseMs: 0 })
+    expect(r).toEqual({ ok: true, message: 'Steadfast: signed in, 10 parcels for 01811111111' })
+  })
+
+  it('Carrybee: a 400 shows Carrybee\'s own reason, tries +88 once, and "no order found" is no history', async () => {
+    const urls: string[] = []
+    const reasons = panelFetch({
+      '/fraud-check/': () => (urls[urls.length - 1].includes('%2B88')
+        ? withCookie({ data: { total_order: 4, cancelled_order: 1, success_rate: 75 } })
+        : withCookie({ errors: { phone: ['The phone format is invalid.'] } }, undefined, 400)),
+    })
+    const spy = vi.fn(async (input: string | URL | Request, init?: RequestInit) => { urls.push(String(input)); return reasons(input, init) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: spy, store: freshStore() }))
+      .toEqual({ ok: true, message: 'Carrybee: signed in, 4 parcels for 01811111111' })
+
+    const refused = panelFetch({ '/fraud-check/': () => withCookie({ error: { message: 'Business is not verified' } }, undefined, 400) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: refused, store: freshStore() }))
+      .toEqual({ ok: false, message: 'Carrybee answered HTTP 400: Business is not verified' })
+
+    const silent = panelFetch({ '/fraud-check/': () => new Response('', { status: 400 }) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: silent, store: freshStore() }))
+      .toEqual({ ok: false, message: 'Carrybee answered HTTP 400 without saying why' })
+
+    const none = panelFetch({ '/fraud-check/': () => withCookie({ message: 'No order found for this number' }, undefined, 404) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: none, store: freshStore() }))
+      .toEqual({ ok: true, message: 'Carrybee: signed in, 0 parcels for 01811111111' })
+
+    // A 200 that carries an error is a failure, not zero parcels.
+    const hidden = panelFetch({ '/fraud-check/': () => withCookie({ error: true, message: 'Token expired' }) })
+    expect(await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn: hidden, store: freshStore() }))
+      .toEqual({ ok: false, message: 'Carrybee: Token expired' })
+  })
+
+  it('reads a courier\'s reason from whichever field it uses', () => {
+    expect(answerDetail({ message: 'Invalid phone number' })).toBe('Invalid phone number')
+    expect(answerDetail({ message: ['a', 'b'] })).toBe('a; b')
+    expect(answerDetail({ error: { message: 'Not verified' } })).toBe('Not verified')
+    expect(answerDetail({ error: true, errors: { phone: ['Bad phone'] } })).toBe('Bad phone')
+    expect(answerDetail({ detail: 'Too many' })).toBe('Too many')
+    expect(answerDetail(null)).toBe('')
   })
 })

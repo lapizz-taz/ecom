@@ -97,4 +97,27 @@ describe('a fresh courier check becomes the record of the customer\'s open order
       const later = await value<{ check: { id: string } }>(db, `select public.admin_order_customer_record($1)`, [order.id])
       expect(later.check.id).not.toBe(complete)
     }))
+
+  it('the order record says how sure it is: status, unreached sources, returned counts, a newer failure, the store\'s marks', () =>
+    inTx(async (db) => {
+      const staff = await createStaff(db, 'OWNER')
+      const p = await createProduct(db, { price: 500, stock: 20 })
+      const order = await createOrder(db, { phone: PHONE, items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      const partial = await record(db, courier({ source_notes: ['BD Courier: Could not reach BD Courier'] }))
+      await age(db, partial, 2) // one transaction stamps both checks with the same time
+      await asService(db)
+      await db.query(`select public.record_fraud_check($1)`, [JSON.stringify({ phone: PHONE, provider: 'courier_history', providers: ['courier_history'], status: 'ERROR', error: 'Courier sign-ins: took too long' })])
+      await asSystem(db)
+      await db.query(`insert into public.settings(merchant_id, key, value) values (public.current_merchant_id(), 'fraud', '{"receive_rate": {"good_min": 85, "mid_min": 60, "min_parcels": 3}}')
+                      on conflict (merchant_id, key) do update set value = public.settings.value || excluded.value`)
+      await asUser(db, staff)
+      const r = await value<{
+        check: { status: string; notes: string[]; returned: number; failed: number; tier: string }
+        last_failure: { error: string } | null
+        policy: { good_min: number; mid_min: number; min_parcels: number }
+      }>(db, `select public.admin_order_customer_record($1)`, [order.id])
+      expect(r.check).toMatchObject({ status: 'SUCCESS', notes: ['BD Courier: Could not reach BD Courier'], returned: 1, failed: 0 })
+      expect(r.last_failure?.error).toBe('Courier sign-ins: took too long')
+      expect(r.policy).toEqual({ good_min: 85, mid_min: 60, min_parcels: 3 })
+    }))
 })

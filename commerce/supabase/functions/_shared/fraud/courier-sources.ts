@@ -16,8 +16,14 @@ interface CourierSource {
 const courierKey = (courier: string) => courier.toLowerCase().replace(/[^a-z]/g, '')
 const rateOf = (delivered: number, total: number) => (total > 0 ? Math.round((delivered / total) * 10000) / 100 : null)
 
+/** Each line says where it came from, so the order page can show it. */
+const tagged = (s: CourierHistorySummary, source: 'bd_courier' | 'sign_in'): CourierHistorySummary =>
+  ({ ...s, couriers: s.couriers.map((c) => ({ ...c, source: c.source ?? source })) })
+
 /** One summary from both: per courier, the panel's own figures replace BD Courier's when the panel answered. */
-export function mergeCourierSummaries(history: CourierHistorySummary | null, panel: CourierHistorySummary | null): CourierHistorySummary | null {
+export function mergeCourierSummaries(bd: CourierHistorySummary | null, signIns: CourierHistorySummary | null): CourierHistorySummary | null {
+  const history = bd && tagged(bd, 'bd_courier')
+  const panel = signIns && tagged(signIns, 'sign_in')
   if (!history || !panel) return history ?? panel
   const lines = new Map<string, CourierLine>(history.couriers.map((c) => [courierKey(c.courier), c]))
   let { total, delivered, cancelled } = history
@@ -28,6 +34,11 @@ export function mergeCourierSummaries(history: CourierHistorySummary | null, pan
     if (p.notice) {
       // That courier's sign-in failed: keep BD Courier's line, or show the failure if BD Courier has none.
       if (!h) lines.set(k, p)
+      continue
+    }
+    // A sign-in that gives only a rate never replaces BD Courier's parcel counts for that courier.
+    if (p.rate_only && h && !h.rate_only && h.orders > 0) {
+      if (p.fraud_reports) lines.set(k, { ...h, fraud_reports: p.fraud_reports })
       continue
     }
     const counted = h && !h.rate_only

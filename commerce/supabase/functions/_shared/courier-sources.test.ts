@@ -38,14 +38,33 @@ describe('BD Courier + courier sign-ins merged per courier', () => {
   it('a failed panel line never replaces a BD Courier line, and nothing changes when the panel adds nothing', () => {
     const failedSteadfast: CourierHistorySummary = { ...panel, couriers: [{ courier: 'steadfast', orders: 0, delivered: 0, cancelled: 0, notice: 'Steadfast login page did not load' }] }
     const m = mergeCourierSummaries(bd, failedSteadfast)!
-    expect(m.couriers.find((c) => c.courier === 'steadfast')).toEqual(bd.couriers[1])
+    expect(m.couriers.find((c) => c.courier === 'steadfast')).toEqual({ ...bd.couriers[1], source: 'bd_courier' })
     expect(m).toMatchObject({ total: 39, success_ratio: 87.18, ratio_source: 'provider' })
   })
 
-  it('either side alone is used as it is', () => {
-    expect(mergeCourierSummaries(bd, null)).toBe(bd)
-    expect(mergeCourierSummaries(null, panel)).toBe(panel)
+  it('either side alone is used as it is, each line saying where it came from', () => {
+    const alone = mergeCourierSummaries(bd, null)!
+    expect({ ...alone, couriers: alone.couriers.map(({ source: _s, ...c }) => c) }).toEqual(bd)
+    expect(alone.couriers.every((c) => c.source === 'bd_courier')).toBe(true)
+    const signIns = mergeCourierSummaries(null, panel)!
+    expect(signIns.total).toBe(panel.total)
+    expect(signIns.couriers.every((c) => c.source === 'sign_in')).toBe(true)
     expect(mergeCourierSummaries(null, null)).toBeNull()
+  })
+
+  it('a sign-in that gives only a rate never replaces BD Courier\'s parcel counts, but keeps its fraud reports', () => {
+    const steadfastRate: CourierHistorySummary = { ...panel, couriers: [{ courier: 'steadfast', orders: 0, delivered: 0, cancelled: 0, success_ratio: 91, rate_only: true, parcel_range: '100+', fraud_reports: 2 }] }
+    const counted: CourierHistorySummary = { ...bd, couriers: bd.couriers.map((c) => (c.courier === 'steadfast' ? { ...c, rate_only: false, orders: 12, delivered: 11, cancelled: 1 } : c)) }
+    const m = mergeCourierSummaries(counted, steadfastRate)!
+    expect(m.couriers.find((c) => c.courier === 'steadfast')).toMatchObject({ orders: 12, delivered: 11, source: 'bd_courier', fraud_reports: 2 })
+    expect(m.total).toBe(counted.total)
+    // When BD Courier has only a rate too, the fresher sign-in rate is shown.
+    const rateBd: CourierHistorySummary = {
+      ...bd, total: 2, delivered: 2, cancelled: 0,
+      couriers: bd.couriers.map((c) => (c.courier === 'steadfast' ? { ...c, orders: 0, delivered: 0, cancelled: 0, rate_only: true, parcel_range: '50+', success_ratio: 88 } : c)),
+    }
+    const m2 = mergeCourierSummaries(rateBd, steadfastRate)!
+    expect(m2.couriers.find((c) => c.courier === 'steadfast')).toMatchObject({ success_ratio: 91, rate_only: true, parcel_range: '100+', source: 'sign_in' })
   })
 
   it('asks both at once; one side failing leaves a note, both failing fails the check', async () => {
