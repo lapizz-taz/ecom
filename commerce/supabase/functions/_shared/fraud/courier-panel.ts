@@ -68,6 +68,11 @@ interface PanelStat {
   cancel: number
   total: number
   success_ratio?: number | null
+  /** The courier gives only its own rate and a volume band, not parcel counts (Steadfast's fraud page now). */
+  rate_only?: boolean
+  parcel_range?: string | null
+  /** Fraud reports other merchants filed on the number, as the courier counts them. */
+  reports?: number
   error?: string
 }
 
@@ -103,6 +108,24 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
 }
 const ratio = (success: number, total: number): number | null => (total > 0 ? Math.round((success / total) * 10000) / 100 : null)
+/** A percentage however it is written (92.5, "92.5%"); null when missing or out of range. */
+const percent = (v: unknown): number | null => {
+  if (v === undefined || v === null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/[%,\s]/g, ''))
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100) / 100 : null
+}
+/** What a courier's error answer says, from whichever field it uses (message, error, errors, detail). */
+export function answerDetail(body: unknown): string {
+  const say = (v: unknown, depth = 0): string => {
+    if (typeof v === 'string') return v
+    if (depth > 2 || !v || typeof v !== 'object') return ''
+    if (Array.isArray(v)) return v.map((x) => say(x, depth + 1)).filter(Boolean).join('; ')
+    const o = v as Record<string, unknown>
+    return say(o.message ?? Object.values(o)[0], depth + 1)
+  }
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  return text(say(b.message) || say(b.error) || say(b.errors) || say(b.detail)).slice(0, 160)
+}
 
 /** Cookie jar: collects Set-Cookie across requests and rebuilds the Cookie header. */
 class Jar {
@@ -130,7 +153,7 @@ async function timedFetch(fetchFn: FetchFn, url: string | URL, init: RequestInit
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 
-export interface PanelDeps { fetchFn?: FetchFn; store?: SessionStore; timeoutMs?: number }
+export interface PanelDeps { fetchFn?: FetchFn; store?: SessionStore; timeoutMs?: number; /** Wait before one retry of a firewall check (tests: 0). */ retryPauseMs?: number }
 
 // ------------------------------- Steadfast -----------------------------------
 const attr = (tag: string, name: string) => new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, 'i').exec(tag)?.slice(2).find((v) => v !== undefined)
@@ -164,14 +187,47 @@ export function readLoginForm(html: string, pageUrl: string): { action: string; 
   return { action: new URL(action ? decodeHtml(action) : '/login', pageUrl).toString(), fields, idField: idField || 'email', passwordField }
 }
 
+const isChallenge = (html: string) => /challenge-platform|cf-chl|Just a moment|Attention Required/i.test(html)
+
 /** Why a page is not a sign-in form, in a few words, for the error shown to Super Admin. */
 function describePage(status: number, html: string): string {
-  if (/challenge-platform|cf-chl|Just a moment|Attention Required/i.test(html)) return 'its firewall asked for a browser check — try again in a minute'
+  if (isChallenge(html)) return 'its firewall asked for a browser check — try again in a minute'
   const title = /<title[^>]*>([^<]{0,80})/i.exec(html)?.[1]?.trim()
   return `no sign-in form on the page (HTTP ${status}${title ? `, "${title}"` : ''})`
 }
 
-/** Delivered / cancelled from the fraud page, wherever the answer keeps them. */
+/** A volume band as one short label: "100+", "51–100". */
+function bandLabel(band: unknown, range: unknown): string | null {
+  if (range && typeof range === 'object' && !Array.isArray(range)) {
+    const r = range as Record<string, unknown>
+    const lo = r.min ?? r.from ?? r.low, hi = r.max ?? r.to ?? r.high
+    if (lo !== undefined && lo !== null && hi !== undefined && hi !== null) return `${lo}–${hi}`
+    if (lo !== undefined && lo !== null) return `${lo}+`
+  }
+  if (Array.isArray(range) && range.length) return range.length > 1 && range[1] !== null && range[1] !== undefined ? `${range[0]}–${range[1]}` : `${range[0]}+`
+  for (const v of [range, band]) {
+    if (typeof v === 'string' || typeof v === 'number') {
+      const label = String(v).trim().replace(/\s*-\s*/, '–')
+      if (label) return label.slice(0, 20)
+    }
+  }
+  return null
+}
+const reportCount = (v: unknown): number => {
+  if (Array.isArray(v)) return v.length
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return o.count !== undefined || o.total !== undefined ? num(o.count ?? o.total) : Object.keys(o).length
+  }
+  return num(v)
+}
+
+/**
+ * The fraud page's answer. Steadfast used to give delivered / cancelled counts; it now
+ * gives its own rates and a volume band instead (delivery_ratio, cancellation_ratio,
+ * volume_band / volume_range, fraud_reports). Counts are used when present; otherwise
+ * the result is rate-only — no parcel counts are made up.
+ */
 export function parseSteadfast(body: unknown): PanelStat {
   const top = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
   const scopes = [top, top.data, top.result, top.summary].filter((v): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v))
@@ -179,16 +235,32 @@ export function parseSteadfast(body: unknown): PanelStat {
     for (const o of scopes) for (const k of keys) if (k in o) return o[k]
     return undefined
   }
+  const reports = reportCount(pick('fraud_reports', 'reports', 'frauds'))
   const delivered = pick('total_delivered', 'delivered', 'total_delivery', 'success')
   const cancelled = pick('total_cancelled', 'cancelled', 'total_cancel', 'cancel')
-  if (delivered === undefined && cancelled === undefined) {
-    const keys = Object.keys(top).slice(0, 6).join(', ')
-    const message = typeof top.message === 'string' ? `: ${top.message.slice(0, 120)}` : keys ? ` (fields: ${keys})` : ''
-    return { ok: false, success: 0, cancel: 0, total: 0, error: `Steadfast's fraud page gave an unexpected answer${message}` }
+  if (delivered !== undefined || cancelled !== undefined) {
+    const success = num(delivered), cancel = num(cancelled)
+    const total = success + cancel
+    return { ok: true, success, cancel, total, success_ratio: ratio(success, total), ...(reports ? { reports } : {}) }
   }
-  const success = num(delivered), cancel = num(cancelled)
-  const total = success + cancel
-  return { ok: true, success, cancel, total, success_ratio: ratio(success, total) }
+  const rawDelivery = pick('delivery_ratio', 'success_ratio', 'delivery_rate')
+  const rawCancel = pick('cancellation_ratio', 'cancel_ratio', 'cancellation_rate')
+  if (rawDelivery !== undefined || rawCancel !== undefined) {
+    let rate = percent(rawDelivery), cancelRate = percent(rawCancel)
+    // Written as fractions (0.92 / 0.08) rather than percentages.
+    if (rate !== null && cancelRate !== null && rate <= 1 && cancelRate <= 1 && rate + cancelRate > 0 && Math.abs(rate + cancelRate - 1) <= 0.05) {
+      rate = Math.round(rate * 10000) / 100
+      cancelRate = Math.round(cancelRate * 10000) / 100
+    }
+    if (rate === null && cancelRate !== null) rate = Math.round((100 - cancelRate) * 100) / 100
+    const band = bandLabel(pick('volume_band', 'parcel_band'), pick('volume_range', 'parcel_range'))
+    const none = !rate && !cancelRate && (!band || /^0(\D|$)/.test(band))
+    if (none) return { ok: true, success: 0, cancel: 0, total: 0, success_ratio: null, ...(reports ? { reports } : {}) }
+    return { ok: true, success: 0, cancel: 0, total: 0, success_ratio: rate, rate_only: true, parcel_range: band, ...(reports ? { reports } : {}) }
+  }
+  const keys = Object.keys(top).slice(0, 6).join(', ')
+  const message = typeof top.message === 'string' ? `: ${top.message.slice(0, 120)}` : keys ? ` (fields: ${keys})` : ''
+  return { ok: false, success: 0, cancel: 0, total: 0, error: `Steadfast's fraud page gave an unexpected answer${message}` }
 }
 
 async function steadfast(login: PanelLogin, phone: string, d: Required<PanelDeps>): Promise<PanelStat> {
@@ -212,9 +284,17 @@ async function steadfast(login: PanelLogin, phone: string, d: Required<PanelDeps
   }
 
   const jar = new Jar()
-  const page = await timedFetch(d.fetchFn, `${base}/login`, { headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' } }, d.timeoutMs)
-  jar.absorb(page)
-  const html = await page.text().catch(() => '')
+  const loadLogin = async () => {
+    const page = await timedFetch(d.fetchFn, `${base}/login`, { headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' } }, d.timeoutMs)
+    jar.absorb(page)
+    return { page, html: await page.text().catch(() => '') }
+  }
+  let { page, html } = await loadLogin()
+  // Steadfast's firewall sometimes asks for a browser check; it often lets the next request through.
+  if (isChallenge(html)) {
+    await new Promise((r) => setTimeout(r, d.retryPauseMs))
+    ;({ page, html } = await loadLogin())
+  }
   const form = readLoginForm(html, page.url || `${base}/login`)
   if (!form) return fail(`Steadfast sign-in: ${describePage(page.status, html)}`)
   const body = new URLSearchParams({ ...form.fields, [form.idField]: email, [form.passwordField]: password })
@@ -268,7 +348,10 @@ async function pathao(login: PanelLogin, phone: string, d: Required<PanelDeps>):
   }
   let res = await read(token)
   if (res.status === 401) { d.store.drop(key); return pathao(login, phone, d) }
-  if (!res.ok) return { ok: false, success: 0, cancel: 0, total: 0, error: `Pathao answered HTTP ${res.status}` }
+  if (!res.ok) {
+    const why = answerDetail(await res.json().catch(() => null))
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `Pathao answered HTTP ${res.status}${why ? `: ${why}` : ''}` }
+  }
   const c = ((await res.json().catch(() => ({})) as { data?: { customer?: Record<string, unknown> } }).data?.customer) ?? {}
   const success = num(c.successful_delivery), total = num(c.total_delivery), cancel = Math.max(0, total - success)
   return { ok: true, success, cancel, total, success_ratio: ratio(success, total) }
@@ -305,7 +388,7 @@ async function redx(login: PanelLogin, phone: string, d: Required<PanelDeps>): P
   }
   if (res.status === 429) return { ok: false, success: 0, cancel: 0, total: 0, error: 'RedX rate limit — try again in a minute' }
   if (!res.ok) {
-    const why = text(((await res.json().catch(() => ({}))) as { message?: unknown; error?: unknown }).message ?? '').slice(0, 120)
+    const why = answerDetail(await res.json().catch(() => null))
     return { ok: false, success: 0, cancel: 0, total: 0, error: `RedX answered HTTP ${res.status}${why ? `: ${why}` : ''}` }
   }
   const data = ((await res.json().catch(() => ({})) as { data?: Record<string, unknown> }).data) ?? {}
@@ -319,9 +402,9 @@ async function carrybee(login: PanelLogin, phone: string, d: Required<PanelDeps>
   if (!loginPhone || !password) return { ok: false, success: 0, cancel: 0, total: 0, error: 'No Carrybee login saved' }
   const key = await sessionKey('carrybee', login)
   // Carrybee's tokens look like "1234|abc…", so the session is kept as JSON, not joined with "|".
-  const read = async (auth: string): Promise<Response> => {
+  const read = async (auth: string, number = phone): Promise<Response> => {
     const { token, business } = JSON.parse(auth) as { token: string; business: string }
-    return timedFetch(d.fetchFn, `https://api-merchant.carrybee.com/api/v2/businesses/${encodeURIComponent(business)}/fraud-check/${phone}`, {
+    return timedFetch(d.fetchFn, `https://api-merchant.carrybee.com/api/v2/businesses/${encodeURIComponent(business)}/fraud-check/${encodeURIComponent(number)}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': UA },
     }, d.timeoutMs)
   }
@@ -349,16 +432,30 @@ async function carrybee(login: PanelLogin, phone: string, d: Required<PanelDeps>
   const accessToken = text(session.accessToken), businessId = text(session.user?.selectedBusinessId)
   if (!accessToken || !businessId) return { ok: false, success: 0, cancel: 0, total: 0, error: 'Carrybee rejected the phone or password' }
   const auth = JSON.stringify({ token: accessToken, business: businessId })
-  const res = await read(auth)
+  let res = await read(auth)
+  let why = ''
+  if (res.status === 400) {
+    // Signed in, but the lookup was refused: keep Carrybee's reason, then try the number with +88 once.
+    why = answerDetail(await res.json().catch(() => null))
+    res = await read(auth, `+88${phone}`)
+  }
   if (!res.ok) {
-    const why = text(((await res.json().catch(() => ({}))) as { message?: unknown }).message).slice(0, 120)
-    return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee answered HTTP ${res.status}${why ? `: ${why}` : ''}` }
+    why = answerDetail(await res.json().catch(() => null)) || why
+    d.store.set(key, auth, 50 * 60_000) // the sign-in itself worked
+    // "No order found" for a number Carrybee has never carried is no history, not a failure.
+    if (res.status === 400 || res.status === 404) {
+      if (/no (order|data|record|parcel)|not found/i.test(why)) return { ok: true, success: 0, cancel: 0, total: 0, success_ratio: null }
+    }
+    return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee answered HTTP ${res.status}${why ? `: ${why}` : ' without saying why'}` }
   }
   d.store.set(key, auth, 50 * 60_000)
   return parseCarrybee(await res.json().catch(() => null))
 }
 function parseCarrybee(body: unknown): PanelStat {
-  const data = ((body ?? {}) as { data?: Record<string, unknown> }).data ?? {}
+  const top = (body ?? {}) as { data?: Record<string, unknown>; error?: unknown }
+  // A 200 can still carry an error (as the reference client checks).
+  if (top.error && top.error !== false) return { ok: false, success: 0, cancel: 0, total: 0, error: `Carrybee: ${answerDetail(top) || 'the lookup failed'}` }
+  const data = top.data ?? {}
   const total = num(data.total_order), cancel = Math.min(num(data.cancelled_order), total), success = Math.max(0, total - cancel)
   let r = typeof data.success_rate === 'number' ? data.success_rate : Number(data.success_rate)
   if (!Number.isFinite(r) || (total > 0 && !data.success_rate)) r = ratio(success, total) ?? 0
@@ -370,7 +467,7 @@ const RUNNERS: Record<CourierPanelProviderId, (login: PanelLogin, phone: string,
 }
 
 function deps(d: PanelDeps): Required<PanelDeps> {
-  return { fetchFn: d.fetchFn ?? fetch, store: d.store ?? defaultStore, timeoutMs: d.timeoutMs ?? 12_000 }
+  return { fetchFn: d.fetchFn ?? fetch, store: d.store ?? defaultStore, timeoutMs: d.timeoutMs ?? 12_000, retryPauseMs: d.retryPauseMs ?? 1_500 }
 }
 
 /** Check a login works (and that the fraud page answers), without saving anything. */
@@ -386,7 +483,12 @@ export async function testPanelLogin(provider: CourierPanelProviderId, login: Pa
   try {
     const r = await RUNNERS[provider](login, phone, dd)
     const label = COURIER_PANEL_LABELS[provider]
-    return r.ok ? { ok: true, message: `${label}: signed in, ${r.total} parcel${r.total === 1 ? '' : 's'} for ${phone}` } : { ok: false, message: r.error ?? `${label} did not answer` }
+    if (!r.ok) return { ok: false, message: r.error ?? `${label} did not answer` }
+    if (r.rate_only) {
+      const reports = r.reports ? `, ${r.reports} fraud report${r.reports === 1 ? '' : 's'}` : ''
+      return { ok: true, message: `${label}: signed in — ${r.success_ratio}% delivered${r.parcel_range ? `, volume ${r.parcel_range}` : ''}${reports} for ${phone} (rate only, no parcel counts)` }
+    }
+    return { ok: true, message: `${label}: signed in, ${r.total} parcel${r.total === 1 ? '' : 's'} for ${phone}` }
   } catch (error) {
     return { ok: false, message: redact(String((error as Error).message ?? error), login) }
   }
@@ -460,6 +562,9 @@ export class CourierPanelProvider implements FraudProvider {
       delivered: r.ok ? Math.max(0, r.total - Math.min(r.cancel, r.total)) : 0,
       success_ratio: r.ok ? r.success_ratio ?? null : null,
       notice: r.ok ? null : r.error ?? 'Could not check',
+      source: 'sign_in',
+      ...(r.ok && r.rate_only ? { rate_only: true, parcel_range: r.parcel_range ?? null } : {}),
+      ...(r.ok && r.reports ? { fraud_reports: r.reports } : {}),
     }))
     const good = results.filter(([, r]) => r.ok)
     const total = good.reduce((s, [, r]) => s + r.total, 0)
@@ -467,13 +572,20 @@ export class CourierPanelProvider implements FraudProvider {
     const delivered = total - cancelled
     const anyOk = good.length > 0
     if (!anyOk) throw new Error(results.map(([id, r]) => `${COURIER_PANEL_LABELS[id]}: ${r.error}`).join('; '))
+    // A courier that reports only a rate and a band ("100+") still proves that much history.
+    const rateOnly = good.filter(([, r]) => r.rate_only && r.success_ratio !== null && r.success_ratio !== undefined)
+    const floor = total + rateOnly.reduce((s, [, r]) => s + (Number(/(\d+)/.exec(r.parcel_range ?? '')?.[1]) || 0), 0)
+    // With no parcel counts at all, the couriers' own rates are the only evidence: use their average.
+    const ownRate = total === 0 && rateOnly.length
+      ? Math.round((rateOnly.reduce((s, [, r]) => s + (r.success_ratio as number), 0) / rateOnly.length) * 100) / 100
+      : null
     return {
       couriers: couriers.sort((a, b) => b.orders - a.orders),
       total, delivered, cancelled,
-      success_ratio: ratio(delivered, total),
-      ratio_source: 'counts',
+      success_ratio: ownRate ?? ratio(delivered, total),
+      ratio_source: ownRate !== null ? 'provider' : 'counts',
       name_on_record: null,
-      parcel_floor: total,
+      parcel_floor: floor,
     }
   }
 
@@ -484,6 +596,7 @@ export class CourierPanelProvider implements FraudProvider {
         provider: this.name,
         ok: true,
         counts: { total: summary.total, delivered: summary.delivered, returned: summary.cancelled },
+        courierScore: summary.ratio_source === 'provider' && summary.success_ratio !== null ? summary.success_ratio : undefined,
         parcelFloor: summary.parcel_floor,
         raw: summary,
       }
