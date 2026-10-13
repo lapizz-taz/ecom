@@ -148,6 +148,37 @@ describe('Shopify stock job', () => {
     const h = harness(ctx(), { available: async () => 10, setAvailable: async () => { throw new ChannelError('changeFromQuantity does not match', 409, 'STALE') } })
     expect(await inventoryJob(job('INVENTORY'), h.rpc, h.shopify)).toMatchObject({ outcome: 'RETRY', delay: 15 })
   })
+
+  it('the same 4 → 5 twice in a day really reaches Shopify both times', async () => {
+    // Shopify keeps an idempotency key for 24 hours: a repeat gets the old
+    // answer and changes nothing. A key made only of "item, 4 → 5" was
+    // repeated after an order cancel, so Shopify stayed at 4 while we wrote 5.
+    let shopifyQty = 4
+    const seen = new Set<string>()
+    const store = {
+      available: async () => shopifyQty,
+      setAvailable: vi.fn(async (_item: string, _loc: string, qty: number, from: number | null, key: string) => {
+        if (seen.has(key)) return
+        seen.add(key)
+        if (from !== shopifyQty) throw new ChannelError('changeFromQuantity does not match', 409, 'STALE')
+        shopifyQty = qty
+      }),
+    }
+    const run = (id: string, attempts = 1) => {
+      const h = harness(ctx({ desired: 5, last_pushed_qty: 4, shopify_available: 4 }), store)
+      return inventoryJob({ ...job('INVENTORY', { force: true }), id, attempts }, h.rpc, h.shopify)
+    }
+    expect(await run('j-reset')).toMatchObject({ outcome: 'DONE', result: { set: 5, from: 4 } })
+    expect(shopifyQty).toBe(5)
+    shopifyQty = 4 // e.g. the Shopify order was cancelled without putting the unit back
+    expect(await run('j-cancel')).toMatchObject({ outcome: 'DONE', result: { set: 5, from: 4 } })
+    expect(shopifyQty).toBe(5)
+    shopifyQty = 4 // and once more inside the same job (a later attempt) — still applied
+    expect(await run('j-cancel', 2)).toMatchObject({ outcome: 'DONE', result: { set: 5, from: 4 } })
+    expect(shopifyQty).toBe(5)
+    const keys = store.setAvailable.mock.calls.map((c) => c[4])
+    expect(new Set(keys).size).toBe(3)
+  })
 })
 
 describe('fulfilment helpers', () => {
