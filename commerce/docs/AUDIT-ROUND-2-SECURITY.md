@@ -66,3 +66,62 @@ was already remediated in migration `20261109002100` and confirmed live.
   disabled so Clerk is the sole credential path.
 - The approval-gated L2 re-ownership (357 remaining postgres-owned functions →
   `app_owner`) still needs explicit owner approval before running on live.
+
+---
+
+# Round 3 — Attack simulation (privilege escalation, frontend, DoS)
+
+A second, offensive pass simulated a determined attacker across three fronts.
+Scope and rules were unchanged: source-first, no live probing of deployed
+endpoints, no real DoS against production, detailed repro kept out of the repo.
+
+## Results by attack class
+
+- **Privilege escalation to admin / cross-tenant:** none found. Staff handlers
+  run service-role but filter by `merchant_id`; SECURITY DEFINER functions are
+  `app_owner` (NOBYPASSRLS) so RLS still applies inside them; the
+  platform-staff gates (`is_platform_staff()`, `is_system_context()`) hold. The
+  round-2 `merchant_access_mode` / `sms_log_test` / `meta_account_save` gaps
+  were already closed in `20261109002600`.
+- **Frontend takeover / XSS:** none found. React escaping is intact, URL
+  sanitisation is unconditional, and there is no `dangerouslySetInnerHTML` on
+  untrusted input. The only gap was the absence of an enforced CSP — shipped
+  **report-only** first so it can be validated live before enforcing (Clerk on
+  the custom domain + direct-Supabase calls can't be exercised from the audit
+  sandbox).
+- **Denial of service:** no critical/high. The findings that were in scope for
+  the live (Supabase-backed) product were fixed (below). Several theoretical DoS
+  surfaces live only in the **staging-only** Cloudflare database engine
+  (single Durable Object statement budget, realtime socket caps, upload quotas)
+  and are tracked for the DB switch-over, not the live product.
+
+## Fixes shipped this round
+
+| # | sev | issue | fix |
+|---|-----|-------|-----|
+| 1 | low | PostgREST `select`/logic-tree could nest arbitrarily deep → stack/CPU burn in the single-threaded engine. | Depth cap (40) in `worker/db/rest/parse.ts`. |
+| 2 | low | User-supplied regex (`match`/`imatch`, `regexp_*`) could backtrack catastrophically. | 1000-char pattern cap in `worker/db/pg/builtins.ts`. |
+| 3 | low | PBX webhook read the Vault secret before validating the token's shape, so junk tokens forced a DB/Vault read each request. | Reject non-48-hex tokens before the read, in `pbx/handler.ts`. |
+| 4 | medium | A storefront visitor rotating random `visitor_id`s could flood `checkout_leads` for one merchant (the upsert only dedupes a repeat of the *same* visitor). | Per-merchant cap on **new** lead rows (existing open leads still update) + supporting partial index. `capture_checkout_lead` (DB). |
+| 5 | low | The public-facing coturn container received the whole gateway `.env`. | Narrowed to the three TURN variables only. `pbx-gateway/docker-compose.yml`. |
+
+## Deploy (round 3)
+
+- **Database (live Supabase):** `capture_checkout_lead` redefined and
+  `checkout_leads_merchant_open_idx` created; function verified still
+  `app_owner` + SECURITY DEFINER (RLS applies inside). No L2 re-ownership run.
+- **Worker (Cloudflare):** parse/regex/PBX fixes + the report-only CSP shipped
+  via the `claude/sweet-lovelace-ilswnx` build branch.
+- **Regression:** 366 unit tests, app+worker typecheck, edge-function deno
+  check, and the Cloudflare production build all pass. The 3 failing
+  Cloudflare-DB replay tests are pre-existing engine feature gaps (cross-schema
+  views, RLS-inside-definer), unchanged by this round and confirmed failing on a
+  clean tree.
+
+## Remaining (owner to decide)
+
+- Flip the CSP from **report-only** to **enforcing** after a live console check
+  shows no legitimate request is blocked.
+- Staging-only Cloudflare-DB DoS surfaces (statement budget, realtime socket
+  cap, per-merchant upload quota) to be handled at the DB switch-over (D1-8).
+- The approval-gated L2 re-ownership still needs explicit owner approval.
