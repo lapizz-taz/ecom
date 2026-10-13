@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react'
+import { LayoutGrid, List, Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -17,6 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/features/auth/auth-context'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, initials, timeAgo, titleCase } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { listDepartments, listEmployees } from '@/services/hr'
 import {
   createStaffUser, listPermissions, listRoles, listStaffUsers, type RoleRow, setRolePermission, setStaffActive, setStaffRole, type StaffUser,
 } from '@/services/users'
@@ -41,6 +43,13 @@ function StaffList() {
   const staff = useQuery({ queryKey: ['staff-users'], queryFn: listStaffUsers })
   const roles = useQuery({ queryKey: ['roles'], queryFn: listRoles })
   const [inviting, setInviting] = useState(false)
+  const [q, setQ] = useState('')
+  const [role, setRole] = useState('all')
+  const [dept, setDept] = useState('all')
+  const [status, setStatus] = useState('all')
+  const [grid, setGrid] = useState(false)
+  const departments = useQuery({ queryKey: ['hr', 'departments'], queryFn: listDepartments })
+  const employees = useQuery({ queryKey: ['hr', 'employees'], queryFn: listEmployees })
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['staff-users'] })
     void queryClient.invalidateQueries({ queryKey: ['staff-directory'] })
@@ -98,11 +107,74 @@ function StaffList() {
     },
   ]
 
+  const all = staff.data ?? []
+  const deptOf = (id: string) => departments.data?.find((d) => d.id === employees.data?.find((e) => e.profile_id === id)?.department_id)
+  const shown = all.filter((u) => (!q || `${u.full_name} ${u.email}`.toLowerCase().includes(q.toLowerCase()))
+    && (role === 'all' || u.roles?.code === role)
+    && (dept === 'all' || deptOf(u.id)?.id === dept)
+    && (status === 'all' || (status === 'active') === u.is_active))
+  const active = all.filter((u) => u.is_active).length
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><Button size="sm" onClick={() => setInviting(true)}><Plus /> Add staff member</Button></div>
-      <DataTable columns={columns} rows={staff.data} rowKey={(u) => u.id} loading={staff.isFetching} error={staff.error} onRetry={() => staff.refetch()}
-        empty={<EmptyState title="No staff yet" />} />
+      <Card className="gap-3 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShieldCheck className="size-4" /></span>
+          <div>
+            <p className="text-[11px] font-medium tracking-wide text-primary uppercase">A simpler way to manage staff access</p>
+            <p className="font-semibold">The right access for every person on your team</p>
+            <p className="text-sm text-muted-foreground">Give each person a role, then fine-tune what each role can see and do under Roles & permissions. Costs, profit and finance stay hidden unless a role is allowed to see them, and the database checks every request.</p>
+          </div>
+        </div>
+      </Card>
+      <div className="grid grid-cols-3 gap-3">
+        {[['Total', all.length, ''], ['Active', active, 'text-emerald-600'], ['Inactive', all.length - active, all.length - active ? 'text-red-600' : '']].map(([l, v, c]) => (
+          <Card key={l as string} className="gap-1 p-3"><p className="text-xs text-muted-foreground">{l}</p><p className={cn('text-2xl font-semibold tabular-nums', c as string)}>{v}</p></Card>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or email…" className="w-full sm:w-64" aria-label="Search staff" />
+        <Select value={role} onValueChange={setRole}>
+          <SelectTrigger size="sm" className="w-40" aria-label="Role"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="all">All roles</SelectItem>{(roles.data ?? []).map((r) => <SelectItem key={r.code} value={r.code}>{r.name}</SelectItem>)}</SelectContent>
+        </Select>
+        {Boolean(departments.data?.length) && (
+          <Select value={dept} onValueChange={setDept}>
+            <SelectTrigger size="sm" className="w-44" aria-label="Department"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All departments</SelectItem>{(departments.data ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+          </Select>
+        )}
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger size="sm" className="w-32" aria-label="Status"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="all">All status</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent>
+        </Select>
+        <div className="flex rounded-lg border p-0.5">
+          <button type="button" onClick={() => setGrid(false)} className={cn('rounded-md p-1.5', !grid ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')} aria-label="List view"><List className="size-4" /></button>
+          <button type="button" onClick={() => setGrid(true)} className={cn('rounded-md p-1.5', grid ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')} aria-label="Grid view"><LayoutGrid className="size-4" /></button>
+        </div>
+        <Button size="sm" className="ml-auto" onClick={() => setInviting(true)}><Plus /> Add staff member</Button>
+      </div>
+      {grid ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {shown.map((u) => (
+            <Card key={u.id} className={cn('gap-2 p-4', !u.is_active && 'opacity-60')}>
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center rounded-full bg-muted text-sm font-medium">{initials(u.full_name || u.email)}</span>
+                <div className="min-w-0"><p className="truncate font-medium">{u.full_name || '—'}</p><p className="truncate text-xs text-muted-foreground">{u.email}</p></div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary">{u.roles?.name ?? 'No role'}</Badge>
+                {deptOf(u.id) && <Badge variant="outline">{deptOf(u.id)!.name}</Badge>}
+                {u.is_active ? <Badge variant="success">active</Badge> : <Badge variant="neutral">deactivated</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground">Last sign-in {u.last_sign_in_at ? timeAgo(u.last_sign_in_at) : 'never'}</p>
+            </Card>
+          ))}
+          {!shown.length && <EmptyState title="Nobody matches" />}
+        </div>
+      ) : (
+        <DataTable columns={columns} rows={shown} rowKey={(u) => u.id} loading={staff.isFetching} error={staff.error} onRetry={() => staff.refetch()}
+          empty={<EmptyState title={all.length ? 'Nobody matches' : 'No staff yet'} />} />
+      )}
       <InviteDialog open={inviting} onOpenChange={setInviting} roles={assignable} onDone={refresh} />
     </div>
   )

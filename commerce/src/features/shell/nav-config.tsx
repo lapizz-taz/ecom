@@ -162,6 +162,7 @@ export const NAV: NavSection[] = [
           { label: 'HR Dashboard', to: '/admin/hr', permission: 'hr.view' },
           { label: 'Attendance', to: '/admin/hr/attendance' },
           { label: 'Attendance Report', to: '/admin/hr/report', permission: 'hr.view' },
+          { label: 'Leave & Requests', to: '/admin/hr/requests' },
           { label: 'Shift Management', to: '/admin/hr/shifts', permission: 'hr.view' },
           { label: 'Departments & SOP', to: '/admin/hr/departments', permission: 'hr.view' },
           { label: 'User & Role', to: '/admin/users', permission: 'users.manage' },

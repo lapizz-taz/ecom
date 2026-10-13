@@ -21,11 +21,11 @@ describe('cron expressions (UTC)', () => {
 })
 
 describe('scheduled jobs', () => {
-  it('are the 12 Supabase pg_cron jobs with their schedules', () => {
+  it('are the 13 Supabase pg_cron jobs with their schedules', () => {
     expect(Object.fromEntries(JOBS.map((j) => [j.name, j.schedule]))).toEqual({
       'account-removals': '* * * * *', 'ad-platforms-sync': '47 */3 * * *', 'billing-run': '7 * * * *',
       'channel-sync-jobs': '* * * * *', 'channels-sync': '37 * * * *', 'courier-webhook-retry': '*/5 * * * *',
-      'expire-unpaid-advance-orders': '*/15 * * * *', 'meta-ads-sync': '17 */3 * * *', 'notifications-dispatch': '* * * * *',
+      'expire-unpaid-advance-orders': '*/15 * * * *', 'hr-auto-checkout': '*/5 * * * *', 'meta-ads-sync': '17 */3 * * *', 'notifications-dispatch': '* * * * *',
       'payments-reconcile': '*/5 * * * *', 'platform-ops': '*/10 * * * *', 'voicedrive-sweep': '* * * * *',
     })
   })
@@ -34,7 +34,7 @@ describe('scheduled jobs', () => {
     expect(dueJobs(at('2026-10-12T10:07:00Z')).map((j) => j.name).sort()).toEqual(
       ['account-removals', 'billing-run', 'channel-sync-jobs', 'notifications-dispatch', 'voicedrive-sweep'])
     expect(dueJobs(at('2026-10-12T09:30:00Z')).map((j) => j.name).sort()).toEqual(
-      ['account-removals', 'channel-sync-jobs', 'courier-webhook-retry', 'expire-unpaid-advance-orders', 'notifications-dispatch',
+      ['account-removals', 'channel-sync-jobs', 'courier-webhook-retry', 'expire-unpaid-advance-orders', 'hr-auto-checkout', 'notifications-dispatch',
         'payments-reconcile', 'platform-ops', 'voicedrive-sweep'])
   })
 

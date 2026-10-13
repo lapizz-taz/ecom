@@ -174,6 +174,7 @@ const shared: RouteObject[] = [
       admin('hr', () => import('@/pages/admin/hr')),
       admin('hr/attendance', () => import('@/pages/admin/hr')),
       admin('hr/report', () => import('@/pages/admin/hr'), 'hr.view'),
+      admin('hr/requests', () => import('@/pages/admin/hr')),
       admin('hr/shifts', () => import('@/pages/admin/hr'), 'hr.view'),
       admin('hr/departments', () => import('@/pages/admin/hr'), 'hr.view'),
       admin('hr/settings', () => import('@/pages/admin/hr'), 'hr.view'),
