@@ -40,6 +40,10 @@ describe('site addresses', () => {
     expect(() => appBase()).toThrow(/PLATFORM_URL/)
     // A plain-http origin is not trusted in production.
     expect(() => appBase(new Request('https://x', { headers: { origin: 'http://localhost:3000' } }))).toThrow()
+    // An https origin is trusted only when it is allow-listed, so a forged Origin
+    // header cannot capture an invite or password-reset link's one-time token.
+    expect(() => appBase(new Request('https://x', { headers: { origin: 'https://app.example.com' } }))).toThrow()
+    vi.stubEnv('ALLOWED_ORIGINS', 'https://app.example.com')
     expect(appBase(new Request('https://x', { headers: { origin: 'https://app.example.com' } }))).toBe('https://app.example.com')
   })
 
