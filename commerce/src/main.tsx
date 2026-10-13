@@ -22,7 +22,9 @@ const site = resolveSite(async (host, slug, preview) => {
   const found = (data as unknown as SiteInfo | null) ?? null
   // A secondary custom domain opens the same page on the primary one (staff pages stay put).
   if (found?.redirect_to && found.redirect_to !== location.hostname && !location.pathname.startsWith('/admin')) {
-    location.replace(`https://${found.redirect_to}${location.pathname}${location.search}${location.hash}`)
+    // Do not carry the URL fragment across hosts: an auth link's token can sit in
+    // the fragment, and the destination is a different (merchant) host.
+    location.replace(`https://${found.redirect_to}${location.pathname}${location.search}`)
   }
   return found
 }).catch((error) => {
