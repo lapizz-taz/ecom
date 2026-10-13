@@ -494,7 +494,11 @@ export async function inventoryJob(job: Job, rpc: Rpc, shopify: () => StockPort,
         return { outcome: 'DONE', result: { flagged: current } }
       }
     }
-    const key = `inv-${job.channel_id.slice(0, 8)}-${job.ref_id}-${current ?? 'none'}-${ctx.desired}`
+    // Shopify remembers a key for 24 hours and answers a repeat with the old
+    // result without changing anything, so the same "4 → 5" twice in a day
+    // must not share a key: one key per attempt (Shopify's own HTTP retries
+    // of this call still reuse it).
+    const key = `inv-${job.id}-${job.attempts}-${crypto.randomUUID().slice(0, 8)}-${current ?? 'none'}-${ctx.desired}`
     await client.setAvailable(ctx.inventory_item_id, ctx.location_id, ctx.desired, current, key)
     await save({ shopify_available: ctx.desired, last_pushed_qty: ctx.desired, sync_status: 'OK', error: '' })
     return { outcome: 'DONE', result: { set: ctx.desired, from: current } }
