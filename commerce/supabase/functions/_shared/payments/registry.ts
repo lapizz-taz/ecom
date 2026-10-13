@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { env } from '../env.ts'
 import { HttpError } from '../http.ts'
 import { logEvent } from '../monitoring.ts'
+import { checkedBaseUrl } from '../net.ts'
 import { BkashProvider, type BkashTokenStore } from './bkash.ts'
 import { PaystationProvider } from './paystation.ts'
 import { ManualPaymentProvider, SslCommerzProvider } from './providers.ts'
@@ -61,7 +62,7 @@ export function gatewayFromCredentials(
       throw new HttpError(503, 'bKash payment is temporarily unavailable', 'PROVIDER_NOT_CONFIGURED')
     }
     return new BkashProvider(
-      { appKey, appSecret, username, password, sandbox: config.sandbox !== false, baseUrl: c.base_url || env('BKASH_BASE_URL') },
+      { appKey, appSecret, username, password, sandbox: config.sandbox !== false, baseUrl: checkedBaseUrl(c.base_url, 'bKash API URL') ?? env('BKASH_BASE_URL') },
       fetch, Date.now, admin ? bkashTokenStore(admin) : undefined,
     )
   }
@@ -72,7 +73,7 @@ export function gatewayFromCredentials(
     throw new HttpError(503, 'Online payment is temporarily unavailable', 'PROVIDER_NOT_CONFIGURED')
   }
   return new PaystationProvider({
-    merchantId, password, token: c.token ?? env('PAYSTATION_TOKEN'), baseUrl: c.base_url || env('PAYSTATION_BASE_URL'),
+    merchantId, password, token: c.token ?? env('PAYSTATION_TOKEN'), baseUrl: checkedBaseUrl(c.base_url, 'PayStation API URL') ?? env('PAYSTATION_BASE_URL'),
     payWithCharge: config.pay_with_charge === true,
   })
 }

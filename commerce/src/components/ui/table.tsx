@@ -1,10 +1,42 @@
-import type * as React from 'react'
+import * as React from 'react'
 import { cn } from '@/lib/utils'
 
+/**
+ * Gives each body cell the text of its column header (data-label), so that inside a
+ * [data-stack-tables] area a table can turn into labelled stacked rows on a phone
+ * (index.css) instead of scrolling sideways. Re-labels when rows change.
+ */
+function useCellLabels(ref: React.RefObject<HTMLTableElement | null>) {
+  React.useLayoutEffect(() => {
+    const table = ref.current
+    if (!table || !table.closest('[data-stack-tables]')) return
+    const label = () => {
+      const heads: string[] = []
+      for (const th of table.querySelectorAll<HTMLTableCellElement>(':scope > thead > tr:last-child > th')) {
+        for (let i = 0; i < (th.colSpan || 1); i++) heads.push(th.textContent?.trim() ?? '')
+      }
+      for (const tr of table.querySelectorAll<HTMLTableRowElement>(':scope > tbody > tr, :scope > tfoot > tr')) {
+        let col = 0
+        for (const td of tr.cells) {
+          const text = td.colSpan > 1 ? '' : heads[col] ?? ''
+          if (td.dataset.label !== text) td.dataset.label = text
+          col += td.colSpan || 1
+        }
+      }
+    }
+    label()
+    const observer = new MutationObserver(label)
+    observer.observe(table, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [ref])
+}
+
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
+  const ref = React.useRef<HTMLTableElement>(null)
+  useCellLabels(ref)
   return (
     <div data-slot="table-container" className="relative w-full overflow-x-auto">
-      <table data-slot="table" className={cn('w-full caption-bottom text-[13px]', className)} {...props} />
+      <table ref={ref} data-slot="table" className={cn('w-full caption-bottom text-[13px]', className)} {...props} />
     </div>
   )
 }

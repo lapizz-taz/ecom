@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 
 // --- custom domains ---------------------------------------------------------------------
 export interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
+/** One region's view of the domain (Google DNS asked with a client address from that region). */
+export interface RegionCheck { code: string; name: string; ok: boolean; answers: string[] }
 /** What the last check found (see supabase/functions/_shared/domain-check.ts). */
 export interface DomainDiagnosis {
   checked_at: string
@@ -11,7 +13,7 @@ export interface DomainDiagnosis {
   pointed: boolean
   live_everywhere: boolean
   records: Array<{ type: string; name: string; value: string; ok: boolean; note?: string }>
-  regions: Array<{ code: string; name: string; ok: boolean; answers: string[] }>
+  regions: RegionCheck[]
   resolvers: Array<{ name: string; ok: boolean; answers: string[] }>
   tls: { ok: boolean; detail: string; served_by_store: boolean | null; status: number | null }
   issues: Array<{ code: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string }>

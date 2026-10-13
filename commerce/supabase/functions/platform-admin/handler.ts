@@ -148,8 +148,10 @@ async function timed(name: string, fn: () => Promise<string>) {
 }
 
 // Settings the edge functions read; only whether each is set is reported, never its value.
-const REQUIRED_SETTINGS = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CRON_SECRET'] as const
-const OPTIONAL_SETTINGS = ['PLATFORM_URL', 'STOREFRONT_URL', 'SENTRY_DSN'] as const
+// CRON_SECRET is optional: scheduled calls are also accepted with the service key or the
+// database's own 'cron_secret' (Vault), which is what the database scheduler sends (_shared/cron.ts).
+const REQUIRED_SETTINGS = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const
+const OPTIONAL_SETTINGS = ['PLATFORM_URL', 'CRON_SECRET', 'STOREFRONT_URL', 'SENTRY_DSN'] as const
 
 const maskPhone = (to: string) => (to.length > 7 ? `${to.slice(0, -7)}••••${to.slice(-3)}` : to)
 

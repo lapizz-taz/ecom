@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
 import { PLATFORM_NAV } from '@/features/platform/nav'
+import { usePresence } from '@/lib/presence'
 import { NotificationsBell } from '@/features/platform/notifications-bell'
 import { PlatformProvider, usePlatform } from '@/features/platform/platform-context'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
@@ -131,6 +132,7 @@ function Panel() {
   const [search, setSearch] = useState(false)
   const theme = useAdminThemePreference()
   const ThemeIcon = THEMES.find((t) => t.value === theme)?.icon ?? Moon
+  usePresence('super-admin', Boolean(me))
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -190,8 +192,8 @@ function Panel() {
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMenu(true)} aria-label="Menu"><Menu /></Button>
           <LogoMark className="size-7 lg:hidden" />
           <button type="button" onClick={() => setSearch(true)}
-            className="flex h-9 w-full max-w-md items-center gap-2 rounded-lg border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/15 hover:bg-muted">
-            <Search className="size-4" /> <span className="truncate">Search merchants, orders, stores…</span>
+            className="flex h-9 w-full min-w-0 max-w-md items-center gap-2 rounded-lg border bg-muted/50 px-3 text-sm text-muted-foreground transition-colors hover:border-foreground/15 hover:bg-muted">
+            <Search className="size-4 shrink-0" /> <span className="truncate">Search merchants, orders, stores…</span>
             <kbd className="ml-auto hidden rounded-md border bg-card px-1.5 py-px text-[10px] sm:inline">Ctrl K</kbd>
           </button>
           <div className="ml-auto flex items-center gap-1 [&>[data-slot=button][data-size=icon]]:rounded-full">
@@ -234,7 +236,7 @@ function Panel() {
             <Button size="sm" variant="ghost" className="h-7" onClick={() => void endSupportSession().then(() => refresh())}>End</Button>
           </div>
         )}
-        <main key={location.pathname} className="w-full flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-6 sm:py-6">
+        <main key={location.pathname} data-stack-tables className="w-full min-w-0 flex-1 px-3 py-5 pb-24 duration-300 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none sm:px-6 sm:py-6">
           {allowed ? <Outlet /> : <EmptyState icon={<ShieldAlert />} title="Your role does not include this section" description="Ask a Super Admin if you need it." />}
         </main>
         </div>

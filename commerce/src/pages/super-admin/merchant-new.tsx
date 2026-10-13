@@ -63,9 +63,11 @@ export default function MerchantNewPage() {
       <PageHeader title="New merchant" description="Nothing is created until you confirm on the last step. The account starts in onboarding with the standard roles, statuses and settings." />
       <ol className="flex gap-2">
         {STEPS.map((s, i) => (
-          <li key={s} className={cn('flex flex-1 items-center gap-2 rounded-md border px-3 py-2 text-sm', i === step ? 'border-foreground' : 'text-muted-foreground')}>
-            <span className={cn('grid size-5 place-items-center rounded-full text-[11px]', i < step ? 'bg-emerald-500 text-white' : 'bg-muted')}>{i < step ? <Check className="size-3" /> : i + 1}</span>
-            {s}
+          <li key={s} className={cn('flex min-w-0 items-center gap-2 rounded-md border px-3 py-2 text-sm', i === step ? 'flex-[3] border-foreground sm:flex-1' : 'flex-none text-muted-foreground sm:flex-1')}
+            aria-current={i === step ? 'step' : undefined}>
+            <span className={cn('grid size-5 shrink-0 place-items-center rounded-full text-[11px]', i < step ? 'bg-emerald-500 text-white' : 'bg-muted')}>{i < step ? <Check className="size-3" /> : i + 1}</span>
+            {/* Phones show only the current step's name. */}
+            <span className={cn('truncate', i !== step && 'sr-only sm:not-sr-only')}>{s}</span>
           </li>
         ))}
       </ol>

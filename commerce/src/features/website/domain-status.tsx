@@ -7,7 +7,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { formatDateTime, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import type { DomainDiagnosis, StoreDomain } from '@/services/website'
+import { DomainGlobe } from '@/features/website/domain-globe'
+import type { DomainDiagnosis, RegionCheck, StoreDomain } from '@/services/website'
 
 const copy = (v: string) => void navigator.clipboard.writeText(v).then(() => toast.success('Copied'))
 
@@ -67,38 +68,20 @@ const BAND: Record<Tone, { band: string; ring: string; title: string }> = {
   error: { band: 'from-red-700 via-red-500 to-red-700', ring: 'text-red-600', title: 'Not connected' },
 }
 
-/** The status at a glance: a planet on a red (not connected) or blue (connected) band. */
-function StatusHero({ tone }: { tone: Tone }) {
-  const ok = tone === 'live' || tone === 'warn'
+/** The status at a glance: a dark globe with a pin for every region the DNS check asked,
+ *  over a band that is red until the domain is connected and blue once it is. */
+function StatusHero({ tone, regions }: { tone: Tone; regions: RegionCheck[] | null }) {
   const b = BAND[tone]
+  const ok = regions?.filter((r) => r.ok).length ?? 0
   return (
-    <div className={cn('relative overflow-hidden bg-gradient-to-r pt-5', b.band)} role="img" aria-label={b.title}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgb(255_255_255/.25),transparent_60%)]" />
-      <svg viewBox="0 0 220 120" className="relative mx-auto h-[104px] w-[190px] overflow-visible" aria-hidden>
-        <defs>
-          <radialGradient id="dg-glow" cx="50%" cy="60%" r="60%"><stop offset="0" stopColor="#fff" stopOpacity=".35" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
-          <clipPath id="dg-clip"><circle cx="110" cy="112" r="92" /></clipPath>
-        </defs>
-        <circle cx="110" cy="112" r="120" fill="url(#dg-glow)" />
-        <circle cx="110" cy="112" r="92" fill="rgb(0 0 0 / .28)" />
-        <g clipPath="url(#dg-clip)">
-          <g fill="rgb(255 255 255 / .22)" className="animate-[dg-drift_10s_ease-in-out_infinite] motion-reduce:animate-none">
-            <path d="M40 60c14-10 34-14 46-6s8 20-6 26-18 18-30 16-24-8-22-18 4-12 12-18Z" />
-            <path d="M120 34c18-6 40-2 52 10s6 22-10 24-26 8-36 2-22-30-6-36Z" />
-            <path d="M150 88c12-4 30 2 34 14s-8 22-22 20-24-28-12-34Z" />
-            <path d="M86 98c10-2 20 6 18 16s-14 10-20 4-8-18 2-20Z" />
-            <circle cx="70" cy="40" r="5" /><circle cx="186" cy="64" r="4" /><circle cx="104" cy="70" r="3" />
-          </g>
-        </g>
-        <circle cx="110" cy="58" r="23" fill="#fff" fillOpacity=".35" className="origin-center animate-ping [transform-box:fill-box] motion-reduce:animate-none" style={{ animationDuration: '2.4s' }} />
-        <circle cx="110" cy="58" r="23" fill="#fff" />
-        <circle cx="110" cy="58" r="19" className={cn('fill-current', b.ring)} />
-        {ok
-          ? <path d="M101 58.5l6 6 12-12.5" fill="none" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
-          : tone === 'pending'
-            ? <g stroke="#fff" strokeWidth="3" strokeLinecap="round" fill="none"><circle cx="110" cy="58" r="9" /><path d="M110 53v5.5l3.5 2.5" /></g>
-            : <path d="M103 51l14 14M117 51l-14 14" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" />}
-      </svg>
+    <div className={cn('relative overflow-hidden bg-gradient-to-r', b.band)}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_55%,rgb(9_9_11/.92)_0,rgb(9_9_11/.92)_38%,transparent_72%)]" />
+      <div className="relative px-4 pt-4 pb-3">
+        <DomainGlobe tone={tone} regions={regions} label={`${b.title}${regions ? `: ${ok} of ${regions.length} regions see the domain` : ''}`} />
+        <p className="mt-1 text-center text-[11px] font-medium text-white/90">
+          {b.title}{regions ? ` · ${ok} of ${regions.length} regions` : ''}
+        </p>
+      </div>
     </div>
   )
 }
@@ -201,7 +184,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
       </div>}
 
       <div className={cn('overflow-hidden bg-card', inDialog ? 'border-y' : 'rounded-xl border')}>
-        <StatusHero tone={tone} />
+        <StatusHero tone={tone} regions={d.diagnostics?.regions ?? null} />
         <div className="divide-y">
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>

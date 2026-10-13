@@ -19,12 +19,17 @@ export interface OrderHit {
   status: Enums<'order_status'>
   payment_status: Enums<'payment_status'>
   total_amount: number
+  payment_method: Enums<'payment_method'>
+  source: string | null
+  review_status: string | null
   /** Why it matched: the field and the value that matched. */
   matched: Array<{ field: Exclude<SearchField, 'all'>; value: string }>
   parcel?: { courier: string; tracking: string | null; status: Enums<'shipment_status'> } | null
 }
 
-const ORDER_COLUMNS = 'id, order_number, created_at, confirmed_at, customer_name, customer_phone, shipping_address, shipping_district, status, payment_status, total_amount'
+const ORDER_FIELDS = 'id, order_number, created_at, confirmed_at, customer_name, customer_phone, shipping_address, shipping_district, status, payment_status, total_amount, payment_method, source, review_status'
+// Each order comes back with its parcels in the same request (one round trip, not two).
+const ORDER_COLUMNS = `${ORDER_FIELDS}, shipments(status, tracking_number, consignment_id, is_active, couriers(name))`
 const LIMIT = 50
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
@@ -37,7 +42,13 @@ function phoneDigits(q: string): string {
   return d
 }
 
-type Row = Omit<OrderHit, 'matched' | 'parcel'>
+type ParcelRow = { status: Enums<'shipment_status'>; tracking_number: string | null; consignment_id: string | null; is_active: boolean; couriers: { name: string } | null }
+type Row = Omit<OrderHit, 'matched' | 'parcel'> & { shipments?: ParcelRow[] | null }
+
+function parcelOf(rows: ParcelRow[] | null | undefined): OrderHit['parcel'] {
+  const s = (rows ?? []).find((r) => r.is_active) ?? null
+  return s ? { courier: s.couriers?.name ?? 'Courier', tracking: s.tracking_number ?? s.consignment_id, status: s.status } : null
+}
 
 export async function searchOrders(field: SearchField, raw: string): Promise<OrderHit[]> {
   const q = raw.trim()
@@ -45,7 +56,8 @@ export async function searchOrders(field: SearchField, raw: string): Promise<Ord
   const hits = new Map<string, OrderHit>()
   const add = (rows: Row[] | null, f: Exclude<SearchField, 'all'>, value: (r: Row) => string) => {
     for (const r of rows ?? []) {
-      const hit = hits.get(r.id) ?? { ...r, total_amount: Number(r.total_amount), matched: [] }
+      const { shipments, ...order } = r
+      const hit = hits.get(r.id) ?? { ...order, total_amount: Number(r.total_amount), matched: [], parcel: parcelOf(shipments) }
       if (!hit.matched.some((m) => m.field === f)) hit.matched.push({ field: f, value: value(r) })
       hits.set(r.id, hit)
     }
@@ -97,15 +109,5 @@ export async function searchOrders(field: SearchField, raw: string): Promise<Ord
   }
   await Promise.all(jobs)
 
-  const list = [...hits.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, LIMIT)
-  if (list.length) {
-    const { data } = await supabase.from('shipments').select('order_id, tracking_number, consignment_id, status, couriers(name)')
-      .in('order_id', list.map((o) => o.id)).eq('is_active', true)
-    const parcels = new Map((data ?? []).map((s) => [s.order_id, s]))
-    for (const o of list) {
-      const s = parcels.get(o.id) as { tracking_number: string | null; consignment_id: string | null; status: Enums<'shipment_status'>; couriers: { name: string } | null } | undefined
-      o.parcel = s ? { courier: s.couriers?.name ?? 'Courier', tracking: s.tracking_number ?? s.consignment_id, status: s.status } : null
-    }
-  }
-  return list
+  return [...hits.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, LIMIT)
 }

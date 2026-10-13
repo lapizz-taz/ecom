@@ -4,6 +4,8 @@
 // call_id, status, duration…). mapPbxEvent understands both; anything it
 // can't place is kept in `raw` so nothing is lost.
 
+import { isPublicHttpUrl } from './net.ts'
+
 export type PbxDirection = 'INBOUND' | 'OUTBOUND' | 'INTERNAL' | 'UNKNOWN'
 export type PbxStatus = 'RINGING' | 'ANSWERED' | 'NO_ANSWER' | 'BUSY' | 'FAILED' | 'UNKNOWN'
 
@@ -117,24 +119,9 @@ export async function readPbxPayload(req: Request): Promise<Record<string, unkno
   return { ...fromQuery, ...(parsed as Record<string, unknown>) }
 }
 
-/** Only public https hosts: no IPs in private ranges, no localhost. */
+/** Only public https hosts: no IPs in private ranges, no localhost. Shared SSRF guard. */
 export function isPublicHttps(raw: string): boolean {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    return false
-  }
-  if (url.protocol !== 'https:') return false
-  const host = url.hostname.toLowerCase()
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return false
-  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host)
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])]
-    if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)) return false
-  }
-  if (host.startsWith('[')) return false // no literal IPv6
-  return true
+  return isPublicHttpUrl(raw)
 }
 
 /**

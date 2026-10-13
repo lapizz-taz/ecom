@@ -5,7 +5,6 @@
 // then stored in Vault by the service role; they never come back to a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
-import { env } from '../_shared/env.ts'
 import {
   buildCourierProvider, COURIER_FIELDS, COURIER_TRACKING, type CourierCredentials, courierProviderFor, type CourierRow,
   COURIER_OPTIONAL_FIELDS, type CourierOptions, courierOptions, credentialHint, invalidCredentialFields, itemDescription,
@@ -13,9 +12,10 @@ import {
 } from '../_shared/courier/registry.ts'
 import { PathaoProvider, type PathaoStore, RedxProvider } from '../_shared/courier/providers.ts'
 import { CourierNotSupportedError } from '../_shared/courier/types.ts'
+import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
-import { forEachMerchant, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, merchantOf, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const credential = z.union([z.string().trim().max(500), z.boolean(), z.number()])
 const options = z.object({
@@ -227,10 +227,9 @@ export default (
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const body = await readJson<{ action?: string }>(req)
 
-    // pg_cron can trigger a periodic sync with the shared cron secret.
-    const isCron = !!env('CRON_SECRET') && req.headers.get('x-cron-secret') === env('CRON_SECRET')
+    // pg_cron (or the Worker's scheduler) can trigger a periodic sync: the same check as every other scheduled call.
     const input = parse(schema, body)
-    if (isCron && input.action === 'sync_all') {
+    if (input.action === 'sync_all' && await isCronRequest(req, adminClient())) {
       return json(req, await forEachMerchant('courier', (admin) => syncAll(admin, admin, input.courier_id)))
     }
     const staff = await requireStaff(req, PERMISSION[input.action] ?? 'shipments.manage')

@@ -11,7 +11,7 @@ import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link
 import { BusinessFields, businessErrors, PlanPicker } from '@/features/onboarding/signup-parts'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
-import { normalizePhone } from '@/lib/phone'
+import { normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import { SignInForm } from '@/pages/storefront/login'
 import { clearSignupDraft, readSignupDraft, selfOnboard, signupOptions, type SignupBusiness } from '@/services/onboarding'
 
@@ -34,7 +34,7 @@ export default function StartFinishPage() {
 
   const open = useMutation({
     meta: { silent: true },
-    mutationFn: (b: SignupBusiness) => selfOnboard({ ...b, phone: normalizePhone(b.phone) }),
+    mutationFn: (b: SignupBusiness) => selfOnboard({ ...b, phone: normalizePhone(b.phone), whatsapp: normalizeWhatsapp(b.whatsapp ?? '') }),
     onSuccess: async () => {
       clearSignupDraft()
       await queryClient.invalidateQueries({ queryKey: ['my-access'] })
@@ -46,7 +46,7 @@ export default function StartFinishPage() {
   useEffect(() => {
     if (!user || access || accessLoading || tried.current) return
     const draft = readSignupDraft(user.user_metadata)
-    const fallback = { business_name: '', full_name: String(user.user_metadata?.full_name ?? ''), phone: String(user.user_metadata?.phone ?? ''), business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '' }
+    const fallback = { business_name: '', full_name: String(user.user_metadata?.full_name ?? ''), phone: String(user.user_metadata?.phone ?? ''), whatsapp: '', business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '' }
     setBusiness(draft ?? fallback)
     tried.current = true
     if (draft) open.mutate(draft)

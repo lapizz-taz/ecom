@@ -143,6 +143,14 @@ template "Redirect from WWW to root"** → Deploy.
    `fullfilio.com/*` and `*.fullfilio.com/*`: from now on https://fullfilio.com
    shows Fullfilio.
 
+> **As set up today (checked 2026-10-12):** the live Worker builds from
+> `claude/sweet-lovelace-ilswnx`, not from `claude/optimistic-cray-c2d0fc`.
+> Pushes to `claude/optimistic-cray-c2d0fc` alone do not reach the live site.
+> Either change it under **Workers & Pages → fullfilio → Settings → Build →
+> Branch control → Production branch**, or push every release to both
+> branches. Both carry the same code since 2026-10-12 21:29 UTC
+> (`docs/AUDIT.md` F-005).
+
 ### 4. Secrets of the Worker
 
 **Workers & Pages → fullfilio → Settings → Variables and Secrets → Add →

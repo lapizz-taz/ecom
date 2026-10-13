@@ -28,6 +28,8 @@ export interface SignupBusiness {
   business_name: string
   full_name: string
   phone: string
+  /** For the Fullfilio support group on WhatsApp; empty means the same as `phone`. */
+  whatsapp?: string
   business_type: string
   website: string
   sells_on: string[]

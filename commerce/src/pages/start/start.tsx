@@ -15,13 +15,13 @@ import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link
 import { BusinessFields, businessErrors, PlanPicker, Steps } from '@/features/onboarding/signup-parts'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
-import { normalizePhone } from '@/lib/phone'
+import { normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import {
   clearSignupDraft, readSignupDraft, signInOnceConfirmed, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
 } from '@/services/onboarding'
 
 const EMPTY: SignupBusiness = {
-  business_name: '', full_name: '', phone: '', business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '',
+  business_name: '', full_name: '', phone: '', whatsapp: '', business_type: '', website: '', sells_on: [], orders_per_month: '', plan_code: '',
 }
 
 /**
@@ -55,7 +55,7 @@ export default function StartPage() {
     setBusiness((b) => ({ ...b, plan_code: code }))
   }, [options.data, business.plan_code])
 
-  const payload = () => ({ ...business, phone: normalizePhone(business.phone), business_name: business.business_name.trim(), full_name: business.full_name.trim(), website: business.website.trim() })
+  const payload = () => ({ ...business, phone: normalizePhone(business.phone), whatsapp: normalizeWhatsapp(business.whatsapp ?? ''), business_name: business.business_name.trim(), full_name: business.full_name.trim(), website: business.website.trim() })
   const open = useMutation({
     meta: { silent: true },
     mutationFn: async () => {

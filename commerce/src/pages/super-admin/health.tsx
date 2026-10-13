@@ -34,7 +34,7 @@ export const HealthBadge = ({ status }: { status: HealthStatus }) => <Badge vari
 
 function ComponentCard({ c, canRetry, onRetry }: { c: HealthComponent; canRetry: boolean; onRetry: (kind: string) => void }) {
   return (
-    <Card className="gap-2 px-4 py-3.5">
+    <Card className="min-w-0 gap-2 px-4 py-3.5 [overflow-wrap:anywhere]">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn('size-2 shrink-0 rounded-full', STATUS[c.status].dot)} aria-hidden />

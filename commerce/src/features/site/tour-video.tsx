@@ -2,8 +2,8 @@ import { Play } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
-const SOURCES = [['/media/fullfilio-tour.mp4', 'video/mp4'], ['/media/fullfilio-tour.webm', 'video/webm']] as const
-const POSTER = '/media/fullfilio-tour.jpg'
+const SOURCES = [['/media/fullfilio-promo-v2.mp4', 'video/mp4'], ['/media/fullfilio-promo-v2.webm', 'video/webm']] as const
+const POSTER = '/media/fullfilio-promo-v2.jpg'
 
 /** The 30-second product tour: a poster with a play button; plays with sound on click. */
 export function TourVideo({ className }: { className?: string }) {
@@ -28,7 +28,7 @@ export function TourVideo({ className }: { className?: string }) {
         <button type="button" onClick={play} className="group absolute inset-0 grid place-items-center bg-black/10 transition-colors hover:bg-black/0" aria-label="Play the product tour">
           <span className="flex items-center gap-2 rounded-full bg-[#08090a]/85 py-2.5 pr-5 pl-3 text-sm font-medium text-white shadow-2xl ring-1 ring-white/15 backdrop-blur transition-transform group-hover:scale-105">
             <span className="grid size-8 place-items-center rounded-full bg-[#2142e7]"><Play className="size-3.5 translate-x-px fill-current" /></span>
-            Watch the tour · 0:32
+            Watch the tour · 0:38
           </span>
         </button>
       )}

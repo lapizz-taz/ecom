@@ -3,6 +3,7 @@
 // customer accounts (and the clients of manager accounts) are listed, and
 // campaign numbers per day are read with GAQL.
 import { env } from '../env.ts'
+import { fetchWithRetry } from '../fetch-retry.ts'
 import type { CampaignRow, DailyRow } from './tiktok.ts'
 
 type FetchFn = typeof fetch
@@ -58,7 +59,7 @@ export function emailFromIdToken(idToken: string | undefined): string | null {
 const digits = (v: unknown) => String(v ?? '').replace(/\D/g, '')
 
 export class GoogleAdsClient {
-  constructor(private readonly app: GoogleApp, private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly app: GoogleApp, private readonly fetchFn: FetchFn = fetchWithRetry(fetch)) {}
 
   private async token(body: Record<string, string>): Promise<Record<string, unknown>> {
     let response: Response

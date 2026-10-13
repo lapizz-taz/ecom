@@ -189,6 +189,11 @@ export default function MerchantDetailPage() {
               <CardContent>
                 <Row label="Owner e-mail">{m.owner_email}</Row>
                 <Row label="Phone">{m.phone}</Row>
+                <Row label="WhatsApp">{whatsappOf(m) && (
+                  <a className="inline-flex items-center gap-1.5 hover:underline" href={`https://wa.me/${waDigits(whatsappOf(m)!)}`} target="_blank" rel="noreferrer">
+                    {whatsappOf(m)} <span className="text-xs text-muted-foreground">· open chat</span>
+                  </a>
+                )}</Row>
                 <Row label="Business type">{m.business_type}</Row>
                 <Row label="Website">{m.website}</Row>
                 <Row label="Address">{m.address}</Row>
@@ -351,3 +356,11 @@ export default function MerchantDetailPage() {
     </div>
   )
 }
+
+/** The WhatsApp number given at sign-up (for the support group); kept in merchants.onboarding. */
+function whatsappOf(m: unknown): string | null {
+  const v = (m as { onboarding?: { whatsapp?: unknown } }).onboarding?.whatsapp
+  return typeof v === 'string' && v ? v : null
+}
+/** wa.me wants the full international number without "+": 01XXXXXXXXX → 8801XXXXXXXXX. */
+const waDigits = (n: string) => (n.startsWith('01') ? `88${n}` : n.replace(/\D/g, ''))

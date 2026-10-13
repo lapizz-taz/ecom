@@ -1,3 +1,4 @@
+import { fetchWithRetry } from '../fetch-retry.ts'
 import type { FraudCheckInput, FraudProvider, FraudProviderResult } from './types.ts'
 
 type FetchFn = typeof fetch
@@ -223,7 +224,7 @@ function errorDetail(body: unknown): string | null {
 export class CourierHistoryProvider implements FraudProvider {
   readonly name = 'courier_history'
 
-  constructor(private readonly config: CourierHistoryConfig, private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly config: CourierHistoryConfig, private readonly fetchFn: FetchFn = fetchWithRetry(fetch, { attempts: 2, baseDelayMs: 250, maxDelayMs: 800 })) {}
 
   get service(): CourierHistoryService {
     return this.config.service ?? 'bdcourier'

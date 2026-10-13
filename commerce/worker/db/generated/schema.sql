@@ -4086,6 +4086,21 @@ CREATE TABLE tenancy_exempt_functions (
   PRIMARY KEY (name)
 ) STRICT;
 
+CREATE TABLE user_presence (
+  user_id TEXT NOT NULL CHECK (length(user_id) = 36),
+  area TEXT NOT NULL,
+  merchant_id TEXT CHECK (merchant_id IS NULL OR length(merchant_id) = 36),
+  path TEXT,
+  device TEXT,
+  last_seen_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', last_seen_at) = last_seen_at),
+  PRIMARY KEY (user_id, area),
+  CONSTRAINT user_presence_area_check CHECK (area IN ('admin', 'super-admin')),
+  CONSTRAINT user_presence_device_check CHECK ((device is null) or (length(device) <= 80)),
+  CONSTRAINT user_presence_path_check CHECK ((path is null) or (length(path) <= 120)),
+  CONSTRAINT user_presence_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id) ON DELETE CASCADE,
+  CONSTRAINT user_presence_user_id_fkey FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) STRICT;
+
 CREATE INDEX account_removals_pending ON account_removals (created_at) WHERE (status = 'PENDING');
 
 CREATE INDEX ad_accounts_merchant_idx ON ad_accounts (merchant_id);
@@ -4805,3 +4820,5 @@ CREATE INDEX system_logs_merchant_idx ON system_logs (merchant_id);
 CREATE UNIQUE INDEX system_logs_open_fingerprint_idx ON system_logs (merchant_id, fingerprint) WHERE ((resolved_at is null) and (fingerprint is not null));
 
 CREATE INDEX system_logs_open_idx ON system_logs (level, last_seen_at desc) WHERE (resolved_at is null);
+
+CREATE INDEX user_presence_seen_idx ON user_presence (last_seen_at desc);
