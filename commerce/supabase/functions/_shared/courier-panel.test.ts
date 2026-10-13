@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, testPanelLogin,
+  COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, setPanelRelay, testPanelLogin,
 } from './fraud/courier-panel.ts'
+import { httpPanelRelay } from './fraud/courier-relay.ts'
 import { providersFromSettings } from './fraud/service.ts'
 
 function freshStore(): SessionStore {
@@ -196,3 +197,77 @@ function summaryCancelled(): number {
   // steadfast 2 + pathao 2 + redx 5 + carrybee 0 + paperfly 1 = 10
   return 10
 }
+
+describe('courier sign-in fixes', () => {
+  it('Carrybee: a token with "|" in it (Laravel style) still reaches the right business', async () => {
+    const fetchFn = panelFetch({ 'merchant.carrybee.com/api/auth/session': () => withCookie({ accessToken: '4521|abcDEF', user: { selectedBusinessId: 'biz-9' } }) })
+    const r = await testPanelLogin('carrybee', allCreds.carrybee as never, '01811111111', { fetchFn, store: freshStore() })
+    expect(r.ok).toBe(true)
+    const read = fetchFn.mock.calls.find(([u]) => String(u).includes('/fraud-check/'))!
+    expect(String(read[0])).toBe('https://api-merchant.carrybee.com/api/v2/businesses/biz-9/fraud-check/01811111111')
+    expect((read[1]!.headers as Record<string, string>).Authorization).toBe('Bearer 4521|abcDEF')
+  })
+
+  it('Steadfast: a login sent back to /login is a wrong password, not "0 parcels"', async () => {
+    const fetchFn = panelFetch({ 'steadfast.com.bd/login': () => new Response('', { status: 302, headers: new Headers({ location: 'https://steadfast.com.bd/login' }) }) })
+    // The GET of the login page must still answer the form, so route by method.
+    const real = panelFetch()
+    const f = vi.fn(async (input: string | URL | Request, init?: RequestInit) => ((init?.method ?? 'GET') === 'POST' ? fetchFn(input, init) : real(input, init)))
+    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn: f, store: freshStore() })
+    expect(r).toMatchObject({ ok: false, message: 'Steadfast rejected the email or password' })
+  })
+
+  it('Steadfast: a fraud page that redirects (signed out) is not counted as zero', async () => {
+    const fetchFn = panelFetch({ '/user/frauds/check/': () => new Response('', { status: 302, headers: new Headers({ location: '/login' }) }) })
+    const r = await testPanelLogin('steadfast', allCreds.steadfast as never, '01811111111', { fetchFn, store: freshStore() })
+    expect(r.ok).toBe(false)
+  })
+})
+
+describe('courier relay (the Worker sends courier work to Supabase)', () => {
+  it('a provider without a stand-in fetch hands the lookup to the relay', async () => {
+    const lookup = vi.fn(async () => ({ couriers: [], total: 3, delivered: 2, cancelled: 1, success_ratio: 66.67, ratio_source: 'counts' as const, name_on_record: null, parcel_floor: 3 }))
+    setPanelRelay({ lookup, test: vi.fn() })
+    try {
+      const p = new CourierPanelProvider({ redx: allCreds.redx })
+      const r = await p.checkCustomer({ phone: '+8801811111111' })
+      expect(lookup).toHaveBeenCalledWith('01811111111')
+      expect(r).toMatchObject({ ok: true, counts: { total: 3, delivered: 2, returned: 1 } })
+      // Tests that hand in a fetch still run locally.
+      const local = new CourierPanelProvider({ redx: allCreds.redx }, { fetchFn: panelFetch(), store: freshStore() })
+      await local.lookup('01811111111')
+      expect(lookup).toHaveBeenCalledTimes(1)
+    } finally {
+      setPanelRelay(null)
+    }
+  })
+
+  it('login tests go through the relay too', async () => {
+    const test = vi.fn(async () => ({ ok: true, message: 'RedX: signed in' }))
+    setPanelRelay({ lookup: vi.fn(), test })
+    try {
+      expect(await testPanelLogin('redx', allCreds.redx as never, '01811111111')).toEqual({ ok: true, message: 'RedX: signed in' })
+      expect(test).toHaveBeenCalledWith('redx', allCreds.redx, '01811111111')
+    } finally {
+      setPanelRelay(null)
+    }
+  })
+
+  it('the HTTP relay sends the shared secret and only the phone for a lookup', async () => {
+    const summary = { couriers: [], total: 1, delivered: 1, cancelled: 0, success_ratio: 100, ratio_source: 'counts', name_on_record: null, parcel_floor: 1 }
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: true, summary }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const relay = httpPanelRelay({ url: 'https://p.supabase.co/functions/v1/courier-relay', cronSecret: 'cron-s', serviceKey: 'svc', fetchFn })
+    expect(await relay.lookup('01811111111')).toEqual(summary)
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://p.supabase.co/functions/v1/courier-relay')
+    expect(init.headers).toMatchObject({ 'x-cron-secret': 'cron-s', Authorization: 'Bearer svc' })
+    expect(JSON.parse(String(init.body))).toEqual({ action: 'lookup', phone: '01811111111' })
+  })
+
+  it('the HTTP relay turns a refusal or a failed lookup into a readable error', async () => {
+    const refused = httpPanelRelay({ url: 'https://x/courier-relay', fetchFn: vi.fn(async () => new Response(JSON.stringify({ error: { message: 'Not allowed' } }), { status: 401 })) })
+    await expect(refused.lookup('01811111111')).rejects.toThrow('Courier check service: Not allowed')
+    const failed = httpPanelRelay({ url: 'https://x/courier-relay', fetchFn: vi.fn(async () => new Response(JSON.stringify({ ok: false, message: 'RedX: rate limit' }), { status: 200 })) })
+    await expect(failed.lookup('01811111111')).rejects.toThrow('RedX: rate limit')
+  })
+})

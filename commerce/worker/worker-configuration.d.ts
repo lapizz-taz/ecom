@@ -5,7 +5,7 @@ interface __BaseEnv_Env {
 	CACHE: KVNamespace;
 	FILES: R2Bucket;
 	ASSETS: Fetcher;
-	SUPABASE_FUNCTIONS: "" | "channels,courier,meta-ads,ad-platforms,notifications-dispatch";
+	SUPABASE_FUNCTIONS: "" | "channels,courier,meta-ads,ad-platforms,notifications-dispatch,courier-relay";
 	SUPABASE_URL: string;
 	SUPABASE_ANON_KEY: string;
 	SUPABASE_SERVICE_ROLE_KEY: string;
@@ -17,6 +17,7 @@ interface __BaseEnv_Env {
 	FUNCTIONS_URL?: "https://fullfilio.com/functions/v1";
 	CLERK_AUTHORIZED_PARTIES?: "https://fullfilio.com,https://www.fullfilio.com";
 	CUSTOM_DOMAIN_TARGET?: "stores.fullfilio.com";
+	COURIER_PANEL_RELAY_URL?: "https://tcjdgiohmhjqppzwoztj.supabase.co/functions/v1/courier-relay";
 }
 declare namespace Cloudflare {
 	interface GlobalProps {

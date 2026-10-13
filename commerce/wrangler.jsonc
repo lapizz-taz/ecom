@@ -42,7 +42,10 @@
     "CUSTOM_DOMAIN_TARGET": "stores.fullfilio.com",
     // Long-running functions stay on Supabase Edge Functions while the Worker is on
     // Workers Free (10 ms CPU, 50 outgoing requests per call). On Workers Paid set "".
-    "SUPABASE_FUNCTIONS": "channels,courier,meta-ads,ad-platforms,notifications-dispatch",
+    "SUPABASE_FUNCTIONS": "channels,courier,meta-ads,ad-platforms,notifications-dispatch,courier-relay",
+    // The couriers' merchant panels (Steadfast, RedX…) refuse requests from Cloudflare
+    // Workers, so courier sign-ins and lookups run in this Supabase function.
+    "COURIER_PANEL_RELAY_URL": "https://tcjdgiohmhjqppzwoztj.supabase.co/functions/v1/courier-relay",
     // "supabase" until the switch-over; "cloudflare" serves the database from the
     // Database Durable Object below (then SUPABASE_FUNCTIONS must be "").
     "DATABASE_BACKEND": "supabase"

@@ -11,6 +11,7 @@ import clerkAuth from '../supabase/functions/clerk-auth/handler.ts'
 import clerkProxy from '../supabase/functions/clerk-proxy/handler.ts'
 import clerkWebhook from '../supabase/functions/clerk-webhook/handler.ts'
 import courier from '../supabase/functions/courier/handler.ts'
+import courierRelay from '../supabase/functions/courier-relay/handler.ts'
 import courierWebhook from '../supabase/functions/courier-webhook/handler.ts'
 import domains from '../supabase/functions/domains/handler.ts'
 import fraudCheck from '../supabase/functions/fraud-check/handler.ts'
@@ -37,6 +38,8 @@ export const FUNCTIONS: Record<string, Handler> = {
   'clerk-proxy': clerkProxy,
   'clerk-webhook': clerkWebhook,
   'courier': courier,
+  // Listed in SUPABASE_FUNCTIONS: always runs on Supabase (couriers refuse Workers).
+  'courier-relay': courierRelay,
   'courier-webhook': courierWebhook,
   'domains': domains,
   'fraud-check': fraudCheck,
