@@ -149,6 +149,9 @@ export default function NewOrderPage() {
       }
       if (afterCreate === 'fraud' && order?.id) {
         await invokeFunction('fraud-check', { order_id: order.id, apply: true }).catch(() => toast.warning('Order created, but the fraud check could not run'))
+      } else if (order?.id && can('fraud.review')) {
+        // The courier record for the success rate, like an imported order gets; it lands on the order by itself.
+        void invokeFunction('fraud-check', { order_id: order.id }).catch(() => undefined)
       }
       return order
     },

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   COURIER_PANEL_PROVIDERS, CourierPanelProvider, type CourierPanelCreds, panelAccounts, type SessionStore, parseSteadfast, readLoginForm, setPanelRelay, testPanelLogin,
 } from './fraud/courier-panel.ts'
+import { CourierHistoryProvider, setHistoryRelay } from './fraud/courier-history.ts'
 import { httpPanelRelay } from './fraud/courier-relay.ts'
 import { providersFromSettings } from './fraud/service.ts'
 
@@ -273,6 +274,68 @@ describe('courier relay (the Worker sends courier work to Supabase)', () => {
     expect(url).toBe('https://p.supabase.co/functions/v1/courier-relay')
     expect(init.headers).toMatchObject({ 'x-cron-secret': 'cron-s', Authorization: 'Bearer svc' })
     expect(JSON.parse(String(init.body))).toEqual({ action: 'lookup', phone: '01811111111' })
+  })
+
+  it('BD Courier goes through the relay too (it refuses Cloudflare Workers); a stand-in fetch still runs locally', async () => {
+    const summary = { couriers: [{ courier: 'steadfast', orders: 10, cancelled: 1, delivered: 9 }], total: 10, delivered: 9, cancelled: 1, success_ratio: 90, ratio_source: 'provider' as const, name_on_record: null, parcel_floor: 10, service: 'bdcourier' as const }
+    const history = vi.fn(async () => summary)
+    setHistoryRelay(history)
+    try {
+      const viaRelay = await new CourierHistoryProvider({ apiKey: 'bd-key', service: 'bdcourier' }).checkCustomer({ phone: '+8801811111111' })
+      expect(history).toHaveBeenCalledWith('01811111111')
+      expect(viaRelay).toMatchObject({ ok: true, counts: { total: 10, delivered: 9, returned: 1 }, courierScore: 90 })
+      // The global fetch (what the check service passes) is not a stand-in: still the relay.
+      await new CourierHistoryProvider({ apiKey: 'bd-key', service: 'bdcourier' }, globalThis.fetch).lookup('01811111111')
+      expect(history).toHaveBeenCalledTimes(2)
+      // A test's (or the relay's own) fetch runs here.
+      const fetchFn = vi.fn(async () => new Response(JSON.stringify({ status: 'success', data: { summary: { total_parcel: 2, success_parcel: 2, cancelled_parcel: 0 } } }), { status: 200 }))
+      const local = await new CourierHistoryProvider({ apiKey: 'bd-key', service: 'bdcourier' }, fetchFn).lookup('01811111111')
+      expect(fetchFn).toHaveBeenCalledTimes(1)
+      expect(history).toHaveBeenCalledTimes(2)
+      expect(local.total).toBe(2)
+      // A relay failure is a readable reason, not a crash.
+      history.mockRejectedValueOnce(new Error('Could not reach the courier check service'))
+      expect(await new CourierHistoryProvider({ apiKey: 'bd-key' }).checkCustomer({ phone: '01811111111' }))
+        .toEqual({ provider: 'courier_history', ok: false, counts: {}, error: 'Could not reach the courier check service' })
+    } finally {
+      setHistoryRelay(null)
+    }
+  })
+
+  it('on the Worker a check gets BD Courier and the courier sign-ins from the relay, merged', async () => {
+    const history = vi.fn(async () => ({
+      couriers: [{ courier: 'pathao', orders: 5, cancelled: 1, delivered: 4 }, { courier: 'steadfast', orders: 8, cancelled: 0, delivered: 8 }],
+      total: 13, delivered: 12, cancelled: 1, success_ratio: 92.31, ratio_source: 'provider' as const, name_on_record: null, parcel_floor: 13, service: 'bdcourier' as const,
+    }))
+    const lookup = vi.fn(async () => ({
+      couriers: [{ courier: 'pathao', name: 'Pathao', orders: 72, cancelled: 1, delivered: 71, success_ratio: 98.61, notice: null }],
+      total: 72, delivered: 71, cancelled: 1, success_ratio: 98.61, ratio_source: 'counts' as const, name_on_record: null, parcel_floor: 72,
+    }))
+    setHistoryRelay(history)
+    setPanelRelay({ lookup, test: vi.fn() })
+    try {
+      const [source] = providersFromSettings({ providers: [] }, globalThis.fetch, { courierHistory: { api_key: 'bd-key', service: 'bdcourier' }, panel: { pathao: allCreds.pathao } })
+        .filter((p) => p.name === 'courier_history')
+      const r = await source.checkCustomer({ phone: '01811111111' })
+      expect(history).toHaveBeenCalledWith('01811111111')
+      expect(lookup).toHaveBeenCalledWith('01811111111')
+      // Pathao from the sign-in (72) replaces BD Courier's Pathao (5); Steadfast stays from BD Courier.
+      expect(r).toMatchObject({ ok: true, counts: { total: 80, delivered: 79, returned: 1 } })
+      expect((r.raw as { source_notes?: string[] }).source_notes).toBeUndefined()
+    } finally {
+      setHistoryRelay(null)
+      setPanelRelay(null)
+    }
+  })
+
+  it('the HTTP relay asks for BD Courier with only the phone', async () => {
+    const summary = { couriers: [], total: 0, delivered: 0, cancelled: 0, success_ratio: null, ratio_source: 'counts', name_on_record: null, parcel_floor: 0 }
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: true, summary }), { status: 200 }))
+    const relay = httpPanelRelay({ url: 'https://p.supabase.co/functions/v1/courier-relay', cronSecret: 'cron-s', fetchFn })
+    expect(await relay.history('01811111111')).toEqual(summary)
+    expect(JSON.parse(String((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({ action: 'history', phone: '01811111111' })
+    const failed = httpPanelRelay({ url: 'https://x/courier-relay', fetchFn: vi.fn(async () => new Response(JSON.stringify({ ok: false, message: 'BD Courier: daily limit reached' }), { status: 200 })) })
+    await expect(failed.history('01811111111')).rejects.toThrow('BD Courier: daily limit reached')
   })
 
   it('the HTTP relay turns a refusal or a failed lookup into a readable error', async () => {

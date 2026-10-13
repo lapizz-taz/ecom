@@ -6,7 +6,7 @@ import { invokeFunction } from '@/lib/functions'
 import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import { type CourierLineRecord, orderCustomerRecord } from '@/services/orders'
+import { type CourierLineRecord, type OrderCustomerRecord, orderCustomerRecord } from '@/services/orders'
 
 // The customer's delivery record: one panel, a small card per source — our own
 // orders, the overall courier rate, then each courier with its mark and colour.
@@ -73,10 +73,22 @@ function Tile({ icon, name, fill, color, value, detail, warn }: {
   )
 }
 
+/** A new order's courier check runs in the background; how long the panel keeps looking for it. */
+const CHECK_WAIT_MS = 3 * 60_000
+/** A check this much older than the order is a reused one from the same visit (the 30-minute cache). */
+const REUSE_MS = 30 * 60_000
+
 /** The delivery record panel for an order's customer (staff only; the record needs orders.view). */
-export function CourierRecordCards({ orderId, phone, className }: { orderId: string; phone: string; className?: string }) {
+export function CourierRecordCards({ orderId, phone, createdAt, className }: { orderId: string; phone: string; createdAt?: string; className?: string }) {
   const { can } = useAuth()
-  const record = useQuery({ queryKey: ['order-record', orderId], queryFn: () => orderCustomerRecord(orderId) })
+  const placed = createdAt ? Date.parse(createdAt) : NaN
+  const waiting = (d?: OrderCustomerRecord) =>
+    Date.now() - placed < CHECK_WAIT_MS && (!d?.check || Date.parse(d.check.checked_at) < placed - REUSE_MS)
+  const record = useQuery({
+    queryKey: ['order-record', orderId],
+    queryFn: () => orderCustomerRecord(orderId),
+    refetchInterval: (q) => (waiting(q.state.data) ? 4_000 : false),
+  })
   const recheck = useMutation({
     mutationFn: () => invokeFunction<{ check?: { status?: string; error?: string | null } }>('fraud-check', { phone }),
     onSuccess: (r) => {
@@ -102,7 +114,7 @@ export function CourierRecordCards({ orderId, phone, className }: { orderId: str
       <div className="flex items-center justify-between gap-3 border-b pb-3">
         <h3 className="text-base font-medium">Delivery record</h3>
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>{check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
+          <span>{waiting(record.data) ? 'Checking…' : check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
           {can('fraud.review') && (
             <button type="button" onClick={() => recheck.mutate()} disabled={recheck.isPending} aria-label="Check the delivery record again"
               className="rounded-md p-1 hover:bg-muted hover:text-foreground disabled:opacity-50">

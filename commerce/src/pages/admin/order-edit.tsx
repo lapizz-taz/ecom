@@ -129,7 +129,7 @@ export default function OrderEditPage() {
         <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">This order can't be edited any more. Use <Link to={`/admin/orders/super-edit?order=${o.id}`} className="text-foreground underline">Super Edit</Link>.</p>
       )}
 
-      <CourierRecordCards orderId={o.id} phone={o.customer_phone} />
+      <CourierRecordCards orderId={o.id} phone={o.customer_phone} createdAt={o.created_at} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-4">
