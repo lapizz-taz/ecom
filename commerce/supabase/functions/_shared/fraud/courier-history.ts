@@ -223,10 +223,27 @@ function errorDetail(body: unknown): string | null {
   return null
 }
 
+/**
+ * Where the lookup actually runs. BD Courier refuses requests from Cloudflare
+ * Workers, so the Worker hands lookups to the courier-relay function on Supabase,
+ * which reads the platform's key from Vault itself. Unset (Supabase, tests): run here.
+ */
+export type HistoryRelay = (phone: string) => Promise<CourierHistorySummary>
+let historyRelay: HistoryRelay | null = null
+export function setHistoryRelay(r: HistoryRelay | null): void {
+  historyRelay = r
+}
+
 export class CourierHistoryProvider implements FraudProvider {
   readonly name = 'courier_history'
+  private readonly fetchFn: FetchFn
+  /** A test (or the relay itself) passed its own fetch: always call the service directly. */
+  private readonly direct: boolean
 
-  constructor(private readonly config: CourierHistoryConfig, private readonly fetchFn: FetchFn = fetchWithRetry(fetch, { attempts: 2, baseDelayMs: 250, maxDelayMs: 800 })) {}
+  constructor(private readonly config: CourierHistoryConfig, fetchFn?: FetchFn) {
+    this.fetchFn = fetchFn ?? fetchWithRetry(fetch, { attempts: 2, baseDelayMs: 250, maxDelayMs: 800 })
+    this.direct = !!fetchFn && fetchFn !== globalThis.fetch
+  }
 
   get service(): CourierHistoryService {
     return this.config.service ?? 'bdcourier'
@@ -235,6 +252,7 @@ export class CourierHistoryProvider implements FraudProvider {
   async lookup(phone: string): Promise<CourierHistorySummary> {
     const mobile = bdMobile(phone)
     if (!mobile) throw new Error('Not a Bangladeshi mobile number')
+    if (historyRelay && !this.direct) return historyRelay(mobile)
     const base = (this.config.baseUrl || COURIER_HISTORY_SERVICES[this.service].url).replace(/\/+$/, '')
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 5000)

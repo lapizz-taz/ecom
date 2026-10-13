@@ -1,15 +1,18 @@
-// Courier relay (runs on Supabase only). The couriers' merchant panels sit
-// behind Cloudflare and refuse requests from Cloudflare Workers, so the Worker
-// sends courier sign-in tests and lookups here (see _shared/fraud/courier-relay.ts).
+// Courier relay (runs on Supabase only). The couriers' merchant panels and BD Courier
+// refuse requests from Cloudflare Workers, so the Worker sends courier sign-in tests
+// and lookups here (see _shared/fraud/courier-relay.ts).
 //   POST {action: 'lookup', phone}                    every connected courier, logins from Vault
+//   POST {action: 'history', phone}                   BD Courier, the platform's key from Vault
 //   POST {action: 'test', provider, login, phone}     one login, nothing saved
 // Only our own servers may call it: the cron secret, or a key Supabase accepts
 // as the service role (asked of Supabase, so the Worker's copy may be another format).
 // Metering stays with the caller; nothing here is logged.
 import { z } from 'zod'
 import { carriesServiceKey, isCronRequest } from '../_shared/cron.ts'
+import { fetchWithRetry } from '../_shared/fetch-retry.ts'
+import { CourierHistoryProvider } from '../_shared/fraud/courier-history.ts'
 import { COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider, testPanelLogin } from '../_shared/fraud/courier-panel.ts'
-import { platformPanelCreds } from '../_shared/fraud/service.ts'
+import { courierHistoryConfig, platformCourierHistorySecret, platformPanelCreds } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient } from '../_shared/supabase.ts'
@@ -17,6 +20,7 @@ import { adminClient } from '../_shared/supabase.ts'
 const phone = z.string().trim().min(6).max(20).regex(/^[+0-9\s-]+$/)
 const input = z.discriminatedUnion('action', [
   z.object({ action: z.literal('lookup'), phone }),
+  z.object({ action: z.literal('history'), phone }),
   z.object({
     action: z.literal('test'), provider: z.enum(COURIER_PANEL_PROVIDERS), phone,
     login: z.object({
@@ -34,6 +38,18 @@ export default (
     const body = parse(input, await readJson(req))
 
     if (body.action === 'test') return json(req, await testPanelLogin(body.provider, body.login, body.phone))
+
+    if (body.action === 'history') {
+      const config = courierHistoryConfig(await platformCourierHistorySecret(admin), 8_000)
+      if (!config) return json(req, { ok: false, message: 'BD Courier is not connected on the platform' })
+      // Its own fetch: the lookup always runs here, never back through a relay.
+      const provider = new CourierHistoryProvider(config, fetchWithRetry(fetch, { attempts: 2, baseDelayMs: 250, maxDelayMs: 800 }))
+      try {
+        return json(req, { ok: true, summary: await provider.lookup(body.phone) })
+      } catch (error) {
+        return json(req, { ok: false, message: (error as Error).message })
+      }
+    }
 
     const provider = new CourierPanelProvider((await platformPanelCreds(admin) as CourierPanelCreds | null) ?? {})
     try {

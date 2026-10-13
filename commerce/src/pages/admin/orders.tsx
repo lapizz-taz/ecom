@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer, ShieldAlert,
-  ShoppingBag, Tag, Truck, Wallet,
+  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
+  ShieldAlert, ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
@@ -34,6 +34,7 @@ import { EMPTY_FILTERS, type FilterValues, filtersFromValues, OrderFilterButton 
 import { paidBadge } from '@/features/orders/order-source-card'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { OrderCallBadge, OrderCallLink, OrderCallStatesProvider } from '@/features/voicedrive/order-call'
+import { useRealtimeInvalidate } from '@/hooks/use-realtime'
 import { useUrlState } from '@/hooks/use-url-state'
 import { downloadCsv } from '@/lib/csv'
 import { formatDateTime, timeAgo, titleCase } from '@/lib/format'
@@ -157,7 +158,11 @@ export function OrdersPage({ view }: { view: View }) {
     placeholderData: keepPreviousData,
     enabled: !showLeads,
     queryFn: () => searchOrders(filters, sort, dir as 'asc' | 'desc', PAGE_SIZE, (page - 1) * PAGE_SIZE),
+    // A new order's courier check lands a few seconds after the order: look again until it does.
+    refetchInterval: (q) => (q.state.data?.items.some(awaitingCheck) ? 5_000 : false),
   })
+  // New orders, status changes and finished courier checks show up without a reload.
+  useRealtimeInvalidate('orders', [['orders', 'list'], ['orders', 'queue-counts']], !showLeads)
 
   const refresh = () => {
     setSelected(new Set())
@@ -335,7 +340,7 @@ export function OrdersPage({ view }: { view: View }) {
   if (view === 'web') {
     columns.push(
       { key: 'items', header: 'Items', hideOnMobile: true, cell: (o) => <p className="line-clamp-2 max-w-44 text-xs" title={o.items_preview ?? ''}>{o.items_preview ?? `${o.item_count} item(s)`}</p> },
-      { key: 'history', header: 'Success Rate', cell: (o) => <SuccessRateCell h={o.courier_history} orderId={o.id} phone={o.customer_phone} /> },
+      { key: 'history', header: 'Success Rate', cell: (o) => <SuccessRateCell h={o.courier_history} orderId={o.id} phone={o.customer_phone} checking={awaitingCheck(o)} /> },
       { key: 'source', header: 'Source', hideOnMobile: true, cell: (o) => <SourceCell a={o.attribution} /> },
       { key: 'tags', header: 'Tags', hideOnMobile: true, cell: tagCell },
       { key: 'call', header: 'Call', cell: (o) => <CallCell o={o} meta={statusMeta.get(o.review_status)} /> },
@@ -592,10 +597,17 @@ function rateTone(rate: number, tier: string | null | undefined) {
   return RATE_TONE.low
 }
 
+/** How long a new order may wait for its courier check before the list stops looking for it. */
+const CHECK_WAIT_MS = 3 * 60_000
+const awaitingCheck = (o: OrderListItem) => !o.courier_history && Date.now() - new Date(o.created_at).getTime() < CHECK_WAIT_MS
+
 /** Delivery success as the checkout check saw it: a ring, the rate and the parcels behind it. */
-function SuccessRateCell({ h, orderId, phone }: { h: OrderListItem['courier_history']; orderId: string; phone: string }) {
+function SuccessRateCell({ h, orderId, phone, checking }: { h: OrderListItem['courier_history']; orderId: string; phone: string; checking?: boolean }) {
   const counted = h ? h.total ?? h.completed : 0
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
+  if (checking) {
+    return <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><LoaderCircle className="size-3 animate-spin" /> Checking…</span>
+  }
   if (!h || rate === null || (counted === 0 && !h.ranges?.length)) {
     return <span className="text-xs text-muted-foreground">{h ? 'New customer' : 'Not checked'}</span>
   }

@@ -1,9 +1,10 @@
-// The Worker's side of the courier relay: courier sign-ins and lookups go to the
-// courier-relay function on Supabase (see courier-panel.ts → PanelRelay), because
-// the couriers' sites refuse requests that come from Cloudflare Workers.
+// The Worker's side of the courier relay: courier sign-ins and lookups, and the
+// BD Courier lookup, go to the courier-relay function on Supabase (see
+// courier-panel.ts → PanelRelay, courier-history.ts → HistoryRelay), because the
+// couriers' sites and BD Courier refuse requests that come from Cloudflare Workers.
 //
 // Only the customer's phone travels for a lookup; the relay reads the platform's
-// courier logins from Vault itself. A login test sends the login being tested
+// courier logins and BD Courier key from Vault itself. A login test sends the login being tested
 // (Super Admin typed it), over HTTPS, to our own function.
 import type { CourierHistorySummary } from './courier-history.ts'
 import type { CourierPanelProviderId, PanelLogin, PanelRelay } from './courier-panel.ts'
@@ -21,13 +22,18 @@ export interface RelayConfig {
   timeoutMs?: number
 }
 
-export function httpPanelRelay(c: RelayConfig): PanelRelay {
-  const call = async <T>(body: Record<string, unknown>): Promise<T> => {
+export interface CourierRelay extends PanelRelay {
+  /** One BD Courier lookup on the platform's key. */
+  history(phone: string): Promise<CourierHistorySummary>
+}
+
+export function httpPanelRelay(c: RelayConfig): CourierRelay {
+  const call = async <T>(body: Record<string, unknown>, timeoutMs = c.timeoutMs ?? 45_000): Promise<T> => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (c.cronSecret) headers['x-cron-secret'] = c.cronSecret
     if (c.serviceKey) headers.Authorization = `Bearer ${c.serviceKey}`
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), c.timeoutMs ?? 45_000)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     let res: Response
     try {
       res = await (c.fetchFn ?? fetch)(c.url, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal })
@@ -48,6 +54,11 @@ export function httpPanelRelay(c: RelayConfig): PanelRelay {
     async lookup(phone: string): Promise<CourierHistorySummary> {
       const r = await call<{ ok: boolean; summary?: CourierHistorySummary; message?: string }>({ action: 'lookup', phone })
       if (!r.ok || !r.summary) throw new Error(r.message || 'The courier check failed')
+      return r.summary
+    },
+    async history(phone: string): Promise<CourierHistorySummary> {
+      const r = await call<{ ok: boolean; summary?: CourierHistorySummary; message?: string }>({ action: 'history', phone }, 20_000)
+      if (!r.ok || !r.summary) throw new Error(r.message || 'BD Courier check failed')
       return r.summary
     },
     test(provider: CourierPanelProviderId, login: PanelLogin, samplePhone: string) {

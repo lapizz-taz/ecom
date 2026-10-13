@@ -324,7 +324,7 @@ export default function OrderDetailPage() {
         </Card>
       )}
 
-      <CourierRecordCards orderId={o.id} phone={o.customer_phone} />
+      <CourierRecordCards orderId={o.id} phone={o.customer_phone} createdAt={o.created_at} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-4">
