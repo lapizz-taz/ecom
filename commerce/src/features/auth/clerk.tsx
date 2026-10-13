@@ -56,7 +56,7 @@ function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
       appearance={{
         baseTheme: isDark ? dark : undefined,
         layout: { logoImageUrl: '/favicon.svg', socialButtonsPlacement: 'top', socialButtonsVariant: 'blockButton' },
-        variables: { colorPrimary: '#2142e7', borderRadius: '0.75rem', fontFamily: 'inherit' },
+        variables: { colorPrimary: '#2563eb', borderRadius: '0.75rem', fontFamily: 'inherit' },
       }}
     >
       {children}
