@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,11 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.3.0 =
+* Advanced ad tracking: Meta (Pixel + Conversions API), TikTok (Pixel + Events API) and Google (Ads gtag + GA4 Measurement Protocol / Enhanced Conversions), each a card you switch on with your own ids and tokens.
+* Click ids matched server to server (fbc/fbp, ttclid, gclid/wbraid) with one event id per order so the browser Pixel and the server event de-duplicate.
+* The conversion is held and sent only once the order is call-confirmed (or delivered), and never for a low-receive-rate customer — so your ad platforms learn from orders that are actually received, not from cancelled cash-on-delivery.
 
 = 1.2.0 =
 * New dashboard: orders and value of the last 14 days, unfinished checkouts, checkouts stopped or flagged, recent orders, stock and delivery health.

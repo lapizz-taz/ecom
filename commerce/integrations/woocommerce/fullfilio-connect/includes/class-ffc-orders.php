@@ -135,6 +135,12 @@ class FFC_Orders {
 		if ( isset( $input['stock_sync'] ) ) {
 			FFC_Settings::save_config( array( 'stock_sync' => (bool) $input['stock_sync'] ) );
 		}
+		// Fullfilio knows the customer's real courier receive rate when it confirms;
+		// store it so the ad-tracking gate can skip a low-receive-rate order.
+		if ( isset( $input['receive_rate'] ) && is_numeric( $input['receive_rate'] ) ) {
+			$order->update_meta_data( FFC_Tracking::RR_META, max( 0, min( 100, (float) $input['receive_rate'] ) ) );
+			$order->save_meta_data();
+		}
 
 		$from    = $order->get_status();
 		$changed = false;

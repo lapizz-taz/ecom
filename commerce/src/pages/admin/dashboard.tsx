@@ -212,7 +212,7 @@ export default function DashboardPage() {
       {!editing && (
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
           {QUICK_ACTIONS.filter((a) => can(a.permission)).map((a) => (
-            <Button key={a.to} variant="outline" size="sm" className="shrink-0 rounded-full" asChild><Link to={a.to}>{a.icon} {a.label}</Link></Button>
+            <Button key={a.to} variant="outline" size="sm" className="shrink-0 rounded-xl" asChild><Link to={a.to}>{a.icon} {a.label}</Link></Button>
           ))}
         </div>
       )}

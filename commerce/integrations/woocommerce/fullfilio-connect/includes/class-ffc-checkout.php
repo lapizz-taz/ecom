@@ -173,6 +173,17 @@ class FFC_Checkout {
 		if ( FFC_Settings::enabled( 'attribution' ) && ! $order->get_meta( '_ffc_attribution' ) ) {
 			$order->update_meta_data( '_ffc_attribution', wp_json_encode( self::attribution() ) );
 		}
+		// Remember the shield's answer (allow/advance/block) as an early low-receive-rate
+		// signal for the ad-tracking gate, read from the decision cached at checkout.
+		if ( FFC_Settings::enabled( 'shield' ) && ! $order->get_meta( '_ffc_shield' ) ) {
+			$digits = preg_replace( '/\D/', '', (string) $order->get_billing_phone() );
+			if ( strlen( $digits ) >= 10 ) {
+				$cached = get_transient( 'ffc_dec_' . md5( $digits . '|' . round( (float) $order->get_total() ) . '|' . $order->get_payment_method() ) );
+				if ( is_array( $cached ) && ! empty( $cached['decision'] ) ) {
+					$order->update_meta_data( '_ffc_shield', (string) $cached['decision'] );
+				}
+			}
+		}
 		$lead_id = function_exists( 'WC' ) && WC()->session ? WC()->session->get( self::LEAD_KEY ) : null;
 		if ( $lead_id && ! $order->get_meta( '_ffc_lead_id' ) ) {
 			$order->update_meta_data( '_ffc_lead_id', $lead_id );
