@@ -67,7 +67,8 @@ begin
   if jsonb_typeof(p_ids) <> 'object' then
     return;
   end if;
-  update public.order_attributions set browser_ids = p_ids where order_id = p_order_id;
+  update public.order_attributions set browser_ids = p_ids
+  where order_id = p_order_id and merchant_id = public.current_merchant_id();
 end;
 $$;
 
