@@ -5,6 +5,8 @@
 // rebuildable cache entries only.
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { setSharedCache } from '../supabase/functions/_shared/cache.ts'
+import { setPanelRelay } from '../supabase/functions/_shared/fraud/courier-panel.ts'
+import { httpPanelRelay } from '../supabase/functions/_shared/fraud/courier-relay.ts'
 import { setLocalCaller } from '../supabase/functions/_shared/internal.ts'
 import { copyOnce } from './copy.ts'
 import { type JobRunner, runDue } from './cron.ts'
@@ -39,6 +41,10 @@ function setUp(env: Env): Router {
       return outbound(input, init)
     }
   }
+  // The couriers' panels refuse requests from Cloudflare Workers: their sign-ins and
+  // lookups run in the courier-relay function on Supabase (COURIER_PANEL_RELAY_URL).
+  const { COURIER_PANEL_RELAY_URL: relayUrl, CRON_SECRET: cronSecret } = env as { COURIER_PANEL_RELAY_URL?: string; CRON_SECRET?: string }
+  setPanelRelay(relayUrl ? httpPanelRelay({ url: relayUrl, cronSecret, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY }) : null)
   const kv = env.CACHE
   setSharedCache(kv ? {
     get: (key) => kv.get(key),

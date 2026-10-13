@@ -142,4 +142,9 @@ import_map = "./functions/import_map.json"
 # Clerk's Frontend API through the site's own /__clerk address (production instance, proxy mode).
 [functions.clerk-proxy]
 verify_jwt = false
+
+# Courier sign-ins and lookups for the Worker (couriers refuse Cloudflare Workers);
+# callers prove themselves with the cron secret or the service role key.
+[functions.courier-relay]
+verify_jwt = false
 import_map = "./functions/import_map.json"
