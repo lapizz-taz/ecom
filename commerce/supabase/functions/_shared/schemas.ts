@@ -24,11 +24,37 @@ export const touchSchema = z.object({
   params: z.record(z.string().regex(/^[a-z_]{2,30}$/), z.string().max(200)).refine((p) => Object.keys(p).length <= 30, 'Too many parameters'),
 })
 
+/** The browser's own ad ids (Meta _fbp/_fbc, TikTok _ttp, GA client id) for the server-side events. */
+export const browserIdsSchema = z.object({
+  fbp: z.string().regex(/^fb\.\d\.\d{10,13}\.\d{1,25}$/),
+  fbc: z.string().max(600).regex(/^fb\.\d\.\d{10,13}\.[A-Za-z0-9_.-]{4,550}$/),
+  ttp: z.string().regex(/^[A-Za-z0-9_.-]{8,80}$/),
+  ga: z.string().regex(/^\d{5,12}\.\d{9,12}$/),
+}).partial()
+
 export const attributionSchema = z.object({
   visitor_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
   session_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().nullable(),
   first_touch: touchSchema.nullable().optional(),
   last_touch: touchSchema.nullable().optional(),
+  // A malformed id drops only the ids, never the attribution.
+  browser: browserIdsSchema.optional().catch(undefined),
+})
+
+/** A browser ad event's server copy, sent by the storefront (public, rate-limited). */
+export const trackSchema = z.object({
+  action: z.literal('track'),
+  event: z.enum(['PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout']),
+  event_id: z.string().regex(/^ffs_[a-z]{2}_[A-Za-z0-9]{8,40}$/),
+  url: z.string().max(500).regex(/^https?:\/\//),
+  visitor_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional(),
+  value: z.number().min(0).max(10_000_000).optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  contents: z.array(z.object({
+    id: z.string().max(64), name: z.string().max(120).optional(), quantity: z.number().int().min(1).max(999), price: z.number().min(0).max(10_000_000),
+  })).max(50).optional(),
+  browser: browserIdsSchema.omit({ ga: true }).optional().catch(undefined),
+  click: z.object({ fbclid: z.string().max(500).regex(/^[A-Za-z0-9_.-]+$/), ttclid: z.string().max(500).regex(/^[A-Za-z0-9_.-]+$/) }).partial().optional().catch(undefined),
 })
 
 export const quoteSchema = z.object({

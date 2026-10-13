@@ -20,6 +20,7 @@ import { cartLines, useCart } from '@/features/cart/cart-store'
 import { AdvancePay } from '@/features/checkout/advance-pay'
 import { type AdvancePaymentValues, validateAdvancePayment } from '@/features/checkout/advance-payment-fields'
 import { PhoneCheckIcon, PhoneCheckStatus, phoneCheckState } from '@/features/checkout/phone-check'
+import { adEvent, adPurchase, browserIds } from '@/features/storefront/ad-pixels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { currentAttribution } from '@/lib/attribution'
@@ -125,6 +126,10 @@ export default function CheckoutPage() {
     if (!items.length || trackedCheckout.current) return
     trackedCheckout.current = true
     trackEvent('BEGIN_CHECKOUT')
+    adEvent('InitiateCheckout', {
+      value: items.reduce((n, i) => n + i.price * i.quantity, 0), currency: config?.store.currency || 'BDT',
+      contents: items.map((i) => ({ id: i.productId, name: i.name, quantity: i.quantity, price: i.price })),
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -156,15 +161,17 @@ export default function CheckoutPage() {
       customer_note: values.customer_note || null,
       idempotency_key: idempotencyKey,
       advance_payment: advancePayment ? { ...advancePayment, sender_phone: normalizePhone(advancePayment.sender_phone) } : null,
-      attribution,
+      // The browser's ad ids as they are now (the pixels may have set them after the page opened).
+      attribution: { ...attribution, browser: browserIds() },
     }),
-    onSuccess: async ({ order, payment_error }, { values, gateway }) => {
+    onSuccess: async ({ order, payment_error, tracking }, { values, gateway }) => {
       // Set before clearing the cart: the mutation is not "success" yet during this
       // callback, and an empty cart would otherwise redirect to /cart first.
       placed.current = true
       const phone = normalizePhone(values.phone)
       sessionStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ order_number: order.order_number, phone }))
       trackEvent('PURCHASE')
+      adPurchase(tracking?.purchase)
       clear()
       setIdempotencyKey(crypto.randomUUID())
       if (payment_error) toast.warning(`Order placed, but your payment details need another look: ${payment_error}`)

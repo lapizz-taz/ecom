@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LogoMark } from '@/components/brand/logo'
 import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
-import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Pause, Plug, PlugZap, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Check, ChevronDown, Copy, Download, ExternalLink, Pause, Plug, PlugZap, Radar, RefreshCw, Stethoscope, Unplug, Webhook, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { reportError } from '@/lib/monitoring'
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/features/auth/auth-context'
+import { AdTrackingDialog, adPlatformsOn, useAdTracking } from '@/features/channels/ad-tracking'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -47,7 +48,9 @@ export default function SalesChannelsPage() {
   const queryClient = useQueryClient()
   const [params, setParams] = useSearchParams()
   const channels = useQuery({ queryKey: ['sales-channels'], queryFn: listChannels, refetchInterval: (q) => (q.state.data?.some((c) => c.status === 'PENDING') ? 5000 : false) })
-  const [dialog, setDialog] = useState<ChannelPlatform | null>(null)
+  const [dialog, setDialog] = useState<ChannelPlatform | 'ADS' | null>(null)
+  const ads = useAdTracking(can('settings.view'))
+  const adsOn = adPlatformsOn(ads.data)
 
   // Back from Shopify / WooCommerce approval.
   useEffect(() => {
@@ -77,8 +80,10 @@ export default function SalesChannelsPage() {
           status={storeOpen ? <Pill className="bg-foreground text-background">Online</Pill> : <Pill className="bg-muted text-muted-foreground">Off</Pill>}
           actions={<>
             {manage && <Button size="sm" asChild><Link to="/admin/store/theme">Edit theme</Link></Button>}
+            {can('settings.view') && <Button size="sm" variant="outline" onClick={() => setDialog('ADS')}><Radar /> Ad tracking</Button>}
             {store.url && <Button size="sm" variant="outline" asChild><a href={store.url} target="_blank" rel="noreferrer"><ExternalLink /> View</a></Button>}
-          </>}>
+          </>}
+          flow={can('settings.view') ? <AdTrackingLine on={adsOn} loading={ads.isLoading} onOpen={() => setDialog('ADS')} /> : undefined}>
           Built in. Checkout, courier booking, fraud checks and messages work out of the box.
         </SourceCard>
         {(['SHOPIFY', 'WOOCOMMERCE'] as const).map((p) => {
@@ -118,6 +123,7 @@ export default function SalesChannelsPage() {
 
       {dialog === 'SHOPIFY' && <ShopifyDialog onClose={() => setDialog(null)} />}
       {dialog === 'WOOCOMMERCE' && <WooDialog onClose={() => setDialog(null)} />}
+      {dialog === 'ADS' && <AdTrackingDialog manage={manage} onClose={() => setDialog(null)} />}
     </div>
   )
 }
@@ -253,6 +259,19 @@ function SyncFlow({ platform, live }: { platform: ChannelPlatform; live: boolean
         {items.map(([l, d]) => <span key={l} className="rounded-md border bg-card px-1.5 py-px text-[10px] text-muted-foreground">{d} {l}</span>)}
       </span>
     </div>
+  )
+}
+
+/** Store → ad platforms: which pixels run, with the server copy beside them. */
+function AdTrackingLine({ on, loading, onOpen }: { on: string[]; loading: boolean; onOpen: () => void }) {
+  return (
+    <button type="button" onClick={onOpen} className="flex w-full items-center gap-2 rounded-lg border bg-muted/30 px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/50">
+      <Radar className={cn('size-4 shrink-0', on.length ? 'text-foreground' : 'text-muted-foreground')} />
+      <span className="min-w-0 flex-1 truncate">
+        {loading ? 'Ad tracking…' : on.length ? <>Pixel + server events: <b className="font-medium">{on.join(' · ')}</b></> : <span className="text-muted-foreground">Ad tracking off — Meta, TikTok, Google</span>}
+      </span>
+      {on.length > 0 && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/70" />}
+    </button>
   )
 }
 

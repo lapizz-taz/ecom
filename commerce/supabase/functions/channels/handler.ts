@@ -17,6 +17,8 @@
 //   POST /channels/plugin/<channel_id>       events from the WooCommerce plugin (Fullfilio Connect), signed
 //   POST plugin_pair | plugin_status | plugin_code {channel_id}   connect / check the plugin, or show its connection code
 //   POST plugin_config     {channel_id, config}  the plugin's feature switches (sent to the store at once)
+//   POST ad_tracking_get | ad_tracking_save {config, tokens?, clear?} | ad_tracking_test {platform}
+//                          pixels + server events (Meta CAPI, TikTok, GA4) for the merchant's own store
 // Every connection ends with a test, so staff see straight away whether orders
 // will come through. Tokens and keys never reach a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -35,6 +37,7 @@ import {
 import { isCronRequest } from '../_shared/cron.ts'
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { env, functionsBase } from '../_shared/env.ts'
+import { adTrackingStatus, processAdEvents, saveAdTracking, testAdTracking } from '../_shared/ads/store-tracking-service.ts'
 import { FraudDetectionService, type FraudSettings, loadFraudProviders } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
@@ -87,6 +90,11 @@ const actions = z.discriminatedUnion('action', [
     order_events: z.boolean(), capture_leads: z.boolean(), attribution: z.boolean(), custom_statuses: z.boolean(),
     shield: z.boolean(), shield_fail_open: z.boolean(), shield_timeout: z.number().int().min(2).max(10),
   }).partial() }),
+  z.object({ action: z.literal('ad_tracking_get') }),
+  z.object({ action: z.literal('ad_tracking_save'), config: z.record(z.string(), z.unknown()),
+    tokens: z.object({ meta_token: z.string().trim().max(600), tiktok_token: z.string().trim().max(200), ga4_secret: z.string().trim().max(100) }).partial().optional(),
+    clear: z.array(z.enum(['meta_token', 'tiktok_token', 'ga4_secret'])).max(3).optional() }),
+  z.object({ action: z.literal('ad_tracking_test'), platform: z.enum(['meta', 'tiktok', 'google']) }),
   z.object({ action: z.literal('retry_import'), import_id: z.string().uuid(), overrides: z.object({
     phone: z.string().trim().max(20).optional(), name: z.string().trim().max(120).optional(),
     address: z.string().trim().max(300).optional(), district: z.string().trim().max(60).optional(),
@@ -779,11 +787,14 @@ export default (
       return json(req, await forEachMerchant('channels', async (admin) => {
         const jobs = await processJobs(admin, input.limit)
         const statuses = await processStatusPushes(admin).catch((e) => ({ error: (e as Error).message }))
-        return { ...jobs, statuses }
+        const ads = await processAdEvents(admin).catch((e) => ({ error: (e as Error).message }))
+        return { ...jobs, statuses, ads }
       }))
     }
     const staff = await requireStaff(req,
-      input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' || input.action === 'order_action' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : input.action === 'abandoned_sync' ? 'orders.view' : 'settings.manage')
+      input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' || input.action === 'order_action' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : input.action === 'abandoned_sync' ? 'orders.view'
+        : input.action === 'ad_tracking_get' ? 'settings.view' : 'settings.manage',
+      { supportView: input.action === 'ad_tracking_get' })
     const admin = staff.admin
     const actor = staff.user.id
 
@@ -880,8 +891,16 @@ export default (
         case 'process_jobs': {
           const jobs = await processJobs(admin, input.limit)
           const statuses = await processStatusPushes(admin).catch((e) => ({ error: (e as Error).message }))
-          return json(req, { ...jobs, statuses })
+          const ads = await processAdEvents(admin).catch((e) => ({ error: (e as Error).message }))
+          return json(req, { ...jobs, statuses, ads })
         }
+        // Ad tracking for the merchant's own store (pixels + server events). Tokens stay in Vault.
+        case 'ad_tracking_get':
+          return json(req, await adTrackingStatus(admin))
+        case 'ad_tracking_save':
+          return json(req, await saveAdTracking(admin, { config: input.config, tokens: input.tokens, clear: input.clear }, actor))
+        case 'ad_tracking_test':
+          return json(req, await testAdTracking(admin, input.platform))
         case 'abandoned_sync': {
           if (input.channel_id && !(await channelInUse(admin, input.channel_id))) throw new HttpError(422, PAUSED, 'PAUSED')
           const list = (input.channel_id ? [await channelOf(admin, input.channel_id)] : await rpc<Channel[]>(admin, 'sales_channels_list'))

@@ -10,7 +10,9 @@ import { QuantityStepper } from '@/features/cart/cart-drawer'
 import { useCart } from '@/features/cart/cart-store'
 import { PriceTag, ProductGrid } from '@/features/storefront/product-card'
 import { SectionFrame, ThemeSections } from '@/features/storefront/sections'
+import { adEvent } from '@/features/storefront/ad-pixels'
 import { useStoreTheme } from '@/features/storefront/theme-context'
+import { useStoreConfig } from '@/hooks/use-store-config'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import { getProduct, trackEvent } from '@/services/storefront'
@@ -31,6 +33,8 @@ export default function ProductPage() {
   const add = useCart((s) => s.add)
   const setOpen = useCart((s) => s.setOpen)
   const theme = useStoreTheme()
+  const { data: config } = useStoreConfig()
+  const currency = config?.store.currency || 'BDT'
   const pp = theme.product_page
   const { data: product, isLoading, error, refetch } = useQuery({ queryKey: ['product', slug], queryFn: () => getProduct(slug) })
   const [selected, setSelected] = useState<Record<string, string>>({})
@@ -41,6 +45,9 @@ export default function ProductPage() {
     if (!product) return
     document.title = product.seo_title || product.name
     trackEvent('VIEW_PRODUCT', product.id)
+    const shown = product.variants.find((v) => v.in_stock) ?? product.variants[0]
+    const price = Number(shown?.price ?? 0)
+    adEvent('ViewContent', { value: price, currency, contents: [{ id: product.id, name: product.name, quantity: 1, price }] })
     const first = product.variants.find((v) => v.in_stock) ?? product.variants[0]
     setSelected(first?.option_values ?? {})
     setImageIndex(0)
@@ -91,6 +98,8 @@ export default function ProductPage() {
       maxQuantity: maxQty,
     }, quantity)
     trackEvent('ADD_TO_CART', product.id)
+    const price = Number(variant.price)
+    adEvent('AddToCart', { value: price * quantity, currency, contents: [{ id: product.id, name: product.name, quantity, price }] })
     if (goToCheckout) {
       setOpen(false)
       navigate('/checkout')

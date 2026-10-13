@@ -20,6 +20,8 @@ export interface Attribution {
   session_id: string
   first_touch: Touch | null
   last_touch: Touch | null
+  /** The browser's own ad ids (Meta _fbp/_fbc, TikTok _ttp, GA client id), added at checkout. */
+  browser?: { fbp?: string; fbc?: string; ttp?: string; ga?: string }
 }
 
 const TOUCH_PARAMS = [
@@ -151,4 +153,12 @@ export function currentAttribution(): Attribution {
     // No ad, tagged link or referral in the last 30 days: the order counts as direct.
     last_touch: last,
   }
+}
+
+/** The ad click ids of the latest ad visit (last 30 days), for the ad pixels' server copies. */
+export function lastClickIds(): { fbclid?: string; ttclid?: string; gclid?: string } {
+  const stored = read<Stored>(KEY) ?? {}
+  const last = stored.last && !daysAgo(stored.last.at, LAST_TOUCH_DAYS) ? stored.last : null
+  const p = last?.params ?? {}
+  return Object.fromEntries(Object.entries({ fbclid: p.fbclid, ttclid: p.ttclid, gclid: p.gclid }).filter(([, v]) => !!v))
 }

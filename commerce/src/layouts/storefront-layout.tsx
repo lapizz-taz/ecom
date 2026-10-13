@@ -15,7 +15,8 @@ import { useStoreConfig } from '@/hooks/use-store-config'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { captureNavigation } from '@/lib/attribution'
-import { getCategories, trackEvent } from '@/services/storefront'
+import { getAdTracking, getCategories, trackEvent } from '@/services/storefront'
+import { adEvent, startAdPixels } from '@/features/storefront/ad-pixels'
 import { useCartSync } from '@/features/cart/use-cart-sync'
 
 function useCategories() {
@@ -42,10 +43,17 @@ export default function StorefrontLayout() {
   const [scrolled, setScrolled] = useState(false)
 
   useCartSync()
+  // The store's ad pixels (Meta, TikTok, Google), when it turned them on; never in the theme editor.
+  const preview = isThemePreview()
+  const { data: ads } = useQuery({ queryKey: ['storefront-ad-tracking'], queryFn: getAdTracking, staleTime: 10 * 60_000, enabled: !preview, retry: 1 })
+  useEffect(() => {
+    if (ads) void startAdPixels(ads)
+  }, [ads])
 
   useEffect(() => {
     captureNavigation(location)
     trackEvent('PAGE_VIEW')
+    if (!preview) adEvent('PageView')
   }, [location.pathname, location.search])
 
   useEffect(() => {
