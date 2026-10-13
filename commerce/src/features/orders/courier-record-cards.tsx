@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { RefreshCw } from 'lucide-react'
+import { Gauge, RefreshCw, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '@/features/auth/auth-context'
 import { invokeFunction } from '@/lib/functions'
@@ -8,70 +8,72 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { type CourierLineRecord, orderCustomerRecord } from '@/services/orders'
 
-// The customer's delivery record as a row of cards: our own orders, the overall
-// courier rate, then one card per courier (its brand colour as a thin line). The
-// figures come from the latest courier check — BD Courier and the couriers' own
-// panels, merged per courier.
+// The customer's delivery record: one panel, a small card per source — our own
+// orders, the overall courier rate, then each courier with its mark and colour.
+// The figures come from the latest courier check (BD Courier and the couriers'
+// own panels, merged per courier).
 
-const BRANDS: Record<string, { name: string; color: string }> = {
+/** Simple marks in each courier's colours (not the couriers' official artwork). */
+const MARKS: Record<string, ReactNode> = {
+  pathao: (
+    <svg viewBox="0 0 24 24" className="size-5" aria-hidden><circle cx="12" cy="12" r="12" fill="#e4312b" />
+      <path d="M9 17.5V7h3.6a3.3 3.3 0 0 1 0 6.6H9" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  ),
+  steadfast: (
+    <svg viewBox="0 0 24 24" className="size-5" aria-hidden><circle cx="12" cy="12" r="12" fill="#13a281" />
+      <path d="M6.5 11.6 17.5 7l-4.6 11-2-4.4-4.4-2Z" fill="#fff" /></svg>
+  ),
+  redx: (
+    <svg viewBox="0 0 24 24" className="size-5" aria-hidden><rect width="24" height="24" rx="6" fill="#e01e26" />
+      <path d="m8 8 8 8M16 8l-8 8" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" /></svg>
+  ),
+  carrybee: (
+    <svg viewBox="0 0 24 24" className="size-5" aria-hidden><circle cx="12" cy="12" r="12" fill="#f2c200" />
+      <ellipse cx="12" cy="13" rx="4.2" ry="5" fill="#1c1917" /><path d="M8 11.5h8M8 14.5h8" stroke="#f2c200" strokeWidth="1.4" />
+      <ellipse cx="8.4" cy="7.6" rx="2.4" ry="1.6" fill="#fff" opacity=".9" /><ellipse cx="15.6" cy="7.6" rx="2.4" ry="1.6" fill="#fff" opacity=".9" /></svg>
+  ),
+}
+
+const COURIERS: Record<string, { name: string; color: string }> = {
   pathao: { name: 'Pathao', color: '#e4312b' },
   steadfast: { name: 'Steadfast', color: '#13a281' },
   redx: { name: 'RedX', color: '#e01e26' },
-  carrybee: { name: 'CarryBee', color: '#f2c200' },
+  carrybee: { name: 'CarryBee', color: '#e0b100' },
 }
 /** Always shown, even with no parcels, so staff see at a glance who has nothing. */
 const ALWAYS = ['pathao', 'steadfast', 'redx', 'carrybee']
 
 const keyOf = (courier: string) => courier.toLowerCase().replace(/[^a-z]/g, '')
-
-function tone(rate: number | null | undefined) {
-  if (rate === null || rate === undefined) return { text: 'text-muted-foreground', bar: 'bg-muted-foreground/30' }
-  return rate >= 80 ? { text: 'text-emerald-500', bar: 'bg-emerald-500' } : rate >= 50 ? { text: 'text-amber-500', bar: 'bg-amber-500' } : { text: 'text-red-500', bar: 'bg-red-500' }
-}
+const pct = (rate: number | null | undefined) => (rate === null || rate === undefined ? '—' : `${Math.round(rate)}%`)
+const rateColor = (rate: number | null | undefined) =>
+  rate === null || rate === undefined ? '#a1a1aa' : rate >= 80 ? '#10b981' : rate >= 50 ? '#f59e0b' : '#ef4444'
 
 function lineRate(c: CourierLineRecord): number | null {
   if (c.success_ratio !== undefined && c.success_ratio !== null) return c.success_ratio
   return c.orders > 0 ? (c.delivered / c.orders) * 100 : null
 }
 
-function Card({ title, accent, action, children }: { title: string; accent?: string; action?: ReactNode; children: ReactNode }) {
+function Tile({ icon, name, fill, color, value, detail, warn }: {
+  icon: ReactNode; name: string; fill: number | null | undefined; color: string; value: ReactNode; detail?: ReactNode; warn?: boolean
+}) {
   return (
-    <div className="flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-card px-3 pt-2.5 pb-3" style={accent ? { boxShadow: `inset 0 3px 0 ${accent}` } : undefined}>
-      <div className="flex h-5 items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
-          {accent && <span className="size-2 shrink-0 rounded-full" style={{ background: accent }} />}
-          <span className="truncate">{title}</span>
-        </span>
-        {action}
+    <div className="min-w-0 rounded-xl border bg-background/40 px-3.5 py-3">
+      <div className="flex items-center gap-2">
+        <span className="grid size-5 shrink-0 place-items-center">{icon}</span>
+        <span className="truncate text-sm">{name}</span>
       </div>
-      {children}
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.min(Math.max(fill ?? 0, 0), 100)}%`, background: color }} />
+      </div>
+      <div className="mt-2 flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium tabular-nums">{value}</span>
+        {detail !== undefined && <span className={cn('truncate text-[11px] tabular-nums', warn ? 'text-amber-500' : 'text-muted-foreground')}>{detail}</span>}
+      </div>
     </div>
   )
 }
 
-/** Big rate, a thin bar, and one line of counts. */
-function Stat({ rate, total, delivered, cancelled, note }: { rate: number | null | undefined; total: number; delivered: number; cancelled: number; note?: string | null }) {
-  const t = tone(rate)
-  return (
-    <>
-      <p className={cn('text-2xl leading-none font-semibold tabular-nums', t.text)}>{rate === null || rate === undefined ? '—' : `${Math.round(rate)}%`}</p>
-      <div className="h-1 overflow-hidden rounded-full bg-muted">
-        <div className={cn('h-full rounded-full', t.bar)} style={{ width: `${Math.min(Math.max(rate ?? 0, 0), 100)}%` }} />
-      </div>
-      {note ? (
-        <p className="truncate text-[11px] text-amber-500" title={note}>Could not check</p>
-      ) : total > 0 ? (
-        <p className="truncate text-[11px] text-muted-foreground tabular-nums">
-          <b className="font-medium text-foreground">{total}</b> · {delivered} ok · {cancelled} cancelled
-        </p>
-      ) : (
-        <p className="text-[11px] text-muted-foreground">No parcels</p>
-      )}
-    </>
-  )
-}
-
-/** The delivery record cards for an order's customer (staff only; the record needs orders.view). */
+/** The delivery record panel for an order's customer (staff only; the record needs orders.view). */
 export function CourierRecordCards({ orderId, phone, className }: { orderId: string; phone: string; className?: string }) {
   const { can } = useAuth()
   const record = useQuery({ queryKey: ['order-record', orderId], queryFn: () => orderCustomerRecord(orderId) })
@@ -80,12 +82,12 @@ export function CourierRecordCards({ orderId, phone, className }: { orderId: str
     onSuccess: (r) => {
       const c = r?.check
       if (c?.status && c.status !== 'SUCCESS' && c.error) toast.error(c.error)
-      else toast.success('Courier record refreshed')
+      else toast.success('Delivery record refreshed')
       void record.refetch()
     },
     onError: (e) => toast.error(e),
   })
-  if (record.isLoading) return <div className={cn('h-[6.5rem] animate-pulse rounded-xl border bg-muted/40', className)} />
+  if (record.isLoading) return <div className={cn('h-56 animate-pulse rounded-2xl border bg-muted/40', className)} />
   if (record.error || !record.data) return null
 
   const { check, ours } = record.data
@@ -93,50 +95,43 @@ export function CourierRecordCards({ orderId, phone, className }: { orderId: str
   const byKey = new Map(lines.map((c) => [keyOf(c.courier), c]))
   const extra = lines.map((c) => keyOf(c.courier)).filter((k) => !ALWAYS.includes(k) && (byKey.get(k)!.orders > 0 || byKey.get(k)!.rate_only))
   const earlier = Math.max((ours?.total ?? 0) - 1, 0)
-  const refresh = can('fraud.review') && (
-    <button type="button" onClick={() => recheck.mutate()} disabled={recheck.isPending} aria-label="Check the courier record again"
-      className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50">
-      <RefreshCw className={cn('size-3.5', recheck.isPending && 'animate-spin')} />
-    </button>
-  )
+  const ourRate = earlier > 0 ? ((ours?.delivered ?? 0) / earlier) * 100 : null
 
   return (
-    <div className={cn('space-y-1.5', className)}>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-        <Card title="Our record">
-          <p className="text-2xl leading-none font-semibold tabular-nums">{earlier}</p>
-          <div className="h-1" />
-          <p className="truncate text-[11px] text-muted-foreground">
-            {earlier === 0 ? 'New customer' : `${ours?.delivered ?? 0} delivered · ${ours?.returned ?? 0} returned · ${ours?.cancelled ?? 0} cancelled`}
-          </p>
-        </Card>
+    <section className={cn('rounded-2xl border bg-card px-4 pt-4 pb-4 sm:px-5', className)}>
+      <div className="flex items-center justify-between gap-3 border-b pb-3">
+        <h3 className="text-base font-medium">Delivery record</h3>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span>{check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
+          {can('fraud.review') && (
+            <button type="button" onClick={() => recheck.mutate()} disabled={recheck.isPending} aria-label="Check the delivery record again"
+              className="rounded-md p-1 hover:bg-muted hover:text-foreground disabled:opacity-50">
+              <RefreshCw className={cn('size-3.5', recheck.isPending && 'animate-spin')} />
+            </button>
+          )}
+        </div>
+      </div>
 
-        <Card title="Overall" action={refresh}>
-          {check
-            ? <Stat rate={check.rate} total={check.total} delivered={check.delivered} cancelled={check.cancelled} />
-            : <Stat rate={null} total={0} delivered={0} cancelled={0} />}
-        </Card>
-
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <Tile icon={<Store className="size-4 text-violet-400" />} name="Our record" fill={ourRate} color="#a78bfa"
+          value={earlier === 0 ? 'New' : `${earlier} order${earlier === 1 ? '' : 's'}`}
+          detail={earlier === 0 ? 'first order' : `${ours?.delivered ?? 0} delivered`} />
+        <Tile icon={<Gauge className="size-4 text-indigo-400" />} name="Overall" fill={check?.rate} color={rateColor(check?.rate)}
+          value={pct(check?.rate)} detail={check && check.total > 0 ? `${check.total} parcels` : 'no parcels'} />
         {[...ALWAYS, ...extra].map((k) => {
           const c = byKey.get(k)
-          const brand = BRANDS[k]
-          const title = brand?.name ?? c?.name ?? k
+          const brand = COURIERS[k]
+          const name = brand?.name ?? c?.name ?? k
+          const color = brand?.color ?? '#71717a'
+          const icon = MARKS[k] ?? <span className="size-4 rounded-full" style={{ background: color }} />
+          if (c?.rate_only) return <Tile key={k} icon={icon} name={name} fill={c.success_ratio} color={color} value={pct(c.success_ratio)} detail={c.parcel_range ? `${c.parcel_range} parcels` : 'rate only'} />
+          const rate = c ? lineRate(c) : null
           return (
-            <Card key={k} title={title} accent={brand?.color ?? '#71717a'}>
-              {c?.rate_only ? (
-                <>
-                  <p className={cn('text-2xl leading-none font-semibold tabular-nums', tone(c.success_ratio).text)}>{c.success_ratio == null ? '—' : `${Math.round(c.success_ratio)}%`}</p>
-                  <div className="h-1" />
-                  <p className="text-[11px] text-muted-foreground">{c.parcel_range ? `${c.parcel_range} parcels` : 'Rate only'}</p>
-                </>
-              ) : (
-                <Stat rate={c ? lineRate(c) : null} total={c?.orders ?? 0} delivered={c?.delivered ?? 0} cancelled={c?.cancelled ?? 0} note={c?.notice} />
-              )}
-            </Card>
+            <Tile key={k} icon={icon} name={name} fill={rate} color={color} value={pct(rate)}
+              detail={c?.notice ? 'couldn’t check' : (c?.orders ?? 0) > 0 ? <>{c!.delivered}/{c!.orders}<span className="hidden sm:inline"> delivered</span></> : 'no parcels'} warn={!!c?.notice} />
           )
         })}
       </div>
-      <p className="text-right text-[10px] text-muted-foreground">{check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked with the couriers yet'}</p>
-    </div>
+    </section>
   )
 }
