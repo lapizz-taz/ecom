@@ -8,6 +8,8 @@
 // through Google Public DNS with a client subnet from that region (EDNS Client
 // Subnet), which is how a resolver near a visitor there would be answered.
 
+import { isPrivateIp } from './net.ts'
+
 export type RecordType = 'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS' | 'TXT'
 export interface FoundRecord { type: RecordType; name: string; value: string; ok: boolean; note?: string }
 export interface RegionCheck { code: string; name: string; ok: boolean; answers: string[] }
@@ -152,7 +154,12 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const proxied = aValues.some(isCloudflare) || aaaaValues.some(isCloudflare)
 
   // HTTPS: does the domain open over TLS, and is it our hosting answering?
+  // Skip the probe when the domain resolves to a private/internal address: a
+  // merchant could otherwise point their domain's A/AAAA record at 169.254.x or
+  // an RFC1918 host and use this diagnostic as an SSRF oracle into our network.
+  const resolvesPrivate = aValues.some(isPrivateIp) || aaaaValues.some(isPrivateIp)
   const tls = await (async (): Promise<Diagnosis['tls']> => {
+    if (resolvesPrivate) return { ok: false, status: null, served_by_store: null, detail: 'The domain points at a private or internal address' }
     try {
       const res = await fetcher(`https://${domain}/`, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(8_000) })
       await res.body?.cancel().catch(() => undefined)

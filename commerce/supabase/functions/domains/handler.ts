@@ -195,6 +195,14 @@ export default (
     const input = parse(actions, await readJson(req))
     const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage', { supportView: input.action === 'list' })
     const admin = staff.admin
+    // Ownership gate BEFORE any provider call: the Cloudflare zone / Vercel
+    // project are shared across merchants, so a staffer must not be able to
+    // add/check/remove/primary a domain their own store does not hold. Runs
+    // under the staff user's merchant (RLS-scoped), so it can only pass for
+    // domains this merchant owns (or, for 'add', claims when still free).
+    if (input.action !== 'list') {
+      await rpc(staff.client, 'store_domain_guard', { p_domain: input.domain, p_action: input.action })
+    }
     const cf = cloudflare()
     const v = cf ? null : vercel()
     const save = (d: string, p: Omit<Saved, 'domain'>) => rpc<Saved>(admin, 'store_domain_save', { p_domain: d, p, p_actor: staff.user.id })

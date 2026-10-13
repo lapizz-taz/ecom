@@ -147,7 +147,12 @@ export async function verifySessionToken(token: string, f: Fetch = fetch, now = 
   }
   if (!claims.sub || !/^user_[A-Za-z0-9]+$/.test(claims.sub)) throw new HttpError(401, 'Sign in again', 'INVALID_TOKEN')
   const parties = (env('CLERK_AUTHORIZED_PARTIES') ?? '').split(',').map((p) => p.trim()).filter(Boolean)
-  if (parties.length && claims.azp && !parties.includes(claims.azp)) throw new HttpError(401, 'Sign in from the Fullfilio site', 'INVALID_TOKEN')
+  // When authorized parties are configured, REQUIRE azp and that it is listed —
+  // a token with no azp must not skip the check. Clerk session tokens always
+  // carry azp, so this does not reject any legitimate sign-in.
+  if (parties.length && !(typeof claims.azp === 'string' && parties.includes(claims.azp))) {
+    throw new HttpError(401, 'Sign in from the Fullfilio site', 'INVALID_TOKEN')
+  }
   return claims
 }
 

@@ -374,7 +374,7 @@ function startListening() {
       if (e.data.id && e.data.scroll) document.querySelector(`[data-section-id="${CSS.escape(e.data.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     } else if (e.data?.type === 'theme-hover') {
       preview = { ...preview, hovered: e.data.id ?? null }
-    } else if (e.data?.type === 'theme-navigate' && typeof e.data.path === 'string' && e.data.path.startsWith('/')) {
+    } else if (e.data?.type === 'theme-navigate' && typeof e.data.path === 'string' && e.data.path.startsWith('/') && !e.data.path.startsWith('//') && !e.data.path.startsWith('/\\')) {
       window.location.assign(e.data.path + (e.data.path.includes('?') ? '&' : '?') + 'theme_preview=1')
       return
     } else return

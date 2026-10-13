@@ -24,6 +24,20 @@ function isPrivateV4(host: string): boolean {
   )
 }
 
+/** A private/loopback/link-local/ULA IP literal (v4 or v6). For guarding a probe
+ * against a merchant domain that RESOLVES to an internal address. */
+export function isPrivateIp(ip: string): boolean {
+  const v = ip.trim().toLowerCase().replace(/%.*$/, '').replace(/^\[|\]$/g, '')
+  if (!v) return true
+  if (!v.includes(':')) return isPrivateV4(v)
+  if (v === '::1' || v === '::') return true
+  if (v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb')) return true // fe80::/10
+  if (v.startsWith('fc') || v.startsWith('fd')) return true // fc00::/7 (ULA)
+  const mapped = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(v) // IPv4-mapped
+  if (mapped) return isPrivateV4(mapped[1])
+  return false
+}
+
 /** True only for an http(s) URL whose host is a public name or public IP. */
 export function isPublicHttpUrl(raw: string, options: { allowHttp?: boolean } = {}): boolean {
   let url: URL
@@ -59,4 +73,40 @@ export function checkedBaseUrl(raw: string | null | undefined, label: string): s
   const v = (raw ?? '').trim()
   if (!v) return undefined
   return assertPublicHttpUrl(v, label)
+}
+
+/**
+ * fetch() that follows redirects MANUALLY, re-validating each hop's Location with
+ * isPublicHttpUrl. Validating only the first URL is not enough: a merchant- or
+ * operator-controlled host can answer a 3xx pointing at 169.254.169.254 or an
+ * RFC1918 address, and a plain redirect:'follow' would chase it from inside the
+ * platform's network (SSRF). The caller validates the initial URL; this guards
+ * every subsequent hop. A non-public Location is refused, not followed.
+ */
+export async function safeFetch(
+  input: string,
+  init: RequestInit = {},
+  options: { allowHttp?: boolean; maxRedirects?: number; fetchImpl?: typeof fetch } = {},
+): Promise<Response> {
+  const doFetch = options.fetchImpl ?? fetch
+  const max = options.maxRedirects ?? 5
+  let url = input
+  let step = init
+  for (let i = 0; i <= max; i++) {
+    const res = await doFetch(url, { ...step, redirect: 'manual' })
+    if (res.status < 300 || res.status >= 400) return res
+    const loc = res.headers.get('location')
+    if (!loc) return res
+    const next = new URL(loc, url).toString()
+    if (!isPublicHttpUrl(next, { allowHttp: options.allowHttp })) {
+      throw new Error('The server redirected to a non-public address')
+    }
+    url = next
+    // 303 (and, per the Fetch standard, the common 301/302-on-POST case) switches
+    // to GET and drops the body; keep method/body otherwise (307/308 semantics).
+    if (res.status === 303 || ((res.status === 301 || res.status === 302) && (step.method ?? 'GET').toUpperCase() === 'POST')) {
+      step = { ...step, method: 'GET', body: undefined }
+    }
+  }
+  throw new Error('Too many redirects')
 }

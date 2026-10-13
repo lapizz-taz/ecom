@@ -23,6 +23,7 @@ import { COURIER_HISTORY_SERVICES, CourierHistoryProvider } from '../_shared/fra
 import { courierHistoryConfig, platformCourierHistorySecret, PLATFORM_BD_COURIER_SECRET } from '../_shared/fraud/service.ts'
 import { billingCallbackBase, PLATFORM_GATEWAYS, platformGateway, platformGatewaySecret } from '../_shared/platform-billing.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
+import { appBase } from '../_shared/storefront.ts'
 import {
   cleanSmsCredentials, SMS_PROVIDER_CODES, smsCredentialHint, SmsError, smsProviderFromCredentials,
 } from '../_shared/sms/providers.ts'
@@ -172,8 +173,10 @@ export default (
     // Acts as the employee: the database checks their platform permissions.
     const client = userClient(req)
     const admin = adminClient()
-    const panel = (env('PLATFORM_URL') ?? req.headers.get('origin') ?? env('STOREFRONT_URL') ?? '').replace(/\/+$/, '')
-    const redirectTo = `${panel}/admin/reset-password`
+    // Invite/reset links carry one-time tokens, so the base must come from
+    // APP_URL/PLATFORM_URL (or an allow-listed Origin), never the raw request
+    // Origin — a forged Origin could otherwise capture an employee's tokens.
+    const redirectTo = `${appBase(req)}/admin/reset-password`
 
     switch (input.action) {
       case 'invite_employee': {
