@@ -148,25 +148,33 @@ export const disconnectBdCourier = () => invokeFunction<{ ok: boolean }>('platfo
 
 // Courier sign-in accounts (platform), managed from the BD Courier page.
 export type CourierPanelProvider = 'steadfast' | 'pathao' | 'redx' | 'carrybee' | 'paperfly'
-export interface CourierPanelAccountStatus {
-  provider: CourierPanelProvider
-  label: string
-  login_field: 'email' | 'phone' | 'user'
-  connected: boolean
-  hint: string | null
+export interface CourierPanelAccount {
+  id: string
+  hint: string
   connected_at: string | null
   last_test_at: string | null
   last_test_ok: boolean | null
   last_error: string | null
 }
+/** One courier with its saved accounts (several are rotated, and tried in turn if one fails). */
+export interface CourierPanelAccountStatus {
+  provider: CourierPanelProvider
+  label: string
+  login_field: 'email' | 'phone' | 'user'
+  accounts: CourierPanelAccount[]
+}
+type PanelLoginInput = { email?: string; phone?: string; user?: string; password: string }
 export const courierPanelPlatformStatus = () =>
   invokeFunction<{ providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_status' })
-export const connectCourierPanel = (provider: CourierPanelProvider, login: { email?: string; phone?: string; user?: string; password: string }, testPhone: string) =>
-  invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_connect', provider, login, test_phone: testPhone })
-export const testCourierPanel = (provider: CourierPanelProvider, testPhone: string) =>
-  invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_test', provider, test_phone: testPhone })
-export const disconnectCourierPanel = (provider: CourierPanelProvider) =>
-  invokeFunction<{ ok: boolean; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_disconnect', provider })
+/** Adds an account, or replaces one when `accountId` is given. The login is proved with a real sign-in first. */
+export const connectCourierPanel = (provider: CourierPanelProvider, login: PanelLoginInput, testPhone: string, accountId?: string) =>
+  invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', {
+    action: 'courier_panel_connect', provider, login, test_phone: testPhone, account_id: accountId,
+  })
+export const testCourierPanel = (provider: CourierPanelProvider, accountId: string, testPhone: string) =>
+  invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_test', provider, account_id: accountId, test_phone: testPhone })
+export const disconnectCourierPanel = (provider: CourierPanelProvider, accountId: string) =>
+  invokeFunction<{ ok: boolean; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_disconnect', provider, account_id: accountId })
 export const connectGateway = (provider: 'bkash' | 'paystation', sandbox: boolean, credentials: Record<string, string>) =>
   invokeFunction<{ ok: boolean; message: string }>('platform-admin', { action: 'gateway_connect', provider, sandbox, credentials })
 export const disconnectGateway = (provider: 'bkash' | 'paystation') => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'gateway_disconnect', provider })

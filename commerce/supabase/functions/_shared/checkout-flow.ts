@@ -165,6 +165,12 @@ export async function placeOrder(admin: SupabaseClient, input: PlaceInput, ctx: 
   if (!order.merged) {
     await rpc(admin, 'record_order_attribution', { p_order_id: order.id, p_attribution: input.attribution ?? {} })
       .catch((error) => logEvent({ level: 'ERROR', category: 'FUNCTION', source: 'checkout', message: 'Could not record the order source', error, context: { order_number: order.order_number } }))
+    // The browser's ad ids, so the server-side Purchase matches the visitor.
+    const browser = input.attribution?.browser
+    if (browser && Object.keys(browser).length) {
+      await rpc(admin, 'order_set_browser_ids', { p_order_id: order.id, p_ids: browser })
+        .catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not save the ad ids', error }))
+    }
   }
   if (input.attribution?.visitor_id || input.customer.phone) {
     await rpc(admin, 'convert_checkout_lead', {

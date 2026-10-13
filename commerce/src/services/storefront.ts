@@ -96,8 +96,45 @@ export interface PlaceOrderInput {
 }
 
 export function placeOrder(input: PlaceOrderInput) {
-  return invokeFunction<{ order: PublicOrder & { merged?: boolean }; payment: { status: string; amount: number } | null; payment_error: string | null }>(
-    'checkout', { action: 'place', ...input })
+  return invokeFunction<{
+    order: PublicOrder & { merged?: boolean }; payment: { status: string; amount: number } | null; payment_error: string | null
+    /** The ad pixels' Purchase, when the store counts it as soon as the order is placed. */
+    tracking?: { purchase: AdPurchase } | null
+  }>('checkout', { action: 'place', ...input })
+}
+
+/** The store's ad pixels as the storefront sees them (storefront_ad_tracking): ids and switches, no tokens. */
+export interface StoreAdConfig {
+  enabled: boolean
+  browser_events?: boolean
+  server_events?: boolean
+  advanced_matching?: boolean
+  purchase_on?: 'placed' | 'confirmed' | 'delivered'
+  meta_pixel?: string | null
+  tiktok_pixel?: string | null
+  ga4_id?: string | null
+  ads_id?: string | null
+  ads_label?: string | null
+}
+
+export interface AdLine { id: string; name?: string; quantity: number; price: number }
+
+/** The Purchase in the checkout answer, for the pixels (same event id as the server's copy). */
+export interface AdPurchase {
+  event_id: string
+  order_id: string
+  value: number
+  currency: string
+  contents: AdLine[]
+  /** Hashed (SHA-256) buyer details for the pixels' matching, when the store allows it. */
+  matching?: { em?: string; ph_e164?: string } | null
+}
+
+/** Which ad pixels the store turned on (ids and switches only; tokens never leave the server). */
+export async function getAdTracking(): Promise<StoreAdConfig> {
+  const { data, error } = await supabase.rpc('storefront_ad_tracking' as never)
+  if (error) throw error
+  return (data as unknown as StoreAdConfig | null) ?? { enabled: false }
 }
 
 export async function trackOrder(orderNumber: string, phone: string): Promise<PublicOrder | null> {

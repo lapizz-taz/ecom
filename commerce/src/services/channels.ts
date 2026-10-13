@@ -260,3 +260,38 @@ export async function adoptStoreProducts(channelId: string, productIds: string[]
 /** Staff click only: mark the order paid, or cancel it, on Shopify (never automatic). */
 export const shopifyOrderAction = (orderId: string, op: 'mark_paid' | 'cancel', note?: string) =>
   call<{ ok: boolean; financial_status?: string; job_id?: string }>({ action: 'order_action', order_id: orderId, op, ...(note ? { note } : {}) })
+
+// --- ad tracking for the merchant's own store (pixels + server events) --------------------------
+
+export type PurchaseOn = 'placed' | 'confirmed' | 'delivered'
+export type AdPlatform = 'meta' | 'tiktok' | 'google'
+export interface AdTrackingConfig {
+  enabled: boolean
+  purchase_on: PurchaseOn
+  browser_events: boolean
+  server_events: boolean
+  advanced_matching: boolean
+  skip_duplicates: boolean
+  exclude_low_rr: boolean
+  meta: { pixel_id: string; test_code: string }
+  tiktok: { pixel_id: string; test_code: string }
+  google: { ga4_id: string; ads_id: string; ads_label: string }
+}
+export type AdTokenKey = 'meta_token' | 'tiktok_token' | 'ga4_secret'
+export interface AdSendResult { ok: boolean; error?: string; skipped?: string }
+export interface AdQueueRow {
+  id: string; event: 'Purchase'; event_id: string; status: 'PENDING' | 'DONE' | 'PARTIAL' | 'FAILED' | 'SKIPPED'; attempts: number
+  results: Partial<Record<AdPlatform, AdSendResult>> | null; last_error: string | null; created_at: string; done_at: string | null
+  orders: { order_number: string; total_amount: number } | null
+}
+export interface AdTrackingStatus {
+  config: AdTrackingConfig
+  /** Which tokens are saved, masked (••••1234); never the token itself. */
+  tokens: { meta: string | null; tiktok: string | null; ga4: string | null }
+  recent: AdQueueRow[]
+}
+
+export const adTrackingGet = () => call<AdTrackingStatus>({ action: 'ad_tracking_get' })
+export const adTrackingSave = (config: AdTrackingConfig, tokens: Partial<Record<AdTokenKey, string>>, clear: AdTokenKey[] = []) =>
+  call<AdTrackingStatus>({ action: 'ad_tracking_save', config, tokens, clear })
+export const adTrackingTest = (platform: AdPlatform) => call<{ ok: boolean; message: string; hint?: boolean }>({ action: 'ad_tracking_test', platform })

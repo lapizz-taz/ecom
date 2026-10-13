@@ -27,8 +27,23 @@ export const COURIER_PANEL_LOGIN_FIELD: Record<CourierPanelProviderId, 'email' |
   steadfast: 'email', pathao: 'email', redx: 'phone', carrybee: 'phone', paperfly: 'user',
 }
 
-export type PanelLogin = { email?: string; phone?: string; user?: string; password?: string }
-export type CourierPanelCreds = Partial<Record<CourierPanelProviderId, PanelLogin>>
+export type PanelLogin = { id?: string; email?: string; phone?: string; user?: string; password?: string }
+/** One login or several per courier (several are rotated to spread the load, and tried in turn if one fails). */
+export type CourierPanelCreds = Partial<Record<CourierPanelProviderId, PanelLogin | PanelLogin[]>>
+
+/** A login has an identifier and a password. */
+export function completeLogin(login: PanelLogin | undefined | null): login is PanelLogin {
+  return !!login && !!String(login.password ?? '').trim() && !!String(login.email ?? login.phone ?? login.user ?? '').trim()
+}
+
+/** The complete logins saved for one courier, oldest first (a single saved login counts as one). */
+export function panelAccounts(creds: CourierPanelCreds | null | undefined, provider: CourierPanelProviderId): PanelLogin[] {
+  const v = creds?.[provider]
+  return (Array.isArray(v) ? v : v ? [v] : []).filter(completeLogin)
+}
+
+// Round-robin position per courier, so each lookup starts on the next account.
+const rotation = new Map<string, number>()
 
 /** One courier's answer. `ok:false` carries a reason; it never throws out. */
 interface PanelStat {
@@ -329,10 +344,31 @@ export class CourierPanelProvider implements FraudProvider {
   }
 
   get connected(): CourierPanelProviderId[] {
-    return COURIER_PANEL_PROVIDERS.filter((p) => {
-      const c = this.creds[p]
-      return !!c && !!text(c.password) && !!text(c.email ?? c.phone ?? c.user)
-    })
+    return COURIER_PANEL_PROVIDERS.filter((p) => panelAccounts(this.creds, p).length > 0)
+  }
+
+  /**
+   * One courier, across its accounts: start on the next account in turn (so
+   * the load is spread), and if that account is refused, limited or fails,
+   * try the others before giving up.
+   */
+  private async runCourier(id: CourierPanelProviderId, mobile: string): Promise<PanelStat> {
+    const accounts = panelAccounts(this.creds, id)
+    const start = (rotation.get(id) ?? 0) % accounts.length
+    rotation.set(id, start + 1)
+    const errors: string[] = []
+    for (let i = 0; i < accounts.length; i++) {
+      const login = accounts[(start + i) % accounts.length]
+      try {
+        const r = await RUNNERS[id](login, mobile, this.d)
+        if (r.ok) return r
+        errors.push(r.error ?? 'failed')
+      } catch (error) {
+        errors.push(redact(String((error as Error).message ?? error), login))
+      }
+    }
+    const error = accounts.length > 1 ? `All ${accounts.length} ${COURIER_PANEL_LABELS[id]} accounts failed: ${errors[errors.length - 1]}` : errors[0]
+    return { ok: false, success: 0, cancel: 0, total: 0, error }
   }
 
   async lookup(phone: string): Promise<CourierHistorySummary> {
@@ -340,10 +376,7 @@ export class CourierPanelProvider implements FraudProvider {
     if (!mobile) throw new Error('Not a Bangladeshi mobile number')
     const ids = this.connected
     if (!ids.length) throw new Error('No courier panel logins are connected')
-    const results = await Promise.all(ids.map(async (id) => {
-      try { return [id, await RUNNERS[id](this.creds[id]!, mobile, this.d)] as const }
-      catch (error) { return [id, { ok: false, success: 0, cancel: 0, total: 0, error: redact(String((error as Error).message ?? error), this.creds[id]!) }] as const }
-    }))
+    const results = await Promise.all(ids.map(async (id) => [id, await this.runCourier(id, mobile)] as const))
 
     const couriers: CourierLine[] = results.map(([id, r]) => ({
       courier: id,
