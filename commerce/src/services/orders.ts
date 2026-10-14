@@ -125,11 +125,14 @@ export async function statusCounts(): Promise<Record<string, number>> {
   return fromJson<Record<string, number>>(data) ?? {}
 }
 
+// Every column except the costs (cost_total, unit_cost): staff cannot read those from the tables;
+// people allowed to see costs get them from orderCostSummary().
+
 export async function getOrder(id: string) {
   const { data, error } = await supabase
     .from('orders')
-    .select(`*,
-      order_items(*),
+    .select(`id, order_number, customer_id, auth_user_id, source, status, payment_method, payment_status, fraud_status, risk_level, fraud_check_id, customer_name, customer_phone, customer_email, shipping_address, shipping_area, shipping_city, shipping_district, shipping_postal_code, delivery_zone_id, delivery_method, subtotal, coupon_id, coupon_code, coupon_discount, manual_discount, discount_total, delivery_charge, delivery_discount, return_charge, total_amount, advance_required, advance_type, advance_due_at, amount_paid, amount_refunded, cod_amount, advance_resolution, customer_note, cancel_reason, idempotency_key, utm_source, utm_medium, utm_campaign, confirmed_at, shipped_at, delivered_at, cancelled_at, returned_at, created_by, created_at, updated_at, fraud_decision, duplicate_of, duplicate_status, merged_into, merged_count, label_printed_at, label_last_printed_at, label_printed_by, label_print_count, review_status, review_note, follow_up_at, contact_attempts, last_contact_at, review_updated_at, review_updated_by, approved_by, partial_return_amount, lost_at, assigned_to, assigned_at, client_ip, user_agent, tags, sales_channel_id, external_order_id, external_order_number, duplicate_reason, merchant_id, tax_amount,
+      order_items(id, order_id, product_id, variant_id, product_name, variant_title, sku, image_url, unit_price, quantity, line_subtotal, discount_amount, line_total, track_inventory, requires_production, returned_quantity, damaged_quantity, created_at, updated_at, merchant_id),
       order_notes(*),
       order_status_history(*),
       order_payments(*),
@@ -308,6 +311,13 @@ export async function mergeOrders(orderId: string, intoOrderId: string) {
   const { data, error } = await supabase.rpc('admin_merge_orders', { p_order_id: orderId, p_into_order_id: intoOrderId })
   if (error) throw error
   return data
+}
+
+/** Cost of goods for one order and its lines (finance, price override, product/purchase managers, marketing, reports). */
+export async function orderCostSummary(id: string) {
+  const { data, error } = await supabase.rpc('order_cost_summary' as never, { p_order: id } as never)
+  if (error) throw error
+  return data as unknown as { cost_total: number; items: Array<{ id: string; unit_cost: number }> }
 }
 
 export async function getOrderBrief(id: string) {

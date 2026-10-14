@@ -39,6 +39,8 @@ export default function OrderEditPage() {
   const { can } = useAuth()
   const { data: config } = useStoreConfig()
   const priceOverride = can('orders.price_override')
+  // Adding products needs the catalog, which roles like Call cannot read.
+  const canPickProducts = can('products.view') || can('inventory.view') || can('orders.create')
   const order = useQuery({ queryKey: ['order', id], queryFn: () => getOrder(id) })
   const record = useQuery({ queryKey: ['order-record', id], queryFn: () => orderCustomerRecord(id) })
 
@@ -186,7 +188,7 @@ export default function OrderEditPage() {
                 </div>
               ))}
               {(quote.data?.stock_errors ?? []).map((e) => <p key={e.variant_id} className="text-xs text-destructive">{e.message}</p>)}
-              {editable && <AddProducts onAdd={addLine} />}
+              {editable && canPickProducts && <AddProducts onAdd={addLine} />}
             </CardContent>
           </Card>
         </div>

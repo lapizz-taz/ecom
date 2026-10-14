@@ -92,7 +92,7 @@ describe('platform: merchants', () => {
       const id = await newMerchant(db, superId, 'Fresh Shop')
       await asSystem(db, null)
       expect(await value(db, `select status from public.merchants where id = $1`, [id])).toBe('ONBOARDING')
-      expect(await value(db, `select count(*)::int from public.roles where merchant_id = $1`, [id])).toBe(8)
+      expect(await value(db, `select count(*)::int from public.roles where merchant_id = $1`, [id])).toBe(9)
       expect(await value(db, `select value ->> 'name' from public.settings where merchant_id = $1 and key = 'store'`, [id])).toBe('Fresh Shop')
       expect(await value(db, `select count(*)::int from public.platform_audit_logs where action = 'merchant.created' and merchant_id = $1`, [id])).toBe(1)
       expect(await value(db, `select current_setting('app.merchant_id', true)`)).toBe('')

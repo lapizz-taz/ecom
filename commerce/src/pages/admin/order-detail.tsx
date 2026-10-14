@@ -45,6 +45,7 @@ import { listOrderMessages } from '@/services/sms'
 import {
   addOrderNote, approveOrders, dismissDuplicate, duplicateOrder, fraudReviewDecide, getOrder, getOrderBrief, listReviewStatuses, mergeOrders,
   checkGatewayPayment, type OrderDetail, orderMergeInfo, runFraudCheck, setWebOrderStatus, transitionOrder, verifyManualPayment,
+  orderCostSummary,
 } from '@/services/orders'
 import type { OrderStatus } from '@/types/domain'
 
@@ -77,6 +78,8 @@ export default function OrderDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const order = useQuery({ queryKey: ['order', id], queryFn: () => getOrder(id) })
+  const seesCosts = can('finance.view') || can('orders.price_override')
+  const costs = useQuery({ queryKey: ['order', id, 'costs'], queryFn: () => orderCostSummary(id), enabled: seesCosts })
   const [dialog, setDialog] = useState<DialogName>(null)
   const [transitionTo, setTransitionTo] = useState<OrderStatus | null>(null)
   const [fraudAction, setFraudAction] = useState<FraudAction | null>(null)
@@ -379,19 +382,19 @@ export default function OrderDetailPage() {
             <Card>
               <CardHeader><CardTitle className="text-sm">Financial summary</CardTitle></CardHeader>
               <CardContent>
-                {can('finance.view') || can('orders.price_override') ? (
+                {seesCosts && costs.data ? (
                   <dl className="space-y-1.5">
                     <Row label="Product revenue" value={formatMoney(toNumber(o.subtotal) - toNumber(o.discount_total))} />
                     <Row label="Delivery income" value={formatMoney(toNumber(o.delivery_charge) - toNumber(o.delivery_discount))} />
-                    <Row label="Cost of goods" value={`−${formatMoney(o.cost_total)}`} />
-                    <Row label="Gross profit" value={formatMoney(toNumber(o.total_amount) - toNumber(o.cost_total))} strong className="border-t pt-1.5" />
+                    <Row label="Cost of goods" value={`−${formatMoney(costs.data.cost_total)}`} />
+                    <Row label="Gross profit" value={formatMoney(toNumber(o.total_amount) - toNumber(costs.data.cost_total))} strong className="border-t pt-1.5" />
                     {shipment && <Row label="Courier cost" value={`−${formatMoney(shipment.shipping_cost)}`} />}
                     {shipment && toNumber(shipment.return_charge) > 0 && ['RETURNED', 'FAILED_DELIVERY'].includes(status) && <Row label="Return charge" value={`−${formatMoney(shipment.return_charge)}`} />}
                     <Row label="Contribution" strong className="border-t pt-1.5"
-                      value={formatMoney(toNumber(o.total_amount) - toNumber(o.cost_total) - toNumber(shipment?.shipping_cost))} />
+                      value={formatMoney(toNumber(o.total_amount) - toNumber(costs.data.cost_total) - toNumber(shipment?.shipping_cost))} />
                     <p className="pt-1 text-xs text-muted-foreground">Revenue and cost post to the ledger automatically when the order is delivered.</p>
                   </dl>
-                ) : <p className="text-sm text-muted-foreground">Costs are visible to finance staff.</p>}
+                ) : <p className="text-sm text-muted-foreground">{seesCosts ? 'Loading costs…' : 'Costs are visible to finance staff.'}</p>}
               </CardContent>
             </Card>
           </div>

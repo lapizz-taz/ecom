@@ -55,7 +55,7 @@ describe('tenancy: structure', () => {
     inTx(async (db) => {
       await asSystem(db)
       expect(await one(db, `select number, status from public.merchants where id = $1`, [MERCHANT_1])).toEqual({ number: '1', status: 'ACTIVE' })
-      expect(await value(db, `select count(*)::int from public.roles where merchant_id = $1`, [MERCHANT_1])).toBe(8)
+      expect(await value(db, `select count(*)::int from public.roles where merchant_id = $1`, [MERCHANT_1])).toBe(9)
       expect(await value(db, `select count(*)::int from public.settings where merchant_id <> $1`, [MERCHANT_1])).toBe(0)
     }))
 })
@@ -76,11 +76,11 @@ describe('tenancy: a new merchant', () => {
                (select count(*)::int from public.settings where merchant_id = $1) as settings,
                (select count(*)::int from public.orders where merchant_id = $1) as orders,
                (select count(*)::int from public.products where merchant_id = $1) as products`, [m2])
-      expect(counts).toEqual({ roles: 8, role_permissions: 137, review: 8, sources: 9, finance: 29, fraud_actions: 7, templates: 36, settings: 24, orders: 0, products: 0 })
+      expect(counts).toEqual({ roles: 9, role_permissions: 141, review: 8, sources: 9, finance: 29, fraud_actions: 7, templates: 36, settings: 24, orders: 0, products: 0 })
       // Running it again changes nothing; running it for another merchant is refused.
       await asSystem(db, m2)
       await db.query(`select public._merchant_seed_defaults($1)`, [m2])
-      expect(await value(db, `select count(*)::int from public.roles where merchant_id = $1`, [m2])).toBe(8)
+      expect(await value(db, `select count(*)::int from public.roles where merchant_id = $1`, [m2])).toBe(9)
       await expectError(db, `select public._merchant_seed_defaults($1)`, [MERCHANT_1], /PERMISSION_DENIED/)
     }))
 
