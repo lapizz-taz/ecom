@@ -75,6 +75,8 @@ export interface PaymentAccount {
   number: string
 }
 
+export type CheckoutFieldMode = 'hidden' | 'optional' | 'required'
+
 export interface StoreConfig {
   store: {
     name: string
@@ -107,6 +109,8 @@ export interface StoreConfig {
     /** OWN = this store takes orders; otherwise it is closed (enforced when an order is placed). */
     mode?: StoreMode
     redirect_url?: string | null
+    /** Which optional checkout fields are shown (Settings → Business profile → Checkout fields). */
+    checkout_fields?: Partial<Record<string, CheckoutFieldMode>>
   }
   policies: Record<string, string>
   delivery: {

@@ -1,4 +1,9 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CHECKOUT_FIELDS, checkoutFieldModes } from '@/features/checkout/fields'
+import type { CheckoutFieldMode } from '@/types/domain'
 import { ListSetting, SettingCard, TextareaSetting, TextSetting, useSettingDraft } from './setting-form'
+
+const MODE_LABEL: Record<CheckoutFieldMode, string> = { hidden: 'Off', optional: 'Optional', required: 'Required' }
 
 export function StoreSettings() {
   const store = useSettingDraft('store')
@@ -47,6 +52,27 @@ export function StoreSettings() {
         <TextareaSetting s={storefront} path={['hero_subtitle']} label="Hero subtitle" rows={2} />
         <ListSetting s={storefront} path={['featured_category_slugs']} label="Featured collections" separator="comma" mono hint="Category handles, comma separated" />
         <TextareaSetting s={storefront} path={['footer_text']} label="Footer text" rows={2} />
+      </SettingCard>
+
+      <SettingCard setting={storefront} title="Checkout fields"
+        description="Choose which boxes customers see at checkout. Name, mobile number, address and district are always asked.">
+        <div className="divide-y rounded-lg border">
+          {(() => {
+            const modes = checkoutFieldModes(storefront.get(['checkout_fields']) as Partial<Record<string, CheckoutFieldMode>> | undefined)
+            return CHECKOUT_FIELDS.map((f) => (
+              <div key={f.key} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{f.label}</span>
+                  {f.hint && <span className="block text-xs text-muted-foreground">{f.hint}</span>}
+                </span>
+                <Select value={modes[f.key]} disabled={!storefront.canEdit} onValueChange={(v) => storefront.set(['checkout_fields', f.key], v)}>
+                  <SelectTrigger size="sm" className="w-32" aria-label={`${f.label} at checkout`}><SelectValue /></SelectTrigger>
+                  <SelectContent>{(['hidden', 'optional', 'required'] as const).map((m) => <SelectItem key={m} value={m}>{MODE_LABEL[m]}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            ))
+          })()}
+        </div>
       </SettingCard>
 
       <SettingCard setting={policies} title="Policies" description="Shown on the storefront policy pages.">
