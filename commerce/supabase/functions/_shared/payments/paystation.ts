@@ -13,6 +13,8 @@ type FetchFn = typeof fetch
  * confirm_payment() checks the amount.
  */
 export const PAYSTATION_URL = 'https://api.paystation.com.bd'
+/** PayStation's test server: the sandbox merchant IDs work only here. */
+export const PAYSTATION_SANDBOX_URL = 'https://sandbox.paystation.com.bd'
 
 export interface PaystationConfig {
   merchantId: string
@@ -20,6 +22,8 @@ export interface PaystationConfig {
   /** Extra token header some older PayStation accounts were issued; the status API needs only the merchant ID. */
   token?: string
   baseUrl?: string
+  /** Use PayStation's sandbox server (test credentials). */
+  sandbox?: boolean
   /** 1 = the customer pays the gateway charge on top; 0 = the store absorbs it. */
   payWithCharge?: boolean
   timeoutMs?: number
@@ -40,7 +44,7 @@ export class PaystationProvider implements PaymentProvider {
   constructor(private readonly config: PaystationConfig, private readonly fetchFn: FetchFn = fetch) {}
 
   private get base(): string {
-    return (this.config.baseUrl || PAYSTATION_URL).replace(/\/+$/, '')
+    return (this.config.baseUrl || (this.config.sandbox ? PAYSTATION_SANDBOX_URL : PAYSTATION_URL)).replace(/\/+$/, '')
   }
 
   private async post(path: string, fields: Record<string, string>, headers: Record<string, string> = {}): Promise<Body> {

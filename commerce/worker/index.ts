@@ -9,6 +9,7 @@ import { setHistoryRelay } from '../supabase/functions/_shared/fraud/courier-his
 import { setPanelRelay } from '../supabase/functions/_shared/fraud/courier-panel.ts'
 import { httpPanelRelay } from '../supabase/functions/_shared/fraud/courier-relay.ts'
 import { setLocalCaller } from '../supabase/functions/_shared/internal.ts'
+import { relayedFetch } from '../supabase/functions/_shared/payments/gateway-relay.ts'
 import { copyOnce } from './copy.ts'
 import { type JobRunner, runDue } from './cron.ts'
 import { database, INTERNAL_ORIGIN, usesCloudflareDb } from './db/gateway.ts'
@@ -48,6 +49,8 @@ function setUp(env: Env): Router {
   const relay = relayUrl ? httpPanelRelay({ url: relayUrl, cronSecret, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY }) : null
   setPanelRelay(relay)
   setHistoryRelay(relay ? (phone) => relay.history(phone) : null)
+  // bKash and PayStation refuse Workers as well: their calls go through the same relay.
+  if (relayUrl) globalThis.fetch = relayedFetch({ url: relayUrl, cronSecret, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY }, globalThis.fetch)
   const kv = env.CACHE
   setSharedCache(kv ? {
     get: (key) => kv.get(key),

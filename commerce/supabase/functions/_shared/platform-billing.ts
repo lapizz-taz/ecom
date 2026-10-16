@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { appBase } from './storefront.ts'
 import { functionsBase } from './env.ts'
 import { HttpError } from './http.ts'
-import { type Gateway, gatewayFromCredentials } from './payments/registry.ts'
+import { type Gateway, gatewayFromCredentials, gatewaySandbox } from './payments/registry.ts'
 import type { PaymentProvider } from './payments/types.ts'
 import { adminClient } from './supabase.ts'
 
@@ -31,7 +31,7 @@ export async function platformGateway(code: Gateway, opts: { allowDisabled?: boo
     creds = (data as Record<string, string> | null) ?? null
     if (!creds) throw new HttpError(503, 'Online payment is not set up yet', 'PROVIDER_NOT_CONFIGURED')
   }
-  return gatewayFromCredentials(code, { enabled: true, sandbox: opts.sandbox ?? config.sandbox !== false }, creds, platform)
+  return gatewayFromCredentials(code, { enabled: true, sandbox: opts.sandbox ?? gatewaySandbox(code, config.sandbox) }, creds, platform)
 }
 
 /** Where the admin app lives, for returning merchants after a payment. */

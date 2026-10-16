@@ -4,6 +4,8 @@
 //   POST {action: 'lookup', phone}                    every connected courier, logins from Vault
 //   POST {action: 'history', phone}                   BD Courier, the platform's key from Vault
 //   POST {action: 'test', provider, login, phone}     one login, nothing saved
+//   POST {action: 'gateway', url, method, headers, body}  one call to bKash or PayStation,
+//        which refuse Workers too (see _shared/payments/gateway-relay.ts); those hosts only
 // Only our own servers may call it: the cron secret, or a key Supabase accepts
 // as the service role (asked of Supabase, so the Worker's copy may be another format).
 // Metering stays with the caller; nothing here is logged.
@@ -14,6 +16,7 @@ import { CourierHistoryProvider } from '../_shared/fraud/courier-history.ts'
 import { COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider, testPanelLogin } from '../_shared/fraud/courier-panel.ts'
 import { courierHistoryConfig, platformCourierHistorySecret, platformPanelCreds } from '../_shared/fraud/service.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
+import { callGateway } from '../_shared/payments/gateway-relay.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient } from '../_shared/supabase.ts'
 
@@ -21,6 +24,10 @@ const phone = z.string().trim().min(6).max(20).regex(/^[+0-9\s-]+$/)
 const input = z.discriminatedUnion('action', [
   z.object({ action: z.literal('lookup'), phone }),
   z.object({ action: z.literal('history'), phone }),
+  z.object({
+    action: z.literal('gateway'), url: z.url({ protocol: /^https$/ }).max(500), method: z.enum(['GET', 'POST']),
+    headers: z.record(z.string().max(64), z.string().max(2000)), body: z.string().max(100_000),
+  }),
   z.object({
     action: z.literal('test'), provider: z.enum(COURIER_PANEL_PROVIDERS), phone,
     login: z.object({
@@ -36,6 +43,8 @@ export default (
     const admin = adminClient()
     if (!(await isCronRequest(req, admin)) && !(await carriesServiceKey(req))) throw new HttpError(401, 'Not allowed', 'UNAUTHORIZED')
     const body = parse(input, await readJson(req))
+
+    if (body.action === 'gateway') return json(req, await callGateway(body))
 
     if (body.action === 'test') return json(req, await testPanelLogin(body.provider, body.login, body.phone))
 
