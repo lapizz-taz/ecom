@@ -83,7 +83,7 @@ export default (
         const provider = await loadPaymentProvider(admin, providerCode, settings, { allowDisabled: true })
         if (provider.verifyCallback) {
           const verified = await provider.verifyCallback(params)
-          const result = await recordVerifiedPayment(admin, providerCode, verified)
+          const result = await recordVerifiedPayment(admin, providerCode, verified, session)
           orderNumber = result.orderNumber ?? orderNumber
           outcome = ['succeeded', 'already_succeeded'].includes(result.status) ? 'success'
             : result.status === 'amount_mismatch' ? 'review'

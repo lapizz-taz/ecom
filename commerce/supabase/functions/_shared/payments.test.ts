@@ -1,7 +1,9 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { reconcilePayment, recordVerifiedPayment } from './payment-flow.ts'
 import { BKASH_SANDBOX_URL, BkashProvider, clearBkashTokens } from './payments/bkash.ts'
-import { PaystationProvider } from './payments/paystation.ts'
-import type { PaymentInitContext } from './payments/types.ts'
+import { PaystationProvider, paystationReference } from './payments/paystation.ts'
+import type { PaymentInitContext, VerifiedPayment } from './payments/types.ts'
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -153,14 +155,52 @@ describe('bKash tokenized checkout', () => {
 })
 
 describe('PayStation', () => {
-  const ps = (fetchFn: typeof fetch) => new PaystationProvider({ merchantId: 'M-104', password: 'pw', baseUrl: 'https://ps.test' }, fetchFn)
+  const ps = (fetchFn: typeof fetch, now = () => 1_760_000_000_000) =>
+    new PaystationProvider({ merchantId: 'M-104', password: 'pw', baseUrl: 'https://ps.test' }, fetchFn, now)
 
   it('creates a payment link for our invoice number', async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ status_code: '200', status: 'success', payment_url: 'https://ps.test/checkout/xyz', invoice_number: 'PAY-ABC123' }))
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ status_code: '200', status: 'success', payment_url: 'https://ps.test/checkout/xyz' }))
     const result = await ps(fetchFn).initiate(ctx)
-    expect(result).toMatchObject({ type: 'redirect', redirectUrl: 'https://ps.test/checkout/xyz', session: 'PAY-ABC123' })
+    expect(result).toMatchObject({ type: 'redirect', redirectUrl: 'https://ps.test/checkout/xyz', session: 'PAY-ABC123-TMGJ6K3CW' })
     const form = fetchFn.mock.calls[0][1].body as FormData
-    expect(Object.fromEntries(form.entries())).toMatchObject({ merchantId: 'M-104', password: 'pw', invoice_number: 'PAY-ABC123', payment_amount: '55.00', reference: 'ISO-10070' })
+    expect(Object.fromEntries(form.entries())).toMatchObject({ merchantId: 'M-104', password: 'pw', invoice_number: 'PAY-ABC123-TMGJ6K3CW', payment_amount: '55.00', reference: 'ISO-10070' })
+  })
+
+  /** A fake PayStation that, like the real one, refuses an invoice number it has seen (1008). */
+  const strictPaystation = () => {
+    const seen = new Set<string>()
+    return vi.fn(async (url: string, init: RequestInit) => {
+      const invoice = String((init.body as FormData).get('invoice_number'))
+      if (seen.has(invoice)) return jsonResponse({ status_code: '1008', status: 'failed', message: 'Duplicate invoice number' })
+      seen.add(invoice)
+      return jsonResponse({ status_code: '200', status: 'success', payment_url: `https://ps.test/checkout/${invoice}` })
+    })
+  }
+
+  it('gives every attempt its own invoice, so paying again (say after trying bKash) opens PayStation again', async () => {
+    const fetchFn = strictPaystation()
+    let clock = 1_760_000_000_000
+    const gateway = ps(fetchFn as unknown as typeof fetch, () => clock++)
+    // The same pending payment, tried a second and a third time.
+    const sessions = [await gateway.initiate(ctx), await gateway.initiate(ctx), await gateway.initiate(ctx)].map((r) => r.session!)
+    expect(new Set(sessions).size).toBe(3)
+    for (const s of sessions) expect(paystationReference(s)).toBe('PAY-ABC123')
+    // (The invoice used to be the payment reference itself: the second attempt got "Duplicate invoice number".)
+    expect(fetchFn).toHaveBeenCalledTimes(3)
+  })
+
+  it('reads our reference back from an attempt\'s invoice (and from the older plain ones)', async () => {
+    expect(paystationReference('PAY-0123456789ABCDEF-TMGJ6K3CW')).toBe('PAY-0123456789ABCDEF')
+    expect(paystationReference('PAY-0123456789ABCDEF')).toBe('PAY-0123456789ABCDEF')
+    expect(paystationReference('BP-0123456789ABCD-T1')).toBe('BP-0123456789ABCD')
+    const paid = vi.fn(async () => jsonResponse({ status_code: '200', status: 'success',
+      data: { invoice_number: 'PAY-ABC123-TMGJ6K3CX', trx_status: 'Success', trx_id: 'PS78', payment_amount: '55' } }))
+    expect(await ps(paid).verifyCallback({ status: 'Successful', invoice_number: 'PAY-ABC123-TMGJ6K3CX' }))
+      .toMatchObject({ success: true, reference: 'PAY-ABC123', providerTransactionId: 'PS78', eventId: 'paystation:trx:PS78' })
+    expect(await ps(paid).reconcile('PAY-ABC123-TMGJ6K3CX', 'PAY-ABC123', 5)).toMatchObject({ success: true, reference: 'PAY-ABC123' })
+    const cancelled = vi.fn().mockResolvedValue(jsonResponse({ status_code: '404', message: 'Transaction not found' }))
+    expect(await ps(cancelled).verifyCallback({ status: 'Canceled', invoice_number: 'PAY-ABC123-TMGJ6K3CX' }))
+      .toMatchObject({ success: false, reference: 'PAY-ABC123', eventId: 'paystation:PAY-ABC123-TMGJ6K3CX:canceled' })
   })
 
   it('verifies the callback with the transaction-status API', async () => {
@@ -193,5 +233,63 @@ describe('PayStation', () => {
     expect(await ps(ok).test()).toMatch(/Connected/)
     const form = Object.fromEntries((ok.mock.calls[1][1] as RequestInit & { body: FormData }).body.entries())
     expect(form).toMatchObject({ merchantId: 'M-104', password: 'pw', payment_amount: '10' })
+  })
+})
+
+/** Just enough of a Supabase client for payment-flow: one payments row, and confirm_payment. */
+function fakeAdmin(payment: Record<string, unknown>) {
+  const rpc = vi.fn(async (_fn: string, args: Record<string, unknown>) => ({
+    data: { status: !args.p_success ? 'failed' : payment.status === 'SUCCEEDED' ? 'already_succeeded' : 'succeeded' }, error: null,
+  }))
+  const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: payment, error: null }) }
+  return { admin: { from: () => query, rpc } as unknown as SupabaseClient, rpc }
+}
+
+const verdict = (v: Partial<VerifiedPayment>): VerifiedPayment => ({
+  reference: 'PAY-1', providerTransactionId: null, amount: null, currency: null, success: false,
+  eventId: 'e', eventType: 'callback.cancel', raw: {}, ...v,
+})
+
+describe('changing the payment method part way', () => {
+  const row = (sessions: string[], extra: Record<string, unknown> = {}) =>
+    ({ currency: 'BDT', status: 'PENDING', provider_transaction_id: null, metadata: { sessions }, orders: { order_number: 'ISO-1' }, ...extra })
+
+  it('a cancelled attempt does not fail a payment whose earlier attempt may still be paid', async () => {
+    const { admin, rpc } = fakeAdmin(row(['PAY-1-TA', 'PAY-1-TB']))
+    expect(await recordVerifiedPayment(admin, 'paystation', verdict({ eventId: 'paystation:PAY-1-TB:canceled' }), 'PAY-1-TB'))
+      .toEqual({ status: 'attempt_failed', orderNumber: 'ISO-1' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('still fails a payment that was only ever tried once, and takes the reconcile job\'s final word', async () => {
+    const once = fakeAdmin(row(['TR-A']))
+    expect((await recordVerifiedPayment(once.admin, 'bkash', verdict({}), 'TR-A')).status).toBe('failed')
+    expect(once.rpc).toHaveBeenCalledWith('confirm_payment', expect.objectContaining({ p_reference: 'PAY-1', p_provider: 'bkash', p_success: false }))
+    const twice = fakeAdmin(row(['TR-A', 'TR-B']))
+    expect((await recordVerifiedPayment(twice.admin, 'bkash', verdict({}))).status).toBe('failed')
+    expect(twice.rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a late success from the attempt the customer left, checked with the gateway first', async () => {
+    const { admin, rpc } = fakeAdmin(row(['PAY-1-TA', 'PAY-1-TB']))
+    const provider = new PaystationProvider({ merchantId: 'M', password: 'p', baseUrl: 'https://ps.test' }, vi.fn(async (_u: string, init: RequestInit) => {
+      const invoice = String((init.body as FormData).get('invoice_number'))
+      // Attempt A was paid in another tab; attempt B was cancelled.
+      return jsonResponse(invoice === 'PAY-1-TA'
+        ? { status_code: '200', data: { invoice_number: invoice, trx_status: 'Success', trx_id: 'PS9', payment_amount: '78' } }
+        : { status_code: '200', data: { invoice_number: invoice, trx_status: 'Canceled' } })
+    }) as unknown as typeof fetch)
+    expect((await reconcilePayment(admin, provider, { id: 'p1', provider: 'paystation', reference: 'PAY-1', sessions: ['PAY-1-TA', 'PAY-1-TB'], age_minutes: 20 })).status)
+      .toBe('succeeded')
+    expect(rpc).toHaveBeenCalledWith('confirm_payment', expect.objectContaining({ p_reference: 'PAY-1', p_success: true, p_amount: 78, p_provider_transaction_id: 'PS9' }))
+  })
+
+  it('flags a second charge on a payment already paid, so staff can refund it', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { admin } = fakeAdmin(row(['PAY-1-TA', 'PAY-1-TB'], { status: 'SUCCEEDED', provider_transaction_id: 'PS1' }))
+    const second = verdict({ success: true, providerTransactionId: 'PS2', amount: 78, currency: 'BDT', eventId: 'paystation:trx:PS2', eventType: 'callback.success' })
+    expect((await recordVerifiedPayment(admin, 'paystation', second, 'PAY-1-TB')).status).toBe('already_succeeded')
+    expect(error.mock.calls.some((c) => String(c[0]).includes('second payment'))).toBe(true)
+    error.mockRestore()
   })
 })
