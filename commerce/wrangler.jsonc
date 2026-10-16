@@ -62,13 +62,11 @@
   // Product images, theme images and courier statements (Supabase Storage before).
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "fullfilio-files" }],
 
-  // fullfilio.com, www and store subdomains (<name>.fullfilio.com) run this Worker; each
-  // needs a proxied DNS record (docs/CLOUDFLARE.md, step 2). Once Cloudflare for SaaS is on
-  // (step 11), replace both with { "pattern": "*/*", "zone_name": "fullfilio.com" } so
-  // merchants' own domains reach the Worker too ("*/*" is refused without SaaS).
+  // Every hostname on the zone runs this Worker: fullfilio.com, www, store subdomains
+  // (<name>.fullfilio.com) and, through Cloudflare for SaaS (docs/CLOUDFLARE.md, step 11),
+  // merchants' own domains (custom hostnames with fallback origin stores.fullfilio.com).
   "routes": [
-    { "pattern": "fullfilio.com/*", "zone_name": "fullfilio.com" },
-    { "pattern": "*.fullfilio.com/*", "zone_name": "fullfilio.com" }
+    { "pattern": "*/*", "zone_name": "fullfilio.com" }
   ],
 
   "env": {
