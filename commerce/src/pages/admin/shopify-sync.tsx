@@ -25,6 +25,7 @@ import { toUserMessage } from '@/lib/errors'
 import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { searchVariants } from '@/services/catalog'
+import { getStoreAddress } from '@/services/website'
 import {
   adoptStoreProducts, type AdoptPlan, catalogSummary, firstSync, type FirstSyncPlan, importCatalog, linkVariant, listChannels, type ReconcilePlan, reconcileStock, retrySyncJob, runSyncJobs,
   type CatalogSummary, saveSyncSettings, type SyncItem, type SyncOverview, syncOverview, storeProducts,
@@ -79,6 +80,8 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
   const qc = useQueryClient()
   const store = storeName(shops.find((s) => s.id === channelId)?.platform)
   const overview = useQuery({ queryKey: ['shopify-sync', channelId], queryFn: () => syncOverview(channelId), refetchInterval: 15_000 })
+  // Only the store chosen under Sales channels → Store mode syncs; the others wait.
+  const address = useQuery({ queryKey: ['store-address'], queryFn: getStoreAddress, staleTime: 30_000 })
   const refresh = () => void qc.invalidateQueries({ queryKey: ['shopify-sync', channelId] })
   const catalog = useMutation({
     mutationFn: () => importCatalog(channelId),
@@ -98,7 +101,8 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
   const missingScopes = o.channel.platform !== 'SHOPIFY' ? []
     : ['write_inventory', 'read_locations', 'write_merchant_managed_fulfillment_orders', 'read_products', 'write_fulfillments', 'write_orders'].filter((s) => !o.channel.scopes.includes(s))
   const firstDone = !!o.channel.first_sync_at
-  const health = connectionHealth(o, missingScopes)
+  const paused = !!address.data && address.data.mode !== o.channel.platform
+  const health = connectionHealth(o, missingScopes, paused)
 
   return (
     <div className="space-y-4">
@@ -121,8 +125,8 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
 
       {!firstDone && o.channel.status === 'CONNECTED' && <FirstSyncCard o={o} channelId={channelId} store={store} onDone={refresh} />}
 
-      <StatusCard o={o} store={store} health={health} />
-      <QueueCard o={o} onView={() => onTab('activity')} onRun={() => run.mutate()} running={run.isPending} canRun={can('orders.update')} />
+      <StatusCard o={o} store={store} health={health} paused={paused} />
+      <QueueCard o={o} onView={() => onTab('activity')} onRun={() => run.mutate()} running={run.isPending} canRun={can('orders.update') && !paused} paused={paused} store={store} />
 
       <Tabs value={tab === 'stock' && !firstDone ? 'stock' : tab} onValueChange={onTab}>
         <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
@@ -160,10 +164,15 @@ function SyncBody({ channelId, shops, tab, onTab, onChannel }: {
 
 type Health = { tone: 'ok' | 'busy' | 'action' | 'failed'; title: string; detail: string }
 /** Connected / Syncing / Action required / Sync failed, in plain words. */
-function connectionHealth(o: SyncOverview, missing: string[]): Health {
+function connectionHealth(o: SyncOverview, missing: string[], paused = false): Health {
   const store = storeName(o.channel.platform)
   if (o.channel.status !== 'CONNECTED') {
     return { tone: 'failed', title: 'Not connected', detail: o.channel.last_error ? `${o.channel.last_error}. Connect the store again on Sales channels.` : 'Connect the store again on Sales channels.' }
+  }
+  if (paused) {
+    const waiting = o.jobs.pending + o.jobs.processing
+    return { tone: 'action', title: 'Sync paused',
+      detail: `Your store mode is set to another store, so nothing is sent to ${store}${waiting ? ` (${waiting} update${waiting === 1 ? '' : 's'} waiting)` : ''}. Choose ${store} under Sales channels → Store mode to resume; waiting updates then go out within a minute.` }
   }
   if (o.jobs.failed > 0) return { tone: 'failed', title: 'Sync failed', detail: `${o.jobs.failed} update${o.jobs.failed === 1 ? '' : 's'} could not be sent to ${store}. See Recent activity — they can be retried.` }
   if (!o.channel.first_sync_at) return { tone: 'action', title: 'Action required', detail: 'Run the first sync above to bring your products and stock in.' }
@@ -172,7 +181,7 @@ function connectionHealth(o: SyncOverview, missing: string[]): Health {
   return { tone: 'ok', title: 'Stock sync active', detail: `Your ${store} store is connected and everything is in step.` }
 }
 
-function StatusCard({ o, store, health }: { o: SyncOverview; store: string; health: Health }) {
+function StatusCard({ o, store, health, paused }: { o: SyncOverview; store: string; health: Health; paused?: boolean }) {
   const loc = o.channel.locations.find((l) => l.id === o.channel.settings.location_id)
   const s = o.channel.settings
   const Icon = health.tone === 'ok' ? CircleCheck : health.tone === 'busy' ? RefreshCw : AlertTriangle
@@ -187,9 +196,10 @@ function StatusCard({ o, store, health }: { o: SyncOverview; store: string; heal
           {health.title}
         </CardTitle>
         <CardDescription>{health.detail}</CardDescription>
+        {paused && <div><Button size="sm" variant="outline" asChild><Link to="/admin/channels">Open Store mode</Link></Button></div>}
       </CardHeader>
       <CardContent className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {tile('Real-time sync', s.inventory_sync ? 'Enabled' : 'Off')}
+        {tile('Real-time sync', paused ? 'Paused' : s.inventory_sync ? 'Enabled' : 'Off')}
         {tile('Order stock', 'Reserved when ordered')}
         {tile('Location', loc?.name ?? 'Not chosen')}
         {tile(`Changes made in ${store}`, s.external_changes === 'TWO_WAY' ? 'Two-way (applied here)' : s.external_changes === 'SAAS_WINS' ? 'This app wins' : 'Flagged for review')}
@@ -198,7 +208,7 @@ function StatusCard({ o, store, health }: { o: SyncOverview; store: string; heal
   )
 }
 
-function QueueCard({ o, onView, onRun, running, canRun }: { o: SyncOverview; onView: () => void; onRun: () => void; running: boolean; canRun: boolean }) {
+function QueueCard({ o, onView, onRun, running, canRun, paused, store }: { o: SyncOverview; onView: () => void; onRun: () => void; running: boolean; canRun: boolean; paused?: boolean; store: string }) {
   // Neutral tiles; colour only marks the state (and failures that need a look).
   const box = (label: string, value: number, tone: string, icon: React.ReactNode) => (
     <div className={cn('rounded-xl border bg-background px-3.5 py-3', label === 'Failed' && value > 0 && 'border-red-300 dark:border-red-500/40')}>
@@ -209,7 +219,7 @@ function QueueCard({ o, onView, onRun, running, canRun }: { o: SyncOverview; onV
   return (
     <Card className="gap-3">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
-        <div><CardTitle className="text-base">Sync queue</CardTitle><CardDescription>Updates go out by themselves within about a minute.</CardDescription></div>
+        <div><CardTitle className="text-base">Sync queue</CardTitle><CardDescription>{paused ? `Paused: updates wait here until ${store} is the store mode again.` : 'Updates go out by themselves within about a minute.'}</CardDescription></div>
         <div className="flex gap-2">
           {canRun && <Button size="sm" variant="ghost" onClick={onRun} disabled={running}>{running ? <Spinner /> : <Play />} Send now</Button>}
           <Button size="sm" variant="outline" onClick={onView}><ListChecks /> View activity</Button>
