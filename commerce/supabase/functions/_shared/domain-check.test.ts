@@ -220,6 +220,8 @@ describe('scheduled domain re-check', () => {
     expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(20), created_at: mins(5 * 24 * 60) }, now)).toBe(false)
     expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(60), created_at: mins(5 * 24 * 60) }, now)).toBe(true)
     expect(dueForRecheck({ status: 'ACTIVE', checked_at: null, created_at: null }, now)).toBe(false)
+    const stale = { issues: [{ code: 'NO_RECORDS', severity: 'error' as const, title: '', detail: '' }] } as never
+    expect(dueForRecheck({ status: 'ACTIVE', checked_at: mins(10), created_at: mins(60), diagnostics: stale }, now)).toBe(true)
     expect(dueForRecheck({ status: 'REMOVED', checked_at: null, created_at: null }, now)).toBe(false)
   })
 })

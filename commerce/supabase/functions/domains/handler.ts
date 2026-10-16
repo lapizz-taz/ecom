@@ -196,8 +196,16 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
   }
   // The root went live after all: no need to move its DNS.
   if (host.status === 'active') diagnostics.issues = diagnostics.issues.filter((i) => i.code !== 'NEEDS_CLOUDFLARE')
-  if (host.status === 'active' && host.ssl?.status === 'active') {
+  // Live only when visitors really reach the store: the hosting can confirm the domain while
+  // the DNS is still switching over (for example right after changing nameservers).
+  const reachesStore = diagnostics.tls.served_by_store === true || (diagnostics.pointed && !diagnostics.issues.some((i) => i.severity === 'error'))
+  if (host.status === 'active' && host.ssl?.status === 'active' && reachesStore) {
     return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
+  }
+  if (host.status === 'active' && host.ssl?.status === 'active') {
+    const blocking = diagnostics.issues.find((i) => i.severity === 'error')
+    return { status: 'VERIFYING', records: baseRecords(d, target), diagnostics,
+      detail: `Confirmed and HTTPS ready — waiting for your DNS to point here${blocking ? `: ${blocking.title}` : ''}` }
   }
   // On Cloudflare DNS the TXT records do not count (the CNAME verifies the domain): do not ask for them.
   const cloudflareDns = diagnostics.dns_host?.provider === 'Cloudflare' && !diagnostics.dns_host.mixed
@@ -261,8 +269,11 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string): Pr
 }
 
 /** Waiting domains are checked every 10 minutes for 3 days after the last change, then hourly. */
-export function dueForRecheck(d: { status: string; checked_at?: string | null; created_at?: string | null }, now = Date.now()): boolean {
-  if (d.status === 'ACTIVE' || d.status === 'REMOVED') return false
+export function dueForRecheck(d: { status: string; checked_at?: string | null; created_at?: string | null; diagnostics?: Diagnosis | null }, now = Date.now()): boolean {
+  if (d.status === 'REMOVED') return false
+  // A live domain is checked again only while its last check still showed a problem
+  // (often DNS still spreading after a nameserver change), so the status settles by itself.
+  if (d.status === 'ACTIVE' && !d.diagnostics?.issues?.some((i) => i.severity === 'error')) return false
   const checked = d.checked_at ? Date.parse(d.checked_at) : 0
   const age = now - (d.created_at ? Date.parse(d.created_at) : now)
   const every = age > 3 * 86_400_000 ? 55 * 60_000 : 9 * 60_000
@@ -279,7 +290,7 @@ async function recheckAll() {
   let checked = 0
   let live = 0
   const run = await forEachMerchant('domains', async (admin) => {
-    const domains = (await rpc<Array<{ domain: string; status: string; checked_at: string | null; created_at: string | null }>>(admin, 'store_domains_list')) ?? []
+    const domains = (await rpc<Array<{ domain: string; status: string; checked_at: string | null; created_at: string | null; diagnostics: Diagnosis | null }>>(admin, 'store_domains_list')) ?? []
     for (const d of domains.filter((x) => dueForRecheck(x)).sort((a, b) => (a.checked_at ?? '').localeCompare(b.checked_at ?? ''))) {
       if (checked >= RECHECK_LIMIT) break
       checked += 1

@@ -183,13 +183,36 @@ function hostingText(h: NonNullable<DomainDiagnosis['hosting']>): string {
 /** Moving a domain's DNS to Cloudflare (free), so the main domain (shop.com) can connect. */
 export function CloudflareSteps({ domain, target = 'stores.fullfilio.com' }: { domain?: string; target?: string }) {
   const name = domain ?? 'your-domain.com'
+  const b = (t: ReactNode) => <b className="text-foreground">{t}</b>
+  const rows = [
+    { type: 'CNAME', name: '@', value: target },
+    { type: 'CNAME', name: 'www', value: target },
+  ]
   return (
-    <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-      <li>Make a free account at <b className="text-foreground">dash.cloudflare.com</b> → <b className="text-foreground">Add a domain</b> → {name} → Free plan.</li>
-      <li>In Cloudflare → DNS → Records: add <b className="text-foreground">CNAME @ → {target}</b> and <b className="text-foreground">CNAME www → {target}</b>, both <b className="text-foreground">DNS only</b> (grey cloud). Delete other A/AAAA records for @.</li>
-      <li>Keep your email records (MX, SPF/TXT, DKIM) exactly as they are.</li>
-      <li>Where you bought the domain (Hostinger, Namecheap…) → <b className="text-foreground">Nameservers</b> → put the two nameservers Cloudflare shows you. The domain stays registered there.</li>
-      <li>Wait 15 minutes to a few hours. We check by ourselves and the domain turns Connected.</li>
+    <ol className="list-decimal space-y-2 pl-4 text-xs text-muted-foreground">
+      <li>Free account at {b('dash.cloudflare.com')} → {b('Add a domain')} → {name} → {b('Free')} plan.</li>
+      <li>
+        {b('DNS → Records')}: delete every {b('A')} and {b('AAAA')} record named {name} (Cloudflare copied the old ones). Then {b('Add record')} twice:
+        <div className="mt-1.5 overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[320px] text-[11px]">
+            <thead><tr className="bg-muted/40 text-left text-muted-foreground"><th className="px-2 py-1 font-medium">Type</th><th className="px-2 py-1 font-medium">Name</th><th className="px-2 py-1 font-medium">Target</th><th className="px-2 py-1 font-medium">Proxy status</th><th /></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.name} className="border-t">
+                  <td className="px-2 py-1 font-mono">{r.type}</td>
+                  <td className="px-2 py-1 font-mono">{r.name}</td>
+                  <td className="px-2 py-1 font-mono break-all">{r.value}</td>
+                  <td className="px-2 py-1">DNS only (grey)</td>
+                  <td className="px-1 py-1 text-right"><Button size="icon-sm" variant="ghost" aria-label="Copy target" onClick={() => copy(r.value)}><Copy /></Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </li>
+      <li>Click the orange cloud on {b('every')} record so it turns {b('grey — DNS only')}. Email records (MX, autoconfig, autodiscover, …_domainkey) stop working when they are orange.</li>
+      <li>Where you bought the domain (Hostinger → Domains → {name} → {b('Nameservers')}): choose custom nameservers and enter {b('only the two Cloudflare ones')} (…ns.cloudflare.com). Delete the old ones (Hostinger: …dns-parking.com).</li>
+      <li>Wait until Cloudflare says the domain is {b('Active')} (15 minutes to a few hours). We check by ourselves and it turns Connected.</li>
     </ol>
   )
 }

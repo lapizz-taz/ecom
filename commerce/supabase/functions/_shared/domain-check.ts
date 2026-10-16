@@ -294,8 +294,12 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       detail: `${domain} can connect only when its DNS is on Cloudflare (free)${dnsHost.provider ? `; it is on ${dnsHost.provider} now, which cannot` : ''}. Move the DNS to Cloudflare with the steps below, or use www.${domain}, which works at any DNS company.` })
   }
   if (dnsHost.mixed) {
+    const cf = nameservers.filter((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
+    const others = nameservers.filter((n) => !cf.includes(n))
     issues.push({ code: 'NS_MIXED', severity: 'error', title: 'Your domain uses nameservers from two companies',
-      detail: `It lists ${nameservers.join(', ')}. Visitors randomly get the records of one or the other, so the old site keeps coming back. At the company where you bought the domain, set the nameservers to only one company (the one where you edit DNS), then wait an hour.` })
+      detail: cf.length && others.length
+        ? `Keep only the Cloudflare nameservers (${cf.join(', ')}). At the company where you bought the domain, open Nameservers and delete ${others.join(', ')}. Until then visitors randomly get the old DNS, so the store comes and goes. Changes take up to an hour.`
+        : `It lists ${nameservers.join(', ')}. Visitors randomly get the records of one or the other, so the old site keeps coming back. At the company where you bought the domain, set the nameservers to only one company (the one where you edit DNS), then wait an hour.` })
   }
   // Old site still answering somewhere (left-over record, or cached for a while after deleting it).
   // (Only for a name with its own A records: behind a CNAME a wrong target is WRONG_TARGET.)
