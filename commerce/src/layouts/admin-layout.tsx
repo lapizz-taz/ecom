@@ -18,7 +18,7 @@ import { PhoneProvider } from '@/features/voicedrive/phone-context'
 import { PhoneWidget } from '@/features/voicedrive/phone-widget'
 import { WorkdayLayer, WorkGate } from '@/features/hr/workday'
 import { useAuth } from '@/features/auth/auth-context'
-import { AccountRestricted, ReadOnlyBanner } from '@/features/billing/account-restricted'
+import { AccountRestricted, ReadOnlyBanner, RenewalBanner } from '@/features/billing/account-restricted'
 import { SupportViewBanner } from '@/features/support/support-view-banner'
 import { CommandPalette } from '@/features/shell/command-palette'
 import { GO_SHORTCUTS, type NavCounts } from '@/features/shell/nav-config'
@@ -402,6 +402,7 @@ export default function AdminLayout() {
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
             {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}
+            {location.pathname.replace(/\/+$/, '') === '/admin' && <RenewalBanner />}
             {allowed ? <WorkGate><Outlet /></WorkGate> : <PermissionDenied />}
           </div>
         </main>

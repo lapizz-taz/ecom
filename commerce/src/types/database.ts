@@ -13139,6 +13139,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      billing_renew_now: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       bulk_transition_orders: {
         Args: {
           p_order_ids: string[]
@@ -14865,6 +14869,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      platform_merchant_activate: {
+        Args: {
+          p_merchant: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       platform_merchant_billing: {
         Args: {
           p_merchant: string
@@ -14989,6 +15000,13 @@ export type Database = {
           p_ids?: number[]
         }
         Returns: number
+      }
+      platform_onboarding_save: {
+        Args: {
+          p_value: Json
+          p_reason?: string
+        }
+        Returns: Json
       }
       platform_order_fee_charges: {
         Args: {
@@ -15132,6 +15150,10 @@ export type Database = {
           p_set: boolean
           p_hint?: string
         }
+        Returns: Json
+      }
+      platform_pending_activations: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       platform_plan_save: {

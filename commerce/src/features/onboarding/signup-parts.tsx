@@ -75,6 +75,11 @@ export function PlanPicker({ options, value, onChange }: { options: SignupOption
           Plus {formatMoney(options.order_fee.fee)} for each order you approve{options.order_fee.free_per_month > 0 ? ` after the first ${formatNumber(options.order_fee.free_per_month)} each month` : ''}, paid from your store balance.
         </p>
       )}
+      <p className="text-xs text-muted-foreground">
+        {options.onboarding?.method === 'whatsapp'
+          ? 'After you sign up, send us the WhatsApp message we prepare for you and our team activates your account.'
+          : 'Plans with a free trial start right away. Other plans are paid with bKash or PayStation, and your account opens as soon as the payment is confirmed.'}
+      </p>
     </div>
   )
 }
