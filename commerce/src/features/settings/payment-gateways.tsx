@@ -46,6 +46,9 @@ const GATEWAYS: Array<{
   },
 ]
 
+/** bKash starts in sandbox; PayStation is live unless sandbox was chosen (as on the server). */
+const sandboxOf = (code: Gateway, config?: { sandbox?: boolean }) => (code === 'bkash' ? config?.sandbox !== false : config?.sandbox === true)
+
 /** Settings → Payments: connect, test and disconnect the online gateways. */
 export function PaymentGateways() {
   const { can } = useAuth()
@@ -103,7 +106,7 @@ function GatewayRow({ gateway, canManage, info, config }: {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium">{gateway.name}</p>
-            {connected && gateway.code === 'bkash' && <Badge variant={config?.sandbox === false ? 'success' : 'warning'}>{config?.sandbox === false ? 'Live' : 'Sandbox'}</Badge>}
+            {connected && <Badge variant={sandboxOf(gateway.code, config) ? 'warning' : 'success'}>{sandboxOf(gateway.code, config) ? 'Sandbox' : 'Live'}</Badge>}
             {connected && !config?.enabled && <Badge variant="neutral">Off</Badge>}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -120,7 +123,7 @@ function GatewayRow({ gateway, canManage, info, config }: {
           </div>
         )}
       </div>
-      {open && <ConnectGatewayDialog gateway={gateway} sandbox={config?.sandbox !== false} onClose={() => setOpen(false)} onConnected={refresh} />}
+      {open && <ConnectGatewayDialog gateway={gateway} sandbox={sandboxOf(gateway.code, config)} onClose={() => setOpen(false)} onConnected={refresh} />}
       <ConfirmDialog open={confirmOff} onOpenChange={setConfirmOff} title={`Disconnect ${gateway.name}?`} destructive
         description="Its credentials are deleted from the server and customers no longer see it at checkout. Payments already made are kept."
         confirmLabel="Disconnect" onConfirm={() => disconnect.mutateAsync()} />
@@ -140,7 +143,7 @@ function ConnectGatewayDialog({ gateway, sandbox: initialSandbox, onClose, onCon
   useEffect(() => setSandbox(initialSandbox), [initialSandbox])
   const connect = useMutation({
     meta: { silent: true },
-    mutationFn: () => connectGateway(gateway.code, values, gateway.code === 'bkash' ? sandbox : undefined),
+    mutationFn: () => connectGateway(gateway.code, values, sandbox),
     onSuccess: (r) => { toast.success(r.message); onConnected(); onClose() },
   })
   const missing = gateway.fields.some((f) => !f.optional && !values[f.key]?.trim())
@@ -154,11 +157,9 @@ function ConnectGatewayDialog({ gateway, sandbox: initialSandbox, onClose, onCon
             value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
         </Field>
       ))}
-      {gateway.code === 'bkash' && (
-        <label className="flex items-center gap-2 text-sm">
-          <Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox (test credentials from bKash)
-        </label>
-      )}
+      <label className="flex items-center gap-2 text-sm">
+        <Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox (test credentials from {gateway.name})
+      </label>
       {advanced ? (
         <Field label="API address (optional)" htmlFor="gw-base" hint="Leave empty unless the gateway gave you a different address.">
           <Input id="gw-base" placeholder="https://" value={values.base_url ?? ''} onChange={(e) => setValues((v) => ({ ...v, base_url: e.target.value }))} />

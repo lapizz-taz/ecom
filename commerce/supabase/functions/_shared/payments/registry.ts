@@ -25,6 +25,12 @@ export const GATEWAYS = ['bkash', 'paystation'] as const
 export type Gateway = (typeof GATEWAYS)[number]
 export const gatewaySecret = (code: Gateway) => `payments.${code}`
 
+/**
+ * bKash starts in sandbox until it is switched to live; PayStation accounts were
+ * always live, so PayStation uses its sandbox only when that is chosen.
+ */
+export const gatewaySandbox = (code: string, sandbox: boolean | undefined) => (code === 'bkash' ? sandbox !== false : sandbox === true)
+
 export interface BkashCredentials { app_key?: string; app_secret?: string; username?: string; password?: string; base_url?: string }
 export interface PaystationCredentials { merchant_id?: string; password?: string; token?: string; base_url?: string }
 
@@ -62,7 +68,7 @@ export function gatewayFromCredentials(
       throw new HttpError(503, 'bKash payment is temporarily unavailable', 'PROVIDER_NOT_CONFIGURED')
     }
     return new BkashProvider(
-      { appKey, appSecret, username, password, sandbox: config.sandbox !== false, baseUrl: checkedBaseUrl(c.base_url, 'bKash API URL') ?? env('BKASH_BASE_URL') },
+      { appKey, appSecret, username, password, sandbox: gatewaySandbox('bkash', config.sandbox), baseUrl: checkedBaseUrl(c.base_url, 'bKash API URL') ?? env('BKASH_BASE_URL') },
       fetch, Date.now, admin ? bkashTokenStore(admin) : undefined,
     )
   }
@@ -73,7 +79,7 @@ export function gatewayFromCredentials(
     throw new HttpError(503, 'Online payment is temporarily unavailable', 'PROVIDER_NOT_CONFIGURED')
   }
   return new PaystationProvider({
-    merchantId, password, token: c.token ?? env('PAYSTATION_TOKEN'), baseUrl: checkedBaseUrl(c.base_url, 'PayStation API URL') ?? env('PAYSTATION_BASE_URL'),
+    merchantId, password, token: c.token ?? env('PAYSTATION_TOKEN'), sandbox: gatewaySandbox('paystation', config.sandbox), baseUrl: checkedBaseUrl(c.base_url, 'PayStation API URL') ?? env('PAYSTATION_BASE_URL'),
     payWithCharge: config.pay_with_charge === true,
   })
 }

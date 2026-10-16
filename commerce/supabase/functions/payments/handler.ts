@@ -13,7 +13,7 @@ import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shar
 import { logEvent } from '../_shared/monitoring.ts'
 import { formOrQuery, reconcilePayment, recordVerifiedPayment } from '../_shared/payment-flow.ts'
 import {
-  type Gateway, GATEWAYS, gatewayFromCredentials, gatewaySecret, loadPaymentProvider, type PaymentSettings,
+  type Gateway, GATEWAYS, gatewayFromCredentials, gatewaySandbox, gatewaySecret, loadPaymentProvider, type PaymentSettings,
 } from '../_shared/payments/registry.ts'
 import { initiatePaymentSchema, manualPaymentSchema, parse } from '../_shared/schemas.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
@@ -166,7 +166,7 @@ export default (
       }
       const hint = code === 'bkash' ? `App key ••••${creds.app_key.slice(-4)}` : `Merchant ${creds.merchant_id}`
       await rpc(admin, 'integration_secret_store', { p_key: gatewaySecret(code), p_value: creds, p_hint: hint, p_actor: staff.user.id })
-      const config = await rpc(admin, 'payment_set_provider', { p_code: code, p_enabled: true, p_sandbox: code === 'bkash' ? input.sandbox ?? true : null })
+      const config = await rpc(admin, 'payment_set_provider', { p_code: code, p_enabled: true, p_sandbox: gatewaySandbox(code, input.sandbox) })
       return json(req, { ok: true, message, hint, config })
     }
 
