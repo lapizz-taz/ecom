@@ -6,6 +6,7 @@ import { toast } from '@/lib/toast'
 import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
 import { PageHeader } from '@/components/common/page-header'
+import { Reveal } from '@/components/common/reveal'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -241,7 +242,7 @@ export default function NewOrderPage() {
               <Field label="Internal note" htmlFor="n-inote"><Input id="n-inote" value={internalNote} onChange={(e) => setInternalNote(e.target.value)} /></Field>
             </CardContent>
           </Card>
-          {/^01[3-9]\d{8}$/.test(phone) && <PhoneRecordCards phone={phone} />}
+          <Reveal open={/^01[3-9]\d{8}$/.test(phone)}><PhoneRecordCards phone={phone} /></Reveal>
           <Card>
             <CardHeader><CardTitle className="text-sm">Products</CardTitle></CardHeader>
             <CardContent className="space-y-3">

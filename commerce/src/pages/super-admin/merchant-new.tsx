@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Check } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { Field } from '@/components/common/field'
 import { PageHeader } from '@/components/common/page-header'
 import { Spinner } from '@/components/common/states'
@@ -16,7 +16,7 @@ import { formatMoney, slugify } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { listPlans } from '@/services/billing'
-import { createMerchant, listEmployees } from '@/services/platform'
+import { createMerchant, listEmployees, signupRequests, updateSignupRequest } from '@/services/platform'
 
 function PlanOption({ selected, onSelect, title, detail }: { selected: boolean; onSelect: () => void; title: string; detail: string }) {
   return (
@@ -41,12 +41,30 @@ export default function MerchantNewPage() {
   const employees = useQuery({ queryKey: ['platform-employees'], queryFn: listEmployees, enabled: can('employees') })
   const plans = useQuery({ queryKey: ['platform-plans'], queryFn: listPlans, enabled: can('subscriptions') })
   const plan = plans.data?.plans.find((p) => p.code === planCode)
+  // Opened from a sign-up request (WhatsApp): its details fill the form once, and the business is linked to it.
+  const requestId = new URLSearchParams(useLocation().search).get('request')
+  const request = useQuery({
+    queryKey: ['platform-signup-requests'], queryFn: () => signupRequests(), enabled: Boolean(requestId),
+    select: (rows) => rows.find((r) => r.id === requestId) ?? null,
+  })
+  const filled = useRef(false)
+  useEffect(() => {
+    const r = request.data
+    if (!r || filled.current) return
+    filled.current = true
+    setBiz((b) => ({ ...b, name: r.business_name, slug: slugify(r.business_name), phone: r.phone, business_type: r.business_type ?? '', website: r.website ?? '',
+      notes: [`Sign-up request ${r.reference} (WhatsApp)`, r.sells_on.length ? `Sells on ${r.sells_on.join(', ')}` : '', r.orders_per_month ? `${r.orders_per_month} orders/month` : '',
+        r.whatsapp && r.whatsapp !== r.phone ? `WhatsApp ${r.whatsapp}` : ''].filter(Boolean).join(' · ') }))
+    setOwner((o) => ({ ...o, full_name: r.full_name, email: r.email ?? '' }))
+    if (r.plan_code) setPlanCode(r.plan_code)
+  }, [request.data])
   const create = useMutation({
     mutationFn: () => createMerchant({
       merchant: Object.fromEntries(Object.entries({ ...biz, slug: biz.slug || undefined, plan_code: planCode || undefined }).filter(([, v]) => v !== '' && v !== undefined)),
       owner: { full_name: owner.full_name.trim(), email: owner.email.trim(), password: owner.password || undefined },
     }),
-    onSuccess: (r) => {
+    onSuccess: async (r) => {
+      if (request.data) await updateSignupRequest(request.data.id, 'CONVERTED', r.merchant_id).catch((e) => toast.error(e))
       toast.success('Merchant created', { description: r.owner_invited ? `An invitation went to ${owner.email}.` : 'The owner can sign in with the password you set.' })
       navigate(`/super-admin/merchants/${r.merchant_id}`)
     },
@@ -61,6 +79,11 @@ export default function MerchantNewPage() {
     <div className="space-y-4">
       <Link to="/super-admin/merchants" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Merchants</Link>
       <PageHeader title="New merchant" description="Nothing is created until you confirm on the last step. The account starts in onboarding with the standard roles, statuses and settings." />
+      {request.data && (
+        <p className="rounded-xl border bg-muted/40 px-3 py-2 text-sm">
+          From sign-up request <span className="font-mono">{request.data.reference}</span> ({request.data.full_name}, {request.data.phone}). Check the details; the request is marked opened when you create the business.
+        </p>
+      )}
       <ol className="flex gap-2">
         {STEPS.map((s, i) => (
           <li key={s} className={cn('flex min-w-0 items-center gap-2 rounded-md border px-3 py-2 text-sm', i === step ? 'flex-[3] border-foreground sm:flex-1' : 'flex-none text-muted-foreground sm:flex-1')}

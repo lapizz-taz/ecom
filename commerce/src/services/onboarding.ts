@@ -24,6 +24,8 @@ export interface SignupOptions {
   plans: SignupPlan[]
   /** How a new business is activated: paid online at once, or by the team after a WhatsApp message. */
   onboarding?: { method: 'online_payment' | 'whatsapp'; whatsapp_number: string | null }
+  /** Sign-up by WhatsApp: the details are sent to the team, who open the account. */
+  whatsapp_signup?: { enabled: boolean; number: string | null }
 }
 
 export interface SignupBusiness {
@@ -60,6 +62,18 @@ export async function selfOnboard(business: SignupBusiness): Promise<SelfOnboard
   if (error) throw error
   return data as unknown as SelfOnboardResult
 }
+
+export interface SignupRequestResult { id: string; reference: string; whatsapp_number: string; message: string }
+
+/** Sign-up by WhatsApp: keeps the details for the team (no login is created) and returns the message to send. */
+export async function signupRequest(business: SignupBusiness & { email?: string }): Promise<SignupRequestResult> {
+  const { data, error } = await supabase.rpc('public_signup_request' as never, { p: business } as never)
+  if (error) throw error
+  return data as unknown as SignupRequestResult
+}
+
+/** The WhatsApp link that opens a chat with the number and the message typed in. */
+export const whatsappLink = (number: string, message: string) => `https://wa.me/${number.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`
 
 // The details typed before the e-mail confirmation are kept with the account
 // (and in this browser), so the business opens as soon as the link is clicked.

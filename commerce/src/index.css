@@ -552,6 +552,23 @@
   .pop-in { animation: none; }
 }
 
+/* Delivery record panel: tiles rise in one after another, bars fill from the left,
+   and while a check runs each source pulses and a light sweeps over its bar. */
+@keyframes record-tile { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+@keyframes record-bar { from { transform: scaleX(0); } }
+@keyframes record-shimmer { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
+@keyframes record-ping { 0% { transform: scale(0.85); opacity: 0.8; } 70%, 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes record-dot { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+.record-tile { animation: record-tile 420ms var(--ease-out) both; }
+.record-bar { transform-origin: left; animation: record-bar 900ms var(--ease-out) both; }
+.record-shimmer { transform: translateX(-100%); animation: record-shimmer 1.5s var(--ease-in-out) infinite; }
+.record-ping { animation: record-ping 1.6s var(--ease-out) infinite; }
+.record-dot { animation: record-dot 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .record-tile, .record-bar, .record-ping, .record-dot { animation: none; }
+  .record-shimmer { animation: none; opacity: 0.4; transform: none; }
+}
+
 /* Horizontal tab rows that scroll on narrow screens without a visible bar. */
 /* The Fullfilio website (marketing pages). Dark by default; visitors can switch to the white
    version with the toggle in the header (data-site-theme="light"). Product demos stay dark. */
