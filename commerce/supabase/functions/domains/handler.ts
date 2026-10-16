@@ -199,6 +199,9 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
   if (host.status === 'active' && host.ssl?.status === 'active') {
     return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
   }
+  // On Cloudflare DNS the TXT records do not count (the CNAME verifies the domain): do not ask for them.
+  const cloudflareDns = diagnostics.dns_host?.provider === 'Cloudflare' && !diagnostics.dns_host.mixed
+  if (cloudflareDns) extra.splice(0, extra.length)
   const problem = host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message
   const blocking = diagnostics.issues.find((i) => i.severity === 'error')
   return {

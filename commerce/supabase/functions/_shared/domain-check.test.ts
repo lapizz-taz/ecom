@@ -268,3 +268,20 @@ describe('root domain through our proxy (any DNS company)', () => {
     expect(d.issues.find((i) => i.code === 'WRONG_TARGET')?.detail).toContain('198.51.100.20')
   })
 })
+
+describe('root domain on Cloudflare DNS', () => {
+  it('connects through the CNAME: no TXT asked for, no issues', async () => {
+    const target = cloudflareTarget('stores.fullfilio.example')
+    const zone: Zone = {
+      'stores.fullfilio.example': { A: ['104.21.50.1', '172.67.1.2'] },
+      'shop.com': { A: ['104.21.50.1', '172.67.1.2'], NS: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'] },
+    }
+    const dns = fakeFetch(zone)
+    const fetcher = (async (input: string | URL, init?: RequestInit) => new URL(String(input)).pathname === '/'
+      ? new Response('ok', { headers: { 'x-fullfilio': 'store' } }) : dns(input, init)) as typeof fetch
+    const d = await diagnose('shop.com', { target, fetcher, expect: [{ type: 'TXT', name: '_cf-custom-hostname.shop.com', value: 'abc' }] })
+    expect(d.pointed).toBe(true)
+    expect(d.records.some((r) => r.type === 'TXT')).toBe(false)
+    expect(d.issues).toEqual([])
+  })
+})
