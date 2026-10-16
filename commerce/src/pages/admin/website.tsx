@@ -347,7 +347,7 @@ function StoreAddressCard({ canEdit }: { canEdit: boolean }) {
         <CardDescription>Your store is online at these addresses. A connected domain below becomes the main one.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
-        {[a.custom_domain && { label: 'Your domain', url: `https://${a.custom_domain}` }, a.subdomain && { label: 'Fullfilio address', url: `https://${a.subdomain}` }, { label: a.subdomain ? 'Always works' : 'Fullfilio address', url: path }]
+        {[a.custom_domain && { label: 'Your domain', url: `https://${a.custom_domain}` }, a.subdomain && { label: 'Fullfilio address', url: `https://${a.subdomain}` }, !a.subdomain && { label: 'Fullfilio address', url: path }]
           .filter(Boolean).map((x) => x && (
             <div key={x.url} className="flex items-center gap-3 rounded-lg border px-3 py-2">
               <Globe className="size-4 shrink-0 text-muted-foreground" />
