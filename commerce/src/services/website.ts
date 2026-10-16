@@ -19,6 +19,7 @@ export interface DomainDiagnosis {
   issues: Array<{ code: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string }>
   /** Who answers DNS for the domain (from its nameservers); mixed = two companies at once. */
   dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean }
+  hosting?: { status: string; ssl_status: string | null; error: string | null }
 }
 export interface StoreDomain {
   id: string; domain: string; status: 'PENDING' | 'VERIFYING' | 'ACTIVE' | 'ERROR' | 'MANUAL' | 'REMOVED'

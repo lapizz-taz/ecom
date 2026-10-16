@@ -171,6 +171,15 @@ const PROVIDER_STEPS: Record<string, { where: string; tip?: string }> = {
   'Amazon Route 53': { where: 'Route 53 → Hosted zones → your domain', tip: 'Route 53 has no CNAME at @: use www for the store.' },
 }
 
+/** The hosting's own progress, in plain words. */
+function hostingText(h: NonNullable<DomainDiagnosis['hosting']>): string {
+  const owner = h.status === 'active' ? 'Domain confirmed' : 'Confirming the domain is yours'
+  const cert = h.ssl_status === 'active' ? 'certificate ready'
+    : h.ssl_status === 'pending_validation' || h.ssl_status === 'initializing' || h.ssl_status === 'pending_issuance' || h.ssl_status === 'pending_deployment' ? 'certificate being issued'
+    : h.ssl_status ? `certificate: ${h.ssl_status.replace(/_/g, ' ')}` : 'certificate waiting'
+  return `Hosting: ${owner} · ${cert}`
+}
+
 /** Who runs the domain's DNS, and where to make the change there. */
 function DnsHost({ diag }: { diag: DomainDiagnosis }) {
   const host = diag.dns_host
@@ -261,7 +270,8 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
             )}
           </Section>
           <Section icon={<StatusIcon state={!diag ? 'wait' : diag.tls.ok && diag.tls.served_by_store !== false ? 'ok' : diag.pointed ? 'wait' : 'bad'} />}
-            title={diag?.tls.detail ?? 'HTTPS not checked yet'} />
+            title={diag?.tls.detail ?? 'HTTPS not checked yet'}
+            sub={diag?.hosting && d.status !== 'ACTIVE' ? hostingText(diag.hosting) : undefined} />
           {notes.map((n) => (
             <Section key={n.code} icon={<Info className="size-4 text-muted-foreground" />} title={n.title} sub={n.detail} />
           ))}

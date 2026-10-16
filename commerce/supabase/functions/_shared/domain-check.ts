@@ -27,6 +27,8 @@ export interface Diagnosis {
   issues: DomainIssue[]
   /** Who answers DNS for the domain (its nameservers), so the steps can name the right panel. */
   dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean }
+  /** What the hosting itself says (Cloudflare for SaaS): ownership and certificate status. */
+  hosting?: { status: string; ssl_status: string | null; error: string | null }
 }
 
 /** A record the hosting asked for (ownership / certificate TXT) and whether it is there yet. */

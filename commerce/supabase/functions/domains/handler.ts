@@ -147,7 +147,10 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
       expect.push({ type: 'TXT', name: r.txt_name, value: r.txt_value })
     }
   }
-  const diagnostics = await diagnose(d, { target, expect })
+  const diagnostics: Diagnosis = {
+    ...(await diagnose(d, { target, expect })),
+    hosting: { status: host.status, ssl_status: host.ssl?.status ?? null, error: host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message ?? null },
+  }
   if (host.status === 'active' && host.ssl?.status === 'active') {
     return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
   }
