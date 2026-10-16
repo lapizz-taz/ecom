@@ -70,6 +70,16 @@ describe('Worker routing', () => {
     expect(await page.text()).toBe('asset /oauth/other')
   })
 
+  it('answers 404 (not the app page) for a code file from an older version', async () => {
+    const r = createRouter(env(), fns)
+    for (const path of ['/assets/index-OLD123.js', '/assets/app-OLD.css', '/old-chunk.mjs']) {
+      const res = await r.route(new Request(`https://app.example.com${path}`))
+      expect(res.status).toBe(404)
+      expect(res.headers.get('cache-control')).toBe('no-store')
+    }
+    expect(assets.fetch).not.toHaveBeenCalled()
+  })
+
   it('passes the long-running functions on to Supabase unchanged (Workers Free)', async () => {
     const seen: Array<{ url: string; init: RequestInit }> = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {

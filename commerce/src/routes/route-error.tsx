@@ -8,8 +8,18 @@ import { cn } from '@/lib/utils'
 const RELOAD_KEY = 'app-update-reload'
 const AUTO_RELOAD_MS = 2500
 
+/**
+ * Reload with fresh copies of the code files that failed (named in the error). A plain reload
+ * can reuse a broken copy the browser kept; fetching with cache: 'reload' replaces it first.
+ */
+export async function freshReload(error: unknown) {
+  const urls = String((error as Error | undefined)?.message ?? '').match(/https?:\/\/\S+?\.(?:m?js|css)\b/g) ?? []
+  await Promise.all(urls.map((u) => fetch(u, { cache: 'reload' }).catch(() => null)))
+  window.location.reload()
+}
+
 /** A new deployment replaced the old code: reload once on our own (never in a loop). */
-function useAutoReload(enabled: boolean) {
+function useAutoReload(enabled: boolean, error: unknown) {
   const [left, setLeft] = useState(AUTO_RELOAD_MS)
   const [auto] = useState(() => {
     if (!enabled) return false
@@ -29,11 +39,11 @@ function useAutoReload(enabled: boolean) {
       if (remaining === 0) {
         clearInterval(tick)
         try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())) } catch { /* private mode */ }
-        window.location.reload()
+        void freshReload(error)
       }
     }, 100)
     return () => clearInterval(tick)
-  }, [auto])
+  }, [auto, error])
   return { auto, progress: 1 - left / AUTO_RELOAD_MS }
 }
 
@@ -43,7 +53,7 @@ export function RouteError() {
   const notFound = isRouteErrorResponse(error) && error.status === 404
   // A new deployment can invalidate lazy chunks; a reload fetches the new ones.
   const chunkError = error instanceof Error && /dynamically imported module|Loading chunk|Importing a module script failed/i.test(error.message)
-  const { auto, progress } = useAutoReload(chunkError)
+  const { auto, progress } = useAutoReload(chunkError, error)
   const home = pathname.startsWith('/admin') ? '/admin' : '/'
   useEffect(() => {
     if (!notFound && !chunkError) reportError(error, { boundary: 'route' })
@@ -79,7 +89,7 @@ export function RouteError() {
 
           <div className="relative mt-6 grid gap-2">
             {kind !== 'missing' && (
-              <Button size="lg" className="w-full" onClick={() => window.location.reload()}>
+              <Button size="lg" className="w-full" onClick={() => (chunkError ? void freshReload(error) : window.location.reload())}>
                 <RefreshCw /> {kind === 'update' ? 'Reload now' : 'Reload page'}
               </Button>
             )}

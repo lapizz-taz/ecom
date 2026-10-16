@@ -98,6 +98,12 @@ export function createRouter(env: Env, fns: Record<string, Handler> = FUNCTIONS)
     if (path.startsWith('/rest/v1/') || path.startsWith('/auth/v1/') || path.startsWith('/realtime/v1/')) return database(req, env)
     const fn = FUNCTION_PATH.exec(path)
     if (fn) return fn[1] === 'files' ? files(inbound(req)) : invoke(fn[1], inbound(req))
+    // A code file from an older version (gone after a deploy) reaches the Worker: answer 404, never
+    // the app page. The page would be kept under /assets/ as "immutable" for a year, and the
+    // browser could then never load that file again ("A new version is ready" on every visit).
+    if (path.startsWith('/assets/') || /\.(m?js|css|map)$/i.test(path)) {
+      return Promise.resolve(new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } }))
+    }
     return env.ASSETS.fetch(req)
   }
 
