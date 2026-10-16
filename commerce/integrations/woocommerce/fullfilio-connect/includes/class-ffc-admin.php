@@ -331,7 +331,8 @@ class FFC_Admin {
 .ffc-ver{font-size:11px;font-weight:500;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:2px 9px;line-height:1.4;letter-spacing:0}
 .ffc-sub{font-size:14px;color:var(--muted);margin:6px 0 0;max-width:640px}
 .ffc-brand{display:flex;align-items:center;gap:12px;flex:none;color:var(--ink)!important;text-decoration:none!important;border-radius:14px}
-.ffc-brand:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+.ffc-brand:focus,.ffc-brand:active{outline:none!important;box-shadow:none!important}
+.ffc-brand:focus-visible{outline:2px solid var(--brand)!important;outline-offset:4px}
 .ffc-brand .ffc-mark{width:44px;height:44px;border-radius:12px;box-shadow:0 10px 22px -12px rgba(33,66,231,.75)}
 .ffc-brand .ffc-word{height:21px;width:auto;fill:currentColor}
 @media(max-width:782px){.ffc-hero-top{align-items:flex-start}.ffc-brand .ffc-word{display:none}.ffc-brand .ffc-mark{width:38px;height:38px}.ffc-hero h1{font-size:20px}}

@@ -35,6 +35,11 @@ class FFC_Settings {
 		if ( ! is_array( $c ) || empty( $c['endpoint'] ) || empty( $c['channel_id'] ) || empty( $c['secret'] ) ) {
 			return null;
 		}
+		// Stores paired while the app ran on a temporary *.vercel.app address open the real one.
+		$host = isset( $c['app_url'] ) ? wp_parse_url( $c['app_url'], PHP_URL_HOST ) : '';
+		if ( is_string( $host ) && preg_match( '/\.vercel\.app$/i', $host ) ) {
+			$c['app_url'] = 'https://fullfilio.com/admin';
+		}
 		return $c;
 	}
 

@@ -28,7 +28,7 @@ const SECTIONS = {
   '/admin/hr/requests': { title: 'Leave & requests', description: 'Leave, attendance corrections and late excuses, decided by HR.' },
   '/admin/hr/shifts': { title: 'Shift management', description: 'Working hours, grace time and work days.' },
   '/admin/hr/departments': { title: 'Departments & SOP', description: 'Teams, their leads, standard operating procedures and daily checklists.' },
-  '/admin/hr/settings': { title: 'Workforce settings', description: 'Attendance access, work schedule, breaks, holidays and per-person overrides.' },
+  '/admin/hr/settings': { title: 'Team Rhythm', description: 'How your team’s day runs: check-in rules, work hours, breaks, holidays and per-person exceptions.' },
 } as const
 
 export default function HrPage() {

@@ -322,7 +322,7 @@ export default function AdminLayout() {
         {sidebar(collapsed)}
       </aside>
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 border-0 bg-sidebar p-0">
+        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 border-0 bg-sidebar p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           {sidebar(false)}
         </SheetContent>

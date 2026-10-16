@@ -166,7 +166,7 @@ export const NAV: NavSection[] = [
           { label: 'Shift Management', to: '/admin/hr/shifts', permission: 'hr.view' },
           { label: 'Departments & SOP', to: '/admin/hr/departments', permission: 'hr.view' },
           { label: 'User & Role', to: '/admin/users', permission: 'users.manage' },
-          { label: 'Settings', to: '/admin/hr/settings', permission: 'hr.view' },
+          { label: 'Team Rhythm', to: '/admin/hr/settings', permission: 'hr.view' },
         ],
       },
       {
