@@ -47,8 +47,9 @@ describe('tenancy: structure', () => {
       expect(exempt).toBe(await value(db, `select count(*)::int from public.tenancy_exempt_functions`))
       // Outside the Super Admin functions (which check platform permissions themselves) the list stays short:
       // credits, order fees, erasure and store reset post to one named merchant's ledger and records;
-      // the sign-in bridge looks a login up by its Clerk account.
-      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(92)
+      // the sign-in bridge looks a login up by its Clerk account; subscription onboarding, activation, renewal
+      // and expiry reminders read the platform's onboarding settings for the merchant's own plan.
+      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(100)
     }))
 
   it('turns existing data into Merchant #1', () =>

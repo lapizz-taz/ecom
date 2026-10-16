@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asSystem, asUser, closePool, expectError, inTx, value, type Db } from '../support/db'
-import { createStaff } from '../support/fixtures'
+import { createStaff, setSetting } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -215,6 +215,8 @@ describe('HRM workforce: SOP checklists, members, dashboards', () => {
 
   it('the live dashboard shows who is working, on a break or not in; the month review lists every day', () =>
     inTx(async (db) => {
+      // The owner has no shift, so the store's work days apply: make today one, whatever the weekday.
+      await setSetting(db, 'hr', { work_days: [0, 1, 2, 3, 4, 5, 6] })
       const { owner, agent, other } = await setUp(db)
       await asUser(db, agent)
       await db.query(`select public.hr_check_in()`)
