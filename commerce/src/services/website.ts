@@ -3,7 +3,7 @@ import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 
 // --- custom domains ---------------------------------------------------------------------
-export interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
+export interface DnsRecord { type: 'A' | 'AAAA' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
 /** One region's view of the domain (Google DNS asked with a client address from that region). */
 export interface RegionCheck { code: string; name: string; ok: boolean; answers: string[] }
 /** What the last check found (see supabase/functions/_shared/domain-check.ts). */

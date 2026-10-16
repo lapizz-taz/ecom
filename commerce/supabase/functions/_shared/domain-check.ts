@@ -69,7 +69,13 @@ export const oldHostOf = (ip: string) => OLD_HOSTS.find(([re]) => re.test(ip))?.
  * hostname, also at the apex where the DNS provider allows it (CNAME
  * flattening / ALIAS); Cloudflare has no fixed address for an A record.
  */
-export interface HostingTarget { provider: 'vercel' | 'cloudflare'; a: string | null; cname: string }
+export interface HostingTarget { provider: 'vercel' | 'cloudflare' | 'proxy'; a: string | null; cname: string; aaaa?: string | null }
+/**
+ * A root domain through our own proxy server (deploy/root-proxy): an A record to its
+ * fixed address works at every DNS company, like Shopify's 23.227.38.65.
+ */
+export const proxyTarget = (ip: string, cname: string, ipv6?: string | null): HostingTarget =>
+  ({ provider: 'proxy', a: ip.trim(), aaaa: ipv6?.trim() || null, cname: cname.toLowerCase().replace(/\.$/, '') })
 export const VERCEL_TARGET: HostingTarget = { provider: 'vercel', a: '76.76.21.21', cname: 'cname.vercel-dns.com' }
 export const cloudflareTarget = (cname: string): HostingTarget => ({ provider: 'cloudflare', a: null, cname: cname.toLowerCase().replace(/\.$/, '') })
 /** Header every page of the site carries on Cloudflare (public/_headers), so a check can tell it is our store answering. */
@@ -156,7 +162,9 @@ const only = (answers: DohAnswer[] | null, type: RecordType) => (answers ?? []).
 /** The CNAME / A checks for one hosting target. */
 function matchers(target: HostingTarget) {
   if (target.provider === 'vercel') return { cname: isVercelCname, a: isVercelA }
-  return { cname: (host: string) => host.toLowerCase().replace(/\.$/, '') === target.cname, a: (_ip: string) => false }
+  const cname = (host: string) => host.toLowerCase().replace(/\.$/, '') === target.cname
+  if (target.provider === 'proxy') return { cname, a: (ip: string) => ip === target.a || (!!target.aaaa && ip === target.aaaa) }
+  return { cname, a: (_ip: string) => false }
 }
 
 /** True when these answers (the CNAME chain and/or addresses) lead to the store. */
@@ -209,7 +217,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     try {
       const res = await fetcher(`https://${domain}/`, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(8_000) })
       await res.body?.cancel().catch(() => undefined)
-      const ours = onCloudflare ? res.headers.has(STORE_HEADER) : res.headers.has('x-vercel-id') || /vercel/i.test(res.headers.get('server') ?? '')
+      const ours = target.provider === 'vercel' ? res.headers.has('x-vercel-id') || /vercel/i.test(res.headers.get('server') ?? '') : res.headers.has(STORE_HEADER)
       return { ok: true, status: res.status, served_by_store: ours, detail: ours ? 'TLS certificate provisioned for secure connections' : 'HTTPS works, but another server answered (not the store)' }
     } catch (error) {
       const msg = String((error as Error)?.message ?? error)
@@ -232,13 +240,15 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     const ok = m.a(v) || isOurs(v) || (isCloudflare(v) && servedByUs)
     const wrong = target.a ? `Should be ${target.a}` : `Use a CNAME (or ALIAS) to ${target.cname} instead`
     const old = oldOf(v)
-    const note = old ? `Still points to ${old} — delete this record` : onCloudflare
+    const note = old ? `Still points to ${old} — delete this record`
+      : target.provider === 'proxy' ? (ok ? undefined : wrong)
+      : onCloudflare
       ? (ok ? 'Points to Fullfilio (ALIAS / flattening)' : isCloudflare(v) ? 'Another Cloudflare site answers here, not the store' : wrong)
       : (ok ? (isCloudflare(v) ? 'Cloudflare proxy' : undefined) : isCloudflare(v) ? 'Cloudflare proxy (not reaching the store)' : wrong)
     records.push({ type: 'A', name, value: v, ok, note })
   }
   for (const v of own ? aaaaValues : []) {
-    const ok = isOurs(v) || (isCloudflare(v) && servedByUs)
+    const ok = isOurs(v) || m.a(v) || (isCloudflare(v) && servedByUs)
     records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : 'Cloudflare proxy') : 'Remove: the store has no IPv6 address' })
   }
   // Records the hosting asked for (ownership / certificate): are they there yet?
@@ -333,7 +343,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     issues.push({ code: 'EXTRA_A', severity: 'error', title: 'Extra A records',
       detail: `Some visitors will reach ${strayA.join(', ')} instead of the store. Delete those A records.` })
   }
-  if (own && aaaaValues.some((v) => !isCloudflare(v))) {
+  if (own && aaaaValues.some((v) => !isCloudflare(v) && !m.a(v))) {
     issues.push({ code: 'AAAA', severity: 'warning', title: 'IPv6 (AAAA) records found',
       detail: 'Visitors on IPv6 may reach another server. Delete the AAAA records for this name.' })
   }

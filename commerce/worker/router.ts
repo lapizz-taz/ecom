@@ -25,6 +25,37 @@ export interface Env extends FilesEnv, DbEnv, Omit<CopyEnv, 'DATABASE'> {
    * Paid this is empty and everything runs in the Worker.
    */
   SUPABASE_FUNCTIONS?: string
+  /** Shared with the root-domain proxy (deploy/root-proxy): only then are its headers believed. */
+  ROOT_PROXY_SECRET?: string
+}
+
+const PROXY_HEADERS = ['x-fullfilio-proxy', 'x-fullfilio-host', 'x-fullfilio-client-ip']
+
+function sameSecret(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+/**
+ * A visit to a root domain (shop.com) through our proxy server arrives on the proxy's
+ * upstream address. With the proxy's secret, the request is put back on the visitor's own
+ * address (so links, payment returns and the store lookup see shop.com) and carries the
+ * visitor's IP. Without it, the proxy headers are dropped: nobody else can claim a host or IP.
+ */
+export function fromRootProxy(req: Request, secret: string | undefined): Request {
+  if (!PROXY_HEADERS.some((h) => req.headers.has(h))) return req
+  const given = req.headers.get('x-fullfilio-proxy') ?? ''
+  const host = (req.headers.get('x-fullfilio-host') ?? '').toLowerCase().replace(/:\d+$/, '')
+  const ip = req.headers.get('x-fullfilio-client-ip') ?? ''
+  const trusted = !!secret && secret.length >= 16 && sameSecret(given, secret) && /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(host)
+  const url = new URL(req.url)
+  if (trusted) url.host = host
+  const out = new Request(url.toString(), req)
+  for (const h of PROXY_HEADERS) out.headers.delete(h)
+  if (trusted && /^[0-9a-f:.]{3,45}$/i.test(ip)) out.headers.set('cf-connecting-ip', ip)
+  return out
 }
 
 const FUNCTION_PATH = /^\/functions\/v1\/([a-z0-9-]+)(?=\/|$)/
@@ -85,7 +116,8 @@ export function createRouter(env: Env, fns: Record<string, Handler> = FUNCTIONS)
     return fn ? fn(req) : Promise.resolve(problem(404, 'NOT_FOUND', 'No such function'))
   }
 
-  const route = (req: Request): Promise<Response> => {
+  const route = (incoming: Request): Promise<Response> => {
+    const req = fromRootProxy(incoming, env.ROOT_PROXY_SECRET)
     const url = new URL(req.url)
     const path = url.pathname
     if (path === '/__clerk' || path.startsWith('/__clerk/')) {

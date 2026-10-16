@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apexOf, cloudflareTarget, diagnose, dnsHostOf, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS } from './domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsHostOf, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS } from './domain-check.ts'
 
 type Zone = Record<string, Partial<Record<'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS' | 'TXT', string[]>>>
 const CODE = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 } as const
@@ -240,5 +240,30 @@ describe('root domain on a DNS company that runs on Cloudflare', () => {
     expect(www.issues.map((i) => i.code)).not.toContain('USE_WWW')
     zone['shop.com'].NS = ['dns1.registrar-servers.com']
     expect((await diagnose('shop.com', { target, fetcher: f })).issues.map((i) => i.code)).not.toContain('USE_WWW')
+  })
+})
+
+describe('root domain through our proxy (any DNS company)', () => {
+  const target = proxyTarget('198.51.100.20', 'stores.fullfilio.example')
+  const ours = (zone: Zone) => {
+    const dns = fakeFetch(zone)
+    return (async (input: string | URL, init?: RequestInit) => new URL(String(input)).pathname === '/'
+      ? new Response('ok', { headers: { 'x-fullfilio': 'store' } }) : dns(input, init)) as typeof fetch
+  }
+
+  it('an A record to the proxy on Hostinger is live, with no "use www"', async () => {
+    const d = await diagnose('shop.com', { target, fetcher: ours({ 'shop.com': { A: ['198.51.100.20'], NS: ['ns1.dns-parking.com', 'ns2.dns-parking.com'] } }) })
+    expect(d.pointed).toBe(true)
+    expect(d.live_everywhere).toBe(true)
+    expect(d.tls.served_by_store).toBe(true)
+    expect(d.issues).toEqual([])
+  })
+
+  it('an old ALIAS or A record says to set the A record to the proxy', async () => {
+    // Cloudflare answers the old ALIAS with a 403 page, not the store.
+    const d = await diagnose('shop.com', { target, fetcher: fakeFetch({ 'shop.com': { A: ['104.21.50.1'] } }, { ok: true, vercel: false }) })
+    expect(d.pointed).toBe(false)
+    expect(d.records[0]).toMatchObject({ ok: false, note: 'Should be 198.51.100.20' })
+    expect(d.issues.find((i) => i.code === 'WRONG_TARGET')?.detail).toContain('198.51.100.20')
   })
 })
