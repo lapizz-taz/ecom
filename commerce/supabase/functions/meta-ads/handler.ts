@@ -44,7 +44,11 @@ const schema = z.discriminatedUnion('action', [
     is_active: z.boolean().default(true),
   }),
   z.object({ action: z.literal('disconnect'), id: z.string().uuid() }),
-  z.object({ action: z.literal('sync'), id: z.string().uuid().optional(), days: z.number().int().min(1).max(90).default(3) }),
+  z.object({
+    action: z.literal('sync'), id: z.string().uuid().optional(), days: z.number().int().min(1).max(90).default(3),
+    // A chosen range instead of "the last n days": at most 31 days, ending today at the latest.
+    since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
 ])
 
 interface Secrets { access_token?: string; app_secret?: string }
@@ -133,8 +137,22 @@ function syncWindow(days: number, timeZone = 'Asia/Dhaka') {
   return { since, until }
 }
 
-async function runSync(admin: SupabaseClient, account: AccountRow, creds: Secrets, days: number) {
-  const { since, until } = syncWindow(days, account.timezone ?? 'Asia/Dhaka')
+/** Longest range one custom sync may cover. */
+export const MAX_CUSTOM_DAYS = 31
+
+/** A chosen range, checked: in order, at most 31 days, not in the future (store date). */
+export function customWindow(since: string, until: string, today: string): { since: string; until: string } {
+  const day = (d: string) => Date.parse(`${d}T00:00:00Z`)
+  if (Number.isNaN(day(since)) || Number.isNaN(day(until))) throw new HttpError(422, 'Pick a valid date range', 'VALIDATION')
+  if (since > until) throw new HttpError(422, 'The start date is after the end date', 'VALIDATION')
+  if (until > today) throw new HttpError(422, 'The range cannot end after today', 'VALIDATION')
+  const days = (day(until) - day(since)) / 86_400_000 + 1
+  if (days > MAX_CUSTOM_DAYS) throw new HttpError(422, `Pick at most ${MAX_CUSTOM_DAYS} days at a time`, 'VALIDATION')
+  return { since, until }
+}
+
+async function runSync(admin: SupabaseClient, account: AccountRow, creds: Secrets, days: number, range?: { since: string; until: string }) {
+  const { since, until } = range ?? syncWindow(days, account.timezone ?? 'Asia/Dhaka')
   const totals = { campaigns: 0, adsets: 0, ads: 0, insights: 0, cost: 0, payments: 0 }
   try {
     if (!creds.access_token) throw new MetaApiError('The access token is missing. Edit the account and paste it again.', 190)
@@ -196,6 +214,7 @@ export default (
       }
       case 'save': {
         const saved = input.id ? await storedSecrets(admin, input.id) : {}
+        const previous = input.id ? await accountRow(admin, input.id).catch(() => null) : null
         const creds: Secrets = { access_token: input.access_token ?? saved.access_token, app_secret: input.app_secret ?? saved.app_secret }
         if (!input.id && !creds.access_token) throw new HttpError(422, 'Paste the access token', 'VALIDATION')
         // Active accounts must connect; a paused one can be saved as it is.
@@ -231,8 +250,10 @@ export default (
             throw error
           }
         }
-        // First sync for a new account: the last 30 days.
-        const sync = !input.id && row.is_active ? await runSync(admin, row, creds, 30) : null
+        // New account, new token or another ad account (e.g. reconnecting after a
+        // disconnect): sync the last 30 days, not only what the next run picks up.
+        const fresh = !input.id || !!input.access_token || previous?.ad_account_id !== row.ad_account_id
+        const sync = row.is_active && fresh ? await runSync(admin, row, creds, 30) : null
         return json(req, { ok: true, account: row, warnings: result?.warnings ?? [], sync })
       }
       case 'disconnect': {
@@ -247,9 +268,12 @@ export default (
           if (cron) return json(req, { ok: true, skipped: 'no active Meta accounts' })
           throw new HttpError(422, 'Add a Meta Ads account first', 'NOT_CONNECTED')
         }
+        const custom = input.since || input.until
+          ? customWindow(input.since ?? input.until!, input.until ?? input.since!, syncWindow(1).until)
+          : undefined
         const results = []
         for (const account of accounts) {
-          results.push(await runSync(admin, account, await storedSecrets(admin, account.id), input.days))
+          results.push(await runSync(admin, account, await storedSecrets(admin, account.id), input.days, custom))
         }
         const failed = results.filter((r) => !r.ok)
         if (!cron && input.id && failed.length) throw new HttpError(502, failed[0].error ?? 'Meta Ads sync failed', failed[0].status ?? 'FAILED')
