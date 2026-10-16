@@ -50,13 +50,6 @@ export function dnsHostOf(ns: string): string | null {
 const nsOwner = (ns: string) => dnsHostOf(ns) ?? ns.toLowerCase().replace(/\.$/, '').split('.').slice(-2).join('.')
 
 // Addresses of other website builders: a domain still pointing there shows the old site.
-/**
- * DNS companies whose DNS runs on Cloudflare itself. Cloudflare cannot verify a root
- * domain there with a TXT record (no pre-validation for a domain already on Cloudflare),
- * and the root cannot hold a real CNAME, so the root never goes live: use www instead.
- */
-export const CLOUDFLARE_BACKED_DNS = new Set(['Hostinger'])
-
 const OLD_HOSTS: Array<[RegExp, string]> = [
   [/^23\.227\.38\.\d+$/, 'Shopify'], [/^2\.57\.91\.\d+$/, 'Hostinger (website or parking page)'],
   [/^185\.230\.63\.\d+$/, 'Wix'], [/^198\.185\.159\.\d+$|^198\.49\.23\.\d+$/, 'Squarespace'], [/^76\.76\.21\.\d+$/, 'Vercel'],
@@ -291,9 +284,12 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
   const owners = [...new Set(nameservers.map(nsOwner))]
   const dnsHost = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1 }
-  if (kind === 'apex' && onCloudflare && dnsHost.provider && CLOUDFLARE_BACKED_DNS.has(dnsHost.provider)) {
-    issues.push({ code: 'USE_WWW', severity: 'error', title: `${dnsHost.provider} cannot connect the root domain`,
-      detail: `${dnsHost.provider} runs its DNS on Cloudflare, and Cloudflare only connects a domain there through a CNAME record, which the root (@) cannot have at ${dnsHost.provider}. Either keep ${domain} and move its DNS to Cloudflare (free): add the domain at dash.cloudflare.com, set a CNAME for @ to ${target.cname} (DNS only), keep your email records, then change the nameservers at ${dnsHost.provider} to the two Cloudflare gives you. Or connect www.${domain} instead (a CNAME for www to ${target.cname}) and forward ${domain} to it.` })
+  // A root domain connects only when its DNS is on Cloudflare (a CNAME at @, which Cloudflare
+  // flattens). Elsewhere it never verifies: Hostinger and others cannot hold a CNAME at @.
+  const onCloudflareDns = nameservers.length > 0 && nameservers.every((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
+  if (kind === 'apex' && onCloudflare && nameservers.length > 0 && !onCloudflareDns) {
+    issues.push({ code: 'NEEDS_CLOUDFLARE', severity: 'error', title: 'Main domain works only with Cloudflare DNS',
+      detail: `${domain} can connect only when its DNS is on Cloudflare (free)${dnsHost.provider ? `; it is on ${dnsHost.provider} now, which cannot` : ''}. Move the DNS to Cloudflare with the steps below, or use www.${domain}, which works at any DNS company.` })
   }
   if (dnsHost.mixed) {
     issues.push({ code: 'NS_MIXED', severity: 'error', title: 'Your domain uses nameservers from two companies',

@@ -180,8 +180,22 @@ function hostingText(h: NonNullable<DomainDiagnosis['hosting']>): string {
   return `Hosting: ${owner} · ${cert}`
 }
 
+/** Moving a domain's DNS to Cloudflare (free), so the main domain (shop.com) can connect. */
+export function CloudflareSteps({ domain, target = 'stores.fullfilio.com' }: { domain?: string; target?: string }) {
+  const name = domain ?? 'your-domain.com'
+  return (
+    <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+      <li>Make a free account at <b className="text-foreground">dash.cloudflare.com</b> → <b className="text-foreground">Add a domain</b> → {name} → Free plan.</li>
+      <li>In Cloudflare → DNS → Records: add <b className="text-foreground">CNAME @ → {target}</b> and <b className="text-foreground">CNAME www → {target}</b>, both <b className="text-foreground">DNS only</b> (grey cloud). Delete other A/AAAA records for @.</li>
+      <li>Keep your email records (MX, SPF/TXT, DKIM) exactly as they are.</li>
+      <li>Where you bought the domain (Hostinger, Namecheap…) → <b className="text-foreground">Nameservers</b> → put the two nameservers Cloudflare shows you. The domain stays registered there.</li>
+      <li>Wait 15 minutes to a few hours. We check by ourselves and the domain turns Connected.</li>
+    </ol>
+  )
+}
+
 /** Who runs the domain's DNS, and where to make the change there. */
-function DnsHost({ diag, rootA }: { diag: DomainDiagnosis; rootA?: boolean }) {
+function DnsHost({ diag, rootA, hideTip }: { diag: DomainDiagnosis; rootA?: boolean; hideTip?: boolean }) {
   const host = diag.dns_host
   if (!host || !host.nameservers.length) return null
   const known = host.provider ? PROVIDER_STEPS[host.provider] : undefined
@@ -198,7 +212,7 @@ function DnsHost({ diag, rootA }: { diag: DomainDiagnosis; rootA?: boolean }) {
       <p className="font-mono text-[10.5px] break-all text-muted-foreground">Nameservers: {host.nameservers.join(', ')}</p>
       {host.mixed
         ? <p className="text-muted-foreground">Where you bought the domain, open Nameservers and keep only one company&apos;s nameservers (the ones where you add the records below).</p>
-        : steps && <p className="text-muted-foreground">Add the records at: {steps.where}.{steps.tip ? ` ${steps.tip}` : ''}</p>}
+        : steps && !hideTip && <p className="text-muted-foreground">Add the records at: {steps.where}.{steps.tip ? ` ${steps.tip}` : ''}</p>}
     </div>
   )
 }
@@ -218,7 +232,8 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const [type, setType] = useState<'primary' | 'redirect'>(d.is_primary ? 'primary' : 'redirect')
   const [saving, setSaving] = useState(false)
   const [switching, setSwitching] = useState(false)
-  const useWww = diag?.issues.some((i) => i.code === 'USE_WWW') && canEdit && onUseWww
+  const needsCloudflare = !!diag?.issues.some((i) => i.code === 'NEEDS_CLOUDFLARE')
+  const useWww = needsCloudflare && canEdit && onUseWww
   const okRegions = diag?.regions.filter((r) => r.ok).length ?? 0
   const notes = diag?.issues.filter((i) => i.severity === 'info') ?? []
   const pointing = diag ? (diag.pointed ? (diag.issues.some((i) => i.severity !== 'info') ? 'warn' : 'ok') : 'bad') : 'wait'
@@ -245,13 +260,19 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>
             {diag && <Issues diag={diag} />}
+            {needsCloudflare && (
+              <div className="space-y-1.5 rounded-lg border p-2.5">
+                <p className="text-xs font-medium">Connect {d.domain} to Cloudflare</p>
+                <CloudflareSteps domain={d.domain} target={d.records.find((r) => r.type === 'CNAME')?.value} />
+              </div>
+            )}
             {useWww && (
-              <Button size="sm" disabled={switching} onClick={async () => {
+              <Button size="sm" variant="outline" disabled={switching} onClick={async () => {
                 setSwitching(true)
                 try { await onUseWww() } finally { setSwitching(false) }
-              }}>{switching && <Spinner />} Use www.{d.domain} instead</Button>
+              }}>{switching && <Spinner />} Or use www.{d.domain} instead</Button>
             )}
-            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} rootA={d.records.some((r) => r.type === 'A' && r.name === '@')} />}
+            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} rootA={d.records.some((r) => r.type === 'A' && r.name === '@')} hideTip={needsCloudflare} />}
             {diag && diag.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Records found</p>

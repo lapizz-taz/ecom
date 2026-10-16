@@ -194,8 +194,8 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
     ...(await diagnose(d, { target, expect })),
     hosting: { status: host.status, ssl_status: host.ssl?.status ?? null, error: host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message ?? null },
   }
-  // The root went live after all (e.g. the DNS company changed): no need to switch to www.
-  if (host.status === 'active') diagnostics.issues = diagnostics.issues.filter((i) => i.code !== 'USE_WWW')
+  // The root went live after all: no need to move its DNS.
+  if (host.status === 'active') diagnostics.issues = diagnostics.issues.filter((i) => i.code !== 'NEEDS_CLOUDFLARE')
   if (host.status === 'active' && host.ssl?.status === 'active') {
     return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
   }

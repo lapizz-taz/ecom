@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils'
 import {
   addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, makePrimaryDomain, removeDomain, revokeSiteKey, setStoreSlug, type SiteKey, siteApiBase,
 } from '@/services/website'
-import { DomainDetail, DomainList } from '@/features/website/domain-status'
+import { CloudflareSteps, DomainDetail, DomainList } from '@/features/website/domain-status'
 
 const copy = (v: string, what = 'Copied') => void navigator.clipboard.writeText(v).then(() => toast.success(what))
 
@@ -92,6 +92,17 @@ function DomainsTab() {
                 <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="shop.com or www.shop.com" className="sm:flex-1" autoCapitalize="none" spellCheck={false} />
                 <Button type="submit" disabled={!value.trim() || add.isPending}>{add.isPending ? <Spinner /> : <Plus />} Add domain</Button>
               </form>
+              <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
+                <p className="font-medium">Main domain (shop.com) works only with Cloudflare DNS</p>
+                <p className="mt-0.5 text-muted-foreground">
+                  On Hostinger and other DNS companies the main domain cannot connect. Connect your domain to Cloudflare first (free, the domain stays where you bought it),
+                  or use <b className="text-foreground">www.shop.com</b>, which works everywhere.
+                </p>
+                <details className="mt-1.5">
+                  <summary className="cursor-pointer font-medium">How to connect your domain to Cloudflare</summary>
+                  <div className="mt-1.5"><CloudflareSteps /></div>
+                </details>
+              </div>
               {!list.data?.automatic && (
                 <p className="mt-3 flex items-start gap-2 rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
                   <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -110,7 +121,7 @@ function DomainsTab() {
         <CardContent>
           <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
             <li>Add your domain here.</li>
-            <li>At your registrar (Namecheap, GoDaddy, Cloudflare…), add the DNS record shown. For <b className="text-foreground">shop.com</b> it is an <b className="text-foreground">A</b> record; for <b className="text-foreground">www.shop.com</b> a <b className="text-foreground">CNAME</b>.</li>
+            <li>Add the DNS record shown. <b className="text-foreground">www.shop.com</b>: a <b className="text-foreground">CNAME</b>, at any DNS company. <b className="text-foreground">shop.com</b>: only on <b className="text-foreground">Cloudflare</b> DNS (a CNAME at @), not on Hostinger.</li>
             <li>Open the domain and click <b className="text-foreground">Check again</b>. You see each record, every region and HTTPS. DNS changes can take minutes to a few hours.</li>
             <li>On Cloudflare, set the record to <b className="text-foreground">DNS only</b> (grey cloud).</li>
             <li>The first domain is the <b className="text-foreground">primary</b>; the others redirect to it.</li>
