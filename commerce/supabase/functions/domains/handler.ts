@@ -121,7 +121,12 @@ const relative = (name: string, d: string) => name.replace(new RegExp(`\\.?${ape
 async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): Promise<Omit<Saved, 'domain'>> {
   const target = cloudflareTarget(cf.target)
   let host = await findHostname(cf, d)
-  if (!host) return { status: 'ERROR', records: baseRecords(d, target), detail: 'Not attached to the hosting yet — add the domain again' }
+  // Added before the hosting was connected (or removed there): attach it now instead of asking to add it again.
+  if (!host && recheck) {
+    await addCloudflare(cf, d)
+    host = await findHostname(cf, d)
+  }
+  if (!host) return { status: 'ERROR', records: baseRecords(d, target), detail: 'Not attached to the hosting yet — press Check again' }
   if (recheck && (host.status !== 'active' || host.ssl?.status !== 'active')) {
     // Asks Cloudflare to validate again now instead of on its own schedule.
     const again = await cf.call<CustomHostname>('PATCH', `/custom_hostnames/${host.id}`, { ssl: SSL })
