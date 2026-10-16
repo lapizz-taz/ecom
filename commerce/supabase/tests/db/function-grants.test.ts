@@ -11,7 +11,7 @@ afterAll(closePool)
 const VISITOR_FUNCTIONS = [
   '_profiles_deleted_stay_off', '_store_reset_active', '_store_reset_tables', '_support_read_only', '_support_session_id',
   'current_merchant_id', 'current_role_code', 'has_permission', 'is_staff',
-  'platform_contact_submit', 'public_signup_options', 'store_slug_check', 'store_slug_suggest',
+  'platform_contact_submit', 'public_signup_options', 'public_signup_request', 'store_slug_check', 'store_slug_suggest',
   'storefront_ad_tracking', 'storefront_cart_restore', 'storefront_cart_sync', 'storefront_categories', 'storefront_config', 'storefront_get_product',
   'storefront_list_products', 'storefront_mode', 'storefront_quote', 'storefront_resolve', 'storefront_resolve_slug',
   'submit_contact_message', 'track_order', 'track_storefront_event', 'track_visit_event',

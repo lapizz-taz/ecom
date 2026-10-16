@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { GatewaysCard } from '@/features/platform/billing/gateways-card'
 import { OnboardingCard, PendingActivations } from '@/features/platform/billing/onboarding-card'
+import { SignupRequests } from '@/features/platform/billing/signup-requests'
 import { InvoiceTable, PendingPayments } from '@/features/platform/billing/invoices'
 import { AddonDialog, PlanDialog } from '@/features/platform/billing/plan-dialog'
 import { usePlatform } from '@/features/platform/platform-context'
@@ -277,7 +278,7 @@ export default function SubscriptionsPage() {
         <TabsContent value="plans"><Plans /></TabsContent>
         <TabsContent value="addons"><Addons /></TabsContent>
         <TabsContent value="invoices"><Invoices /></TabsContent>
-        <TabsContent value="onboarding"><div className="grid gap-4 lg:grid-cols-2"><PendingActivations /><OnboardingCard /></div></TabsContent>
+        <TabsContent value="onboarding"><div className="grid gap-4 lg:grid-cols-2"><SignupRequests /><PendingActivations /><OnboardingCard /></div></TabsContent>
         {can('settings') && <TabsContent value="rules"><Rules /></TabsContent>}
       </Tabs>
     </div>

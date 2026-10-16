@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfigHistory } from '@/features/platform/config-history'
@@ -83,42 +84,73 @@ function NumberSettingCard({ title, description, settingKey, fields, value, canE
   )
 }
 
-/** Opens or pauses the public sign-up page (/start). The database checks it on every sign-up. */
+/**
+ * The two ways to join on the public page (/start), each on or off: normal sign-up (own login,
+ * business opens at once) and sign-up by WhatsApp (details sent to the team, who open it).
+ * The database checks both on every request.
+ */
 function SignupCard({ d }: { d: GlobalSettings }) {
   const queryClient = useQueryClient()
-  const enabled = (d.settings.signup?.value as { enabled?: boolean } | undefined)?.enabled !== false
+  const value = (d.settings.signup?.value ?? {}) as { enabled?: boolean; whatsapp?: { enabled?: boolean; template?: string } }
+  const onboarding = (d.settings.onboarding?.value ?? {}) as { whatsapp_number?: string | null }
+  const server = { enabled: value.enabled !== false, whatsapp: value.whatsapp?.enabled === true, template: value.whatsapp?.template ?? '' }
+  const [draft, setDraft] = useState(server)
   const [confirm, setConfirm] = useState(false)
   const save = useMutation({
-    mutationFn: (reason: string) => savePlatformSetting('signup', { enabled: !enabled }, reason),
+    mutationFn: (reason: string) => savePlatformSetting('signup', { enabled: draft.enabled, whatsapp: { enabled: draft.whatsapp, template: draft.template } }, reason),
     onSuccess: () => {
-      toast.success(enabled ? 'Public sign-up paused' : 'Public sign-up open')
+      toast.success('Sign-up saved')
       void queryClient.invalidateQueries({ queryKey: ['platform-global-settings'] })
       void queryClient.invalidateQueries({ queryKey: ['platform-config-history'] })
     },
   })
+  const changed = draft.enabled !== server.enabled || draft.whatsapp !== server.whatsapp || draft.template !== server.template
   const url = `${window.location.origin}/start`
+  const number = onboarding.whatsapp_number ? `+${onboarding.whatsapp_number}` : null
+  const state = draft.enabled && draft.whatsapp ? 'Both open' : draft.enabled ? 'Sign-up open' : draft.whatsapp ? 'WhatsApp only' : 'Paused'
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-3 text-base">
           Public sign-up
-          <Badge variant={enabled ? 'success' : 'neutral'}>{enabled ? 'Open' : 'Paused'}</Badge>
+          <Badge variant={server.enabled || server.whatsapp ? 'success' : 'neutral'}>{state}</Badge>
         </CardTitle>
-        <CardDescription>New businesses open their own account, choose a public plan and start its trial. They appear under Merchants as onboarding.</CardDescription>
+        <CardDescription>How new businesses join from the sign-up page. With both on, visitors choose; with both off, the page says sign-ups are paused.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div className="flex items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2 text-xs">
           <span className="min-w-0 flex-1 truncate font-mono">{url}</span>
-          <Button size="sm" variant="ghost" className="h-7" onClick={() => void navigator.clipboard.writeText(url).then(() => toast.success('Link copied'))}>Copy</Button>
+          <Button size="sm" variant="ghost" className="h-7" onClick={() => void navigator.clipboard.writeText(url).then(() => toast.success('Link copied'), () => toast.error('Could not copy'))}>Copy</Button>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="signup-open" className="text-sm font-normal text-muted-foreground">Let new businesses sign up</Label>
-          <Switch id="signup-open" checked={enabled} disabled={!d.can.edit || save.isPending} onCheckedChange={() => setConfirm(true)} />
+        <div className="flex items-start justify-between gap-3">
+          <Label htmlFor="signup-open" className="grid gap-0.5 text-sm font-normal">
+            Normal sign-up
+            <span className="text-xs text-muted-foreground">They create their own login, choose a plan and the business opens at once (or after payment).</span>
+          </Label>
+          <Switch id="signup-open" checked={draft.enabled} disabled={!d.can.edit} onCheckedChange={(v) => setDraft({ ...draft, enabled: v })} />
         </div>
-        {!d.can.edit && <p className="text-xs text-muted-foreground">Only staff who can edit settings can change this.</p>}
+        <div className="flex items-start justify-between gap-3">
+          <Label htmlFor="signup-whatsapp" className="grid gap-0.5 text-sm font-normal">
+            Sign-up by WhatsApp
+            <span className="text-xs text-muted-foreground">
+              They only fill in their details and send them to {number ?? 'the official number'} on WhatsApp. Nothing is created until you open the business from the request (Subscriptions → Onboarding).
+            </span>
+          </Label>
+          <Switch id="signup-whatsapp" checked={draft.whatsapp} disabled={!d.can.edit || (!number && !draft.whatsapp)} onCheckedChange={(v) => setDraft({ ...draft, whatsapp: v })} />
+        </div>
+        {!number && <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">Set the official WhatsApp number in Subscriptions → Onboarding before turning on sign-up by WhatsApp.</p>}
+        {draft.whatsapp && (
+          <Field label="WhatsApp message" htmlFor="signup-template" hint="Empty: the standard message. Placeholders: {business} {name} {phone} {whatsapp} {email} {type} {sells_on} {orders} {plan} {ref}">
+            <Textarea id="signup-template" rows={6} value={draft.template} disabled={!d.can.edit} onChange={(e) => setDraft({ ...draft, template: e.target.value })}
+              placeholder={'Hello Fullfilio, I would like to open an account.\nBusiness: {business}\nName: {name}\nMobile: {phone}'} />
+          </Field>
+        )}
+        {d.can.edit ? <Button size="sm" disabled={!changed || save.isPending} onClick={() => setConfirm(true)}>Save</Button>
+          : <p className="text-xs text-muted-foreground">Only staff who can edit settings can change this.</p>}
         {confirm && (
-          <ConfirmDialog open onOpenChange={setConfirm} title={enabled ? 'Pause public sign-up?' : 'Open public sign-up?'} reason reasonRequired confirmLabel={enabled ? 'Pause' : 'Open'}
-            description={enabled ? 'The sign-up page will say sign-ups are paused. Existing businesses are not affected.' : 'Anyone with the link can open a business on a public plan.'}
+          <ConfirmDialog open onOpenChange={setConfirm} title="Save public sign-up?" reason reasonRequired confirmLabel="Save"
+            description={!draft.enabled && !draft.whatsapp ? 'Both ways will be off: the sign-up page will say sign-ups are paused. Existing businesses are not affected.'
+              : `Visitors will see: ${[draft.enabled && 'normal sign-up', draft.whatsapp && 'sign-up by WhatsApp'].filter(Boolean).join(' and ')}.`}
             onConfirm={(r) => save.mutateAsync(r)} />
         )}
       </CardContent>

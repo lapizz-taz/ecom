@@ -48,8 +48,9 @@ describe('tenancy: structure', () => {
       // Outside the Super Admin functions (which check platform permissions themselves) the list stays short:
       // credits, order fees, erasure and store reset post to one named merchant's ledger and records;
       // the sign-in bridge looks a login up by its Clerk account; subscription onboarding, activation, renewal
-      // and expiry reminders read the platform's onboarding settings for the merchant's own plan.
-      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(100)
+      // and expiry reminders read the platform's onboarding settings for the merchant's own plan; the public
+      // sign-up-by-WhatsApp request keeps the visitor's details before any merchant exists.
+      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(101)
     }))
 
   it('turns existing data into Merchant #1', () =>

@@ -1,23 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, MailCheck } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowLeft, ArrowRight, Copy, MailCheck, MessageCircle, UserPlus } from 'lucide-react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { Field } from '@/components/common/field'
 import { ErrorState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { SignUp } from '@clerk/clerk-react'
 import { ResendConfirmation } from '@/features/auth/link-problem'
 import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
+import { ClerkSignUpForm } from '@/features/auth/clerk-signup'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker, Steps } from '@/features/onboarding/signup-parts'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
+import { toast } from '@/lib/toast'
+import { cn } from '@/lib/utils'
 import { normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import {
-  clearSignupDraft, readSignupDraft, signInOnceConfirmed, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, type SignupBusiness,
+  clearSignupDraft, readSignupDraft, signInOnceConfirmed, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, signupRequest,
+  type SignupBusiness, type SignupRequestResult, whatsappLink,
 } from '@/services/onboarding'
 
 const EMPTY: SignupBusiness = {
@@ -44,6 +47,10 @@ export default function StartPage() {
   const [password, setPassword] = useState('')
   const [agree, setAgree] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
+  // Normal sign-up (own login now) or sign-up by WhatsApp (the team opens it); each is switched on in Super Admin.
+  const [chosen, setChosen] = useState<'account' | 'whatsapp' | null>(null)
+  const [requestEmail, setRequestEmail] = useState('')
+  const [requested, setRequested] = useState<SignupRequestResult | null>(null)
 
   // Start on the default plan once the plans are known.
   useEffect(() => {
@@ -95,7 +102,11 @@ export default function StartPage() {
   if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
   const errors = businessErrors(business)
-  const stepsLabels = ['Plan', 'Business', session ? 'Confirm' : 'Account']
+  const normalOpen = options.data?.enabled ?? false
+  const whatsappOpen = Boolean(options.data?.whatsapp_signup?.enabled && options.data.whatsapp_signup.number)
+  const mode: 'account' | 'whatsapp' = chosen === 'whatsapp' && whatsappOpen ? 'whatsapp' : chosen === 'account' && normalOpen ? 'account' : normalOpen ? 'account' : 'whatsapp'
+  const stepsLabels = ['Plan', 'Business', mode === 'whatsapp' ? 'Send' : session ? 'Confirm' : 'Account']
+  const chooser = normalOpen && whatsappOpen && !session && <ModeChooser value={mode} onChange={setChosen} />
   const accountError = !session && (!/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter your e-mail address' : password.length < minPassword ? `Use at least ${minPassword} characters for the password` : !agree ? 'Accept the terms to continue' : null)
 
   if (sentTo) {
@@ -119,17 +130,21 @@ export default function StartPage() {
     <AuthShell wide footer={<>Already have an account? <Link to="/admin/login" className="font-medium text-foreground hover:underline">Sign in</Link></>}>
       {options.error ? <ErrorState error={options.error} onRetry={() => options.refetch()} /> : !options.data ? (
         <div className="flex justify-center"><Spinner className="size-5" /></div>
-      ) : !options.data.enabled ? (
+      ) : !normalOpen && !whatsappOpen ? (
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.025em]">Sign-ups are paused</h1>
           <p className="mt-2 text-sm text-muted-foreground">New businesses cannot open an account on their own right now. Contact us and we will set yours up.</p>
           <Button asChild variant="outline" className="mt-6"><Link to="/admin/login">Sign in instead</Link></Button>
         </div>
+      ) : step === 2 && mode === 'whatsapp' ? (
+        <WhatsappStep steps={<Steps steps={stepsLabels} current={step} />} chooser={chooser} business={payload()} email={requestEmail} onEmail={setRequestEmail}
+          planLabel={planLabel(options.data, business)} sent={requested} onSent={setRequested} onBack={() => { setRequested(null); setStep(1) }} />
       ) : step === 2 && !session && usesClerk ? (
-        // Clerk's own sign-up box (e-mail with a 6-digit code, or Google). The details
-        // above are saved in this browser and the business opens on /start/finish.
+        // The account on Clerk (e-mail with a 6-digit code). The details above are
+        // saved in this browser and the business opens on /start/finish.
         <div>
           <Steps steps={stepsLabels} current={step} />
+          {chooser}
           <div className="mt-6 rounded-2xl border bg-muted/40 p-4 text-[13px]">
             <p className="font-medium">{business.business_name.trim() || 'Your business'}</p>
             <p className="mt-0.5 text-muted-foreground">
@@ -138,9 +153,10 @@ export default function StartPage() {
               {' · '}{normalizePhone(business.phone)}
             </p>
           </div>
-          <div className="mt-6 flex justify-center">
+          <div className="mt-6">
             {linkPending ? <ClerkLinkNotice className="w-full" />
-              : <SignUp routing="hash" signInUrl="/admin/login?next=/start/finish" forceRedirectUrl="/start/finish" />}
+              : <ClerkSignUpForm fullName={business.full_name} phone={normalizePhone(business.phone)} minPassword={minPassword}
+                  onDone={() => navigate('/start/finish', { replace: true })} />}
           </div>
           <div className="mt-6"><Button type="button" variant="ghost" onClick={() => setStep(1)}><ArrowLeft /> Back</Button></div>
         </div>
@@ -158,6 +174,7 @@ export default function StartPage() {
           if (!accountError && !Object.keys(errors).length) open.mutate()
         }}>
           <Steps steps={stepsLabels} current={step} />
+          {step === 2 && chooser}
           <h1 className="mt-8 text-[28px] leading-tight font-semibold tracking-[-0.025em]">
             {step === 0 ? 'Start your business on Fullfilio' : step === 1 ? 'Tell us about your business' : session ? 'Open your business' : 'Create your account'}
           </h1>
@@ -215,5 +232,104 @@ export default function StartPage() {
         </form>
       )}
     </AuthShell>
+  )
+}
+
+function planLabel(options: { plans: { code: string; name: string; trial_days: number }[] }, business: SignupBusiness) {
+  const plan = options.plans.find((p) => p.code === business.plan_code)
+  return plan ? `${plan.name} plan${plan.trial_days > 0 ? ` · ${plan.trial_days}-day free trial` : ''}` : 'No plan chosen'
+}
+
+/** Both ways are switched on: the visitor picks one. */
+function ModeChooser({ value, onChange }: { value: 'account' | 'whatsapp'; onChange: (v: 'account' | 'whatsapp') => void }) {
+  const option = (v: 'account' | 'whatsapp', icon: ReactNode, title: string, text: string) => (
+    <button type="button" onClick={() => onChange(v)} aria-pressed={value === v}
+      className={cn('flex min-w-0 items-start gap-3 rounded-2xl border p-3.5 text-left transition-colors',
+        value === v ? 'border-brand bg-brand/5 ring-1 ring-brand' : 'hover:bg-muted/50')}>
+      <span className={cn('grid size-8 shrink-0 place-items-center rounded-xl', value === v ? 'bg-brand text-white' : 'bg-muted text-muted-foreground')}>{icon}</span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="mt-0.5 block text-[12.5px] text-muted-foreground">{text}</span>
+      </span>
+    </button>
+  )
+  return (
+    <div className="mt-6 grid gap-2.5 sm:grid-cols-2" role="group" aria-label="How do you want to start?">
+      {option('account', <UserPlus className="size-4" />, 'Create my account now', 'Choose an e-mail and password and start right away.')}
+      {option('whatsapp', <MessageCircle className="size-4" />, 'Set up with our team', 'Send your details on WhatsApp; we open the account for you.')}
+    </div>
+  )
+}
+
+/**
+ * Sign-up by WhatsApp: the details are kept as a request (no login is created)
+ * and the visitor sends the prepared message to the official number.
+ */
+function WhatsappStep({ steps, chooser, business, email, onEmail, planLabel: plan, sent, onSent, onBack }: {
+  steps: ReactNode; chooser: ReactNode; business: SignupBusiness; email: string; onEmail: (v: string) => void; planLabel: string
+  sent: SignupRequestResult | null; onSent: (r: SignupRequestResult) => void; onBack: () => void
+}) {
+  const [agree, setAgree] = useState(false)
+  const [touched, setTouched] = useState(false)
+  const send = useMutation({ meta: { silent: true }, mutationFn: () => signupRequest({ ...business, email: email.trim() || undefined }), onSuccess: onSent })
+  const problem = email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter a valid e-mail address, or leave it empty' : !agree ? 'Accept the terms to continue' : null
+
+  if (sent) {
+    const link = whatsappLink(sent.whatsapp_number, sent.message)
+    return (
+      <div>
+        {steps}
+        <span className="mt-8 flex size-12 items-center justify-center rounded-2xl border bg-card shadow-xs"><MessageCircle className="size-6 text-emerald-500" /></span>
+        <h1 className="mt-5 text-[26px] leading-tight font-semibold tracking-[-0.025em]">Send your details on WhatsApp</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Tap the button: WhatsApp opens with the message ready. Press send, and our team replies there and opens {business.business_name || 'your business'} for you.
+        </p>
+        <Button asChild size="lg" variant="brand" className="mt-6 w-full sm:w-auto">
+          <a href={link} target="_blank" rel="noopener noreferrer"><MessageCircle /> Open WhatsApp</a>
+        </Button>
+        <div className="mt-6 rounded-2xl border bg-muted/40 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[13px] font-medium">Your message · ref {sent.reference}</p>
+            <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => {
+              navigator.clipboard.writeText(sent.message).then(() => toast.success('Message copied'), () => toast.error('Could not copy; select the text instead'))
+            }}><Copy /> Copy</Button>
+          </div>
+          <pre className="mt-2 font-sans text-[13px] whitespace-pre-wrap break-words text-muted-foreground">{sent.message}</pre>
+          <p className="mt-3 text-[12px] text-muted-foreground">WhatsApp did not open? Message <span className="font-medium text-foreground tabular-nums">+{sent.whatsapp_number}</span> and paste the text above.</p>
+        </div>
+        <div className="mt-6"><Button type="button" variant="ghost" onClick={onBack}><ArrowLeft /> Change details</Button></div>
+      </div>
+    )
+  }
+
+  return (
+    <form noValidate onSubmit={(e) => { e.preventDefault(); setTouched(true); if (!problem) send.mutate() }}>
+      {steps}
+      {chooser}
+      <h1 className="mt-8 text-[28px] leading-tight font-semibold tracking-[-0.025em]">Get set up on WhatsApp</h1>
+      <p className="mt-2 text-sm text-muted-foreground">We prepare a message with your details. You send it to our official WhatsApp, and our team opens the account and helps you get started. No password needed now.</p>
+      <div className="mt-7 grid gap-4">
+        <Field label="E-mail (optional)" hint="For your login; we can also set it up with you on WhatsApp">
+          <Input type="email" autoComplete="email" value={email} onChange={(e) => onEmail(e.target.value)} className="h-10" placeholder="you@yourshop.com" />
+        </Field>
+        <label className="flex items-start gap-2.5 text-[13px] text-muted-foreground">
+          <Checkbox checked={agree} onCheckedChange={(v) => setAgree(v === true)} className="mt-0.5" />
+          <span>I agree to the terms of service and privacy policy, and confirm I run this business.</span>
+        </label>
+      </div>
+      <div className="mt-5 rounded-2xl border bg-muted/40 p-4 text-[13px]">
+        <p className="font-medium">{business.business_name || 'Your business'}</p>
+        <p className="mt-0.5 text-muted-foreground">{plan} · {business.phone}</p>
+      </div>
+      {(send.error || (touched && problem)) && (
+        <p className="mt-4 text-sm text-destructive" role="alert">{send.error ? toUserMessage(send.error) : problem}</p>
+      )}
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <Button type="button" variant="ghost" onClick={onBack} disabled={send.isPending}><ArrowLeft /> Back</Button>
+        <Button type="submit" size="lg" variant="brand" disabled={send.isPending}>
+          {send.isPending ? <Spinner /> : <MessageCircle />} Continue to WhatsApp
+        </Button>
+      </div>
+    </form>
   )
 }

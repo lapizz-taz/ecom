@@ -219,3 +219,30 @@ export const decideApproval = (id: string, approve: boolean, note?: string) =>
 
 export const listPlatformAudit = (filters: Record<string, string>, page: number, pageSize: number) =>
   platformRpc<{ total: number; items: PlatformAuditRow[] }>('platform_audit_list', { p_filters: filters, p_limit: pageSize, p_offset: (page - 1) * pageSize })
+
+/** A sign-up by WhatsApp: the visitor's details, kept until the team opens the business. */
+export interface SignupRequest {
+  id: string
+  reference: string
+  business_name: string
+  full_name: string
+  phone: string
+  whatsapp: string | null
+  email: string | null
+  business_type: string | null
+  website: string | null
+  sells_on: string[]
+  orders_per_month: string | null
+  plan_code: string | null
+  message: string
+  status: 'NEW' | 'CONTACTED' | 'CONVERTED' | 'DECLINED'
+  merchant_id: string | null
+  merchant_name: string | null
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+export const signupRequests = (status?: SignupRequest['status'] | null) =>
+  platformRpc<SignupRequest[]>('platform_signup_requests', { p_status: status ?? null, p_limit: 200 })
+export const updateSignupRequest = (id: string, status: SignupRequest['status'], merchant?: string | null, note?: string | null) =>
+  platformRpc<SignupRequest>('platform_signup_request_update', { p_id: id, p_status: status, p_merchant: merchant ?? null, p_note: note ?? null })
