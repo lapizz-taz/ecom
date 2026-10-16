@@ -3,7 +3,7 @@ import {
   AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
   ShieldAlert, ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from '@/lib/toast'
 import { Can } from '@/components/common/permission-gate'
@@ -544,6 +544,14 @@ export function OrdersPage({ view }: { view: View }) {
           error={orders.error}
           onRetry={() => orders.refetch()}
           rowHref={(o) => `/admin/orders/${o.id}`}
+          mobileRow={(o) => (
+            <OrderMobileRow o={o} view={view} meta={statusMeta.get(o.review_status)}
+              actions={view === 'web' ? (
+                <WebRowActions o={o} statuses={reviewStatuses.data ?? []} canSet={can('orders.update')} canApprove={can('orders.status')}
+                  busy={approve.isPending || quickStatus.isPending}
+                  onStatus={(code) => chooseStatus([o.id], code)} onApprove={() => approve.mutate({ ids: [o.id] })} />
+              ) : null} />
+          )}
           selected={can('orders.status') || can('orders.export') || can('orders.fulfill') ? selected : undefined}
           onSelectedChange={setSelected}
           empty={<EmptyState title={state.q ? 'No orders match' : 'Nothing here'} description={state.q ? 'Try a different search.' : emptyHint(view, state.tab)} />}
@@ -727,6 +735,52 @@ function WebRowActions({ o, statuses, canSet, canApprove, busy, onStatus, onAppr
         </DropdownMenu>
       )}
       {canApprove && !closed && <Button size="sm" className="h-7" disabled={busy} onClick={onApprove}>Approve</Button>}
+    </div>
+  )
+}
+
+/**
+ * One order as a plain list row on phones: number, time and amount on top, the customer under it,
+ * then where the order stands as text with a coloured dot (no stack of badges).
+ */
+function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: View; meta: ReviewStatus | undefined; actions: ReactNode }) {
+  const web = o.stage === 'WEB'
+  const stage = web ? null : STAGE[o.stage as OrderStage]
+  const label = web ? meta?.label ?? titleCase(o.review_status) : stage?.label ?? ORDER_STATUS[o.status].label
+  const dot = web ? DOT[meta?.color ?? 'neutral'] ?? DOT.neutral : STAGE_DOT[stage?.variant ?? 'neutral'] ?? STAGE_DOT.neutral
+  const detail = !web && stage && ORDER_STATUS[o.status].label !== stage.label ? ORDER_STATUS[o.status].label : null
+  const h = o.courier_history
+  const counted = h ? h.total ?? h.completed : 0
+  const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
+  const tone = rate !== null && h && counted > 0 ? rateTone(rate, h.tier) : null
+  const code = o.shipment ? o.shipment.tracking_number ?? o.shipment.consignment_id : null
+  const flag = o.duplicate_status === 'SUSPECTED' ? (o.duplicate_reason === 'APPROVED' ? `Already approved ${o.duplicate_of_number ?? ''}` : `Maybe duplicate ${o.duplicate_of_number ?? ''}`)
+    : o.status === 'ADVANCE_REQUIRED' ? 'Advance due' : o.status === 'FRAUD_REVIEW' ? 'Fraud review' : o.status === 'PENDING_CANCEL' ? 'Cancelling' : null
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate">
+          <span className="font-semibold">{o.order_number}</span>
+          <span className="ml-2 text-xs text-muted-foreground" title={formatDateTime(o.created_at)}>{timeAgo(o.created_at)}</span>
+          {o.sales_channel && <span className="ml-2 text-xs text-muted-foreground">{o.sales_channel.platform === 'SHOPIFY' ? 'Shopify' : 'Woo'}</span>}
+        </p>
+        <Money value={o.total_amount} className="shrink-0 font-semibold tabular-nums" />
+      </div>
+      <p className="truncate text-sm">{o.customer_name} <span className="text-muted-foreground tabular-nums">· {o.customer_phone}</span></p>
+      <p className="truncate text-xs text-muted-foreground">
+        {o.shipping_district || <span className="text-amber-600 dark:text-amber-400">District needed</span>}
+        {o.items_preview ? ` · ${o.items_preview}` : ` · ${o.item_count} item${o.item_count === 1 ? '' : 's'}`}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs">
+        <span className="inline-flex items-center gap-1.5 font-medium"><span className={cn('size-2 rounded-full', dot)} />{label}{detail && <span className="font-normal text-muted-foreground">· {detail}</span>}</span>
+        {tone && rate !== null && h ? (
+          <span className="tabular-nums text-muted-foreground">Success <span className={cn('font-medium', tone.text)}>{Math.round(rate)}%</span> · {h.delivered}/{counted}</span>
+        ) : view === 'web' && <span className="text-muted-foreground">{awaitingCheck(o) ? 'Checking…' : h ? 'New customer' : 'Not checked'}</span>}
+        {code && <span className="truncate font-mono text-muted-foreground">{o.shipment?.courier} {code}</span>}
+        {web && o.follow_up_at && <span className={cn('text-muted-foreground', new Date(o.follow_up_at).getTime() <= Date.now() && 'font-medium text-red-600')}>Call {formatDateTime(o.follow_up_at)}</span>}
+        {flag && <span className="font-medium text-amber-600 dark:text-amber-400">{flag.trim()}</span>}
+      </div>
+      {actions && <div className="flex justify-start pt-1 [&>div]:justify-start">{actions}</div>}
     </div>
   )
 }

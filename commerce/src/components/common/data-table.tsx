@@ -33,6 +33,8 @@ interface DataTableProps<T> {
   footer?: ReactNode
   className?: string
   dense?: boolean
+  /** A list row of its own for phones, instead of the label/value card built from the columns. */
+  mobileRow?: (row: T) => ReactNode
 }
 
 /**
@@ -40,7 +42,7 @@ interface DataTableProps<T> {
  * hidden behind horizontal scrolling.
  */
 export function DataTable<T>({
-  columns, rows, rowKey, loading, error, onRetry, empty, rowHref, onRowClick, selected, onSelectedChange, footer, className,
+  columns, rows, rowKey, loading, error, onRetry, empty, rowHref, onRowClick, selected, onSelectedChange, footer, className, mobileRow,
 }: DataTableProps<T>) {
   const navigate = useNavigate()
   const selectable = Boolean(selected && onSelectedChange)
@@ -113,6 +115,7 @@ export function DataTable<T>({
                     <Checkbox checked={selected?.has(id)} onCheckedChange={() => toggle(id)} aria-label="Select row" />
                   </div>
                 )}
+                {mobileRow ? <div className="min-w-0 flex-1">{mobileRow(row)}</div> : (
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="font-medium">{primary.cell(row)}</div>
                   <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
@@ -124,6 +127,7 @@ export function DataTable<T>({
                     ))}
                   </dl>
                 </div>
+                )}
               </li>
             )
           })}
