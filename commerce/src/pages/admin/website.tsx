@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { useMerchantFeatures } from '@/features/billing/use-features'
 import { useStoreAddress } from '@/hooks/use-store-address'
 import { useUrlState } from '@/hooks/use-url-state'
 import { toUserMessage } from '@/lib/errors'
@@ -45,6 +46,7 @@ export default function WebsitePage() {
 
 function DomainsTab() {
   const { can } = useAuth()
+  const { isOff } = useMerchantFeatures()
   const qc = useQueryClient()
   const [state, update] = useUrlState({ tab: 'domain', domain: '' })
   const [value, setValue] = useState('')
@@ -81,7 +83,15 @@ function DomainsTab() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="min-w-0 space-y-4">
         <StoreAddressCard canEdit={edit} />
-        {edit && (
+        {edit && isOff('custom_domains') && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Connect a domain</CardTitle>
+              <CardDescription>Custom domains are coming soon. Your store stays on its default address until then{domains.length ? '; domains already connected keep working' : ''}.</CardDescription>
+            </CardHeader>
+          </Card>
+        )}
+        {edit && !isOff('custom_domains') && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Connect a domain</CardTitle>
@@ -137,7 +147,7 @@ function DomainsTab() {
         {open && (
           <DomainDetail inDialog d={open} primary={primary} canEdit={edit} checking={check.isPending} onBack={close}
             onCheck={() => check.mutate(open.domain)} onRemove={() => setRemoving(open.domain)}
-            onUseWww={async () => {
+            onUseWww={isOff('custom_domains') ? undefined : async () => {
               const www = `www.${open.domain}`
               try {
                 const r = await addDomain(www)

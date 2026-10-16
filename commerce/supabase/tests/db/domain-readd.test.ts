@@ -13,11 +13,15 @@ async function createMerchant(db: Db): Promise<string> {
   return id
 }
 
+/** Custom domains ship switched off (Super Admin → Features & Access); these tests switch it on. */
+const domainsOn = (db: Db, on = true) => db.query(`update public.features set globally_enabled = $1 where code = 'custom_domains'`, [on])
+
 const status = (db: Db, d: string) => value<string>(db, `select status || ':' || merchant_id from public.store_domains where domain = $1`, [d])
 
 describe('custom domains: adding one again', () => {
   it('a removed domain can be added again by the store', () =>
     inTx(async (db) => {
+      await domainsOn(db)
       const owner = await createStaff(db, 'OWNER')
       await asUser(db, owner)
       await db.query(`select public.store_domain_guard('atheron.shop', 'add')`)
@@ -33,13 +37,29 @@ describe('custom domains: adding one again', () => {
 
   it('a domain another store uses is refused with the real reason, not "no permission"', () =>
     inTx(async (db) => {
+      await domainsOn(db)
       const owner = await createStaff(db, 'OWNER')
       await asUser(db, owner)
       await db.query(`select public.store_domain_guard('busy.shop', 'add')`)
       const m2 = await createMerchant(db)
+      // The second store has no plan: give it custom domains directly.
+      await db.query(`insert into public.merchant_features (merchant_id, feature_code, enabled) values ($1, 'custom_domains', true)`, [m2])
       const other = await createStaff(db, 'OWNER', `o-${randomUUID().slice(0, 6)}@example.com`, m2)
       await asUser(db, other)
       await expectError(db, `select public.store_domain_guard('busy.shop', 'add')`, [], /DUPLICATE: That domain is already connected to another store/)
       await expectError(db, `select public.store_domain_guard('busy.shop', 'remove')`, [], /NOT_FOUND: That domain is not on this store/)
+    }))
+
+  it('while Custom domains is switched off nobody can add one, but a connected one can still be removed', () =>
+    inTx(async (db) => {
+      await domainsOn(db)
+      const owner = await createStaff(db, 'OWNER')
+      await asUser(db, owner)
+      await db.query(`select public.store_domain_guard('kept.shop', 'add')`)
+      await asSystem(db, null)
+      await domainsOn(db, false)
+      await asUser(db, owner)
+      await expectError(db, `select public.store_domain_guard('new.shop', 'add')`, [], /FEATURE_OFF: Custom domains is switched off/)
+      await db.query(`select public.store_domain_guard('kept.shop', 'remove')`)
     }))
 })
