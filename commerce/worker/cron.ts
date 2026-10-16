@@ -64,7 +64,7 @@ export const JOBS: CronJob[] = [
   {
     // Custom domains still waiting for DNS: checked (and attached) without anyone pressing Check.
     name: 'domains-recheck', schedule: '*/10 * * * *',
-    run: async (r) => (await r.exists('store_domains', 'status=in.(PENDING,VERIFYING,MANUAL,ERROR)')) && r.call('domains', { action: 'recheck_all' }),
+    run: async (r) => (await r.exists('store_domains', 'status=neq.REMOVED')) && r.call('domains', { action: 'recheck_all' }),
   },
   {
     name: 'payments-reconcile', schedule: '*/5 * * * *',

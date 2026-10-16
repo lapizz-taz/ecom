@@ -143,7 +143,9 @@ function DomainsTab() {
                 const r = await addDomain(www)
                 await makePrimaryDomain(r.domain.domain)
                 toast.success(`${www} added as the primary domain — set its CNAME as shown`)
-                refresh(); update({ domain: r.domain.domain }, { resetPage: false })
+                // Load the new domain first, so the popup switches over without closing in between.
+                await qc.refetchQueries({ queryKey: ['store-domains'] })
+                update({ domain: r.domain.domain }, { resetPage: false })
               } catch (e) { toast.error(toUserMessage(e)); throw e }
             }}
             onMakePrimary={async () => {
