@@ -1,0 +1,40 @@
+# Root-domain proxy for Fullfilio stores (shop.com without www).
+#
+# Every DNS company can point a root domain at a fixed IP with an A record (Shopify works
+# the same way with 23.227.38.65). This server is that IP: for each store domain it gets an
+# HTTPS certificate on the first visit and passes the visit on to the Fullfilio site.
+#
+# A certificate is only requested for a domain a store has connected: Caddy asks
+# Fullfilio first (the "ask" URL), so nobody can point a stranger's domain here.
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask {$FULLFILIO_SITE}/functions/v1/domains
+	}
+}
+
+# Plain HTTP: certificate challenges are answered by Caddy itself; everything else goes to HTTPS.
+http:// {
+	redir https://{host}{uri} 308
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy https://{$UPSTREAM_HOST} {
+		# The upstream is Fullfilio on Cloudflare: talk to it by its own name...
+		header_up Host {upstream_hostport}
+		transport http {
+			tls_server_name {$UPSTREAM_HOST}
+		}
+		# ...and say which domain the visitor opened, and from which IP. The Worker only
+		# believes these with the shared secret (ROOT_PROXY_SECRET).
+		header_up X-Fullfilio-Host {host}
+		header_up X-Fullfilio-Client-IP {remote_host}
+		header_up X-Fullfilio-Proxy {$PROXY_SECRET}
+		header_up -X-Forwarded-For
+		header_down -Server
+	}
+}

@@ -4,6 +4,8 @@
 //   POST {action: 'check', domain}           ask the hosting again (verifies once DNS is in place)
 //   POST {action: 'remove', domain}          detach from the hosting
 //   POST {action: 'primary', domain}         make it the primary domain (the others redirect to it)
+//   GET  ?domain=shop.com                    for the root-domain proxy (deploy/root-proxy): 200 when the
+//                                             domain is connected to a store, so it may get a certificate
 //   POST {action: 'recheck_all'}             scheduled (cron secret): checks every domain still
 //                                             waiting, so it goes live without anyone pressing Check
 // Every add/check also runs a full diagnosis (DNS records found, each region,
@@ -14,10 +16,15 @@
 //    permission "SSL and Certificates: Edit"), CF_ZONE_ID and CUSTOM_DOMAIN_TARGET
 //    (the fallback-origin hostname merchants CNAME to, e.g. stores.example.com).
 //  - Vercel: VERCEL_TOKEN and VERCEL_PROJECT_ID (and VERCEL_TEAM_ID for a team project).
+//  - Root domains (shop.com), when ROOT_DOMAIN_IP is set: an A record to our own proxy
+//    server's fixed address (deploy/root-proxy), which works at every DNS company. Cloudflare
+//    for SaaS cannot take a root domain without a CNAME (Hostinger and other DNS hosts that run
+//    on Cloudflare can never verify one), so roots go through the proxy and subdomains stay on
+//    Cloudflare. ROOT_DOMAIN_IPV6 adds an AAAA record.
 // Without either the domain is saved as MANUAL with the DNS records to add, and
 // the platform owner attaches it by hand.
 import { z } from 'zod'
-import { apexOf, cloudflareTarget, diagnose, VERCEL_TARGET, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, proxyTarget, VERCEL_TARGET, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -25,7 +32,7 @@ import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient, forEachMerchant, requireStaff, rpc } from '../_shared/supabase.ts'
 
-interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
+interface DnsRecord { type: 'A' | 'AAAA' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
 interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null; diagnostics?: Diagnosis }
 
 const domain = z.string().trim().toLowerCase().transform((d) => d.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
@@ -45,6 +52,12 @@ const actions = z.discriminatedUnion('action', [
 export function baseRecords(d: string, target: HostingTarget = VERCEL_TARGET): DnsRecord[] {
   const apex = apexOf(d)
   if (d !== apex) return [{ type: 'CNAME', name: d.slice(0, -(apex.length + 1)), value: target.cname, why: 'Points this subdomain at the store' }]
+  if (target.provider === 'proxy' && target.a) {
+    return [
+      { type: 'A', name: '@', value: target.a, why: 'Points your domain at the store (delete any other A, AAAA or ALIAS record for @)' },
+      ...(target.aaaa ? [{ type: 'AAAA' as const, name: '@', value: target.aaaa, why: 'The same for IPv6 visitors' }] : []),
+    ]
+  }
   return target.a
     ? [{ type: 'A', name: '@', value: target.a, why: 'Points your domain at the store' }]
     : [{ type: 'CNAME', name: '@', value: target.cname, why: 'Points your domain at the store (a CNAME at the root, also called ALIAS or flattening; if your provider cannot, use www instead)' }]
@@ -99,6 +112,36 @@ function cloudflare() {
   return { target, call }
 }
 type Cloudflare = NonNullable<ReturnType<typeof cloudflare>>
+
+/** The root-domain proxy (deploy/root-proxy), when its fixed address is set. */
+function rootProxy(cf: Cloudflare) {
+  const ip = env('ROOT_DOMAIN_IP')?.trim()
+  return ip ? proxyTarget(ip, cf.target, env('ROOT_DOMAIN_IPV6')) : null
+}
+/** Root domains go through the proxy; subdomains stay on Cloudflare for SaaS. */
+const viaProxy = (cf: Cloudflare, d: string) => (d === apexOf(d) ? rootProxy(cf) : null)
+
+/** A root domain on the proxy: live once its A record leads to the proxy and the store answers over HTTPS. */
+async function inspectRoot(target: HostingTarget, d: string): Promise<Omit<Saved, 'domain'>> {
+  const diagnostics = await diagnose(d, { target })
+  const records = baseRecords(d, target)
+  if (diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true) {
+    return { status: 'ACTIVE', records, diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
+  }
+  const blocking = diagnostics.issues.find((i) => i.severity === 'error')
+  return {
+    status: 'VERIFYING', records, diagnostics,
+    detail: blocking ? blocking.title
+      : !diagnostics.pointed ? 'Waiting for the A record below (changes can take up to a few hours)'
+      : 'DNS is right — the HTTPS certificate is issued on the first visit (usually under a minute)',
+  }
+}
+
+/** Checks a domain on whichever hosting it belongs to. */
+const inspectAny = (cf: Cloudflare, d: string, recheck: boolean) => {
+  const root = viaProxy(cf, d)
+  return root ? inspectRoot(root, d) : inspectCloudflare(cf, d, recheck)
+}
 
 interface CustomHostname {
   id: string
@@ -238,7 +281,7 @@ async function recheckAll() {
       if (checked >= RECHECK_LIMIT) break
       checked += 1
       try {
-        const result = await inspectCloudflare(cf, d.domain, true)
+        const result = await inspectAny(cf, d.domain, true)
         await rpc(admin, 'store_domain_save', { p_domain: d.domain, p: result, p_actor: null })
         if (result.status === 'ACTIVE') live += 1
       } catch (error) {
@@ -251,6 +294,13 @@ async function recheckAll() {
 
 export default (
   handle(async (req) => {
+    // The root-domain proxy asks before getting a certificate: only for a domain a store has connected.
+    if (req.method === 'GET') {
+      const asked = new URL(req.url).searchParams.get('domain')?.trim().toLowerCase() ?? ''
+      const known = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(asked)
+        && (await rpc<boolean>(adminClient(), 'store_domain_known', { p_domain: asked })) === true
+      return new Response(known ? 'ok' : 'unknown domain', { status: known ? 200 : 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } })
+    }
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const body = await readJson<{ action?: unknown }>(req)
     if (body?.action === 'recheck_all') {
@@ -277,10 +327,10 @@ export default (
         case 'list':
           return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: true })
         case 'add':
-          await addCloudflare(cf, input.domain)
-          return json(req, { domain: await save(input.domain, await inspectCloudflare(cf, input.domain, false)), automatic: true })
+          if (!viaProxy(cf, input.domain)) await addCloudflare(cf, input.domain)
+          return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, false)), automatic: true })
         case 'check':
-          return json(req, { domain: await save(input.domain, await inspectCloudflare(cf, input.domain, true)), automatic: true })
+          return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, true)), automatic: true })
         case 'remove':
           await removeCloudflare(cf, input.domain)
           await save(input.domain, { status: 'REMOVED', records: [], detail: 'Removed from the store' })

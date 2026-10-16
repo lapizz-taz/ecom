@@ -110,3 +110,31 @@ describe('Worker routing', () => {
     expect((await res.json()).name).toBe('checkout')
   })
 })
+
+describe('root-domain proxy', () => {
+  const SECRET = 'root-proxy-secret-0123456789'
+  const viaProxy = (headers: Record<string, string>) =>
+    new Request('https://stores.example.com/functions/v1/checkout?x=1', { method: 'POST', body: '{"a":1}', headers: { 'cf-connecting-ip': '203.0.113.9', ...headers } })
+
+  it('puts a proxied visit back on the visitor\'s domain and IP when the secret matches', async () => {
+    const router = createRouter(env({ ROOT_PROXY_SECRET: SECRET }), fns)
+    const res = await router.route(viaProxy({ 'x-fullfilio-proxy': SECRET, 'x-fullfilio-host': 'Shop.com', 'x-fullfilio-client-ip': '198.51.100.7' }))
+    expect(await res.json()).toMatchObject({ url: 'https://shop.com/functions/v1/checkout?x=1', body: '{"a":1}', xff: '198.51.100.7' })
+  })
+
+  it('ignores the proxy headers without the right secret (no host or IP spoofing)', async () => {
+    for (const [secret, given] of [[SECRET, 'wrong-secret-0123456789xx'], [undefined, SECRET], ['short', 'short']] as const) {
+      const router = createRouter(env({ ROOT_PROXY_SECRET: secret }), fns)
+      const res = await router.route(viaProxy({ 'x-fullfilio-proxy': given, 'x-fullfilio-host': 'victim.com', 'x-fullfilio-client-ip': '198.51.100.7' }))
+      expect(await res.json()).toMatchObject({ url: 'https://stores.example.com/functions/v1/checkout?x=1', xff: '203.0.113.9' })
+    }
+  })
+
+  it('serves the site pages for a proxied root domain', async () => {
+    const router = createRouter(env({ ROOT_PROXY_SECRET: SECRET }), fns)
+    await router.route(new Request('https://stores.example.com/products/a', { headers: { 'x-fullfilio-proxy': SECRET, 'x-fullfilio-host': 'shop.com' } }))
+    const seen = assets.fetch.mock.calls[0][0] as Request
+    expect(seen.url).toBe('https://shop.com/products/a')
+    expect(seen.headers.has('x-fullfilio-proxy')).toBe(false)
+  })
+})

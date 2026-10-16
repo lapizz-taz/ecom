@@ -181,10 +181,14 @@ function hostingText(h: NonNullable<DomainDiagnosis['hosting']>): string {
 }
 
 /** Who runs the domain's DNS, and where to make the change there. */
-function DnsHost({ diag }: { diag: DomainDiagnosis }) {
+function DnsHost({ diag, rootA }: { diag: DomainDiagnosis; rootA?: boolean }) {
   const host = diag.dns_host
   if (!host || !host.nameservers.length) return null
-  const steps = host.provider ? PROVIDER_STEPS[host.provider] : undefined
+  const known = host.provider ? PROVIDER_STEPS[host.provider] : undefined
+  // A root domain on our proxy is a plain A record, which every DNS company takes.
+  const steps = known && rootA
+    ? { where: known.where, tip: 'For @ use an A record with the address below; delete any ALIAS, CNAME or other A/AAAA record for @ first.' }
+    : known
   return (
     <div className="space-y-1 rounded-lg border p-2.5 text-xs">
       <p>
@@ -247,7 +251,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
                 try { await onUseWww() } finally { setSwitching(false) }
               }}>{switching && <Spinner />} Use www.{d.domain} instead</Button>
             )}
-            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} />}
+            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} rootA={d.records.some((r) => r.type === 'A' && r.name === '@')} />}
             {diag && diag.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Records found</p>
