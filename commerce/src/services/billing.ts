@@ -216,27 +216,3 @@ export async function myPlan(): Promise<MyPlan> {
   if (error) throw error
   return data as unknown as MyPlan
 }
-
-/** A plan the business can pick in Plan & Billing (public, active plans only). */
-export interface PlanOption {
-  code: string; name: string; description: string | null; price: number; currency: string
-  billing_interval: 'MONTH' | 'YEAR'; trial_days: number; limits: Limits; features: Array<{ code: string; name: string }>
-}
-export interface PlanOptions {
-  current: { code: string; status: SubscriptionStatus; price: number; billing_interval: string; current_period_end: string | null; trial_ends_at: string | null } | null
-  can_pay: boolean
-  plans: PlanOption[]
-  all_features: Array<{ code: string; name: string }>
-  pending: { invoice_id: string; number: string; total: number; amount_paid: number; plan: string; plan_name: string } | null
-}
-export async function planOptions(): Promise<PlanOptions> {
-  const { data, error } = await supabase.rpc('billing_plan_options' as never)
-  if (error) throw error
-  return data as unknown as PlanOptions
-}
-/** Picks a plan: a free plan applies at once; a paid one returns the invoice to pay (the plan changes once it is paid). */
-export async function choosePlan(code: string): Promise<{ applied: true; plan: string } | { applied: false; id: string; number: string; total: number; amount_paid: number }> {
-  const { data, error } = await supabase.rpc('billing_choose_plan' as never, { p_code: code } as never)
-  if (error) throw error
-  return data as never
-}
