@@ -282,8 +282,8 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const owners = [...new Set(nameservers.map(nsOwner))]
   const dnsHost = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1 }
   if (kind === 'apex' && onCloudflare && dnsHost.provider && CLOUDFLARE_BACKED_DNS.has(dnsHost.provider)) {
-    issues.push({ code: 'USE_WWW', severity: 'error', title: `Use www.${domain} — ${dnsHost.provider} cannot connect the root domain`,
-      detail: `${dnsHost.provider} runs its DNS on Cloudflare, and Cloudflare only connects a domain there through a CNAME record, which the root (@) cannot have. Connect www.${domain} instead (a CNAME for www to ${target.cname}), then at ${dnsHost.provider} redirect ${domain} to https://www.${domain}.` })
+    issues.push({ code: 'USE_WWW', severity: 'error', title: `${dnsHost.provider} cannot connect the root domain`,
+      detail: `${dnsHost.provider} runs its DNS on Cloudflare, and Cloudflare only connects a domain there through a CNAME record, which the root (@) cannot have at ${dnsHost.provider}. Either keep ${domain} and move its DNS to Cloudflare (free): add the domain at dash.cloudflare.com, set a CNAME for @ to ${target.cname} (DNS only), keep your email records, then change the nameservers at ${dnsHost.provider} to the two Cloudflare gives you. Or connect www.${domain} instead (a CNAME for www to ${target.cname}) and forward ${domain} to it.` })
   }
   if (dnsHost.mixed) {
     issues.push({ code: 'NS_MIXED', severity: 'error', title: 'Your domain uses nameservers from two companies',

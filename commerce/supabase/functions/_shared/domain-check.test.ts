@@ -235,7 +235,7 @@ describe('root domain on a DNS company that runs on Cloudflare', () => {
     const f = fakeFetch(zone)
     const root = await diagnose('shop.com', { target, fetcher: f })
     expect(root.issues[0]).toMatchObject({ code: 'USE_WWW', severity: 'error' })
-    expect(root.issues[0].detail).toContain('www.shop.com')
+    expect(root.issues[0].detail).toMatch(/move its DNS to Cloudflare.*www\.shop\.com/)
     const www = await diagnose('www.shop.com', { target, fetcher: f })
     expect(www.issues.map((i) => i.code)).not.toContain('USE_WWW')
     zone['shop.com'].NS = ['dns1.registrar-servers.com']
