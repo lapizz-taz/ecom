@@ -150,13 +150,29 @@ export default function CheckoutPage() {
   // No check for this number yet: run it once (the courier lookup takes a few seconds), then the
   // quote reuses it. Until it answers the customer sees "checking", never a guessed cash on delivery.
   const riskPending = Boolean(quoteInput.phone && quote.data?.phone === quoteInput.phone && quote.data.risk === 'pending')
+  // One lookup per number: changing the district or the payment method while it runs must not
+  // start another (the price quote reuses the finished check for whatever is chosen then).
   const riskCheck = useQuery({
-    queryKey: ['checkout-risk', quoteInput.phone, quoteInput.district, quoteInput.delivery_method, quoteInput.payment_method, quoteInput.coupon_code, quoteInput.items],
+    queryKey: ['checkout-risk', quoteInput.phone],
     enabled: riskPending,
     staleTime: 5 * 60_000,
     queryFn: async () => ({ ...(await checkoutQuote({ ...quoteInput, check: true })), phone: quoteInput.phone }),
     retry: false,
   })
+
+  // When the lookup is done, price again with what is chosen now (it may have changed meanwhile).
+  const refetchQuote = quote.refetch
+  useEffect(() => {
+    if (riskCheck.data) void refetchQuote()
+  }, [riskCheck.data, refetchQuote])
+  // Never keep the customer waiting: after 15 seconds the decision is made when the order is placed.
+  const [slowCheck, setSlowCheck] = useState<string | null>(null)
+  useEffect(() => {
+    if (!riskPending || !quoteInput.phone) return
+    const phone = quoteInput.phone
+    const timer = setTimeout(() => setSlowCheck(phone), 15_000)
+    return () => clearTimeout(timer)
+  }, [riskPending, quoteInput.phone])
 
   const placed = useRef(false)
   // The order page to come back to from bKash / PayStation without paying (the cart is empty by then).
@@ -234,7 +250,8 @@ export default function CheckoutPage() {
   const checked = forPhone?.risk === 'pending' && riskCheck.data?.phone === currentPhone ? riskCheck.data : forPhone
   const requirement = checked?.payment_requirement ?? null
   // The decision is made when the order is placed (lookup limit reached, check failed to start).
-  const deferred = !!currentPhone && (checked?.risk === 'deferred' || (forPhone?.risk === 'pending' && !!riskCheck.error))
+  const deferred = !!currentPhone && (checked?.risk === 'deferred'
+    || (forPhone?.risk === 'pending' && (!!riskCheck.error || (slowCheck === currentPhone && !riskCheck.data))))
   const checkingPhone = phoneValid && !requirement && !deferred && !(quote.error && !quote.isFetching)
   const checkState = phoneValid ? phoneCheckState(checkingPhone, requirement, method, deferred) : null
   const blocked = requirement?.mode === 'BLOCKED'

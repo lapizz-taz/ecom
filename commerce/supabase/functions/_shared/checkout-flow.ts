@@ -33,7 +33,10 @@ interface FraudCheckRow {
   id: string | null
 }
 
-export async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Record<string, unknown>, opts: { cacheOnly?: boolean } = {}): Promise<string | null> {
+/** How long the customer waits for the courier lookup at checkout (a slow source is left out). */
+export const CHECKOUT_LOOKUP_MS = 8_000
+
+export async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Record<string, unknown>, opts: { cacheOnly?: boolean; timeoutMs?: number } = {}): Promise<string | null> {
   const settings = await getSettings<FraudSettings>(admin, 'fraud')
   if (settings.enabled === false) return null
   const cached = await rpc<FraudCheckRow | null>(admin, 'recent_fraud_check', { p_phone: phone })
@@ -46,7 +49,7 @@ export async function fraudCheckFor(admin: SupabaseClient, phone: string, contex
   if (opts.cacheOnly) return null
   const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check(
     { phone, district: context.district as string | undefined, orderValue: context.order_value as number | undefined },
-    { context },
+    { context, timeoutMs: opts.timeoutMs },
   )
   if (payload.status !== 'SUCCESS') {
     void logEvent({
@@ -98,7 +101,7 @@ export async function quoteCart(admin: SupabaseClient, input: QuoteInput, ctx: Q
         // real Bangladeshi mobile, and within the per-visitor and per-store hourly limits.
         const allowed = !!bdMobile(input.phone) && await rpc<boolean>(admin, 'checkout_lookup_allowed', { p_ip: ctx.ip })
         if (allowed) {
-          checkId = await fraudCheckFor(admin, input.phone, { ...context, origin: 'checkout', ip_hash: await ipHash(ctx.ip) })
+          checkId = await fraudCheckFor(admin, input.phone, { ...context, origin: 'checkout', ip_hash: await ipHash(ctx.ip) }, { timeoutMs: CHECKOUT_LOOKUP_MS })
           risk = checkId ? 'checked' : 'deferred'
         } else {
           risk = 'deferred'
@@ -170,7 +173,7 @@ export async function placeOrder(admin: SupabaseClient, input: PlaceInput, ctx: 
     return_charge: preview.return_charge,
     district: input.shipping.district,
     payment_method: input.payment_method,
-  }).catch((error) => {
+  }, { timeoutMs: CHECKOUT_LOOKUP_MS * 2 }).catch((error) => {
     void logEvent({ level: 'ERROR', category: 'FRAUD', source: 'checkout', message: 'Fraud check failed while placing an order', error })
     return null
   })

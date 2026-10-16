@@ -213,10 +213,18 @@ function maxDefined(values: Array<number | undefined>): number | undefined {
 export class FraudDetectionService {
   constructor(private readonly providers: FraudProvider[]) {}
 
-  async check(input: FraudCheckInput, extras: { orderId?: string; context?: Record<string, unknown> } = {}): Promise<RecordFraudCheckPayload> {
+  async check(input: FraudCheckInput, extras: { orderId?: string; context?: Record<string, unknown>; timeoutMs?: number } = {}): Promise<RecordFraudCheckPayload> {
+    // At checkout the customer is waiting: a source that has not answered within `timeoutMs`
+    // counts as failed for this check (the others still decide), instead of holding the page.
+    const limited = (p: FraudProvider) => {
+      if (!extras.timeoutMs) return p.checkCustomer(input)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('took too long to answer')), extras.timeoutMs) })
+      return Promise.race([p.checkCustomer(input), late]).finally(() => clearTimeout(timer))
+    }
     const results: FraudProviderResult[] = await Promise.all(
       this.providers.map((p) =>
-        p.checkCustomer(input).catch((error: Error) => ({ provider: p.name, ok: false, counts: {}, error: error.message })),
+        limited(p).catch((error: Error) => ({ provider: p.name, ok: false, counts: {}, error: error.message })),
       ),
     )
     // A lookup that failed, or that the usage policy refused (no credits, feature off), gave
