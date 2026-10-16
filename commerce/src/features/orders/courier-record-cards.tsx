@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Gauge, RefreshCw, Store } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { Reveal } from '@/components/common/reveal'
 import { useAuth } from '@/features/auth/auth-context'
 import { invokeFunction } from '@/lib/functions'
 import { timeAgo } from '@/lib/format'
@@ -63,19 +64,26 @@ function lineRate(c: CourierLineRecord): number | null {
   return c.orders > 0 ? (c.delivered / c.orders) * 100 : null
 }
 
-function Tile({ icon, name, fill, color, value, detail, warn, tag, title }: {
+/** Each tile's bar and shimmer start a little after the one before it. */
+const stagger = (i: number): CSSProperties => ({ animationDelay: `${i * 110}ms` })
+
+function Tile({ icon, name, fill, color, value, detail, warn, tag, title, index = 0, busy }: {
   icon: ReactNode; name: string; fill: number | null | undefined; color: string; value: ReactNode; detail?: ReactNode; warn?: boolean
   /** Where the figure came from (BD Courier / sign-in). */ tag?: string; title?: string
+  /** Position in the grid (for the staggered entrance). */ index?: number
+  /** A fresh check is running: a light sweeps over the bar. */ busy?: boolean
 }) {
   return (
-    <div className="min-w-0 rounded-xl border bg-background/40 px-3.5 py-3" title={title}>
+    <div className="record-tile min-w-0 rounded-xl border bg-background/40 px-3.5 py-3" style={stagger(index)} title={title}>
       <div className="flex items-center gap-2">
         <span className="grid size-5 shrink-0 place-items-center">{icon}</span>
         <span className="truncate text-sm">{name}</span>
         {tag && <span className="ml-auto hidden shrink-0 text-[10px] text-muted-foreground sm:inline">{tag}</span>}
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.min(Math.max(fill ?? 0, 0), 100)}%`, background: color }} />
+      <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="record-bar h-full rounded-full transition-[width] duration-700 ease-[var(--ease-out)]"
+          style={{ width: `${Math.min(Math.max(fill ?? 0, 0), 100)}%`, background: color, ...stagger(index + 2) }} />
+        {busy && <span className="record-shimmer absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-foreground/35 to-transparent" style={stagger(index)} />}
       </div>
       <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-2">
         <span className="whitespace-nowrap text-sm font-medium tabular-nums">{value}</span>
@@ -111,7 +119,7 @@ export function CourierRecordCards({ orderId, phone, createdAt, className }: { o
     },
     onError: (e) => toast.error(e),
   })
-  if (record.isLoading) return <div className={cn('h-56 animate-pulse rounded-2xl border bg-muted/40', className)} />
+  if (record.isLoading) return <CheckingPanel className={className} />
   if (record.error || !record.data) return null
   return (
     <DeliveryRecordPanel data={record.data} waiting={waiting(record.data)} className={className} countsCurrentOrder
@@ -141,13 +149,7 @@ export function PhoneRecordCards({ phone, className }: { phone: string; classNam
     },
     onError: (e) => toast.error(e),
   })
-  if (record.isLoading) {
-    return (
-      <section className={cn('flex items-center gap-2 rounded-2xl border bg-card px-4 py-4 text-sm text-muted-foreground', className)}>
-        <RefreshCw className="size-4 animate-spin" /> Checking {phone} with the couriers…
-      </section>
-    )
-  }
+  if (record.isLoading) return <CheckingPanel phone={phone} className={className} />
   if (record.error || !record.data) {
     return record.error ? <p className={cn('rounded-xl border px-4 py-3 text-xs text-muted-foreground', className)}>Couldn’t check the delivery record: {(record.error as Error).message}</p> : null
   }
@@ -155,6 +157,53 @@ export function PhoneRecordCards({ phone, className }: { phone: string; classNam
     <DeliveryRecordPanel data={record.data.record} waiting={false} className={className}
       notice={record.data.lookup_error ? `The courier check could not run: ${record.data.lookup_error}` : !record.data.looked_up && !record.data.record.check ? 'Not checked yet: someone who can create orders or review fraud can run the check.' : undefined}
       onRecheck={can('fraud.review') ? () => recheck.mutate() : undefined} rechecking={recheck.isPending} />
+  )
+}
+
+const CHECKING_TILES: { key: string; name: string; icon: ReactNode; color: string }[] = [
+  { key: 'ours', name: 'Our record', icon: <Store className="size-4 text-violet-400" />, color: '#a78bfa' },
+  { key: 'overall', name: 'Overall', icon: <Gauge className="size-4 text-indigo-400" />, color: '#818cf8' },
+  ...ALWAYS.map((k) => ({ key: k, name: COURIERS[k].name, icon: MARKS[k], color: COURIERS[k].color })),
+]
+
+/** While the record loads: the panel's own shape, each source pulsing and its bar sweeping. */
+function CheckingPanel({ phone, className }: { phone?: string; className?: string }) {
+  return (
+    <section role="status" aria-live="polite" aria-busy="true" className={cn('rounded-2xl border bg-card px-4 pt-4 pb-4 sm:px-5', className)}>
+      <div className="relative flex items-center justify-between gap-3 border-b pb-3">
+        <h3 className="text-base font-medium">Delivery record</h3>
+        <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          Checking<span className="hidden tabular-nums sm:inline">{phone}</span>
+          <span className="flex items-center gap-0.5" aria-hidden>
+            {[0, 1, 2].map((i) => <span key={i} className="record-dot size-1 rounded-full bg-current" style={{ animationDelay: `${i * 160}ms` }} />)}
+          </span>
+        </span>
+        <span className="absolute inset-x-0 -bottom-px h-px overflow-hidden" aria-hidden>
+          <span className="block h-full w-1/3 animate-[loader_1.4s_var(--ease-in-out)_infinite] bg-gradient-to-r from-transparent via-foreground/50 to-transparent motion-reduce:animate-none" />
+        </span>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">Looking up this number in your orders and with Pathao, Steadfast, RedX and CarryBee…</p>
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3" aria-hidden>
+        {CHECKING_TILES.map((t, i) => (
+          <div key={t.key} className="record-tile min-w-0 rounded-xl border bg-background/40 px-3.5 py-3" style={stagger(i)}>
+            <div className="flex items-center gap-2">
+              <span className="relative grid size-5 shrink-0 place-items-center">
+                <span className="record-ping absolute inset-0 rounded-full" style={{ boxShadow: `0 0 0 2px ${t.color}`, ...stagger(i) }} />
+                {t.icon}
+              </span>
+              <span className="truncate text-sm text-muted-foreground">{t.name}</span>
+            </div>
+            <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+              <span className="record-shimmer absolute inset-y-0 left-0 w-1/2 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`, ...stagger(i) }} />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="my-[3px] h-3.5 w-9 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+              <span className="h-2.5 w-14 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -176,13 +225,14 @@ function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = fa
   ].filter(Boolean)
   const sources = groups.length ? `Sources: ${groups.join(' · ')}` : ''
   const ourRate = earlier > 0 ? ((ours?.delivered ?? 0) / earlier) * 100 : null
+  const busy = waiting || !!rechecking
 
   return (
     <section className={cn('rounded-2xl border bg-card px-4 pt-4 pb-4 sm:px-5', className)}>
-      <div className="flex items-center justify-between gap-3 border-b pb-3">
+      <div className="relative flex items-center justify-between gap-3 border-b pb-3">
         <h3 className="text-base font-medium">Delivery record</h3>
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>{waiting ? 'Checking…' : check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
+          <span>{busy ? 'Checking…' : check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
           {onRecheck && (
             <button type="button" onClick={onRecheck} disabled={rechecking} aria-label="Check the delivery record again"
               className="rounded-md p-1 hover:bg-muted hover:text-foreground disabled:opacity-50">
@@ -190,10 +240,15 @@ function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = fa
             </button>
           )}
         </div>
+        {busy && (
+          <span className="absolute inset-x-0 -bottom-px h-px overflow-hidden" aria-hidden>
+            <span className="block h-full w-1/3 animate-[loader_1.4s_var(--ease-in-out)_infinite] bg-gradient-to-r from-transparent via-foreground/50 to-transparent motion-reduce:animate-none" />
+          </span>
+        )}
       </div>
 
       {notice && <p className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">{notice}</p>}
-      {!waiting && risk.level !== 'unchecked' && (
+      <Reveal open={!waiting && risk.level !== 'unchecked'} gap="">
         <div className="mt-3 flex flex-col items-start gap-1.5 sm:flex-row sm:gap-3">
           <span className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium', RISK_TONE[risk.level])}>{risk.label}</span>
           {risk.reasons.length > 0 && (
@@ -202,17 +257,17 @@ function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = fa
             </ul>
           )}
         </div>
-      )}
+      </Reveal>
 
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Tile icon={<Store className="size-4 text-violet-400" />} name="Our record" fill={ourRate} color="#a78bfa"
+        <Tile index={0} busy={busy} icon={<Store className="size-4 text-violet-400" />} name="Our record" fill={ourRate} color="#a78bfa"
           value={earlier === 0 ? 'New' : `${earlier} order${earlier === 1 ? '' : 's'}`}
           detail={earlier === 0 ? 'first order' : `${ours?.delivered ?? 0} delivered`} />
-        <Tile icon={<Gauge className="size-4 text-indigo-400" />} name="Overall" fill={check?.rate} color={rateColor(check?.rate, policy)}
+        <Tile index={1} busy={busy} icon={<Gauge className="size-4 text-indigo-400" />} name="Overall" fill={check?.rate} color={rateColor(check?.rate, policy)}
           value={pct(check?.rate)}
           title="Delivered ÷ (delivered + cancelled or returned at the door), over the couriers that report parcel counts"
           detail={check && check.total > 0 ? `${check.total} parcels${check.cancelled ? ` · ${check.cancelled} back` : ''}` : 'no parcels'} />
-        {[...ALWAYS, ...extra].map((k) => {
+        {[...ALWAYS, ...extra].map((k, i) => {
           const c = byKey.get(k)
           const brand = COURIERS[k]
           const name = brand?.name ?? c?.name ?? k
@@ -221,13 +276,13 @@ function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = fa
           const tag = c?.source ? SOURCE[c.source] : undefined
           const reports = c?.fraud_reports ? ` · ${c.fraud_reports} report${c.fraud_reports === 1 ? '' : 's'}` : ''
           if (c?.rate_only) {
-            return <Tile key={k} icon={icon} name={name} fill={c.success_ratio} color={color} value={pct(c.success_ratio)} tag={tag}
+            return <Tile key={k} index={i + 2} busy={busy} icon={icon} name={name} fill={c.success_ratio} color={color} value={pct(c.success_ratio)} tag={tag}
               title={`${name} reports only its own rate${c.parcel_range ? ` and a volume band (${c.parcel_range})` : ''}, not parcel counts`}
               detail={`${c.parcel_range ? `${c.parcel_range} parcels` : 'rate only'}${reports}`} warn={!!c.fraud_reports} />
           }
           const rate = c ? lineRate(c) : null
           return (
-            <Tile key={k} icon={icon} name={name} fill={rate} color={color} value={pct(rate)} tag={c?.notice ? undefined : tag}
+            <Tile key={k} index={i + 2} busy={busy} icon={icon} name={name} fill={rate} color={color} value={pct(rate)} tag={c?.notice ? undefined : tag}
               title={c?.notice ?? undefined}
               detail={c?.notice ? 'couldn’t check' : (c?.orders ?? 0) > 0 ? <>{c!.delivered}/{c!.orders}<span className="hidden sm:inline"> delivered</span>{reports}</> : 'no parcels'}
               warn={!!c?.notice || !!c?.fraud_reports} />
