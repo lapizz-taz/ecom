@@ -3,7 +3,7 @@
   "slug": "fullfilio-connect",
   "version": "1.4.2",
   "package": "https://fullfilio.com/downloads/fullfilio-connect.zip?v=1.4.2",
-  "sha256": "a90cbab74cf1a2a8cb37e1700d08873795e82780bb7d0424c970ffe2ab8a4527",
+  "sha256": "9b7e100458b112d2fdf251ca609705180b55dc0e88f1a703610d9ae0d3cf06f4",
   "requires": "6.2",
   "tested": "6.8",
   "requires_php": "7.4",
