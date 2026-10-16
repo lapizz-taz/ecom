@@ -134,7 +134,7 @@ function DomainsTab() {
       </DialogContent>
     </Dialog>
     <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
-      description="The store stops opening on this domain. Your default address keeps working." confirmLabel="Remove" destructive
+      description="The store stops opening on this domain. Your default address keeps working. If you add it again later, it gets a new verification code and you must update the TXT record at your domain provider. Waiting? No need to remove it: it keeps checking by itself." confirmLabel="Remove" destructive
       onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); close(); refresh() }} />
     </>
   )
