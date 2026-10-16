@@ -29,6 +29,7 @@ import { useOrderSources } from '@/hooks/use-order-sources'
 import { getStoreCart, linkStoreCart } from '@/services/abandoned'
 import { findCustomerByPhone } from '@/services/customers'
 import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, setOrderSource } from '@/services/orders'
+import { inboxUpdate } from '@/services/inbox'
 import type { PastedOrder } from '@/lib/order-paste'
 import type { Enums } from '@/types/database'
 
@@ -88,10 +89,16 @@ export default function NewOrderPage() {
   }, [lead.data])
 
   // Or from a phone call (VoiceDrive → new caller): just the number.
+  // From the inbox: the name, number and address the customer gave in the chat.
   const callerPhone = params.get('phone')
+  const conversationId = params.get('conversation')
+  const chatName = params.get('name')
+  const chatAddress = params.get('address')
   useEffect(() => {
     if (callerPhone && !leadId && !cartId) setCustomer((v) => (v.phone ? v : { ...v, phone: callerPhone }))
-  }, [callerPhone, leadId, cartId])
+    if (chatName && !leadId && !cartId) setCustomer((v) => (v.full_name ? v : { ...v, full_name: chatName }))
+    if (chatAddress && !leadId && !cartId) setShipping((s) => (s.address ? s : { ...s, address: chatAddress }))
+  }, [callerPhone, chatName, chatAddress, leadId, cartId])
 
   const cartFilled = useRef(false)
   useEffect(() => {
@@ -158,8 +165,14 @@ export default function NewOrderPage() {
       }
       return order
     },
-    onSuccess: (order) => {
+    onSuccess: async (order) => {
       toast.success(`Order ${order?.order_number} created`)
+      // Started from a chat: link the order to it and go back to the conversation.
+      if (conversationId && order?.id) {
+        await inboxUpdate(conversationId, { linked_order_id: order.id }).catch(() => toast.warning('Order created, but it could not be linked to the chat'))
+        navigate(`/admin/inbox?c=${conversationId}`)
+        return
+      }
       navigate(`/admin/orders/${order?.id}`)
     },
   })

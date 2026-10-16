@@ -148,3 +148,7 @@ verify_jwt = false
 [functions.courier-relay]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+
+[functions.inbox]
+verify_jwt = false
+import_map = "./functions/import_map.json"

@@ -9,6 +9,8 @@ import type { QueueCounts } from '@/types/domain'
 export interface NavCounts {
   queue?: QueueCounts
   status?: Record<string, number>
+  /** Open conversations with unread messages. */
+  inbox?: number
 }
 
 export interface NavChild {
@@ -105,11 +107,14 @@ export const NAV: NavSection[] = [
         ],
       },
       {
-        label: 'Messages', to: '/admin/sms', icon: <MessageSquare />, permission: 'sms.view',
+        label: 'Messaging', to: '/admin/inbox', icon: <MessageSquare />, permission: 'inbox.view',
+        badge: (c) => c.inbox,
         children: [
-          { label: 'Overview', to: '/admin/sms' },
-          { label: 'Message Log', to: '/admin/sms?tab=messages' },
-          { label: 'Automations', to: '/admin/sms?tab=automations' },
+          { label: 'Inbox', to: '/admin/inbox', badge: (c) => c.inbox },
+          { label: 'Comments', to: '/admin/inbox?kind=COMMENT' },
+          { label: 'SMS', to: '/admin/sms', permission: 'sms.view', feature: 'sms' },
+          { label: 'SMS Log', to: '/admin/sms?tab=messages', permission: 'sms.view', feature: 'sms' },
+          { label: 'Channels', to: '/admin/inbox/channels' },
         ],
       },
       {
@@ -142,7 +147,7 @@ export const NAV: NavSection[] = [
         label: 'Marketing', to: '/admin/coupons', icon: <TrendingUp />, permission: 'coupons.manage',
         children: [
           { label: 'Coupons', to: '/admin/coupons' },
-          { label: 'SMS Automations', to: '/admin/sms?tab=automations', permission: 'sms.view' },
+          { label: 'SMS Automations', to: '/admin/sms?tab=automations', permission: 'sms.view', feature: 'sms' },
         ],
       },
       {
@@ -199,7 +204,7 @@ export const NAV: NavSection[] = [
           { label: 'Courier Integration', to: '/admin/couriers', permission: 'couriers.view' },
           { label: 'App Integration', to: '/admin/settings/apps' },
           { label: 'Developers & API', to: '/admin/settings/developers' },
-          { label: 'Messaging Channels', to: '/admin/sms', permission: 'sms.view' },
+          { label: 'Messaging Channels', to: '/admin/inbox/channels', permission: 'inbox.view' },
           { label: 'VoiceDrive PBX', to: '/admin/settings/voicedrive-pbx', feature: 'pbx' },
           { label: 'Templates', to: '/admin/settings?tab=notifications' },
           { label: 'Order Sources', to: '/admin/settings?tab=sources' },

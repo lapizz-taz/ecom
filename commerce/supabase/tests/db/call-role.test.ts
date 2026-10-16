@@ -11,19 +11,19 @@ async function anOrder(db: Db) {
 }
 
 describe('Call role', () => {
-  it('exists in every store, new stores included, with order, call and status access only', () =>
+  it('exists in every store, new stores included, with order, call, status and inbox access only', () =>
     inTx(async (db) => {
       await asSystem(db)
       const perms = await value<string[]>(db, `select array_agg(p.code order by p.code) from public.roles r
         join public.role_permissions rp on rp.role_id = r.id join public.permissions p on p.id = rp.permission_id where r.code = 'CALL'`)
-      expect(perms).toEqual(['orders.status', 'orders.update', 'orders.view', 'pbx.call'])
+      expect(perms).toEqual(['inbox.reply', 'inbox.view', 'orders.status', 'orders.update', 'orders.view', 'pbx.call'])
 
       await asSystem(db, null)
       const id = await value<string>(db, `insert into public.merchants (name) values ($1) returning id`, [`Shop ${randomUUID().slice(0, 6)}`])
       await asSystem(db, id)
       await db.query(`select public._merchant_seed_defaults($1)`, [id])
       expect(await value<string>(db, `select name from public.roles where merchant_id = $1 and code = 'CALL'`, [id])).toBe('Call')
-      expect(await value<number>(db, `select count(*)::int from public.role_permissions rp join public.roles r on r.id = rp.role_id where r.merchant_id = $1 and r.code = 'CALL'`, [id])).toBe(4)
+      expect(await value<number>(db, `select count(*)::int from public.role_permissions rp join public.roles r on r.id = rp.role_id where r.merchant_id = $1 and r.code = 'CALL'`, [id])).toBe(6)
     }))
 
   it('sees orders but not costs, products, the dashboard or finance', () =>

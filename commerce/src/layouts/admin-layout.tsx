@@ -36,6 +36,7 @@ import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { queueCounts, statusCounts } from '@/services/orders'
+import { inboxUnread } from '@/services/inbox'
 import { isPlatformStaff } from '@/services/users'
 import { useStoreAddress } from '@/hooks/use-store-address'
 import { useNoAutoKeyboard } from '@/hooks/use-no-auto-keyboard'
@@ -52,10 +53,11 @@ function readCollapsed(): boolean {
 }
 
 /** Live counts for the menu badges. */
-function useNavCounts(enabled: boolean, canFraud: boolean): NavCounts {
+function useNavCounts(enabled: boolean, canFraud: boolean, canInbox: boolean): NavCounts {
   const queue = useQuery({ queryKey: ['orders', 'queue-counts'], queryFn: queueCounts, enabled, staleTime: 30_000, refetchInterval: 120_000 })
   const status = useQuery({ queryKey: ['orders', 'status-counts'], queryFn: statusCounts, enabled: enabled && canFraud, staleTime: 30_000, refetchInterval: 120_000 })
-  return { queue: queue.data, status: status.data }
+  const inbox = useQuery({ queryKey: ['inbox-unread'], queryFn: inboxUnread, enabled: canInbox, staleTime: 20_000, refetchInterval: 30_000 })
+  return { queue: queue.data, status: status.data, inbox: inbox.data || undefined }
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -237,7 +239,7 @@ export default function AdminLayout() {
     queryFn: isPlatformStaff,
   })
   const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')))
-  const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')))
+  const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')), Boolean(access && can('inbox.view')))
   const theme = useAdminThemePreference()
   useAdminTheme()
   useIdleSignOut(access?.idle_logout_minutes ?? 0, signOut)
