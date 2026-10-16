@@ -157,6 +157,8 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
     status: 'VERIFYING', records: [...baseRecords(d, target), ...extra], diagnostics,
     // The first thing to fix, in plain words; we keep checking every few minutes on our own.
     detail: blocking ? blocking.title
+      // DNS and the TXT are right: Cloudflare's own "does not CNAME" lags behind until it re-reads them.
+      : diagnostics.pointed ? 'DNS is right — the hosting is confirming the domain and issuing HTTPS (usually 5–15 minutes)'
       : problem ? `Waiting: ${problem}`
       : !diagnostics.pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'DNS is right — the HTTPS certificate is on its way',
   }
