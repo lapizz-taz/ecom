@@ -86,6 +86,17 @@ describe('FraudDetectionService', () => {
     const internalOnly = await new FraudDetectionService([new InternalHistoryProvider()]).check({ phone: '1' })
     expect(internalOnly.status).toBe('SUCCESS')
   })
+
+  it('at checkout, leaves out a source that answers too slowly instead of waiting for it', async () => {
+    const slow: FraudProvider = { name: 'slow', checkCustomer: () => new Promise((resolve) => setTimeout(() => resolve({ provider: 'slow', ok: true, counts: { delivered: 9 } }), 500)) }
+    const started = Date.now()
+    const payload = await new FraudDetectionService([stub('a', { counts: { delivered: 3 } }), slow]).check({ phone: '1' }, { timeoutMs: 50 })
+    expect(Date.now() - started).toBeLessThan(400)
+    expect(payload).toMatchObject({ status: 'PARTIAL', provider_counts: { delivered: 3 } })
+    expect(payload.error).toContain('slow: took too long')
+    // Without a limit (staff re-checks) it still waits for every source.
+    expect((await new FraudDetectionService([slow]).check({ phone: '1' })).provider_counts).toEqual({ delivered: 9 })
+  })
 })
 
 describe('SSLCommerz payment provider', () => {
