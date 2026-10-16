@@ -76,7 +76,10 @@ describe('plans: a new merchant', () => {
       await asUser(db, owner)
       const plan = await value<{ subscription: { plan: { code: string }; status: string }; features: Record<string, Entitlement> }>(db, `select public.my_plan()`)
       expect(plan.subscription).toMatchObject({ status: 'ACTIVE', plan: { code: 'FOUNDER' } })
-      expect(Object.values(plan.features).every((f) => f.enabled)).toBe(true)
+      // Custom domains ships switched off for everyone (Super Admin turns it on); the rest is on.
+      const { custom_domains: domains, ...rest } = plan.features
+      expect(Object.values(rest).every((f) => f.enabled)).toBe(true)
+      expect(domains.state).toBe('DISABLED_GLOBALLY')
     }))
 })
 
