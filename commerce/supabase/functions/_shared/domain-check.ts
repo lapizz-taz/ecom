@@ -244,8 +244,12 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     const ok = isOurs(v) || m.a(v) || (isCloudflare(v) && servedByUs)
     records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : 'Cloudflare proxy') : 'Remove: the store has no IPv6 address' })
   }
-  // Records the hosting asked for (ownership / certificate): are they there yet?
-  const expected = opts.expect ?? []
+  // Nameservers: who answers DNS for the domain.
+  const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
+  const onCloudflareDns = nameservers.length > 0 && nameservers.every((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
+  // Records the hosting asked for (ownership / certificate): are they there yet? On Cloudflare
+  // DNS they do not count (Cloudflare verifies through the CNAME there), so none are asked for.
+  const expected = onCloudflare && onCloudflareDns ? [] : opts.expect ?? []
   const txtAnswers = await Promise.all(expected.map((e) => doh(fetcher, RESOLVERS[0].url, e.name, 'TXT')))
   const missingTxt: ExpectedRecord[] = []
   const staleTxt: string[] = []
@@ -281,12 +285,10 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const issues: DomainIssue[] = []
   // Nameservers: who answers for the domain. Two different companies means half the
   // visitors get one set of records and half the other (old site, then new, then old).
-  const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
   const owners = [...new Set(nameservers.map(nsOwner))]
   const dnsHost = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1 }
   // A root domain connects only when its DNS is on Cloudflare (a CNAME at @, which Cloudflare
   // flattens). Elsewhere it never verifies: Hostinger and others cannot hold a CNAME at @.
-  const onCloudflareDns = nameservers.length > 0 && nameservers.every((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
   if (kind === 'apex' && onCloudflare && nameservers.length > 0 && !onCloudflareDns) {
     issues.push({ code: 'NEEDS_CLOUDFLARE', severity: 'error', title: 'Main domain works only with Cloudflare DNS',
       detail: `${domain} can connect only when its DNS is on Cloudflare (free)${dnsHost.provider ? `; it is on ${dnsHost.provider} now, which cannot` : ''}. Move the DNS to Cloudflare with the steps below, or use www.${domain}, which works at any DNS company.` })
