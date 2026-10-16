@@ -17,6 +17,8 @@ export interface DomainDiagnosis {
   resolvers: Array<{ name: string; ok: boolean; answers: string[] }>
   tls: { ok: boolean; detail: string; served_by_store: boolean | null; status: number | null }
   issues: Array<{ code: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string }>
+  /** Who answers DNS for the domain (from its nameservers); mixed = two companies at once. */
+  dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean }
 }
 export interface StoreDomain {
   id: string; domain: string; status: 'PENDING' | 'VERIFYING' | 'ACTIVE' | 'ERROR' | 'MANUAL' | 'REMOVED'

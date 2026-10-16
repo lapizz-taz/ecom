@@ -120,7 +120,11 @@ function RecordsTable({ rows }: { rows: Array<{ type: string; name: string; valu
           {rows.map((r, i) => (
             <tr key={i} className="border-t align-top">
               <td className="px-3 py-2 font-mono text-[11px]">{r.type}</td>
-              <td className="px-3 py-2 font-mono text-[11px]">{r.name}</td>
+              <td className="px-3 py-2 font-mono text-[11px]">
+                {r.ok === undefined && r.name !== '@'
+                  ? <button type="button" className="break-all text-left hover:underline" title="Copy name" onClick={() => copy(r.name)}>{r.name}</button>
+                  : r.name}
+              </td>
               <td className="px-3 py-2">
                 <span className="font-mono text-[11px] break-all">{r.value}</span>
                 {(r.note || r.why) && <span className={cn('block text-[10.5px]', r.ok === false ? 'text-red-600' : 'text-muted-foreground')}>{r.note ?? r.why}</span>}
@@ -147,6 +151,40 @@ function Issues({ diag }: { diag: DomainDiagnosis }) {
       <ul className="mt-1.5 list-disc space-y-1 pl-5">
         {list.map((i) => <li key={i.code}><span className="font-medium">{i.title}.</span> {i.detail}</li>)}
       </ul>
+    </div>
+  )
+}
+
+/** Where each DNS company keeps the records, and what trips people up there. */
+const PROVIDER_STEPS: Record<string, { where: string; tip?: string }> = {
+  Hostinger: { where: 'hPanel → Domains → your domain → DNS / Nameservers → DNS records',
+    tip: 'For @ pick type ALIAS (Hostinger has no CNAME at @). Delete the old A record for @ first, and keep TTL at 300.' },
+  Namecheap: { where: 'Domain List → Manage → Advanced DNS → Host records', tip: 'For @ pick ALIAS Record. Delete the URL Redirect / parking records for @.' },
+  GoDaddy: { where: 'My Products → your domain → DNS → Manage DNS', tip: 'GoDaddy has no ALIAS at @: delete the A record for @ and use www, or move DNS to Cloudflare.' },
+  Cloudflare: { where: 'dash.cloudflare.com → your domain → DNS → Records', tip: 'Set each record to DNS only (grey cloud). A CNAME at @ works as is.' },
+  Porkbun: { where: 'Domain Management → your domain → DNS', tip: 'For @ pick type ALIAS.' },
+  'Name.com': { where: 'My Domains → your domain → Manage DNS Records', tip: 'For @ pick type ANAME.' },
+  Google: { where: 'Squarespace Domains → your domain → DNS → DNS Settings' },
+  Squarespace: { where: 'Domains → your domain → DNS → DNS Settings', tip: 'Delete the Squarespace Defaults records first.' },
+  Wix: { where: 'Wix → Domains → your domain → Manage DNS Records' },
+  'Amazon Route 53': { where: 'Route 53 → Hosted zones → your domain', tip: 'Route 53 has no CNAME at @: use www for the store.' },
+}
+
+/** Who runs the domain's DNS, and where to make the change there. */
+function DnsHost({ diag }: { diag: DomainDiagnosis }) {
+  const host = diag.dns_host
+  if (!host || !host.nameservers.length) return null
+  const steps = host.provider ? PROVIDER_STEPS[host.provider] : undefined
+  return (
+    <div className="space-y-1 rounded-lg border p-2.5 text-xs">
+      <p>
+        {host.mixed ? <span className="font-medium text-red-600">Two DNS companies answer for this domain</span>
+          : <>DNS for this domain is managed at <b>{host.provider ?? host.nameservers[0]}</b></>}
+      </p>
+      <p className="font-mono text-[10.5px] break-all text-muted-foreground">Nameservers: {host.nameservers.join(', ')}</p>
+      {host.mixed
+        ? <p className="text-muted-foreground">Where you bought the domain, open Nameservers and keep only one company&apos;s nameservers (the ones where you add the records below).</p>
+        : steps && <p className="text-muted-foreground">Add the records at: {steps.where}.{steps.tip ? ` ${steps.tip}` : ''}</p>}
     </div>
   )
 }
@@ -189,13 +227,14 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>
             {diag && <Issues diag={diag} />}
+            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} />}
             {diag && diag.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Records found</p>
                 <RecordsTable rows={diag.records} />
               </div>
             )}
-            {(!diag?.pointed || !d.records.length) && d.records.length > 0 && (
+            {(d.status !== 'ACTIVE' || !diag?.pointed) && d.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Add at your domain provider</p>
                 <RecordsTable rows={d.records} />
@@ -227,7 +266,12 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground">
-          <span className="w-full min-w-0 sm:w-auto sm:flex-1">{d.detail}</span>
+          <span className="w-full min-w-0 sm:w-auto sm:flex-1">
+            {d.detail}
+            {d.status !== 'ACTIVE' && d.status !== 'REMOVED' && d.status !== 'MANUAL' && (
+              <span className="block">We keep checking by ourselves every 10 minutes — you can close this, the store goes live on its own.</span>
+            )}
+          </span>
           {canEdit && (
             <>
               <Button size="sm" variant="outline" onClick={onCheck} disabled={checking}><RefreshCw className={cn(checking && 'animate-spin')} /> Check again</Button>

@@ -49,7 +49,11 @@ function DomainsTab() {
   const [state, update] = useUrlState({ tab: 'domain', domain: '' })
   const [value, setValue] = useState('')
   const [removing, setRemoving] = useState<string | null>(null)
-  const list = useQuery({ queryKey: ['store-domains'], queryFn: listDomains })
+  const list = useQuery({
+    queryKey: ['store-domains'], queryFn: listDomains,
+    // A domain still waiting is re-checked on the server every 10 minutes: show it going live without a reload.
+    refetchInterval: (q) => (q.state.data?.domains.some((d) => d.status !== 'ACTIVE' && d.status !== 'MANUAL') ? 60_000 : false),
+  })
   const refresh = () => void qc.invalidateQueries({ queryKey: ['store-domains'] })
   const add = useMutation({
     mutationFn: () => addDomain(value),

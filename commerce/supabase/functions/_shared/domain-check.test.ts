@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { apexOf, cloudflareTarget, diagnose, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname } from './domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsHostOf, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS } from './domain-check.ts'
 
-type Zone = Record<string, Partial<Record<'A' | 'AAAA' | 'CNAME' | 'CAA', string[]>>>
-const CODE = { A: 1, CNAME: 5, AAAA: 28, CAA: 257 } as const
+type Zone = Record<string, Partial<Record<'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS' | 'TXT', string[]>>>
+const CODE = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 } as const
 
 /** A fake fetch: DNS-over-HTTPS answers from `zone`, HTTPS from `https`. */
 function fakeFetch(zone: Zone, https: { ok: boolean; vercel?: boolean } = { ok: true, vercel: true }, bySubnet: Record<string, Zone> = {}) {
@@ -144,5 +144,78 @@ describe('domain check on Cloudflare (Cloudflare for SaaS)', () => {
   it('accepts a CAA record for Google Trust Services as well as Let\'s Encrypt', async () => {
     const d = await diagnose('www.shop.com', { target, fetcher: cfFetch({ 'www.shop.com': { CNAME: ['stores.fullfilio.example'], CAA: ['0 issue "pki.goog"'] } }) })
     expect(d.issues.map((i) => i.code)).not.toContain('CAA')
+  })
+
+  it('an ALIAS at the root (answers with our target\'s own addresses) is pointed, and the provider is named', async () => {
+    const zone: Zone = {
+      'stores.fullfilio.example': { A: ['104.21.50.1', '172.67.1.2'] },
+      'shop.com': { A: ['104.21.50.1', '172.67.1.2'], NS: ['ns1.dns-parking.com', 'ns2.dns-parking.com'] },
+    }
+    const d = await diagnose('shop.com', { target, fetcher: cfFetch(zone) })
+    expect(d.pointed).toBe(true)
+    expect(d.records.every((r) => r.ok && r.note === 'Points to Fullfilio (ALIAS / flattening)')).toBe(true)
+    expect(d.regions.every((r) => r.ok)).toBe(true)
+    expect(d.dns_host).toEqual({ provider: 'Hostinger', nameservers: ['ns1.dns-parking.com', 'ns2.dns-parking.com'], mixed: false })
+    expect(d.issues.filter((i) => i.severity === 'error')).toEqual([])
+  })
+
+  it('nameservers from two companies are an error (the old site keeps coming back)', async () => {
+    const zone: Zone = { 'www.shop.com': { CNAME: ['stores.fullfilio.example'] }, 'shop.com': { NS: ['ns1.dns-parking.com', 'ns1.shopify.com'] } }
+    const d = await diagnose('www.shop.com', { target, fetcher: cfFetch(zone) })
+    expect(d.dns_host).toMatchObject({ provider: null, mixed: true })
+    expect(d.issues[0]).toMatchObject({ code: 'NS_MIXED', severity: 'error' })
+  })
+
+  it('an A record still on Shopify says to delete it; one only some resolvers remember is a warning', async () => {
+    const left = await diagnose('shop.com', { target, fetcher: cfFetch({ 'shop.com': { A: ['23.227.38.65'] } }, false) })
+    expect(left.records[0]).toMatchObject({ ok: false, note: 'Still points to Shopify — delete this record' })
+    expect(left.issues.find((i) => i.code === 'OLD_HOST')).toMatchObject({ severity: 'error' })
+
+    const zone: Zone = { 'stores.fullfilio.example': { A: ['104.21.50.1'] }, 'shop.com': { A: ['104.21.50.1'] } }
+    const cached = await diagnose('shop.com', { target, fetcher: (async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(String(input))
+      // One region still gets the old address.
+      if (url.searchParams.get('edns_client_subnet') === REGIONS[0].subnet && url.searchParams.get('type') === 'A') return Response.json({ Status: 0, Answer: [{ name: 'shop.com', type: 1, data: '23.227.38.65' }] })
+      return cfFetch(zone)(input, init)
+    }) as typeof fetch })
+    expect(cached.pointed).toBe(true)
+    expect(cached.issues.find((i) => i.code === 'OLD_HOST')).toMatchObject({ severity: 'warning', title: 'Some visitors still reach Shopify' })
+    expect(cached.regions[0].ok).toBe(false)
+  })
+
+  it('checks the verification TXT record the hosting asked for', async () => {
+    const expect_ = [{ type: 'TXT' as const, name: '_cf-custom-hostname.shop.com', value: 'abc-123' }]
+    const zone: Zone = { 'www.shop.com': { CNAME: ['stores.fullfilio.example'] } }
+    const missing = await diagnose('www.shop.com', { target, expect: expect_, fetcher: cfFetch(zone) })
+    expect(missing.records.find((r) => r.type === 'TXT')).toMatchObject({ name: '_cf-custom-hostname', ok: false })
+    expect(missing.issues.map((i) => i.code)).toContain('TXT_MISSING')
+    zone['_cf-custom-hostname.shop.com'] = { TXT: ['"abc-123"'] }
+    const found = await diagnose('www.shop.com', { target, expect: expect_, fetcher: cfFetch(zone) })
+    expect(found.records.find((r) => r.type === 'TXT')).toMatchObject({ ok: true, note: 'Found' })
+    expect(found.issues.map((i) => i.code)).not.toContain('TXT_MISSING')
+  })
+
+  it('names DNS companies and old website builders', () => {
+    expect(dnsHostOf('ns1.dns-parking.com')).toBe('Hostinger')
+    expect(dnsHostOf('dns1.registrar-servers.com.')).toBe('Namecheap')
+    expect(dnsHostOf('ada.ns.cloudflare.com')).toBe('Cloudflare')
+    expect(dnsHostOf('ns1.example.net')).toBeNull()
+    expect(oldHostOf('23.227.38.65')).toBe('Shopify')
+    expect(oldHostOf('8.8.8.8')).toBeNull()
+  })
+})
+
+describe('scheduled domain re-check', () => {
+  const now = Date.parse('2026-10-16T12:00:00Z')
+  const mins = (n: number) => new Date(now - n * 60_000).toISOString()
+  it('re-checks a waiting domain every 10 minutes, hourly after 3 days, and never a live one', async () => {
+    const { dueForRecheck } = await import('../domains/handler.ts')
+    expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(10), created_at: mins(60) }, now)).toBe(true)
+    expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(3), created_at: mins(60) }, now)).toBe(false)
+    expect(dueForRecheck({ status: 'ERROR', checked_at: null, created_at: mins(5) }, now)).toBe(true)
+    expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(20), created_at: mins(5 * 24 * 60) }, now)).toBe(false)
+    expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(60), created_at: mins(5 * 24 * 60) }, now)).toBe(true)
+    expect(dueForRecheck({ status: 'ACTIVE', checked_at: null, created_at: null }, now)).toBe(false)
+    expect(dueForRecheck({ status: 'REMOVED', checked_at: null, created_at: null }, now)).toBe(false)
   })
 })

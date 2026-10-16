@@ -25,7 +25,34 @@ export interface Diagnosis {
   resolvers: ResolverCheck[]
   tls: { ok: boolean; detail: string; served_by_store: boolean | null; status: number | null }
   issues: DomainIssue[]
+  /** Who answers DNS for the domain (its nameservers), so the steps can name the right panel. */
+  dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean }
 }
+
+/** A record the hosting asked for (ownership / certificate TXT) and whether it is there yet. */
+export interface ExpectedRecord { type: 'TXT'; name: string; value: string }
+
+// Where a domain's DNS is managed, from its nameservers.
+const DNS_HOSTS: Array<[RegExp, string]> = [
+  [/dns-parking\.com$|hostinger\./i, 'Hostinger'], [/registrar-servers\.com$/i, 'Namecheap'], [/domaincontrol\.com$/i, 'GoDaddy'],
+  [/ns\.cloudflare\.com$/i, 'Cloudflare'], [/awsdns/i, 'Amazon Route 53'], [/googledomains\.com$|google\.com$/i, 'Google'],
+  [/wixdns\.net$/i, 'Wix'], [/squarespacedns\.com$/i, 'Squarespace'], [/porkbun\.com$/i, 'Porkbun'], [/name\.com$/i, 'Name.com'],
+  [/exabytes\./i, 'Exabytes'], [/hostgator\./i, 'HostGator'], [/bluehost\.com$/i, 'Bluehost'], [/dnsowl\.com$/i, 'NameSilo'],
+  [/digitalocean\.com$/i, 'DigitalOcean'], [/vercel-dns\.com$/i, 'Vercel'], [/ultradns|nsone\.net$/i, 'Managed DNS'],
+]
+export function dnsHostOf(ns: string): string | null {
+  const host = ns.toLowerCase().replace(/\.$/, '')
+  return DNS_HOSTS.find(([re]) => re.test(host))?.[1] ?? null
+}
+/** The company behind a nameserver, or its own domain when unknown (ns1.example.net → example.net). */
+const nsOwner = (ns: string) => dnsHostOf(ns) ?? ns.toLowerCase().replace(/\.$/, '').split('.').slice(-2).join('.')
+
+// Addresses of other website builders: a domain still pointing there shows the old site.
+const OLD_HOSTS: Array<[RegExp, string]> = [
+  [/^23\.227\.38\.\d+$/, 'Shopify'], [/^2\.57\.91\.\d+$/, 'Hostinger (website or parking page)'],
+  [/^185\.230\.63\.\d+$/, 'Wix'], [/^198\.185\.159\.\d+$|^198\.49\.23\.\d+$/, 'Squarespace'], [/^76\.76\.21\.\d+$/, 'Vercel'],
+]
+export const oldHostOf = (ip: string) => OLD_HOSTS.find(([re]) => re.test(ip))?.[1] ?? null
 
 /**
  * Where a store's domain must point. On Vercel: an A record (apex) or a CNAME
@@ -134,19 +161,29 @@ function answersPoint(kind: 'apex' | 'subdomain', answers: DohAnswer[] | null, t
   return as.length > 0 && as.every(m.a) && (kind === 'apex' || cnames.length === 0)
 }
 
-export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Date; vercelPointed?: boolean | null; target?: HostingTarget } = {}): Promise<Diagnosis> {
+export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Date; vercelPointed?: boolean | null; target?: HostingTarget; expect?: ExpectedRecord[] } = {}): Promise<Diagnosis> {
   const fetcher = opts.fetcher ?? fetch
   const target = opts.target ?? VERCEL_TARGET
   const onCloudflare = target.provider === 'cloudflare'
   const m = matchers(target)
   const kind = domainKind(domain)
-  const [a, aaaa, cname, caa, apexCaa] = await Promise.all([
+  const [a, aaaa, cname, caa, apexCaa, targetA, targetAaaa, nsGoogle, nsCloudflare] = await Promise.all([
     doh(fetcher, RESOLVERS[0].url, domain, 'A'),
     doh(fetcher, RESOLVERS[0].url, domain, 'AAAA'),
     doh(fetcher, RESOLVERS[0].url, domain, 'CNAME'),
     doh(fetcher, RESOLVERS[0].url, domain, 'CAA'),
     domain === apexOf(domain) ? Promise.resolve(null) : doh(fetcher, RESOLVERS[0].url, apexOf(domain), 'CAA'),
+    // The addresses our own target has: an ALIAS / flattened root answers with exactly these.
+    onCloudflare ? doh(fetcher, RESOLVERS[0].url, target.cname, 'A') : Promise.resolve(null),
+    onCloudflare ? doh(fetcher, RESOLVERS[0].url, target.cname, 'AAAA') : Promise.resolve(null),
+    doh(fetcher, RESOLVERS[0].url, apexOf(domain), 'NS'),
+    doh(fetcher, RESOLVERS[1].url, apexOf(domain), 'NS'),
   ])
+  const ourA = new Set(only(targetA, 'A'))
+  const ourAaaa = new Set(only(targetAaaa, 'AAAA'))
+  const isOurs = (ip: string) => ourA.has(ip) || ourAaaa.has(ip)
+  // Another builder's address, unless it is the hosting this domain should point at.
+  const oldOf = (ip: string) => (m.a(ip) || isOurs(ip) ? null : oldHostOf(ip))
   const name = hostLabel(domain)
   const cnameValues = only(cname, 'CNAME').concat(only(a, 'CNAME')).filter((v, i, all) => all.indexOf(v) === i)
   const aValues = only(a, 'A')
@@ -173,6 +210,8 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   })()
 
   const servedByUs = tls.served_by_store === true
+  // A root ALIAS / CNAME flattening answers with our target's own addresses.
+  const flattened = onCloudflare && aValues.length > 0 && aValues.every(isOurs)
   const records: FoundRecord[] = []
   for (const v of cnameValues) {
     const ok = m.cname(v)
@@ -181,36 +220,72 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   // With a CNAME, the A/AAAA answers belong to its target, not to this name.
   const own = cnameValues.length === 0
   for (const v of own ? aValues : []) {
-    const ok = m.a(v) || (isCloudflare(v) && servedByUs)
+    const ok = m.a(v) || isOurs(v) || (isCloudflare(v) && servedByUs)
     const wrong = target.a ? `Should be ${target.a}` : `Use a CNAME (or ALIAS) to ${target.cname} instead`
-    const note = onCloudflare
-      ? (ok ? 'Cloudflare (CNAME flattening)' : isCloudflare(v) ? 'Another Cloudflare site answers here, not the store' : wrong)
+    const old = oldOf(v)
+    const note = old ? `Still points to ${old} — delete this record` : onCloudflare
+      ? (ok ? 'Points to Fullfilio (ALIAS / flattening)' : isCloudflare(v) ? 'Another Cloudflare site answers here, not the store' : wrong)
       : (ok ? (isCloudflare(v) ? 'Cloudflare proxy' : undefined) : isCloudflare(v) ? 'Cloudflare proxy (not reaching the store)' : wrong)
     records.push({ type: 'A', name, value: v, ok, note })
   }
   for (const v of own ? aaaaValues : []) {
-    const ok = isCloudflare(v) && servedByUs
-    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Cloudflare (CNAME flattening)' : 'Cloudflare proxy') : 'Remove: the store has no IPv6 address' })
+    const ok = isOurs(v) || (isCloudflare(v) && servedByUs)
+    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : 'Cloudflare proxy') : 'Remove: the store has no IPv6 address' })
   }
+  // Records the hosting asked for (ownership / certificate): are they there yet?
+  const expected = opts.expect ?? []
+  const txtAnswers = await Promise.all(expected.map((e) => doh(fetcher, RESOLVERS[0].url, e.name, 'TXT')))
+  const missingTxt: ExpectedRecord[] = []
+  expected.forEach((e, i) => {
+    const found = only(txtAnswers[i], 'TXT').some((v) => v.replace(/"/g, '').includes(e.value))
+    if (!found) missingTxt.push(e)
+    records.push({ type: 'TXT', name: e.name === domain ? name : e.name.replace(new RegExp(`\\.${apexOf(domain).replace(/\./g, '\\.')}$`), ''), value: e.value, ok: found,
+      note: found ? 'Found' : 'Not found yet — add it at your domain provider' })
+  })
 
-  const pointedByDns = answersPoint(kind, a, target) || cnameValues.some(m.cname) || (proxied && servedByUs)
+  const pointedByDns = answersPoint(kind, a, target) || cnameValues.some(m.cname) || flattened || (proxied && servedByUs)
   const pointed = opts.vercelPointed ?? pointedByDns
 
   // Every region and every resolver should see the same thing.
   const regionAnswers = await Promise.all(REGIONS.map((r) => doh(fetcher, RESOLVERS[0].url, domain, 'A', r.subnet)))
+  const reachesUs = (ans: DohAnswer[] | null) => onCloudflare && only(ans, 'A').length > 0 && only(ans, 'A').every(isOurs)
   const regions = REGIONS.map((r, i) => {
     const ans = regionAnswers[i]
-    const ok = answersPoint(kind, ans, target) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
+    const ok = answersPoint(kind, ans, target) || reachesUs(ans) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
     return { code: r.code, name: r.name, ok, answers: only(ans, 'A').concat(only(ans, 'CNAME')) }
   })
   const resolverAnswers = await Promise.all(RESOLVERS.map((r) => doh(fetcher, r.url, domain, 'A')))
   const resolvers = RESOLVERS.map((r, i) => {
     const ans = resolverAnswers[i]
-    const ok = answersPoint(kind, ans, target) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
+    const ok = answersPoint(kind, ans, target) || reachesUs(ans) || (proxied && servedByUs && only(ans, 'A').some(isCloudflare))
     return { name: r.name, ok, answers: only(ans, 'A').concat(only(ans, 'CNAME')) }
   })
 
   const issues: DomainIssue[] = []
+  // Nameservers: who answers for the domain. Two different companies means half the
+  // visitors get one set of records and half the other (old site, then new, then old).
+  const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
+  const owners = [...new Set(nameservers.map(nsOwner))]
+  const dnsHost = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1 }
+  if (dnsHost.mixed) {
+    issues.push({ code: 'NS_MIXED', severity: 'error', title: 'Your domain uses nameservers from two companies',
+      detail: `It lists ${nameservers.join(', ')}. Visitors randomly get the records of one or the other, so the old site keeps coming back. At the company where you bought the domain, set the nameservers to only one company (the one where you edit DNS), then wait an hour.` })
+  }
+  // Old site still answering somewhere (left-over record, or cached for a while after deleting it).
+  // (Only for a name with its own A records: behind a CNAME a wrong target is WRONG_TARGET.)
+  const seen = own ? [...aValues, ...regions.filter((r) => !r.ok).flatMap((r) => r.answers), ...resolvers.filter((r) => !r.ok).flatMap((r) => r.answers)] : []
+  const oldSeen = [...new Set(seen.map(oldOf).filter((x): x is string => !!x))]
+  if (oldSeen.length) {
+    const inRecords = aValues.some((v) => oldOf(v))
+    issues.push({ code: 'OLD_HOST', severity: inRecords ? 'error' : 'warning', title: `Some visitors still reach ${oldSeen.join(' and ')}`,
+      detail: inRecords
+        ? `Your DNS still has an A record pointing to ${oldSeen.join(' / ')}. Delete it at your domain provider.`
+        : `The old address is no longer in your records but some DNS servers still remember it. It clears by itself within a few hours.${dnsHost.mixed ? '' : ' If it keeps coming back after that, check your nameservers.'}` })
+  }
+  if (missingTxt.length) {
+    issues.push({ code: 'TXT_MISSING', severity: 'error', title: 'Verification record missing',
+      detail: `Add the TXT record ${missingTxt.map((t) => t.name.split('.')[0]).join(', ')} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it.` })
+  }
   // Nothing answered at all: say so instead of claiming the records are missing.
   const reached = [a, aaaa, cname].some((x) => x !== null)
   if (!reached) {
@@ -269,5 +344,6 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     resolvers,
     tls,
     issues,
+    dns_host: dnsHost,
   }
 }

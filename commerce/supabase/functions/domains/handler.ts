@@ -4,6 +4,8 @@
 //   POST {action: 'check', domain}           ask the hosting again (verifies once DNS is in place)
 //   POST {action: 'remove', domain}          detach from the hosting
 //   POST {action: 'primary', domain}         make it the primary domain (the others redirect to it)
+//   POST {action: 'recheck_all'}             scheduled (cron secret): checks every domain still
+//                                             waiting, so it goes live without anyone pressing Check
 // Every add/check also runs a full diagnosis (DNS records found, each region,
 // HTTPS, issues such as a stray proxy), saved with the domain.
 //
@@ -15,12 +17,13 @@
 // Without either the domain is saved as MANUAL with the DNS records to add, and
 // the platform owner attaches it by hand.
 import { z } from 'zod'
-import { apexOf, cloudflareTarget, diagnose, VERCEL_TARGET, type Diagnosis, type HostingTarget } from '../_shared/domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, VERCEL_TARGET, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
+import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, requireStaff, rpc } from '../_shared/supabase.ts'
 
 interface DnsRecord { type: 'A' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
 interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null; diagnostics?: Diagnosis }
@@ -133,20 +136,29 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
     if (again.ok && again.data) host = again.data
   }
   const extra: DnsRecord[] = []
+  const expect: ExpectedRecord[] = []
   if (host.status !== 'active' && host.ownership_verification?.name && host.ownership_verification.value) {
     extra.push({ type: 'TXT', name: relative(host.ownership_verification.name, d), value: host.ownership_verification.value, why: 'Proves the domain is yours (only needed until the domain is live)' })
+    expect.push({ type: 'TXT', name: host.ownership_verification.name, value: host.ownership_verification.value })
   }
   for (const r of host.ssl?.status === 'active' ? [] : host.ssl?.validation_records ?? []) {
-    if (r.txt_name && r.txt_value) extra.push({ type: 'TXT', name: relative(r.txt_name, d), value: r.txt_value, why: 'Lets the HTTPS certificate be issued' })
+    if (r.txt_name && r.txt_value) {
+      extra.push({ type: 'TXT', name: relative(r.txt_name, d), value: r.txt_value, why: 'Lets the HTTPS certificate be issued' })
+      expect.push({ type: 'TXT', name: r.txt_name, value: r.txt_value })
+    }
   }
-  const diagnostics = await diagnose(d, { target })
+  const diagnostics = await diagnose(d, { target, expect })
   if (host.status === 'active' && host.ssl?.status === 'active') {
     return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
   }
   const problem = host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message
+  const blocking = diagnostics.issues.find((i) => i.severity === 'error')
   return {
     status: 'VERIFYING', records: [...baseRecords(d, target), ...extra], diagnostics,
-    detail: problem ? `Waiting: ${problem}` : !diagnostics.pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'DNS is right — the HTTPS certificate is on its way',
+    // The first thing to fix, in plain words; we keep checking every few minutes on our own.
+    detail: blocking ? blocking.title
+      : problem ? `Waiting: ${problem}`
+      : !diagnostics.pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'DNS is right — the HTTPS certificate is on its way',
   }
 }
 
@@ -195,10 +207,50 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string): Pr
   return { status: 'VERIFYING', records, diagnostics, detail: !pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'Waiting for the ownership record below' }
 }
 
+/** Waiting domains are checked every 10 minutes for 3 days after the last change, then hourly. */
+export function dueForRecheck(d: { status: string; checked_at?: string | null; created_at?: string | null }, now = Date.now()): boolean {
+  if (d.status === 'ACTIVE' || d.status === 'REMOVED') return false
+  const checked = d.checked_at ? Date.parse(d.checked_at) : 0
+  const age = now - (d.created_at ? Date.parse(d.created_at) : now)
+  const every = age > 3 * 86_400_000 ? 55 * 60_000 : 9 * 60_000
+  return now - checked >= every
+}
+
+/** At most this many domains per run, so one run stays well inside the time limit. */
+const RECHECK_LIMIT = 15
+
+/** The scheduled run: every waiting domain is checked (and attached) as if its owner pressed Check. */
+async function recheckAll() {
+  const cf = cloudflare()
+  if (!cf) return { checked: 0, live: 0, skipped: 'no hosting API' }
+  let checked = 0
+  let live = 0
+  const run = await forEachMerchant('domains', async (admin) => {
+    const domains = (await rpc<Array<{ domain: string; status: string; checked_at: string | null; created_at: string | null }>>(admin, 'store_domains_list')) ?? []
+    for (const d of domains.filter((x) => dueForRecheck(x)).sort((a, b) => (a.checked_at ?? '').localeCompare(b.checked_at ?? ''))) {
+      if (checked >= RECHECK_LIMIT) break
+      checked += 1
+      try {
+        const result = await inspectCloudflare(cf, d.domain, true)
+        await rpc(admin, 'store_domain_save', { p_domain: d.domain, p: result, p_actor: null })
+        if (result.status === 'ACTIVE') live += 1
+      } catch (error) {
+        void logEvent({ level: 'WARN', category: 'JOB', source: 'domains', message: `Could not re-check ${d.domain}: ${(error as Error).message}` })
+      }
+    }
+  })
+  return { checked, live, failed: run.failed }
+}
+
 export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
-    const input = parse(actions, await readJson(req))
+    const body = await readJson<{ action?: unknown }>(req)
+    if (body?.action === 'recheck_all') {
+      if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
+      return json(req, await recheckAll())
+    }
+    const input = parse(actions, body)
     const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage', { supportView: input.action === 'list' })
     const admin = staff.admin
     // Ownership gate BEFORE any provider call: the Cloudflare zone / Vercel
