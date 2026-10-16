@@ -623,10 +623,16 @@ async function pluginLog(admin: SupabaseClient, c: Channel, eventId: string | nu
     .catch((e) => logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'channels', message: 'Could not record a plugin event', error: e }))
 }
 
+interface CheckoutAnswer {
+  decision: string; message?: string; reason: string; advance_amount?: number | null
+  level?: { tier: string; rate: number | null; parcels: number | null } | null
+  levels?: { good_min: number; mid_min: number; min_parcels: number } | null
+}
+
 /** The order shield: block list first, then the courier record (within the plugin's time budget). */
 async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: string; total: number; address: string; ip: string }, budgetMs: number) {
   const args = { p_channel_id: c.id, p_phone: d.phone, p_ip: d.ip || null, p_address: d.address || null }
-  const first = await rpc<{ decision: string; message?: string; reason: string }>(admin, 'channel_checkout_decision', { ...args, p_check_id: null })
+  const first = await rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: null })
   if (first.decision === 'block') return first
   const check = fraudCheckFor(admin, d.phone, d.total).catch((error) => {
     void logEvent({ level: 'WARN', category: 'FRAUD', source: 'channels', message: `${c.name}: courier check at checkout failed`, error })
@@ -635,9 +641,9 @@ async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: s
   const id = await Promise.race([check, new Promise<null>((r) => setTimeout(() => r(null), budgetMs))])
   if (!id) {
     background(check) // the check finishes and is reused when the order arrives
-    return { decision: 'allow', reason: 'CHECK_PENDING' }
+    return { decision: 'allow', reason: 'CHECK_PENDING', levels: first.levels ?? null }
   }
-  return rpc<{ decision: string; message?: string; reason: string }>(admin, 'channel_checkout_decision', { ...args, p_check_id: id })
+  return rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: id })
 }
 
 /** POST /channels/plugin/<channel_id>: a signed event from the store's plugin. */
@@ -687,7 +693,8 @@ async function pluginEvent(req: Request, id: string): Promise<Response> {
     if (!config.shield) return json(req, { ok: true, decision: 'allow', reason: 'OFF' })
     const d = await checkoutDecision(admin, c, ev.data, Math.max(1000, config.shield_timeout * 1000 - 1500))
     if (d.decision !== 'allow') await pluginLog(admin, c, eventId, 'checkout_check', 'OK', { decision: d.decision, reason: d.reason, phone_end: ev.data.phone.slice(-3) })
-    return json(req, { ok: true, decision: d.decision, message: d.message ?? '', reason: d.reason })
+    // level/levels: the customer's delivery level for the plugin's own advance rules (absent while the check is still running).
+    return json(req, { ok: true, decision: d.decision, message: d.message ?? '', reason: d.reason, advance_amount: d.advance_amount ?? null, level: d.level ?? null, levels: d.levels ?? null })
   }
 
   // Queued events: one id per event, the same on every retry.

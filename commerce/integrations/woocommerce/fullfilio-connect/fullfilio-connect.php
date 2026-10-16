@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Fullfilio Connect for WooCommerce
- * Description:       Connects this WooCommerce store to Fullfilio: orders arrive instantly, unfinished checkouts are captured, risky orders are checked at checkout and every order carries the ad it came from.
- * Version:           1.4.2
+ * Description:       Connects this WooCommerce store to Fullfilio: orders arrive instantly, unfinished checkouts are captured, risky orders are checked at checkout (with an advance payment by delivery level) and every order carries the ad it came from.
+ * Version:           1.5.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Fullfilio
@@ -19,7 +19,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FFC_VERSION', '1.4.2' );
+define( 'FFC_VERSION', '1.5.0' );
 define( 'FFC_FILE', __FILE__ );
 define( 'FFC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FFC_URL', plugin_dir_url( __FILE__ ) );
@@ -31,6 +31,7 @@ require_once FFC_DIR . 'includes/class-ffc-outbox.php';
 require_once FFC_DIR . 'includes/class-ffc-api.php';
 require_once FFC_DIR . 'includes/class-ffc-rest.php';
 require_once FFC_DIR . 'includes/class-ffc-checkout.php';
+require_once FFC_DIR . 'includes/class-ffc-advance.php';
 require_once FFC_DIR . 'includes/class-ffc-orders.php';
 require_once FFC_DIR . 'includes/class-ffc-stock.php';
 require_once FFC_DIR . 'includes/class-ffc-stats.php';
@@ -72,6 +73,7 @@ add_action(
 		FFC_Outbox::maybe_upgrade();
 		FFC_Rest::init();
 		FFC_Checkout::init();
+		FFC_Advance::init();
 		FFC_Orders::init();
 		FFC_Stock::init();
 		FFC_Stats::init();

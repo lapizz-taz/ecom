@@ -174,6 +174,19 @@ describe('WooCommerce', () => {
     expect(normalizeWooOrder(wooOrder({ status: 'cancelled' })).cancelled).toBe(true)
   })
 
+  it('reads the plugin\'s advance payment: the gateway took the advance, the rest is cash on delivery', () => {
+    const advance = (extra: Partial<WooOrder>) => normalizeWooOrder(wooOrder({
+      payment_method: 'bkash', date_paid_gmt: '2026-10-08T10:01:00', total: '60.00',
+      fee_lines: [{ name: 'Pay on delivery (cash)', total: '-1250.00' }],
+      meta_data: [{ key: '_ffc_cod_due', value: '1250.00' }], ...extra,
+    }))
+    expect(advance({})).toMatchObject({ total: 1310, paid_amount: 60 })
+    // Not paid yet: nothing counts as paid.
+    expect(advance({ date_paid_gmt: null })).toMatchObject({ total: 1310, paid_amount: 0 })
+    // A note without the matching fee line is ignored.
+    expect(advance({ fee_lines: [] })).toMatchObject({ total: 60, paid_amount: 60 })
+  })
+
   it('keeps the buyer IP and browser WooCommerce recorded, and drops anything that is not an address', () => {
     expect(normalizeWooOrder(wooOrder({ customer_ip_address: '103.4.145.2', customer_user_agent: 'Mozilla/5.0 (Linux; Android 14)' })).client)
       .toEqual({ ip: '103.4.145.2', user_agent: 'Mozilla/5.0 (Linux; Android 14)' })

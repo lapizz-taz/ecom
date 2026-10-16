@@ -392,6 +392,18 @@ export interface WooOrder {
   customer_ip_address?: string; customer_user_agent?: string
   line_items: Array<{ product_id: number; variation_id: number; name: string; quantity: number; subtotal: string; sku?: string; image?: { src?: string } | null; meta_data?: Array<{ display_key?: string; display_value?: string }> }>
   meta_data?: Array<{ key: string; value: unknown }>
+  fee_lines?: Array<{ name?: string; total?: string }>
+}
+
+/**
+ * The Fullfilio Connect plugin's advance payment: the online gateway charged only
+ * the advance, and a negative fee line holds the rest, paid in cash on delivery.
+ * Trusted only when the order's own fee line matches the amount the plugin noted.
+ */
+function codDueOf(o: WooOrder, meta: Record<string, string>): number {
+  const due = money(meta._ffc_cod_due ?? 0)
+  if (!(due > 0)) return 0
+  return (o.fee_lines ?? []).some((f) => Math.abs(money(f.total ?? 0) + due) < 0.01) ? due : 0
 }
 
 export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
@@ -404,8 +416,11 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
   const touch = touchFrom(meta._wc_order_attribution_session_entry, meta._wc_order_attribution_referrer, meta._wc_order_attribution_session_start_time ?? o.date_created_gmt ?? null, utm)
   // The Fullfilio Connect plugin keeps the first and the latest visit (and click ids WooCommerce drops): it wins when present.
   const fromPlugin = pluginAttribution(meta._ffc_attribution)
-  const total = money(o.total)
-  const paid = o.date_paid_gmt && o.payment_method !== 'cod' && WOO_IMPORT_STATUSES.includes(o.status) ? total : 0
+  const charged = money(o.total)
+  const codDue = codDueOf(o, meta)
+  const total = codDue > 0 ? money(charged + codDue) : charged
+  // Paid only what the gateway charged (WooCommerce sets date_paid when the payment is confirmed).
+  const paid = o.date_paid_gmt && o.payment_method !== 'cod' && WOO_IMPORT_STATUSES.includes(o.status) ? charged : 0
   const state = clean(a.state)
   return {
     external_id: String(o.id),

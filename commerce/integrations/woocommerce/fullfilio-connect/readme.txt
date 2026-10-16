@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.4.2
+Stable tag: 1.5.0
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,12 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.5.0 =
+* Advance payment by delivery level: Fullfilio tells the checkout how reliable the customer is (Good, Medium, Low, New customer or Couldn't check), and you choose for each level: cash on delivery, the full delivery charge, a fixed amount, or a percentage of the order or of the delivery charge.
+* The advance is taken by an online payment method you pick; a "Pay on delivery (cash)" line holds the rest, so the gateway charges only the advance. Cash on delivery is hidden while an advance is needed.
+* The amount shows as soon as the phone number is typed (classic and block checkout) and is checked again on the server when the order is placed — a smaller payment or cash on delivery is refused.
+* Fullfilio records the full order value, the advance as paid (only once WooCommerce confirms the payment) and the rest as cash to collect.
 
 = 1.4.2 =
 * Cleaner, minimal look in the Poppins typeface (bundled with the plugin, nothing loaded from outside).

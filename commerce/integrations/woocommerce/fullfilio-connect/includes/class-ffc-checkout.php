@@ -198,7 +198,7 @@ class FFC_Checkout {
 		if ( FFC_Settings::enabled( 'shield' ) && ! $order->get_meta( '_ffc_shield' ) ) {
 			$digits = preg_replace( '/\D/', '', (string) $order->get_billing_phone() );
 			if ( strlen( $digits ) >= 10 ) {
-				$cached = get_transient( 'ffc_dec_' . md5( $digits . '|' . round( (float) $order->get_total() ) . '|' . $order->get_payment_method() ) );
+				$cached = get_transient( self::cache_key( $digits, FFC_Advance::order_value( $order ) ) );
 				if ( is_array( $cached ) && ! empty( $cached['decision'] ) ) {
 					$order->update_meta_data( '_ffc_shield', (string) $cached['decision'] );
 				}
@@ -217,13 +217,20 @@ class FFC_Checkout {
 
 	// --- order shield ------------------------------------------------------------------------
 
+	/** One cached answer per phone and order value (the payment method does not change it). */
+	private static function cache_key( $digits, $total ) {
+		return 'ffc_dec_' . md5( $digits . '|' . round( (float) $total ) );
+	}
+
 	/**
-	 * Fullfilio's answer for this phone and order: allow | block | advance.
+	 * Fullfilio's answer for this phone and order: allow | block | advance, with the
+	 * customer's delivery level (GOOD, MID, LOW, NEW, ERROR, or '' when not checked)
+	 * for the advance rules.
 	 *
-	 * @return array{decision:string,message:string}
+	 * @return array{decision:string,message:string,level:string,advance_amount:float|null}
 	 */
 	public static function decision( $phone, $total, $payment_method, $address ) {
-		$allow = array( 'decision' => 'allow', 'message' => '' );
+		$allow = array( 'decision' => 'allow', 'message' => '', 'level' => '', 'advance_amount' => null );
 		if ( ! FFC_Settings::enabled( 'shield' ) ) {
 			return $allow;
 		}
@@ -231,7 +238,7 @@ class FFC_Checkout {
 		if ( strlen( $digits ) < 10 ) {
 			return $allow;
 		}
-		$cache_key = 'ffc_dec_' . md5( $digits . '|' . round( (float) $total ) . '|' . $payment_method );
+		$cache_key = self::cache_key( $digits, $total );
 		$cached    = get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			return $cached;
@@ -247,15 +254,31 @@ class FFC_Checkout {
 		if ( ! $result['ok'] ) {
 			FFC_Log::warning( 'Order shield could not reach Fullfilio: ' . $result['error'] . ( $config['shield_fail_open'] ? ' (order allowed)' : ' (order held)' ) );
 			if ( $config['shield_fail_open'] ) {
-				return $allow;
+				// The courier record could not be read: the advance rules treat it as the ERROR level.
+				return array_merge( $allow, array( 'level' => 'ERROR' ) );
 			}
-			return array( 'decision' => 'block', 'message' => __( 'We could not confirm your order right now. Please try again in a minute.', 'fullfilio-connect' ) );
+			return array_merge( $allow, array( 'decision' => 'block', 'message' => __( 'We could not confirm your order right now. Please try again in a minute.', 'fullfilio-connect' ) ) );
 		}
-		$decision = isset( $result['body']['decision'] ) ? (string) $result['body']['decision'] : 'allow';
-		$out      = array(
-			'decision' => in_array( $decision, array( 'allow', 'block', 'advance' ), true ) ? $decision : 'allow',
-			'message'  => isset( $result['body']['message'] ) ? wp_strip_all_tags( (string) $result['body']['message'] ) : '',
+		$body     = $result['body'];
+		$decision = isset( $body['decision'] ) ? (string) $body['decision'] : 'allow';
+		$level    = isset( $body['level']['tier'] ) && in_array( $body['level']['tier'], FFC_Advance::LEVELS, true ) ? $body['level']['tier'] : '';
+		if ( '' === $level && isset( $body['reason'] ) && in_array( $body['reason'], array( 'CHECK_PENDING', 'CHECK_UNAVAILABLE' ), true ) ) {
+			$level = 'ERROR';
+		}
+		$out = array(
+			'decision'       => in_array( $decision, array( 'allow', 'block', 'advance' ), true ) ? $decision : 'allow',
+			'message'        => isset( $body['message'] ) ? wp_strip_all_tags( (string) $body['message'] ) : '',
+			'level'          => $level,
+			'advance_amount' => isset( $body['advance_amount'] ) && is_numeric( $body['advance_amount'] ) ? (float) $body['advance_amount'] : null,
 		);
+		// The store's thresholds, shown next to the advance rules on the plugin page.
+		if ( isset( $body['levels'] ) && is_array( $body['levels'] ) ) {
+			$levels = array_map( 'floatval', array_intersect_key( $body['levels'], array_flip( array( 'good_min', 'mid_min', 'min_parcels' ) ) ) );
+			$state  = FFC_Settings::state();
+			if ( ! isset( $state['levels'] ) || $state['levels'] !== $levels ) {
+				FFC_Settings::set_state( array( 'levels' => $levels ) );
+			}
+		}
 		set_transient( $cache_key, $out, 10 * MINUTE_IN_SECONDS );
 		if ( 'allow' !== $out['decision'] ) {
 			FFC_Log::info( 'Order shield: ' . $out['decision'], array( 'phone_end' => substr( $digits, -3 ) ) );
@@ -263,10 +286,16 @@ class FFC_Checkout {
 		return $out;
 	}
 
-	/** Cash on delivery (or no payment) cannot go ahead when an advance is required. */
+	/**
+	 * Cash on delivery (or no payment) cannot go ahead when an advance is required.
+	 * With the plugin's advance payment on, FFC_Advance decides that (part paid online).
+	 */
 	private static function refuses( $decision, $payment_method ) {
 		if ( 'block' === $decision['decision'] ) {
 			return true;
+		}
+		if ( FFC_Advance::on() ) {
+			return false;
 		}
 		return 'advance' === $decision['decision'] && ( '' === (string) $payment_method || 'cod' === $payment_method );
 	}
@@ -286,7 +315,7 @@ class FFC_Checkout {
 			return;
 		}
 		$phone = ! empty( $data['billing_phone'] ) ? $data['billing_phone'] : ( isset( $data['shipping_phone'] ) ? $data['shipping_phone'] : '' );
-		$total = function_exists( 'WC' ) && WC()->cart ? WC()->cart->get_total( 'edit' ) : 0;
+		$total = function_exists( 'WC' ) && WC()->cart ? FFC_Advance::cart_value( WC()->cart ) : 0;
 		$pm    = isset( $data['payment_method'] ) ? (string) $data['payment_method'] : '';
 		$addr  = trim( ( isset( $data['billing_address_1'] ) ? $data['billing_address_1'] : '' ) . ' ' . ( isset( $data['billing_city'] ) ? $data['billing_city'] : '' ) );
 		$d     = self::decision( $phone, $total, $pm, $addr );
@@ -302,7 +331,7 @@ class FFC_Checkout {
 		}
 		$phone = $order->get_billing_phone() ? $order->get_billing_phone() : $order->get_shipping_phone();
 		$pm    = is_object( $request ) && method_exists( $request, 'get_param' ) ? (string) $request->get_param( 'payment_method' ) : (string) $order->get_payment_method();
-		$d     = self::decision( $phone, $order->get_total(), $pm, trim( $order->get_billing_address_1() . ' ' . $order->get_billing_city() ) );
+		$d     = self::decision( $phone, FFC_Advance::order_value( $order ), $pm, trim( $order->get_billing_address_1() . ' ' . $order->get_billing_city() ) );
 		if ( self::refuses( $d, $pm ) ) {
 			if ( class_exists( '\Automattic\WooCommerce\StoreApi\Exceptions\RouteException' ) ) {
 				throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException( 'ffc_shield', self::message( $d ), 400 ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped

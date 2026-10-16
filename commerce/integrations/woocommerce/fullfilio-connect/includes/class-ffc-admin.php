@@ -18,7 +18,7 @@ class FFC_Admin {
 		add_action( 'admin_menu', array( __CLASS__, 'menu' ), 60 );
 		add_action( 'admin_notices', array( __CLASS__, 'notices' ) );
 		add_filter( 'plugin_action_links_' . plugin_basename( FFC_FILE ), array( __CLASS__, 'links' ) );
-		foreach ( array( 'code', 'retry', 'test', 'disconnect', 'clear_log', 'protect_save', 'tracking_save' ) as $action ) {
+		foreach ( array( 'code', 'retry', 'test', 'disconnect', 'clear_log', 'protect_save', 'advance_save', 'tracking_save' ) as $action ) {
 			add_action( 'admin_post_ffc_' . $action, array( __CLASS__, 'handle_' . $action ) );
 		}
 	}
@@ -133,6 +133,25 @@ class FFC_Admin {
 		self::back( 'Checkout protection saved.', 'success', 'protect' );
 	}
 
+	public static function handle_advance_save() {
+		self::guard( 'advance_save' );
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard() checked the nonce.
+		$in = array();
+		foreach ( array( 'enabled', 'hide_cod', 'label', 'message' ) as $k ) {
+			$in[ $k ] = isset( $_POST[ $k ] ) ? sanitize_text_field( wp_unslash( $_POST[ $k ] ) ) : '';
+		}
+		foreach ( FFC_Advance::LEVELS as $level ) {
+			foreach ( array( 'rule_', 'value_' ) as $p ) {
+				$in[ $p . $level ] = isset( $_POST[ $p . $level ] ) ? sanitize_text_field( wp_unslash( $_POST[ $p . $level ] ) ) : '';
+			}
+		}
+		$in['gateways'] = isset( $_POST['gateways'] ) ? array_map( 'sanitize_key', (array) wp_unslash( $_POST['gateways'] ) ) : array();
+		// phpcs:enable
+		$s = FFC_Advance::save( $in );
+		FFC_Log::info( 'Advance payment settings saved', array( 'enabled' => $s['enabled'] ) );
+		self::back( $s['enabled'] && ! FFC_Settings::enabled( 'shield' ) ? 'Saved. Turn on the order shield in Fullfilio (Sales channels → WooCommerce) — the advance needs it to know the customer\'s level.' : 'Advance payment saved.', $s['enabled'] && ! FFC_Settings::enabled( 'shield' ) ? 'warning' : 'success', 'advance' );
+	}
+
 	public static function handle_tracking_save() {
 		self::guard( 'tracking_save' );
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard() checked the nonce.
@@ -167,6 +186,7 @@ class FFC_Admin {
 		'orders'   => array( 'Orders', 'orders', 'The latest WooCommerce orders and the statuses %s sets on them.' ),
 		'stock'    => array( 'Stock', 'stock', 'Who keeps the stock count, what is running low and what came back.' ),
 		'protect'  => array( 'Checkout protection', 'shield', 'Stop wrong numbers, bots and fake orders before they are placed.' ),
+		'advance'  => array( 'Advance payment', 'wallet', 'Ask riskier customers for part of the payment online before the order is placed.' ),
 		'tracking' => array( 'Ad tracking', 'target', 'Meta, TikTok and Google — browser and server, de-duplicated, counted when the order really counts.' ),
 		'connect'  => array( 'Connection', 'plug', 'How this store is connected to %s and what it shares.' ),
 		'logs'     => array( 'Logs & help', 'help', 'Checks, the delivery queue and the debug log.' ),
@@ -200,6 +220,7 @@ class FFC_Admin {
 		'tag'       => '<path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.41l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1"/>',
 		'power'     => '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
 		'trash'     => '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+		'wallet'    => '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
 		'send'      => '<path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.64l-19 6.5a.5.5 0 0 0-.03.94l7.93 3.18a2 2 0 0 1 1.11 1.11z"/><path d="m21.85 2.15-10.94 10.94"/>',
 	);
 
@@ -675,6 +696,70 @@ CSS;
 			echo '</tbody></table></div>';
 		}
 		self::card_close();
+	}
+
+	private static function tab_advance( $c, $name ) {
+		$s      = FFC_Advance::settings();
+		$lv     = FFC_Advance::levels();
+		$shield = FFC_Settings::enabled( 'shield' );
+		$pct    = static function ( $n ) { return rtrim( rtrim( number_format( (float) $n, 1 ), '0' ), '.' ) . '%'; };
+		$levels = array(
+			'GOOD'  => array( 'Good', 'Delivered ' . $pct( $lv['good_min'] ) . ' or more of their parcels.', 'green' ),
+			'MID'   => array( 'Medium', 'Delivered ' . $pct( $lv['mid_min'] ) . ' to ' . $pct( $lv['good_min'] ) . '.', 'amber' ),
+			'LOW'   => array( 'Low', 'Delivered less than ' . $pct( $lv['mid_min'] ) . '.', 'red' ),
+			'NEW'   => array( 'New customer', 'Fewer than ' . (int) $lv['min_parcels'] . ' parcel(s) with any courier.', 'blue' ),
+			'ERROR' => array( 'Couldn\'t check', 'The courier record could not be read in time.', 'gray' ),
+		);
+		$rules  = array(
+			'cod'              => 'Cash on delivery (no advance)',
+			'delivery'         => 'Full delivery charge',
+			'fixed'            => 'Fixed amount',
+			'percent_order'    => '% of the order',
+			'percent_delivery' => '% of the delivery charge',
+		);
+		$gateways = function_exists( 'WC' ) && is_object( WC() ) && method_exists( WC(), 'payment_gateways' ) && WC()->payment_gateways() ? WC()->payment_gateways()->payment_gateways() : array();
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		wp_nonce_field( 'ffc_advance_save' );
+		echo '<input type="hidden" name="action" value="ffc_advance_save">';
+
+		$warn = $shield ? '' : ' <span class="ffc-badge ffc-amber">Needs the order shield — turn it on in ' . esc_html( $name ) . '</span>';
+		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#16a34a">' . self::icon( 'wallet' ) . '</span>Advance payment by delivery level</h2></div><div class="ffc-card-b">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			. '<p class="ffc-desc">When the phone number is typed, ' . esc_html( $name ) . ' looks up how many of the customer\'s parcels were delivered and gives their level. Pick what each level pays before the order is placed. Cash on delivery is refused when an advance is needed; an online payment method takes the advance and a "' . esc_html( $s['label'] ) . '" line holds the rest. Levels use the thresholds set in ' . esc_html( $name ) . ' → Settings → Fraud.</p>'
+			. '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>Level</th><th>Advance</th><th>Amount / %</th></tr></thead><tbody>';
+		foreach ( $levels as $key => $l ) {
+			$r = $s['rules'][ $key ];
+			echo '<tr><td><span class="ffc-badge ffc-' . esc_attr( $l[2] ) . '">' . esc_html( $l[0] ) . '</span><div class="ffc-muted" style="margin-top:4px">' . esc_html( $l[1] ) . '</div></td><td><select name="rule_' . esc_attr( $key ) . '" aria-label="' . esc_attr( $l[0] . ' rule' ) . '">';
+			foreach ( $rules as $value => $label ) {
+				echo '<option value="' . esc_attr( $value ) . '"' . selected( $r['rule'], $value, false ) . '>' . esc_html( $label ) . '</option>';
+			}
+			echo '</select></td><td><input class="ffc-num" type="number" min="0" step="0.01" name="value_' . esc_attr( $key ) . '" value="' . esc_attr( (string) $r['value'] ) . '" aria-label="' . esc_attr( $l[0] . ' amount' ) . '"><div class="ffc-muted" style="margin-top:4px">for fixed and % only</div></td></tr>';
+		}
+		echo '</tbody></table></div>';
+		echo '<p class="ffc-muted" style="margin:10px 0 0">The advance is rounded up to a whole amount and is never more than the order. If ' . esc_html( $name ) . '\'s own fraud rules also ask for an advance, the larger amount applies.</p>';
+		echo '</div><div class="ffc-card-f">' . self::status_text( $s['enabled'] && $shield, $warn ) . self::switch_input( 'enabled', $s['enabled'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped parts.
+
+		self::card_open( 'How it is paid', 'cart' );
+		echo '<p class="ffc-section" style="margin-top:0">Online payment methods that take the advance</p>';
+		$online = 0;
+		foreach ( $gateways as $id => $g ) {
+			if ( in_array( $id, FFC_Advance::OFFLINE, true ) ) {
+				continue;
+			}
+			$online++;
+			$on = 'yes' === ( isset( $g->enabled ) ? $g->enabled : 'no' );
+			echo '<label class="ffc-check"><input type="checkbox" name="gateways[]" value="' . esc_attr( $id ) . '"' . checked( in_array( $id, $s['gateways'], true ), true, false ) . '> ' . esc_html( method_exists( $g, 'get_method_title' ) ? $g->get_method_title() : $id ) . ( $on ? '' : ' <span class="ffc-muted">(switched off in WooCommerce)</span>' ) . '</label><br>';
+		}
+		echo $online
+			? '<p class="ffc-muted">None ticked: every online method that is switched on can take it. Bank transfer, cheque and cash on delivery never can.</p>'
+			: '<p><span class="ffc-badge ffc-amber">No online payment method is installed</span> <span class="ffc-muted">Add one (bKash, SSLCommerz, Nagad…) in WooCommerce → Settings → Payments, or customers who need an advance cannot order online.</span></p>';
+		echo '<p class="ffc-section">Checkout</p>'
+			. '<label class="ffc-check"><input type="checkbox" name="hide_cod" value="1"' . checked( $s['hide_cod'], true, false ) . '> Hide cash on delivery while an advance is needed</label>'
+			. '<div class="ffc-field"><label for="ffc-adv-label">Name of the "rest on delivery" line</label><input id="ffc-adv-label" type="text" maxlength="60" name="label" value="' . esc_attr( $s['label'] ) . '"></div>'
+			. '<div class="ffc-field"><label for="ffc-adv-msg">Message when cash on delivery is chosen</label><input id="ffc-adv-msg" type="text" maxlength="300" name="message" value="' . esc_attr( $s['message'] ) . '"><small>{amount} is the advance, {due} what is paid on delivery.</small></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo '<p style="margin:18px 0 0"><button class="ffc-btn primary" type="submit">' . self::icon( 'check' ) . 'Save advance payment</button></p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		self::card_close();
+		echo '</form>';
 	}
 
 	/** Footer for one ad platform: status, last connection result, switch. */

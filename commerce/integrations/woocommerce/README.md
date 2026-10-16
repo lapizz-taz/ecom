@@ -4,7 +4,7 @@ Two parts work together:
 
 | Part | Where | What it does |
 | --- | --- | --- |
-| **Fullfilio Connect** (WordPress plugin) | `fullfilio-connect/` | Installed on the store. Sends orders and status changes the moment they happen, captures unfinished checkouts, saves ad attribution on each order, runs the order shield at checkout, adds the Confirmed / Shipped / Delivered / Partially delivered / Return in transit / Returned order statuses, puts returned items back in WooCommerce stock (once, never more than WooCommerce took off), protects the checkout (Bangladeshi phone check; bot check with Flag or Block and optional Cloudflare Turnstile, set on the plugin page), shows a dashboard (orders, value, unfinished checkouts, stopped/flagged, delivery health) and reports its health every 15 minutes. |
+| **Fullfilio Connect** (WordPress plugin) | `fullfilio-connect/` | Installed on the store. Sends orders and status changes the moment they happen, captures unfinished checkouts, saves ad attribution on each order, runs the order shield at checkout (with an advance payment by delivery level: cash on delivery, the delivery charge, a fixed amount or a percentage, taken by an online method while a "Pay on delivery (cash)" fee line holds the rest — `_ffc_cod_due` on the order tells Fullfilio the full value), adds the Confirmed / Shipped / Delivered / Partially delivered / Return in transit / Returned order statuses, puts returned items back in WooCommerce stock (once, never more than WooCommerce took off), protects the checkout (Bangladeshi phone check; bot check with Flag or Block and optional Cloudflare Turnstile, set on the plugin page), shows a dashboard (orders, value, unfinished checkouts, stopped/flagged, delivery health) and reports its health every 15 minutes. |
 | SaaS module | `supabase/functions/channels`, `supabase/migrations/20261031000100_woo_plugin.sql`, `src/features/channels/woo-plugin-panel.tsx` | Connects the store (WooCommerce's own key approval screen), registers the WooCommerce webhooks, imports orders and products through the official REST API (`wc/v3`), receives the plugin's signed events and sets the WooCommerce order's status as the order moves on here (`supabase/migrations/20261102000100_woo_order_sync.sql`, `wooStatusStep` in `_shared/channels/sync.ts`). |
 
 The plugin is optional: without it the store still connects with REST keys and webhooks. With it,
@@ -84,6 +84,7 @@ CHROMIUM_PATH=… FUNCTIONS_ENV_FILE=supabase/functions/.env node integrations/w
 # ad tracking + updates in WordPress, no Fullfilio needed (ad-platform calls captured locally, port 8080 free):
 CHROMIUM_PATH=… node integrations/woocommerce/test/track-e2e.cjs
 php integrations/woocommerce/test/track-sim.php      # offline: rules and payloads
+php integrations/woocommerce/test/advance-sim.php    # offline: advance rules per delivery level and checkout verdicts
 ```
 
 The edge functions must allow the plain-http test store: `CHANNELS_ALLOW_HTTP_HOSTS=172.18.0.1:8090`.
