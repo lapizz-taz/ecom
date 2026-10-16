@@ -217,6 +217,9 @@ class FFC_Checkout {
 
 	// --- order shield ------------------------------------------------------------------------
 
+	/** Answers already given in this request (the shield and the advance rules both ask). */
+	private static $answers = array();
+
 	/** One cached answer per phone and order value (the payment method does not change it). */
 	private static function cache_key( $digits, $total ) {
 		return 'ffc_dec_' . md5( $digits . '|' . round( (float) $total ) );
@@ -239,18 +242,21 @@ class FFC_Checkout {
 			return $allow;
 		}
 		$cache_key = self::cache_key( $digits, $total );
-		$cached    = get_transient( $cache_key );
+		if ( isset( self::$answers[ $cache_key ] ) ) {
+			return self::$answers[ $cache_key ];
+		}
+		$cached = get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			return $cached;
 		}
 		$config = FFC_Settings::config();
 		$ip     = class_exists( 'WC_Geolocation' ) ? WC_Geolocation::get_ip_address() : '';
-		$result = FFC_Api::send(
-			'checkout_check',
-			array( 'phone' => $phone, 'total' => (float) $total, 'payment_method' => $payment_method, 'address' => $address, 'ip' => $ip ),
-			null,
-			(int) $config['shield_timeout']
-		);
+		$data   = array( 'phone' => $phone, 'total' => (float) $total, 'payment_method' => $payment_method, 'address' => $address, 'ip' => $ip );
+		// The cart's shipping, so an advance of "the delivery charge" has its real amount.
+		if ( function_exists( 'WC' ) && WC()->cart && method_exists( WC()->cart, 'get_shipping_total' ) ) {
+			$data['shipping'] = round( (float) WC()->cart->get_shipping_total() + (float) WC()->cart->get_shipping_tax(), 2 );
+		}
+		$result = FFC_Api::send( 'checkout_check', $data, null, (int) $config['shield_timeout'] );
 		if ( ! $result['ok'] ) {
 			FFC_Log::warning( 'Order shield could not reach Fullfilio: ' . $result['error'] . ( $config['shield_fail_open'] ? ' (order allowed)' : ' (order held)' ) );
 			if ( $config['shield_fail_open'] ) {
@@ -279,7 +285,11 @@ class FFC_Checkout {
 				FFC_Settings::set_state( array( 'levels' => $levels ) );
 			}
 		}
-		set_transient( $cache_key, $out, 10 * MINUTE_IN_SECONDS );
+		// A check still running gives a provisional answer (the store's "couldn't check" policy):
+		// asked again shortly, it is the real one. Other answers hold for 10 minutes.
+		$pending = isset( $body['reason'] ) && 'CHECK_PENDING' === $body['reason'];
+		self::$answers[ $cache_key ] = $out;
+		set_transient( $cache_key, $out, $pending ? 30 : 10 * MINUTE_IN_SECONDS );
 		if ( 'allow' !== $out['decision'] ) {
 			FFC_Log::info( 'Order shield: ' . $out['decision'], array( 'phone_end' => substr( $digits, -3 ) ) );
 		}

@@ -1,13 +1,16 @@
 // The storefront checkout, shared by the hosted store (checkout function) and
 // custom-coded websites (site-api function with an API key):
 //   quoteCart  — prices the cart server-side and, once a valid phone number is
-//                entered, runs the fraud / delivery-success check to say whether
-//                cash on delivery is available or an advance is needed (never
-//                revealing scores or rates).
+//                entered, says whether cash on delivery is available or an
+//                advance is needed (never revealing scores or rates). A plain
+//                quote reuses a recent courier check; with `check: true` (sent
+//                once per phone, after the price is shown) it runs the courier
+//                lookup itself, limited per visitor and per store.
 //   placeOrder — creates the order atomically with the risk decision and stock
 //                reservation (or adds it to the customer's order from a minute
 //                ago). Prices, discounts and delivery come from the database.
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { bdMobile } from './fraud/courier-history.ts'
 import { FraudDetectionService, type FraudSettings, loadFraudProviders } from './fraud/service.ts'
 import { HttpError } from './http.ts'
 import { logEvent } from './monitoring.ts'
@@ -18,6 +21,13 @@ import type { z } from 'zod'
 type QuoteInput = z.infer<typeof quoteSchema>
 type PlaceInput = z.infer<typeof placeOrderSchema>
 export interface PlaceContext { ip: string; userAgent?: string | null; userId?: string | null; siteKeyId?: string | null }
+export interface QuoteContext { ip: string }
+
+/** A visitor's IP, hashed: lookups started at checkout are counted per visitor without keeping the address. */
+async function ipHash(ip: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip || 'unknown'))
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 interface FraudCheckRow {
   id: string | null
@@ -49,7 +59,16 @@ export async function fraudCheckFor(admin: SupabaseClient, phone: string, contex
   return check.id
 }
 
-export async function quoteCart(admin: SupabaseClient, input: QuoteInput) {
+/**
+ * Where the courier check stands for the quote:
+ *   checked  — the payment requirement below is the real decision
+ *   pending  — no check yet; ask again with `check: true` (the checkout shows "checking…")
+ *   deferred — no check now (limit reached, or not a Bangladeshi mobile): decided when the order is placed
+ *   off      — the store does not screen orders
+ */
+export type RiskStatus = 'checked' | 'pending' | 'deferred' | 'off'
+
+export async function quoteCart(admin: SupabaseClient, input: QuoteInput, ctx: QuoteContext = { ip: 'unknown' }) {
   const quote = await rpc<Record<string, unknown>>(admin, 'storefront_quote', {
     p_items: input.items,
     p_district: input.district ?? null,
@@ -59,19 +78,35 @@ export async function quoteCart(admin: SupabaseClient, input: QuoteInput) {
     p_phone: input.phone || null,
   })
   let checkId: string | null = null
-  if (input.phone) {
+  let risk: RiskStatus = 'off'
+  const fraud = await getSettings<FraudSettings>(admin, 'fraud')
+  if (input.phone && fraud.enabled !== false) {
+    const context = {
+      order_value: quote.total,
+      subtotal: quote.subtotal,
+      delivery_charge: quote.delivery_charge,
+      return_charge: quote.return_charge,
+      district: input.district,
+      area: input.area,
+      payment_method: input.payment_method,
+    }
     try {
-      checkId = await fraudCheckFor(admin, input.phone, {
-        order_value: quote.total,
-        subtotal: quote.subtotal,
-        delivery_charge: quote.delivery_charge,
-        return_charge: quote.return_charge,
-        district: input.district,
-        area: input.area,
-        payment_method: input.payment_method,
-      }, { cacheOnly: true })
+      checkId = await fraudCheckFor(admin, input.phone, context, { cacheOnly: true })
+      risk = checkId ? 'checked' : 'pending'
+      if (!checkId && input.check) {
+        // The courier lookup spends the store's lookups and this page is public: only for a
+        // real Bangladeshi mobile, and within the per-visitor and per-store hourly limits.
+        const allowed = !!bdMobile(input.phone) && await rpc<boolean>(admin, 'checkout_lookup_allowed', { p_ip: ctx.ip })
+        if (allowed) {
+          checkId = await fraudCheckFor(admin, input.phone, { ...context, origin: 'checkout', ip_hash: await ipHash(ctx.ip) })
+          risk = checkId ? 'checked' : 'deferred'
+        } else {
+          risk = 'deferred'
+        }
+      }
     } catch (error) {
-      // A risk check that cannot run must not block the price preview.
+      // A risk check that cannot run must not block the price preview; the order is decided when placed.
+      risk = 'deferred'
       void logEvent({ level: 'ERROR', category: 'FRAUD', source: 'checkout', message: 'Fraud check failed during quote', error })
     }
   }
@@ -107,7 +142,8 @@ export async function quoteCart(admin: SupabaseClient, input: QuoteInput) {
       },
     }).catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not save the incomplete checkout', error }))
   }
-  return { quote, payment_requirement: input.phone ? requirement : null }
+  // No requirement is shown before the check has run: "cash on delivery" there would be a guess.
+  return { quote, payment_requirement: input.phone && (risk === 'checked' || risk === 'off') ? requirement : null, risk }
 }
 
 export async function placeOrder(admin: SupabaseClient, input: PlaceInput, ctx: PlaceContext) {

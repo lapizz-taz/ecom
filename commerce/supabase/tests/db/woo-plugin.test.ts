@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, asUser, closePool, expectError, inTx, value, type Db } from '../support/db'
-import { advanceOrder, createOrder, createProduct, createStaff, sellOn } from '../support/fixtures'
+import { advanceOrder, createOrder, createProduct, createStaff, sellOn, setSetting } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -177,24 +177,29 @@ describe('WooCommerce plugin: order shield at checkout', () => {
       expect(await value(db, `select public.channel_checkout_decision($1, '01799887766') ->> 'decision'`, [woo])).toBe('block')
       expect(await value(db, `select public.channel_checkout_decision($1, '01700000001') ->> 'reason'`, [woo])).toBe('NO_CHECK')
 
+      // The store's delivery success check: Low receivers pay a fixed 120 first.
+      await setSetting(db, 'fraud', { receive_rate: { enabled: true, good_min: 80, mid_min: 50, min_parcels: 1,
+        actions: { GOOD: 'COD', MID: 'ADVANCE', LOW: 'ADVANCE', NEW: 'COD', ERROR: 'ADVANCE' }, advance_type: 'FIXED', advance_amount: 120 } })
       await asSystem(db)
       const advance = await value<string>(db, `insert into public.fraud_checks(phone, provider, decision, advance_amount, metrics)
-        values ('01700000002', 'test', 'ADVANCE_REQUIRED', 120, '{"receive_rate": 42.5, "receive_rate_tier": "LOW", "parcel_count": 8}') returning id`)
-      const refused = await value<string>(db, `insert into public.fraud_checks(phone, provider, decision) values ('01700000004', 'test', 'BLOCK') returning id`)
-      const broken = await value<string>(db, `insert into public.fraud_checks(phone, provider, status, decision) values ('01700000005', 'test', 'ERROR', 'BLOCK') returning id`)
+        values ('01700000002', 'test', 'ALLOW', 0, '{"courier_score": 42.5, "receive_rate": 42.5, "receive_rate_tier": "LOW", "parcel_count": 8, "delivered_orders": 3, "returned_orders": 5}') returning id`)
+      const refused = await value<string>(db, `insert into public.fraud_checks(phone, provider, decision, metrics) values ('01700000004', 'test', 'BLOCK', '{"phone_flagged": true, "courier_score": 90, "delivered_orders": 9, "returned_orders": 1}') returning id`)
+      const broken = await value<string>(db, `insert into public.fraud_checks(phone, provider, status, decision, metrics) values ('01700000005', 'test', 'ERROR', 'BLOCK', '{"provider_status": "ERROR"}') returning id`)
       await asService(db)
-      const d = await value<Record<string, unknown>>(db, `select public.channel_checkout_decision($1, '01700000002', null, null, $2)`, [woo, advance])
-      expect(d).toMatchObject({ decision: 'advance', reason: 'ADVANCE' })
+      const d = await value<Record<string, unknown>>(db, `select public.channel_checkout_decision($1, '01700000002', null, null, $2, 1370, 120)`, [woo, advance])
+      expect(d).toMatchObject({ decision: 'advance', reason: 'ADVANCE', advance_amount: 120 })
       expect(String(d.message)).toContain('120')
       // The plugin's advance rules get the delivery level and the store's thresholds.
       expect(d).toMatchObject({ level: { tier: 'LOW', rate: 42.5, parcels: 8 }, levels: { good_min: 80, mid_min: 50, min_parcels: 1 } })
       expect(await value(db, `select public.channel_checkout_decision($1, '01700000004', null, null, $2) ->> 'decision'`, [woo, refused])).toBe('block')
-      // A check that failed never blocks a customer, whatever it says.
-      expect(await value(db, `select public.channel_checkout_decision($1, '01700000005', null, null, $2) ->> 'reason'`, [woo, broken])).toBe('CHECK_UNAVAILABLE')
-      expect(await value(db, `select public.channel_checkout_decision($1, '01700000005', null, null, $2) #>> '{level,tier}'`, [woo, broken])).toBe('ERROR')
+      // A check that failed never blocks a customer, whatever it says: the store's "Check failed" action decides (here: advance).
+      const failed = await value<Record<string, unknown>>(db, `select public.channel_checkout_decision($1, '01700000005', null, null, $2, 1370, 120)`, [woo, broken])
+      expect(failed).toMatchObject({ decision: 'advance', reason: 'CHECK_UNAVAILABLE', advance_amount: 120, level: { tier: 'ERROR' } })
+      // A lookup still running past the plugin's budget is "unavailable" too, never a free pass.
+      expect(await value(db, `select public.channel_checkout_decision($1, '01700000006', null, null, null, 1370, 120, true) ->> 'decision'`, [woo])).toBe('advance')
       // An unknown check id never blocks a customer.
       await asService(db)
-      expect(await value(db, `select public.channel_checkout_decision($1, '01700000003', null, null, gen_random_uuid()) ->> 'decision'`, [woo])).toBe('allow')
+      expect(await value(db, `select public.channel_checkout_decision($1, '01700000003', null, null, gen_random_uuid()) ->> 'decision'`, [woo])).not.toBe('block')
     }))
 
   it('is not callable by signed-in users or the public', () =>

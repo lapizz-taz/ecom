@@ -164,15 +164,17 @@ describe('checkout with risk-based advance payment', () => {
       expect((await inventory(db, p.variantIds[0])).reserved).toBe(1) // only the first order still holds stock
     }))
 
-  it('treats a failed provider call as high risk instead of passing it', () =>
+  it('never passes a failed provider call silently, nor scores the customer as risky for it', () =>
     inTx(async (db) => {
-      const p = await createProduct(db, { price: 1000 })
       await asService(db)
-      const check = await one<{ id: string; risk_level: string; status: string }>(db,
-        `select id, risk_level, status from public.record_fraud_check($1)`,
+      const check = await one<{ id: string; risk_level: string; status: string; decision: string; metrics: Record<string, unknown> }>(db,
+        `select id, risk_level, status, decision, metrics from public.record_fraud_check($1)`,
         [JSON.stringify({ phone: '01911000006', provider: 'http', status: 'ERROR', error: 'timeout' })])
       expect(check.status).toBe('ERROR')
-      expect(check.risk_level).toBe('HIGH')
+      // No history was read: the score says nothing either way, the unavailable policy decides (review by default).
+      expect(check.risk_level).toBe('LOW')
+      expect(check.decision).toBe('REVIEW')
+      expect(check.metrics).toMatchObject({ receive_rate_tier: 'ERROR', decision_reason: 'Courier history unavailable' })
     }))
 
   it('holds an order for review when no fraud check could be recorded', () =>

@@ -147,6 +147,16 @@ export default function CheckoutPage() {
     queryFn: async () => ({ ...(await checkoutQuote(quoteInput)), phone: quoteInput.phone }),
     retry: false,
   })
+  // No check for this number yet: run it once (the courier lookup takes a few seconds), then the
+  // quote reuses it. Until it answers the customer sees "checking", never a guessed cash on delivery.
+  const riskPending = Boolean(quoteInput.phone && quote.data?.phone === quoteInput.phone && quote.data.risk === 'pending')
+  const riskCheck = useQuery({
+    queryKey: ['checkout-risk', quoteInput.phone, quoteInput.district, quoteInput.delivery_method, quoteInput.payment_method, quoteInput.coupon_code, quoteInput.items],
+    enabled: riskPending,
+    staleTime: 5 * 60_000,
+    queryFn: async () => ({ ...(await checkoutQuote({ ...quoteInput, check: true })), phone: quoteInput.phone }),
+    retry: false,
+  })
 
   const placed = useRef(false)
   const place = useMutation({
@@ -205,9 +215,13 @@ export default function CheckoutPage() {
   const q = quote.data?.quote
   // Only use a decision made for the number currently typed.
   const currentPhone = phoneValid ? normalizePhone(watched.phone ?? '') : null
-  const requirement = currentPhone && quote.data?.phone === currentPhone ? quote.data.payment_requirement : null
-  const checkingPhone = phoneValid && !requirement && !(quote.error && !quote.isFetching)
-  const checkState = phoneValid ? phoneCheckState(checkingPhone, requirement, method) : null
+  const forPhone = currentPhone && quote.data?.phone === currentPhone ? quote.data : null
+  const checked = forPhone?.risk === 'pending' && riskCheck.data?.phone === currentPhone ? riskCheck.data : forPhone
+  const requirement = checked?.payment_requirement ?? null
+  // The decision is made when the order is placed (lookup limit reached, check failed to start).
+  const deferred = !!currentPhone && (checked?.risk === 'deferred' || (forPhone?.risk === 'pending' && !!riskCheck.error))
+  const checkingPhone = phoneValid && !requirement && !deferred && !(quote.error && !quote.isFetching)
+  const checkState = phoneValid ? phoneCheckState(checkingPhone, requirement, method, deferred) : null
   const blocked = requirement?.mode === 'BLOCKED'
   const manual = config?.payments.providers.find((p) => p.type === 'manual')
   const walletAccounts = (manual?.accounts ?? []).filter((a) => ['BKASH', 'NAGAD', 'ROCKET'].includes(a.channel) && a.number)
@@ -347,7 +361,7 @@ export default function CheckoutPage() {
               </div>
             ) : advanceRequired ? (
               collectAtCheckout ? (
-                advancePay('Pay the delivery charge in advance',
+                advancePay(`Pay ${requirement?.mode === 'FULL' ? 'for your order' : 'the advance'} to confirm`,
                   <>Then pay the remaining <Money value={requirement?.remaining_cod ?? Math.max(total - payNow, 0)} /> in cash when your parcel arrives.</>)
               ) : (
                 <div className="flex gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-950" role="status">
@@ -360,6 +374,11 @@ export default function CheckoutPage() {
               )
             ) : (
               <div className="space-y-4">
+                {deferred && (
+                  <p className="flex items-center gap-2 rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground" role="status">
+                    <Info className="size-4 shrink-0" /> If this order needs an advance, you'll see the amount and how to pay right after you place it.
+                  </p>
+                )}
                 {requirement?.mode === 'REVIEW' && (
                   <p className="flex items-center gap-2 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-950" role="status">
                     <PhoneCall className="size-4 shrink-0" /> We'll call you to confirm this order before it ships.

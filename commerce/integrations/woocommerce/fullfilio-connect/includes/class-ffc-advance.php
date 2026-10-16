@@ -261,12 +261,24 @@ class FFC_Advance {
 
 	// --- checkout ------------------------------------------------------------------------------
 
+	/**
+	 * On the checkout with the order shield on: the number is checked as soon as it is typed,
+	 * so the courier record is ready (and the right payment options shown) by the time the
+	 * customer places the order. With the advance payment on, the totals follow it too.
+	 */
 	public static function assets() {
-		if ( ! self::on() || ! function_exists( 'is_checkout' ) || ! is_checkout() || ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) ) {
+		if ( ! FFC_Settings::enabled( 'shield' ) || ! function_exists( 'is_checkout' ) || ! is_checkout() || ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) ) {
 			return;
 		}
 		wp_enqueue_script( 'ffc-advance', FFC_URL . 'assets/ffc-advance.js', array(), FFC_VERSION, true );
-		wp_localize_script( 'ffc-advance', 'ffcAdvance', array( 'quoteUrl' => class_exists( 'WC_AJAX' ) ? WC_AJAX::get_endpoint( 'ffc_advance' ) : '' ) );
+		wp_localize_script(
+			'ffc-advance',
+			'ffcAdvance',
+			array(
+				'quoteUrl' => class_exists( 'WC_AJAX' ) ? WC_AJAX::get_endpoint( 'ffc_advance' ) : '',
+				'advance'  => self::on(),
+			)
+		);
 	}
 
 	/**
@@ -276,7 +288,7 @@ class FFC_Advance {
 	 * @return array|null the plan for the current cart, or null when not looked up.
 	 */
 	private static function lookup( $phone ) {
-		if ( ! self::on() || ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart || WC()->cart->is_empty() ) {
+		if ( ! FFC_Settings::enabled( 'shield' ) || ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart || WC()->cart->is_empty() ) {
 			return null;
 		}
 		$digits = self::digits( $phone );

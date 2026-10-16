@@ -92,6 +92,8 @@ export const pluginEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('checkout_check'), data: z.object({
     phone: z.string().max(30), total: z.number().nonnegative().max(1e10), payment_method: z.string().max(60).optional().default(''),
     address: z.string().max(400).optional().default(''), ip: z.string().max(64).optional().default(''),
+    /** The cart's shipping total (plugin 1.5.1+), so an advance of "the delivery charge" has its real amount. */
+    shipping: z.number().nonnegative().max(1e9).optional(),
   }) }),
 ])
 export type PluginEvent = z.infer<typeof pluginEventSchema>

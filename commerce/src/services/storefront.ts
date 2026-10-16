@@ -76,10 +76,18 @@ export interface CheckoutQuoteInput {
   payment_method: PaymentMethod
   lead?: { customer_name?: string | null; address?: string | null } | null
   attribution?: Attribution | null
+  /** Run the courier check for this phone now (sent once, after the price is shown). */
+  check?: boolean
 }
 
+/**
+ * Where the courier check stands: `checked` (the requirement is the real decision), `pending`
+ * (ask again with `check: true`), `deferred` (decided when the order is placed) or `off`.
+ */
+export type CheckoutRisk = 'checked' | 'pending' | 'deferred' | 'off'
+
 export function checkoutQuote(input: CheckoutQuoteInput) {
-  return invokeFunction<{ quote: Quote; payment_requirement: PaymentRequirement | null }>('checkout', { action: 'quote', ...input })
+  return invokeFunction<{ quote: Quote; payment_requirement: PaymentRequirement | null; risk?: CheckoutRisk }>('checkout', { action: 'quote', ...input })
 }
 
 export interface PlaceOrderInput {

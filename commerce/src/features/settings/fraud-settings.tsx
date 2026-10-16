@@ -179,14 +179,14 @@ function ReceiveRateSettings() {
     { key: 'GOOD', dot: 'bg-emerald-500', label: 'Good', range: `${good}% or more delivered` },
     { key: 'MID', dot: 'bg-amber-500', label: 'Medium', range: `${mid}% – ${Math.max(good - 1, mid)}%` },
     { key: 'LOW', dot: 'bg-red-500', label: 'Low', range: `below ${mid}%` },
-    { key: 'NEW', dot: 'bg-sky-500', label: 'New customer', range: `fewer than ${Number(rr('min_parcels') ?? 1)} parcel${Number(rr('min_parcels') ?? 1) === 1 ? '' : 's'} of history` },
-    { key: 'ERROR', dot: 'bg-zinc-400', label: 'Check failed', range: 'courier history service did not answer' },
+    { key: 'NEW', dot: 'bg-sky-500', label: 'New customer', range: `no history, or fewer than ${Number(rr('min_parcels') ?? 1)} parcel${Number(rr('min_parcels') ?? 1) === 1 ? '' : 's'}` },
+    { key: 'ERROR', dot: 'bg-zinc-400', label: 'Check failed', range: 'courier history could not be read (service down, sign-ins failing, no lookups left) and no history of our own' },
   ]
   return (
     <SettingCard setting={s} title="Delivery success check at checkout" validate={validate}
-      description="When a customer types their phone number, we look up how many of their past parcels were actually received (your store plus the courier-history API). Customers only ever see what they need to do — never their rate.">
-      <SwitchSetting s={s} path={['receive_rate', 'enabled']} label="Use the delivery success check"
-        hint="Good receivers order with cash on delivery; others pay a small advance with bKash or Nagad first" />
+      description="When a customer types their phone number at checkout, we look up how many of their past parcels were actually received (your own orders plus Pathao, Steadfast, RedX and CarryBee through BD Courier and the courier sign-ins) and apply the action you choose for their level before the order is placed. An order that needs an advance stays at Advance required until the payment is verified. Customers only ever see what they need to do — never their rate.">
+      <SwitchSetting s={s} path={['receive_rate', 'enabled']} label="Decide cash on delivery or advance from the delivery success rate"
+        hint="Off: only your fraud rules below decide. On: the level decides first, rules can still ask for more." />
       <div className="grid gap-4 sm:grid-cols-3">
         <NumberSetting s={s} path={['receive_rate', 'good_min']} label="Good from (%)" min={1} max={100} />
         <NumberSetting s={s} path={['receive_rate', 'mid_min']} label="Medium from (%)" min={1} max={99} />
@@ -213,9 +213,14 @@ function ReceiveRateSettings() {
           { value: 'FIXED', label: 'Fixed amount' },
           { value: 'DELIVERY_CHARGE', label: "The order's delivery charge" },
           { value: 'DELIVERY_PLUS_RETURN', label: 'Delivery + return charge' },
+          { value: 'PERCENTAGE', label: 'A percentage of the order' },
+          { value: 'FULL', label: 'The full order (no cash on delivery)' },
         ]} />
         {(rr('advance_type') ?? 'FIXED') === 'FIXED' && (
           <NumberSetting s={s} path={['receive_rate', 'advance_amount']} label="Fixed advance (৳)" min={1} />
+        )}
+        {rr('advance_type') === 'PERCENTAGE' && (
+          <NumberSetting s={s} path={['receive_rate', 'advance_amount']} label="Advance (% of the order)" min={1} max={100} />
         )}
       </div>
       <TextareaSetting s={s} path={['receive_rate', 'message']} label="Message shown at checkout" rows={2} hint="{amount} is replaced with the advance, e.g. ৳55" />
@@ -284,7 +289,8 @@ function FraudGeneral() {
         <NumberSetting s={s} path={['thresholds', 'critical']} label="Critical risk from score" min={0} max={100} />
         <NumberSetting s={s} path={['new_customer_score']} label="Score for unknown numbers" min={0} max={100} hint="Used when there is no history at all" />
         <NumberSetting s={s} path={['cache_minutes']} label="Reuse a check for (minutes)" min={0} />
-        <SelectSetting s={s} path={['on_provider_error']} label="If a provider fails" options={[{ value: 'REVIEW', label: 'Send to manual review' }, { value: 'ALLOW', label: 'Continue with available data' }]} />
+        <SelectSetting s={s} path={['on_provider_error']} label="If courier history can't be read" hint="Used when the delivery success check is off (when it is on, its “Check failed” action decides)"
+          options={[{ value: 'REVIEW', label: 'Send to manual review' }, { value: 'ADVANCE', label: 'Ask for the default advance' }, { value: 'ALLOW', label: 'Continue with available data' }]} />
         <SelectSetting s={s} path={['block_mode']} label="When a rule blocks an order" options={[{ value: 'REJECT', label: 'Reject automatically' }, { value: 'REVIEW', label: 'Hold for review' }]} />
         <SelectSetting s={s} path={['default_advance', 'type']} label="Default advance (when a rule doesn't set one)" options={ADVANCE_OPTIONS.filter((o) => o.value !== 'NONE')} />
         {['FIXED', 'PERCENTAGE'].includes(String(s.get(['default_advance', 'type']))) && (
