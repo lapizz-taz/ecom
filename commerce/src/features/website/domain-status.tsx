@@ -70,8 +70,9 @@ const BAND: Record<Tone, { band: string; ring: string; title: string }> = {
 
 /** The status at a glance: a dark globe with a pin for every region the DNS check asked,
  *  over a band that is red until the domain is connected and blue once it is. */
-function StatusHero({ tone, regions }: { tone: Tone; regions: RegionCheck[] | null }) {
-  const b = BAND[tone]
+function StatusHero({ tone, regions, pointed }: { tone: Tone; regions: RegionCheck[] | null; pointed?: boolean }) {
+  // DNS is done; only the hosting's confirmation and the certificate are left.
+  const b = tone === 'pending' && pointed ? { ...BAND.pending, title: 'DNS is right · finishing HTTPS' } : BAND[tone]
   const ok = regions?.filter((r) => r.ok).length ?? 0
   return (
     <div className={cn('relative overflow-hidden bg-gradient-to-r', b.band)}>
@@ -222,7 +223,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
       </div>}
 
       <div className={cn('overflow-hidden bg-card', inDialog ? 'border-y' : 'rounded-xl border')}>
-        <StatusHero tone={tone} regions={d.diagnostics?.regions ?? null} />
+        <StatusHero tone={tone} regions={d.diagnostics?.regions ?? null} pointed={d.diagnostics?.pointed} />
         <div className="divide-y">
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>
