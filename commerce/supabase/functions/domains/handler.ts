@@ -80,9 +80,10 @@ function vercel() {
 // --- Cloudflare for SaaS (custom hostnames) -------------------------------------------
 
 function cloudflare() {
-  const token = env('CF_SAAS_API_TOKEN')
-  const zone = env('CF_ZONE_ID')
-  const target = env('CUSTOM_DOMAIN_TARGET')
+  // Trimmed: a pasted secret often ends with a space or line break, which breaks the API path.
+  const token = env('CF_SAAS_API_TOKEN')?.trim()
+  const zone = env('CF_ZONE_ID')?.trim()
+  const target = env('CUSTOM_DOMAIN_TARGET')?.trim()
   if (!token || !zone || !target) return null
   const call = async <T>(method: string, path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: T; error: string | null; code: number | null }> => {
     const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zone)}${path}`, {
