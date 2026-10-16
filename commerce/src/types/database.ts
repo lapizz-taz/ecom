@@ -681,6 +681,51 @@ export type Database = {
           },
         ]
       }
+      call_claims: {
+        Row: {
+          merchant_id: string
+          ref_kind: string
+          ref_id: string
+          queue: string
+          claimed_by: string
+          claimed_at: string
+          expires_at: string
+        }
+        Insert: {
+          merchant_id?: string
+          ref_kind: string
+          ref_id: string
+          queue: string
+          claimed_by: string
+          claimed_at?: string
+          expires_at: string
+        }
+        Update: {
+          merchant_id?: string
+          ref_kind?: string
+          ref_id?: string
+          queue?: string
+          claimed_by?: string
+          claimed_at?: string
+          expires_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_claims_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_claims_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           id: string
@@ -12990,6 +13035,21 @@ export type Database = {
       auto_assign_districts: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      auto_order_dashboard: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      auto_order_open_next: {
+        Args: {
+          p_queue: string
+          p_skip?: string[]
+        }
+        Returns: Json
+      }
+      auto_order_release: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       auto_pick_overview: {
         Args: Record<PropertyKey, never>

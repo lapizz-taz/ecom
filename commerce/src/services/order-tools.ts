@@ -69,6 +69,33 @@ export async function nextCall(scope: CallScope, skip: string[]) {
   return fromJson<{ order_id: string | null; counts: Record<CallScope, number> }>(data)
 }
 
+// --- Auto Order Dashboard ------------------------------------------------------------
+export type CallQueue = 'processing' | 'incomplete' | 'good_no_response' | 'no_response' | 'advance_payment' | 'on_hold'
+export interface CallClaim { kind: 'ORDER' | 'LEAD'; id: string; queue: CallQueue }
+export interface AutoOrderDashboard {
+  queues: Record<CallQueue, number>
+  report: { taken: number; approved: number; shipped: number; delivered: number; returned: number }
+  claim: (CallClaim & { expires_at: string }) | null
+}
+
+export async function autoOrderDashboard(): Promise<AutoOrderDashboard> {
+  const { data, error } = await supabase.rpc('auto_order_dashboard')
+  if (error) throw error
+  return fromJson<AutoOrderDashboard>(data)
+}
+
+/** Claims the next customer in a queue for me (nobody else gets them while I have them open). */
+export async function openNextInQueue(queue: CallQueue, skip: string[] = []): Promise<CallClaim | null> {
+  const { data, error } = await supabase.rpc('auto_order_open_next', { p_queue: queue, p_skip: skip })
+  if (error) throw error
+  return fromJson<CallClaim | null>(data)
+}
+
+export async function releaseCallClaim() {
+  const { error } = await supabase.rpc('auto_order_release')
+  if (error) throw error
+}
+
 // --- Super Edit -----------------------------------------------------------------------
 export interface OverrideChanges {
   status?: Enums<'order_status'>

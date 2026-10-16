@@ -61,7 +61,7 @@ export const NAV: NavSection[] = [
           { label: 'Web Order List', to: '/admin/orders/web' },
           { label: 'Abandoned Carts', to: '/admin/orders/abandoned' },
           { label: 'Auto Pick Orders', to: '/admin/orders/auto-pick' },
-          { label: 'Auto Call Center', to: '/admin/orders/call-center', badge: (c) => c.queue?.follow_up_due },
+          { label: 'Auto Order Dashboard', to: '/admin/orders/call-center', badge: (c) => c.queue?.follow_up_due },
           { label: 'Phone & Missed Calls', to: '/admin/settings/voicedrive-pbx?tab=missed', permission: 'pbx.call', feature: 'pbx' },
           { label: 'Order Block List', to: '/admin/orders/block-list' },
         ],
