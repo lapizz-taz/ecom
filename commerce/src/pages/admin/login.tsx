@@ -7,7 +7,10 @@ import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
+import { env } from '@/lib/env'
 import { SignInForm } from '@/pages/storefront/login'
+
+const CANONICAL_ORIGIN = 'https://fullfilio.com'
 
 export default function AdminLoginPage() {
   useAdminTheme()
@@ -50,6 +53,13 @@ export default function AdminLoginPage() {
         )}
       </AuthShell>
     )
+  }
+
+  // The built-in form is for local development only: a live address without Clerk
+  // (an old preview copy) sends people to the real sign-in instead.
+  if (!env.isDev) {
+    window.location.replace(`${CANONICAL_ORIGIN}/admin/login${window.location.search}`)
+    return null
   }
 
   return (
