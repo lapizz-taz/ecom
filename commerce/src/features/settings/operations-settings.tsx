@@ -67,6 +67,13 @@ export function OperationsSettings() {
             { value: 'WEIGHTED_AVERAGE', label: 'Weighted average' }, { value: 'LATEST', label: 'Latest purchase price' },
           ]} />
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <span>
+            <span className="block text-sm font-medium">Multi Warehouse / Branch Stock</span>
+            <span className="block text-xs text-muted-foreground">{inventory.get(['multi_branch']) ? 'On: stock is tracked per branch.' : 'Off: one stock count for the whole store.'}</span>
+          </span>
+          <Button size="sm" variant="outline" asChild><Link to="/admin/inventory/branches">Setup</Link></Button>
+        </div>
       </SettingCard>
 
       <SettingCard setting={customers} title="Customer segments" description="Segments update automatically as orders are delivered, cancelled or returned."

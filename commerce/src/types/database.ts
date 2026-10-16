@@ -681,6 +681,227 @@ export type Database = {
           },
         ]
       }
+      branch_staff: {
+        Row: {
+          merchant_id: string
+          branch_id: string
+          profile_id: string
+        }
+        Insert: {
+          merchant_id?: string
+          branch_id: string
+          profile_id: string
+        }
+        Update: {
+          merchant_id?: string
+          branch_id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_staff_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_staff_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_staff_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      branch_stock: {
+        Row: {
+          merchant_id: string
+          branch_id: string
+          variant_id: string
+          on_hand: number
+          updated_at: string
+        }
+        Insert: {
+          merchant_id?: string
+          branch_id: string
+          variant_id: string
+          on_hand?: number
+          updated_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          branch_id?: string
+          variant_id?: string
+          on_hand?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_stock_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_stock_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_stock_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      branch_transfers: {
+        Row: {
+          id: string
+          merchant_id: string
+          from_branch: string
+          to_branch: string
+          variant_id: string
+          quantity: number
+          kind: string
+          note: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          from_branch: string
+          to_branch: string
+          variant_id: string
+          quantity: number
+          kind?: string
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          from_branch?: string
+          to_branch?: string
+          variant_id?: string
+          quantity?: number
+          kind?: string
+          note?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_transfers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_transfers_from_branch_fkey"
+            columns: ["from_branch"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_transfers_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_transfers_to_branch_fkey"
+            columns: ["to_branch"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_transfers_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      branches: {
+        Row: {
+          id: string
+          merchant_id: string
+          name: string
+          code: string | null
+          kind: string
+          is_central: boolean
+          address: string | null
+          phone: string | null
+          manager_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          name: string
+          code?: string | null
+          kind?: string
+          is_central?: boolean
+          address?: string | null
+          phone?: string | null
+          manager_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          name?: string
+          code?: string | null
+          kind?: string
+          is_central?: boolean
+          address?: string | null
+          phone?: string | null
+          manager_id?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branches_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branches_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_claims: {
         Row: {
           merchant_id: string
@@ -4098,6 +4319,7 @@ export type Database = {
           created_by: string | null
           created_at: string
           merchant_id: string
+          branch_id: string | null
         }
         Insert: {
           id?: string
@@ -4119,6 +4341,7 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           merchant_id?: string
+          branch_id?: string | null
         }
         Update: {
           id?: string
@@ -4140,8 +4363,16 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           merchant_id?: string
+          branch_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "inventory_movements_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "inventory_movements_merchant_id_fkey"
             columns: ["merchant_id"]
@@ -5997,6 +6228,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
         Insert: {
           id?: string
@@ -6082,6 +6314,7 @@ export type Database = {
           duplicate_reason?: string | null
           merchant_id?: string
           tax_amount?: number
+          branch_id?: string | null
         }
         Update: {
           id?: string
@@ -6167,6 +6400,7 @@ export type Database = {
           duplicate_reason?: string | null
           merchant_id?: string
           tax_amount?: number
+          branch_id?: string | null
         }
         Relationships: [
           {
@@ -6174,6 +6408,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
           {
@@ -11585,6 +11826,7 @@ export type Database = {
           created_by: string | null
           created_at: string
           merchant_id: string
+          branch_id: string | null
         }
       }
       admin_api_key_create: {
@@ -11809,6 +12051,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       admin_create_production_order: {
@@ -11926,6 +12169,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       admin_duplicate_order: {
@@ -12016,6 +12260,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       admin_duplicate_orders: {
@@ -12205,6 +12450,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       admin_online_store_answer: {
@@ -12547,6 +12793,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       admin_set_order_source: {
@@ -12818,6 +13065,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       admin_update_setting: {
@@ -13010,6 +13258,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       apply_shipment_status: {
@@ -13140,6 +13389,86 @@ export type Database = {
         Returns: boolean
       }
       billing_renew_now: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      branch_delete: {
+        Args: {
+          p_branch: string
+        }
+        Returns: undefined
+      }
+      branch_report: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      branch_save: {
+        Args: {
+          p: Json
+        }
+        Returns: {
+          id: string
+          merchant_id: string
+          name: string
+          code: string | null
+          kind: string
+          is_central: boolean
+          address: string | null
+          phone: string | null
+          manager_id: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+      }
+      branch_set_central: {
+        Args: {
+          p_branch: string
+        }
+        Returns: undefined
+      }
+      branch_staff_set: {
+        Args: {
+          p_branch: string
+          p_profiles: string[]
+        }
+        Returns: number
+      }
+      branch_stock_list: {
+        Args: {
+          p_q?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      branch_stock_set: {
+        Args: {
+          p_branch: string
+          p_items: Json
+        }
+        Returns: number
+      }
+      branch_transfer: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_items: Json
+          p_note?: string
+          p_kind?: string
+        }
+        Returns: number
+      }
+      branches_enable: {
+        Args: {
+          p_on: boolean
+        }
+        Returns: Json
+      }
+      branches_overview: {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
@@ -13680,6 +14009,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       get_my_access: {
@@ -14224,6 +14554,13 @@ export type Database = {
           p_to: string
         }
         Returns: Json
+      }
+      orders_set_branch: {
+        Args: {
+          p_orders: string[]
+          p_branch: string
+        }
+        Returns: number
       }
       parcel_call_log: {
         Args: {
@@ -14877,6 +15214,12 @@ export type Database = {
         Returns: Json
       }
       platform_merchant_billing: {
+        Args: {
+          p_merchant: string
+        }
+        Returns: Json
+      }
+      platform_merchant_branches: {
         Args: {
           p_merchant: string
         }
@@ -15549,6 +15892,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       production_action: {
@@ -15814,6 +16158,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       record_purchase_payment: {
@@ -16097,6 +16442,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       retry_courier_webhook: {
@@ -16619,6 +16965,7 @@ export type Database = {
           duplicate_reason: string | null
           merchant_id: string
           tax_amount: number
+          branch_id: string | null
         }
       }
       update_my_profile: {

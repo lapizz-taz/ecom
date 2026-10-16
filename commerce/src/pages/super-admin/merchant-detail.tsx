@@ -30,6 +30,7 @@ import { formatDate, formatDateTime, formatMoney, formatNumber, timeAgo } from '
 import { toast } from '@/lib/toast'
 import { addMerchantNote, getMerchant, listEmployees, type MerchantDetail, setMerchantOwner, updateMerchant } from '@/services/platform'
 import { deleteMerchantUser } from '@/services/platform-data'
+import { merchantBranches } from '@/services/branches'
 
 /** Tabs from other modules, shown to employees who can view that module for this merchant. */
 const merchantTabs: Array<{ key: string; label: string; module: string; render: (m: MerchantDetail) => ReactNode }> = [
@@ -245,6 +246,7 @@ export default function MerchantDetailPage() {
               ))}
             </CardContent>
           </Card>
+          <MerchantBranchesCard merchantId={m.id} />
         </TabsContent>
 
         <TabsContent value="staff">
@@ -364,3 +366,23 @@ function whatsappOf(m: unknown): string | null {
 }
 /** wa.me wants the full international number without "+": 01XXXXXXXXX → 8801XXXXXXXXX. */
 const waDigits = (n: string) => (n.startsWith('01') ? `88${n}` : n.replace(/\D/g, ''))
+
+function MerchantBranchesCard({ merchantId }: { merchantId: string }) {
+  const q = useQuery({ queryKey: ['platform-merchant-branches', merchantId], queryFn: () => merchantBranches(merchantId) })
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Branches</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {q.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {q.error && <p className="text-sm text-red-500">Branches could not be loaded.</p>}
+        {q.data && !q.data.enabled && <p className="text-sm text-muted-foreground">Multi warehouse / branch stock is off for this merchant.</p>}
+        {q.data?.enabled && q.data.branches.map((b) => (
+          <div key={b.id} className="flex items-center justify-between gap-2 border-b py-1.5 text-sm last:border-0">
+            <span className="truncate">{b.name}<span className="ml-1 text-xs text-muted-foreground">({b.kind.toLowerCase()}{b.is_central ? ', central' : ''} · {formatNumber(b.staff)} staff)</span></span>
+            <Badge variant={b.is_active ? 'success' : 'neutral'}>{b.is_active ? 'active' : 'closed'}</Badge>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}

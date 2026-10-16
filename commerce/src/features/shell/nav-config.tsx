@@ -90,6 +90,7 @@ export const NAV: NavSection[] = [
           { label: 'Products', to: '/admin/products', permission: 'products.view' },
           { label: 'Stock Movements', to: '/admin/inventory/movements' },
           { label: 'Adjustments', to: '/admin/inventory/adjustments' },
+          { label: 'Branches', to: '/admin/inventory/branches' },
           { label: 'Production', to: '/admin/production', permission: 'production.view' },
         ],
       },

@@ -29,6 +29,7 @@ import {
   RetainAdvanceDialog, ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
+import { OrderBranch } from '@/features/orders/order-branch'
 import { OrderClientInfo } from '@/features/orders/order-client-info'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { eventLabel } from '@/features/sms/sms-text'
@@ -575,6 +576,7 @@ export default function OrderDetailPage() {
               {!o.shipping_district && <p className="text-xs font-medium text-amber-600 dark:text-amber-400">District needed: edit the order and choose it before booking Pathao or RedX</p>}
               <p className="text-muted-foreground">Method: {titleCase(o.delivery_method)}</p>
               {o.customer_note && <p className="mt-2 rounded-md bg-muted/60 p-2"><span className="font-medium">Customer note:</span> {o.customer_note}</p>}
+              <OrderBranch orderId={o.id} branchId={o.branch_id} status={o.status} />
             </CardContent>
           </Card>
 
