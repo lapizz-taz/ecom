@@ -5,6 +5,7 @@ import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { deviceLabel } from '@/lib/device'
+import { CourierAutomation } from './courier-automation'
 import { NumberSetting, SettingCard, TextSetting, useSettingDraft } from './setting-form'
 
 export function AdvancedSettings() {
@@ -34,6 +35,8 @@ export function AdvancedSettings() {
           hint={idle > 0 ? `Staff are signed out after ${idle} minutes without using the admin.` : '0 = stay signed in'} className="max-w-xs" />
         <p className="text-sm text-muted-foreground">New sign-in devices: <Link to="/admin/settings/devices" className="underline">Device approvals</Link></p>
       </SettingCard>
+
+      <CourierAutomation />
 
       <Card>
         <CardHeader>

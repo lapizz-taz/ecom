@@ -2019,6 +2019,76 @@ export type Database = {
           },
         ]
       }
+      courier_sync_runs: {
+        Row: {
+          id: string
+          merchant_id: string
+          trigger: string
+          scope: string
+          courier_id: string | null
+          started_by: string | null
+          started_at: string
+          finished_at: string | null
+          total: number
+          checked: number
+          changed: number
+          failed: number
+          errors: Json
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          trigger: string
+          scope?: string
+          courier_id?: string | null
+          started_by?: string | null
+          started_at?: string
+          finished_at?: string | null
+          total?: number
+          checked?: number
+          changed?: number
+          failed?: number
+          errors?: Json
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          trigger?: string
+          scope?: string
+          courier_id?: string | null
+          started_by?: string | null
+          started_at?: string
+          finished_at?: string | null
+          total?: number
+          checked?: number
+          changed?: number
+          failed?: number
+          errors?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_sync_runs_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_sync_runs_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_sync_runs_started_by_fkey"
+            columns: ["started_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       courier_webhook_events: {
         Row: {
           id: string
@@ -13195,6 +13265,10 @@ export type Database = {
         }
         Returns: number
       }
+      courier_automation_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       courier_metrics: {
         Args: {
           p_from: string
@@ -13205,6 +13279,31 @@ export type Database = {
       courier_parcels: {
         Args: {
           p: Json
+        }
+        Returns: Json
+      }
+      courier_sync_run_progress: {
+        Args: {
+          p_run_id: string
+          p_checked: number
+          p_changed: number
+          p_errors: Json
+          p_done: boolean
+        }
+        Returns: Json
+      }
+      courier_sync_run_start: {
+        Args: {
+          p_trigger: string
+          p_scope: string
+          p_courier_id?: string
+        }
+        Returns: Json
+      }
+      courier_sync_save: {
+        Args: {
+          p_auto: boolean
+          p_every_minutes: number
         }
         Returns: Json
       }
@@ -15982,6 +16081,10 @@ export type Database = {
         Args: {
           p_event_id: string
         }
+        Returns: Json
+      }
+      retry_failed_courier_webhooks: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       retry_notification: {

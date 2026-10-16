@@ -62,6 +62,44 @@ export function syncAllShipments(courierId?: string) {
   return invokeFunction<{ synced: number }>('courier', { action: 'sync_all', courier_id: courierId })
 }
 
+// --- Courier automation (Settings → Advanced) ------------------------------------------
+export interface CourierSyncRun {
+  id: string; trigger: 'MANUAL' | 'SCHEDULED'; scope: 'all' | 'shipped'; courier_id: string | null; courier?: string | null
+  started_by_name?: string | null; started_at: string; finished_at: string | null
+  total: number; checked: number; changed: number; failed: number
+  errors: Array<{ order_number: string; courier: string; error: string; at: string }>
+}
+export interface CourierAutomation {
+  settings: { auto?: boolean; every_minutes?: number }
+  couriers: Array<{ id: string; name: string; provider: string; active_parcels: number; shipped_parcels: number; last_webhook_at: string | null; webhooks_today: number; webhooks_failed: number }>
+  runs: CourierSyncRun[]
+}
+export interface CheckOutcome { shipment_id: string; order_number: string; courier: string; before: string; status?: string; provider_status?: string; error?: string }
+
+export async function courierAutomation(): Promise<CourierAutomation> {
+  const { data, error } = await supabase.rpc('courier_automation_overview')
+  if (error) throw error
+  return fromJson<CourierAutomation>(data)
+}
+
+/** One batch of a logged status check; pass back run_id and next until done. */
+export function forceCheckBatch(input: { scope: 'all' | 'shipped'; courier_id?: string; run_id?: string; after?: string | null; batch?: number }) {
+  return invokeFunction<{ run: CourierSyncRun; results: CheckOutcome[]; next: string | null; done: boolean }>('courier', {
+    action: 'force_check', scope: input.scope, courier_id: input.courier_id, run_id: input.run_id, after: input.after ?? undefined, batch: input.batch ?? 10,
+  })
+}
+
+export async function saveCourierSync(auto: boolean, everyMinutes: number) {
+  const { error } = await supabase.rpc('courier_sync_save', { p_auto: auto, p_every_minutes: everyMinutes })
+  if (error) throw error
+}
+
+export async function retryFailedCourierWebhooks(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.rpc('retry_failed_courier_webhooks')
+  if (error) throw error
+  return fromJson<Record<string, number>>(data) ?? {}
+}
+
 export type CourierProviderCode = 'steadfast' | 'pathao' | 'redx'
 
 /** Booking options kept on the courier (not secret; keys stay in Vault). */
