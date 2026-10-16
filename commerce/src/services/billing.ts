@@ -186,7 +186,30 @@ export interface MyPlan {
   usage: Record<LimitKey, number>
   features: Record<string, Entitlement>
   invoices: Array<Pick<Invoice, 'id' | 'number' | 'total' | 'amount_paid' | 'currency' | 'status' | 'due_at' | 'paid_at' | 'period_start' | 'period_end' | 'lines'>>
+  /** Set while a new business waits: for its first payment, or for the platform team after WhatsApp. */
+  activation?: { state: 'awaiting_payment'; invoice_id: string | null } | { state: 'awaiting_whatsapp'; whatsapp_number: string | null; whatsapp_message: string } | null
+  /** Days before the end of a period or trial on which renewal reminders show. */
+  reminder_days?: number[]
 }
+
+/** The next period's invoice (or the open one), to renew before the plan runs out. */
+export async function renewNow(): Promise<{ id: string; number: string; total: number; amount_paid: number; status: string }> {
+  const { data, error } = await supabase.rpc('billing_renew_now' as never)
+  if (error) throw error
+  return data as unknown as { id: string; number: string; total: number; amount_paid: number; status: string }
+}
+
+export interface OnboardingSettings { method: 'online_payment' | 'whatsapp'; whatsapp_number: string | null; whatsapp_template: string; reminder_days: number[] }
+export const saveOnboarding = (value: OnboardingSettings, reason?: string) =>
+  platformRpc<OnboardingSettings>('platform_onboarding_save', { p_value: value, p_reason: reason ?? null })
+export interface PendingActivation {
+  merchant_id: string; name: string; owner_email: string | null; phone: string | null; whatsapp: string | null
+  state: 'awaiting_payment' | 'awaiting_whatsapp'; created_at: string
+  plan: { name: string; price: number; currency: string; interval: string; trial_days: number } | null
+}
+export const pendingActivations = () => platformRpc<PendingActivation[]>('platform_pending_activations', {})
+export const activateMerchant = (merchantId: string, reason: string) =>
+  platformRpc<{ subscription: string }>('platform_merchant_activate', { p_merchant: merchantId, p_reason: reason })
 
 export async function myPlan(): Promise<MyPlan> {
   const { data, error } = await supabase.rpc('my_plan' as never)

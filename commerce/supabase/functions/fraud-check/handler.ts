@@ -5,6 +5,10 @@
 //                             against the merchant's allowance like any lookup
 //   courier_history_status  — whether the platform's BD Courier connection is available
 //                             and this business uses it (settings.view)
+//   phone_record            — the delivery record for a phone typed on New Order or an
+//                             incomplete checkout: reuses a recent check (no new charge)
+//                             or runs one for staff who create orders or review fraud;
+//                             everyone with orders.view gets what is already known
 // BD Courier runs on the platform's account (Super Admin → BD Courier Integration);
 // merchants never enter or see an API key.
 import { z } from 'zod'
@@ -16,7 +20,8 @@ import {
   checkProviderNames, courierHistoryConfig, databaseMeter, FraudDetectionService, type FraudSettings, loadFraudProviders,
   platformCourierHistorySecret, platformPanelCreds,
 } from '../_shared/fraud/service.ts'
-import { handle, HttpError, json, readJson } from '../_shared/http.ts'
+import { fraudCheckFor } from '../_shared/checkout-flow.ts'
+import { fromDbError, handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
 import { getSettings, requireStaff, rpc } from '../_shared/supabase.ts'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -27,11 +32,14 @@ const schema = z.discriminatedUnion('action', [
     order_id: z.uuid().optional(),
     phone: phoneSchema.optional(),
     apply: z.boolean().default(false),
+    /** After New Order: use the check made while the phone was typed, if it is recent, instead of paying for another. */
+    reuse: z.boolean().default(false),
   }).refine((v) => v.order_id || v.phone, 'order_id or phone is required'),
   z.object({ action: z.literal('lookup_courier_history'), phone: phoneSchema }),
   z.object({ action: z.literal('courier_history_status') }),
   z.object({ action: z.literal('lookup_courier_panel'), phone: phoneSchema }),
   z.object({ action: z.literal('courier_panel_status') }),
+  z.object({ action: z.literal('phone_record'), phone: phoneSchema }),
 ])
 
 const PERMISSION: Record<string, string> = {
@@ -40,6 +48,7 @@ const PERMISSION: Record<string, string> = {
   courier_history_status: 'settings.view',
   lookup_courier_panel: 'fraud.review',
   courier_panel_status: 'settings.view',
+  phone_record: 'orders.view',
 }
 
 const REVIEWABLE = ['PENDING', 'FRAUD_CHECK', 'FRAUD_REVIEW', 'ADVANCE_REQUIRED', 'CONFIRMATION_REQUIRED']
@@ -87,7 +96,9 @@ export default (
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const body = await readJson<Record<string, unknown>>(req)
     const input = parse(schema, { action: 'check', ...body })
-    const staff = await requireStaff(req, PERMISSION[input.action], { supportView: input.action === 'courier_history_status' || input.action === 'courier_panel_status' })
+    // Linking New Order's own recent check to the order it just created needs only orders.create.
+    const reuseOnly = input.action === 'check' && input.reuse && !!input.order_id
+    const staff = await requireStaff(req, reuseOnly ? 'orders.create' : PERMISSION[input.action], { supportView: input.action === 'courier_history_status' || input.action === 'courier_panel_status' })
     const admin = staff.admin
     const settings = await getSettings<FraudSettings>(admin, 'fraud')
 
@@ -124,6 +135,20 @@ export default (
       return json(req, { ok: true, result: await panelLookup(admin, input.phone) })
     }
 
+    if (input.action === 'phone_record') {
+      const mayLookUp = staff.role === 'OWNER' || staff.permissions.includes('orders.create') || staff.permissions.includes('fraud.review')
+      let lookupError: string | null = null
+      if (mayLookUp && settings.enabled !== false) {
+        try {
+          await fraudCheckFor(admin, input.phone, {})
+        } catch (error) {
+          lookupError = (error as Error).message
+        }
+      }
+      const record = await rpc<Record<string, unknown>>(staff.client, 'admin_phone_customer_record', { p_phone: input.phone })
+      return json(req, { record, looked_up: mayLookUp, lookup_error: lookupError })
+    }
+
     let phone = input.phone ?? ''
     let context: Record<string, unknown> = {}
     let status: string | null = null
@@ -146,6 +171,20 @@ export default (
         payment_method: order.payment_method,
         source: order.source,
       }
+    }
+
+    if (input.reuse && input.order_id) {
+      const recent = await rpc<{ id: string | null; status: string; provider: string } | null>(admin, 'recent_fraud_check', { p_phone: phone })
+      if (recent?.id && recent.status !== 'ERROR') {
+        const { error } = await admin.from('orders').update({ fraud_check_id: recent.id }).eq('id', input.order_id).is('fraud_check_id', null)
+        if (error) throw fromDbError(error)
+        let order: unknown = null
+        if (input.apply && status && REVIEWABLE.includes(status)) {
+          order = await rpc(staff.client, 'apply_fraud_decision', { p_order_id: input.order_id, p_fraud_check_id: recent.id })
+        }
+        return json(req, { check: recent, order, reused: true })
+      }
+      if (staff.role !== 'OWNER' && !staff.permissions.includes('fraud.review')) return json(req, { check: null, order: null, reused: false })
     }
 
     const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check(

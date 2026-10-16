@@ -147,7 +147,7 @@ export default function StorefrontLayout() {
       </header>
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetContent side="left" className="w-[85vw] max-w-sm">
+        <SheetContent side="left" className="w-[85vw] max-w-sm" onOpenAutoFocus={(e) => e.preventDefault()}>
           <SheetHeader><SheetTitle>{storeName}</SheetTitle></SheetHeader>
           <nav className="grid gap-0.5 px-4 text-sm">
             {menu.flatMap((m) => [m, ...(m.children ?? []).map((c) => ({ ...c, child: true }))]).map((l) => (

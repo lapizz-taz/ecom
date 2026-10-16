@@ -4,7 +4,7 @@
 //   * API keys created by hand (WooCommerce → Settings → Advanced → REST API).
 // Only HTTPS sites are accepted, so keys never travel in clear text. Webhooks
 // carry X-WC-Webhook-Signature (HMAC of the body with a secret we choose).
-import { type Check, ChannelError, clean, hmacBase64, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
+import { type Check, ChannelError, clean, hmacBase64, ipAddress, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
 import type { CatalogItem } from './shopify.ts'
 import { pluginAttribution, PLUGIN_SLUG } from './woo-plugin.ts'
 import { env } from '../env.ts'
@@ -389,8 +389,21 @@ export interface WooOrder {
   id: number; number: string; status: string; currency: string; date_created_gmt?: string; date_paid_gmt?: string | null
   total: string; shipping_total: string; discount_total: string; total_tax?: string; payment_method?: string; payment_method_title?: string
   customer_note?: string; billing?: WooAddress; shipping?: WooAddress
+  customer_ip_address?: string; customer_user_agent?: string
   line_items: Array<{ product_id: number; variation_id: number; name: string; quantity: number; subtotal: string; sku?: string; image?: { src?: string } | null; meta_data?: Array<{ display_key?: string; display_value?: string }> }>
   meta_data?: Array<{ key: string; value: unknown }>
+  fee_lines?: Array<{ name?: string; total?: string }>
+}
+
+/**
+ * The Fullfilio Connect plugin's advance payment: the online gateway charged only
+ * the advance, and a negative fee line holds the rest, paid in cash on delivery.
+ * Trusted only when the order's own fee line matches the amount the plugin noted.
+ */
+function codDueOf(o: WooOrder, meta: Record<string, string>): number {
+  const due = money(meta._ffc_cod_due ?? 0)
+  if (!(due > 0)) return 0
+  return (o.fee_lines ?? []).some((f) => Math.abs(money(f.total ?? 0) + due) < 0.01) ? due : 0
 }
 
 export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
@@ -403,8 +416,11 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
   const touch = touchFrom(meta._wc_order_attribution_session_entry, meta._wc_order_attribution_referrer, meta._wc_order_attribution_session_start_time ?? o.date_created_gmt ?? null, utm)
   // The Fullfilio Connect plugin keeps the first and the latest visit (and click ids WooCommerce drops): it wins when present.
   const fromPlugin = pluginAttribution(meta._ffc_attribution)
-  const total = money(o.total)
-  const paid = o.date_paid_gmt && o.payment_method !== 'cod' && WOO_IMPORT_STATUSES.includes(o.status) ? total : 0
+  const charged = money(o.total)
+  const codDue = codDueOf(o, meta)
+  const total = codDue > 0 ? money(charged + codDue) : charged
+  // Paid only what the gateway charged (WooCommerce sets date_paid when the payment is confirmed).
+  const paid = o.date_paid_gmt && o.payment_method !== 'cod' && WOO_IMPORT_STATUSES.includes(o.status) ? charged : 0
   const state = clean(a.state)
   return {
     external_id: String(o.id),
@@ -440,6 +456,7 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
     gateway: clean(o.payment_method_title),
     note: clean(o.customer_note),
     attribution: fromPlugin ?? (touch ? { first_touch: touch, last_touch: touch } : null),
+    client: ipAddress(o.customer_ip_address) ? { ip: ipAddress(o.customer_ip_address), user_agent: clean(o.customer_user_agent)?.slice(0, 400) ?? null } : null,
     // Completed in WooCommerce: already sent, so not imported.
     fulfillment_status: o.status === 'completed' ? 'FULFILLED' : 'UNFULFILLED',
     // Line subtotals and shipping are always without tax in WooCommerce.

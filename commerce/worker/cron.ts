@@ -42,6 +42,11 @@ export const JOBS: CronJob[] = [
     run: async (r) => (await r.rpc('channels_sync_due')) === true && r.call('channels', { action: 'sync' }),
   },
   {
+    // Stores that turned on Settings → Advanced → Courier automation; the function checks who is due.
+    name: 'courier-status-sync', schedule: '*/15 * * * *',
+    run: async (r) => (await r.exists('settings', 'key=eq.courier_sync&value->>auto=eq.true')) && r.call('courier', { action: 'sync_all' }),
+  },
+  {
     name: 'meta-ads-sync', schedule: '17 */3 * * *',
     run: async (r) => ((await r.exists('settings', 'key=eq.meta_ads&value->>connected=eq.true')) || (await r.exists('meta_ad_accounts', 'id=not.is.null')))
       && r.call('meta-ads', { action: 'sync', days: 3 }),

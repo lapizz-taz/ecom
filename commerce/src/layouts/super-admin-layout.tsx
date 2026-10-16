@@ -180,7 +180,7 @@ function Panel() {
         </div>
       </aside>
       <Sheet open={menu} onOpenChange={setMenu}>
-        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 border-0 bg-sidebar p-0">
+        <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 border-0 bg-sidebar p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
           <SheetTitle className="flex h-16 items-center px-4"><Logo subtitle="Super Admin" /></SheetTitle>
           <div className="overflow-y-auto"><Sidebar onNavigate={() => setMenu(false)} /></div>
         </SheetContent>

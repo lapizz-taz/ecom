@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ErrorState, LoadingState } from '@/components/common/states'
 import { StatusBadge } from '@/components/common/status-badge'
@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { ACCESS_MODE, ENTITLEMENT, LIMIT_KEYS, LIMIT_LABEL, myPlan, type MyPlan, SUBSCRIPTION_STATUS } from '@/services/billing'
+import { ACCESS_MODE, ENTITLEMENT, LIMIT_KEYS, LIMIT_LABEL, myPlan, type MyPlan, renewNow, SUBSCRIPTION_STATUS } from '@/services/billing'
+import { toast } from '@/lib/toast'
 import { payInvoice } from '@/services/credits'
 import { PayDialog, useMyCredits } from './credits-section'
 
@@ -33,7 +34,8 @@ function usePlan() {
 export function PlanSummary({ compact }: { compact?: boolean }) {
   const plan = usePlan()
   const credits = useMyCredits()
-  const [paying, setPaying] = useState<MyPlan['invoices'][number] | null>(null)
+  const [paying, setPaying] = useState<Pick<MyPlan['invoices'][number], 'id' | 'number' | 'total' | 'amount_paid'> | null>(null)
+  const renew = useMutation({ mutationFn: renewNow, onSuccess: (inv) => setPaying(inv), onError: (e) => toast.error(e) })
   const canPayOnline = !!credits.data?.can_pay && (credits.data?.gateways.length ?? 0) > 0
   if (plan.error) return <ErrorState error={plan.error} onRetry={() => plan.refetch()} />
   if (!plan.data) return <LoadingState />
@@ -62,6 +64,9 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
               <p>{formatMoney(s.price)} / {s.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
               {s.status === 'TRIALING' && <p className="text-muted-foreground">Free trial until {formatDateTime(s.trial_ends_at)}</p>}
               {s.status === 'ACTIVE' && s.current_period_end && <p className="text-muted-foreground">Renews {formatDate(s.current_period_end)}{s.cancel_at_period_end && ' — set to end then'}</p>}
+              {canPayOnline && s.price > 0 && ['ACTIVE', 'TRIALING'].includes(s.status) && !s.cancel_at_period_end && open.length === 0 && (
+                <Button size="sm" variant="outline" className="mt-2" disabled={renew.isPending} onClick={() => renew.mutate()}>Renew now</Button>
+              )}
             </>}
           </CardContent>
         </Card>

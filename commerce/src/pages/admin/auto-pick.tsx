@@ -40,10 +40,10 @@ export default function AutoPickPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Auto Pick Orders"
-        description="Every new web order is handed to one of your call agents as it arrives, so nothing waits unowned. Agents see their orders in Auto Call Center."
+        description="Every new web order is handed to one of your call agents as it arrives, so nothing waits unowned. Agents work through them in the Auto Order Dashboard."
         actions={(
           <>
-            <Button size="sm" variant="outline" asChild><Link to="/admin/orders/call-center"><PhoneCall /> Auto Call Center</Link></Button>
+            <Button size="sm" variant="outline" asChild><Link to="/admin/orders/call-center"><PhoneCall /> Auto Order Dashboard</Link></Button>
             {manage && <Button size="sm" variant="outline" onClick={() => run.mutate()} disabled={!o.settings.enabled || run.isPending || o.unassigned === 0}>
               {run.isPending ? <Spinner /> : <Shuffle />} Assign {formatNumber(o.unassigned)} waiting
             </Button>}

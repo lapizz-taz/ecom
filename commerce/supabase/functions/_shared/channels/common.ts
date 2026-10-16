@@ -37,6 +37,18 @@ export interface NormalizedOrder {
   fulfillment_status?: string | null
   /** Taxes and fees on top of the prices (0 when prices already include them). */
   tax_total?: number
+  /** The buyer's address and browser as the store recorded them at checkout (WooCommerce). */
+  client?: { ip: string | null; user_agent: string | null } | null
+}
+
+/** An IPv4 or IPv6 address as a store reports it, or null for anything else. */
+export function ipAddress(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  if (s.length > 45) return null
+  if (/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(s)) return s
+  if (/^[0-9a-f:]+$/i.test(s) && s.includes(':') && s.split(':').length <= 8) return s.toLowerCase()
+  return null
 }
 
 /** A fulfilment as the store reports it (webhook or API). */

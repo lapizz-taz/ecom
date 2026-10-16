@@ -479,7 +479,7 @@ function EmployeeDialog({ row, current, departments, shifts, onClose }: {
   )
 }
 
-// ---------------------------------------------------------------- Workforce settings
+// ---------------------------------------------------------------- Team Rhythm (attendance rules)
 type SettingsDraft = Omit<HrSettings, 'default_start' | 'default_end'> & { default_start: string; default_end: string; standard_hours: boolean }
 
 function SettingRow({ title, hint, children, disabled }: { title: string; hint?: string; children: ReactNode; disabled?: boolean }) {
@@ -523,7 +523,7 @@ export function HrSettingsView() {
       const { standard_hours, ...rest } = v!
       return saveHrSettings({ ...rest, default_start: standard_hours ? rest.default_start : null, default_end: standard_hours ? rest.default_end : null })
     },
-    onSuccess: () => { toast.success('Workforce settings saved'); invalidate(qc) }, onError,
+    onSuccess: () => { toast.success('Team Rhythm saved'); invalidate(qc) }, onError,
   })
   const addHoliday = useMutation({ mutationFn: () => saveHoliday(hDate, hName), onSuccess: () => { toast.success('Holiday added'); setHDate(''); setHName(''); setAddingHoliday(false); invalidate(qc) }, onError })
   const toggleHoliday = useMutation({ mutationFn: (h: { holiday_date: string; name: string; is_active: boolean }) => saveHoliday(h.holiday_date, h.name, !h.is_active), onSuccess: () => invalidate(qc), onError })

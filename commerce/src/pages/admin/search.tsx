@@ -118,15 +118,15 @@ export default function SearchPage() {
           </Button>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Search in">
+        <div className="no-scrollbar -mx-3 mt-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0" role="tablist" aria-label="Search in">
           {FIELDS.map((f) => (
             <button key={f.key} type="button" role="tab" aria-selected={field === f.key} onClick={() => update({ field: f.key })}
-              className={cn('h-8 rounded-full border px-3 text-[13px] transition-colors',
+              className={cn('h-8 shrink-0 rounded-full border px-3 text-[13px] transition-colors',
                 field === f.key ? 'border-foreground bg-foreground text-background' : 'bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground')}>
               {f.label}
             </button>
           ))}
-          {hint && <span className="ml-1 text-xs text-muted-foreground">Looks like {hint}</span>}
+          {hint && <span className="ml-1 shrink-0 text-xs text-muted-foreground">Looks like {hint}</span>}
         </div>
 
         {camera && (
@@ -156,7 +156,7 @@ export default function SearchPage() {
             {onePerson && <SearchCustomerPanel hits={hits} />}
 
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Which list">
+              <div className="no-scrollbar -mx-1 flex max-w-full gap-1.5 overflow-x-auto px-1" role="tablist" aria-label="Which list">
                 <Chip on={list === 'all'} onClick={() => update({ list: 'all' })}>All <Count n={hits.length} /></Chip>
                 <Chip on={list === 'web'} onClick={() => update({ list: 'web' })}><Globe className="size-3.5" /> Web orders <Count n={web.length} /></Chip>
                 <Chip on={list === 'approved'} onClick={() => update({ list: 'approved' })}><PackageCheck className="size-3.5" /> Approved orders <Count n={approved.length} /></Chip>
@@ -190,7 +190,7 @@ const Count = ({ n }: { n: number }) => <span className="rounded-full bg-current
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" role="tab" aria-selected={on} onClick={onClick}
-      className={cn('inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors',
+      className={cn('inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors',
         on ? 'border-foreground bg-foreground text-background' : 'bg-card text-muted-foreground hover:text-foreground')}>
       {children}
     </button>
@@ -222,27 +222,34 @@ function OrderRow({ o, web, onChanged }: { o: OrderHit; web: boolean; onChanged:
   const stage = stageOf(o.status, o.confirmed_at)
   const copy = (text: string, what: string) => { void navigator.clipboard.writeText(text).then(() => toast.success(`${what} copied`), () => undefined) }
   return (
-    <li className="grid gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[minmax(0,10rem)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+    <li className="grid gap-x-4 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,10rem)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
       <div className="flex items-start justify-between gap-2 md:block">
-        <div>
+        <div className="flex items-baseline gap-2 md:block">
           <Link to={`/admin/orders/${o.id}`} className="font-semibold hover:underline">{o.order_number}</Link>
           <p className="text-xs text-muted-foreground" title={formatDateTime(o.created_at)}>{timeAgo(o.created_at)}</p>
         </div>
         <p className="font-semibold tabular-nums md:hidden"><Money value={o.total_amount} /></p>
       </div>
       <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 md:block">
         <p className="truncate text-sm font-medium">{o.customer_name}</p>
         <p className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
           {o.customer_phone}
           <button type="button" aria-label="Copy mobile number" className="rounded p-0.5 hover:bg-muted hover:text-foreground" onClick={() => copy(o.customer_phone, 'Mobile number')}><Copy className="size-3" /></button>
         </p>
+        </div>
         <p className="truncate text-xs text-muted-foreground">{[o.shipping_address, o.shipping_district].filter(Boolean).join(', ')}</p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <OrderStatusMenu orderId={o.id} orderNumber={o.order_number} status={o.status} web={web} reviewStatus={o.review_status} onChanged={onChanged} />
-        {!web && STAGE[stage] && <StatusBadge value={stage} map={STAGE} />}
-        <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} />
-        <span className="text-[11px] text-muted-foreground">{PAYMENT_METHOD[o.payment_method] ?? o.payment_method}</span>
+        <span className="hidden flex-wrap items-center gap-1.5 md:inline-flex">
+          {!web && STAGE[stage] && <StatusBadge value={stage} map={STAGE} />}
+          <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} />
+        </span>
+        <span className="text-xs text-muted-foreground md:text-[11px]">
+          <span className="md:hidden">{[!web && STAGE[stage]?.label, PAYMENT_STATUS[o.payment_status]?.label].filter(Boolean).join(' · ')} · </span>
+          {PAYMENT_METHOD[o.payment_method] ?? o.payment_method}
+        </span>
       </div>
       <div className="min-w-0 text-xs">
         {o.parcel ? (
@@ -252,16 +259,17 @@ function OrderRow({ o, web, onChanged }: { o: OrderHit; web: boolean; onChanged:
               <button type="button" className="max-w-40 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] hover:bg-muted/70" title="Copy tracking ID"
                 onClick={() => copy(o.parcel!.tracking!, 'Tracking ID')}>{o.parcel.tracking}</button>
             )}
-            <StatusBadge value={o.parcel.status} map={SHIPMENT_STATUS} />
+            <span className="hidden md:inline-flex"><StatusBadge value={o.parcel.status} map={SHIPMENT_STATUS} /></span>
+            <span className="text-muted-foreground md:hidden">{SHIPMENT_STATUS[o.parcel.status]?.label ?? o.parcel.status}</span>
           </div>
         ) : <span className="text-muted-foreground">{web ? 'Not approved yet' : 'No parcel yet'}</span>}
         <div className="mt-1 flex flex-wrap gap-1">
           {o.matched.map((m) => (
-            <span key={m.field} className="rounded bg-brand-soft px-1.5 py-0.5 text-[10px] text-brand" title={m.value}>{MATCH_LABEL[m.field]}</span>
+            <span key={m.field} className="text-[10px] text-brand md:rounded md:bg-brand-soft md:px-1.5 md:py-0.5" title={m.value}>Matched {MATCH_LABEL[m.field].toLowerCase()}</span>
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-end gap-1">
+      <div className="-mt-1 flex items-center justify-end gap-1 md:mt-0">
         <p className="mr-2 hidden font-semibold tabular-nums md:block"><Money value={o.total_amount} /></p>
         {!web && (
           <Button asChild size="icon-sm" variant="ghost" aria-label={`Print label for ${o.order_number}`}>

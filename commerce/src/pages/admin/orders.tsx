@@ -1,9 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
-  ShieldAlert, ShoppingBag, Tag, Truck, Wallet,
+  ShieldAlert, ShieldCheck, ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from '@/lib/toast'
 import { Can } from '@/components/common/permission-gate'
@@ -44,8 +44,9 @@ import {
 import { cn } from '@/lib/utils'
 import {
   approveOrders, bulkTransition, exportOrders, fulfillmentSummary, listCheckoutLeads, listReviewStatuses, type OrderFilters, orderFilterOptions,
-  queueCounts, searchOrders, setOrderTags, setWebOrderStatus, updateCheckoutLead,
+  phoneCourierSummaries, phoneCustomerRecord, queueCounts, searchOrders, setOrderTags, setWebOrderStatus, updateCheckoutLead,
 } from '@/services/orders'
+import { normalizePhone } from '@/lib/phone'
 import { listChannelImports } from '@/services/channels'
 import { syncAllShipments } from '@/services/couriers'
 import type { DuplicateGroup } from '@/services/orders'
@@ -544,6 +545,14 @@ export function OrdersPage({ view }: { view: View }) {
           error={orders.error}
           onRetry={() => orders.refetch()}
           rowHref={(o) => `/admin/orders/${o.id}`}
+          mobileRow={(o) => (
+            <OrderMobileRow o={o} view={view} meta={statusMeta.get(o.review_status)}
+              actions={view === 'web' ? (
+                <WebRowActions o={o} statuses={reviewStatuses.data ?? []} canSet={can('orders.update')} canApprove={can('orders.status')}
+                  busy={approve.isPending || quickStatus.isPending}
+                  onStatus={(code) => chooseStatus([o.id], code)} onApprove={() => approve.mutate({ ids: [o.id] })} />
+              ) : null} />
+          )}
           selected={can('orders.status') || can('orders.export') || can('orders.fulfill') ? selected : undefined}
           onSelectedChange={setSelected}
           empty={<EmptyState title={state.q ? 'No orders match' : 'Nothing here'} description={state.q ? 'Try a different search.' : emptyHint(view, state.tab)} />}
@@ -731,6 +740,52 @@ function WebRowActions({ o, statuses, canSet, canApprove, busy, onStatus, onAppr
   )
 }
 
+/**
+ * One order as a plain list row on phones: number, time and amount on top, the customer under it,
+ * then where the order stands as text with a coloured dot (no stack of badges).
+ */
+function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: View; meta: ReviewStatus | undefined; actions: ReactNode }) {
+  const web = o.stage === 'WEB'
+  const stage = web ? null : STAGE[o.stage as OrderStage]
+  const label = web ? meta?.label ?? titleCase(o.review_status) : stage?.label ?? ORDER_STATUS[o.status].label
+  const dot = web ? DOT[meta?.color ?? 'neutral'] ?? DOT.neutral : STAGE_DOT[stage?.variant ?? 'neutral'] ?? STAGE_DOT.neutral
+  const detail = !web && stage && ORDER_STATUS[o.status].label !== stage.label ? ORDER_STATUS[o.status].label : null
+  const h = o.courier_history
+  const counted = h ? h.total ?? h.completed : 0
+  const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
+  const tone = rate !== null && h && counted > 0 ? rateTone(rate, h.tier) : null
+  const code = o.shipment ? o.shipment.tracking_number ?? o.shipment.consignment_id : null
+  const flag = o.duplicate_status === 'SUSPECTED' ? (o.duplicate_reason === 'APPROVED' ? `Already approved ${o.duplicate_of_number ?? ''}` : `Maybe duplicate ${o.duplicate_of_number ?? ''}`)
+    : o.status === 'ADVANCE_REQUIRED' ? 'Advance due' : o.status === 'FRAUD_REVIEW' ? 'Fraud review' : o.status === 'PENDING_CANCEL' ? 'Cancelling' : null
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate">
+          <span className="font-semibold">{o.order_number}</span>
+          <span className="ml-2 text-xs text-muted-foreground" title={formatDateTime(o.created_at)}>{timeAgo(o.created_at)}</span>
+          {o.sales_channel && <span className="ml-2 text-xs text-muted-foreground">{o.sales_channel.platform === 'SHOPIFY' ? 'Shopify' : 'Woo'}</span>}
+        </p>
+        <Money value={o.total_amount} className="shrink-0 font-semibold tabular-nums" />
+      </div>
+      <p className="truncate text-sm">{o.customer_name} <span className="text-muted-foreground tabular-nums">· {o.customer_phone}</span></p>
+      <p className="truncate text-xs text-muted-foreground">
+        {o.shipping_district || <span className="text-amber-600 dark:text-amber-400">District needed</span>}
+        {o.items_preview ? ` · ${o.items_preview}` : ` · ${o.item_count} item${o.item_count === 1 ? '' : 's'}`}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs">
+        <span className="inline-flex items-center gap-1.5 font-medium"><span className={cn('size-2 rounded-full', dot)} />{label}{detail && <span className="font-normal text-muted-foreground">· {detail}</span>}</span>
+        {tone && rate !== null && h ? (
+          <span className="tabular-nums text-muted-foreground">Success <span className={cn('font-medium', tone.text)}>{Math.round(rate)}%</span> · {h.delivered}/{counted}</span>
+        ) : view === 'web' && <span className="text-muted-foreground">{awaitingCheck(o) ? 'Checking…' : h ? 'New customer' : 'Not checked'}</span>}
+        {code && <span className="truncate font-mono text-muted-foreground">{o.shipment?.courier} {code}</span>}
+        {web && o.follow_up_at && <span className={cn('text-muted-foreground', new Date(o.follow_up_at).getTime() <= Date.now() && 'font-medium text-red-600')}>Call {formatDateTime(o.follow_up_at)}</span>}
+        {flag && <span className="font-medium text-amber-600 dark:text-amber-400">{flag.trim()}</span>}
+      </div>
+      {actions && <div className="flex justify-start pt-1 [&>div]:justify-start">{actions}</div>}
+    </div>
+  )
+}
+
 const DOT: Record<string, string> = {
   neutral: 'bg-zinc-400', info: 'bg-sky-500', violet: 'bg-violet-500', success: 'bg-emerald-500', warning: 'bg-amber-500', danger: 'bg-red-500',
 }
@@ -796,6 +851,26 @@ function IncompleteCheckouts({ q }: { q: string }) {
     placeholderData: keepPreviousData,
     queryFn: () => listCheckoutLeads(['OPEN', 'CONTACTED'], q, PAGE_SIZE, (page - 1) * PAGE_SIZE),
   })
+  // Incomplete checkouts have no order, so no courier check runs for them by itself (the public price
+  // preview never starts a paid lookup). Show what is known for each phone; staff can check the rest.
+  const phones = (leads.data?.items ?? []).map((l) => l.phone).filter(Boolean)
+  const rates = useQuery({
+    queryKey: ['lead-courier-rates', phones],
+    enabled: phones.length > 0,
+    placeholderData: keepPreviousData,
+    queryFn: () => phoneCourierSummaries(phones),
+  })
+  const mayCheck = can('orders.create') || can('fraud.review')
+  const [checking, setChecking] = useState<string | null>(null)
+  const checkPhone = useMutation({
+    mutationFn: (phone: string) => { setChecking(phone); return phoneCustomerRecord(phone) },
+    onSuccess: (r) => {
+      if (r.lookup_error) toast.error(r.lookup_error)
+      void rates.refetch()
+    },
+    onError: (e) => toast.error(e),
+    onSettled: () => setChecking(null),
+  })
   const save = useMutation({
     mutationFn: ({ id, status, text }: { id: string; status: 'CONTACTED' | 'DISMISSED'; text?: string }) => updateCheckoutLead(id, status, text),
     onSuccess: (_d, v) => {
@@ -814,6 +889,19 @@ function IncompleteCheckouts({ q }: { q: string }) {
     {
       key: 'items', header: 'Cart',
       cell: (l) => <p className="line-clamp-2 max-w-56 text-xs">{((l.items ?? []) as LeadItem[]).map((i) => `${i.name ?? 'Item'}${i.variant ? ` · ${i.variant}` : ''} ×${i.quantity ?? 1}`).join(', ') || '—'}</p>,
+    },
+    {
+      key: 'history', header: 'Success Rate',
+      cell: (l) => {
+        const key = normalizePhone(l.phone)
+        const h = rates.data?.[key]
+        if (h || !mayCheck) return <SuccessRateCell h={h ?? null} orderId="" phone={l.phone} checking={checking === l.phone || (rates.isLoading && !rates.data)} />
+        return (
+          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={checking !== null} onClick={(e) => { e.stopPropagation(); checkPhone.mutate(l.phone) }}>
+            {checking === l.phone ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />} Check
+          </Button>
+        )
+      },
     },
     { key: 'total', header: 'Total', align: 'right', cell: (l) => <Money value={l.total} className="font-medium" /> },
     { key: 'source', header: 'Source', hideOnMobile: true, cell: (l) => <span className="text-xs">{l.source ?? 'Unknown'}</span> },

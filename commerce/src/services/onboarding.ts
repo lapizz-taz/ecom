@@ -22,6 +22,8 @@ export interface SignupOptions {
   default_plan: string | null
   order_fee: { fee: number; free_per_month: number } | null
   plans: SignupPlan[]
+  /** How a new business is activated: paid online at once, or by the team after a WhatsApp message. */
+  onboarding?: { method: 'online_payment' | 'whatsapp'; whatsapp_number: string | null }
 }
 
 export interface SignupBusiness {

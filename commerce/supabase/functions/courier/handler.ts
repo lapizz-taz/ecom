@@ -1,6 +1,7 @@
 // Staff courier operations through the CourierService abstraction:
 //   connect, save_options, courier_stores, disconnect, test_connection, set_webhook_secret, create_shipment,
-//   create_shipments, cancel_shipment, sync_status, sync_all, tracking, delivery_cost
+//   create_shipments, cancel_shipment, sync_status, sync_all, tracking, delivery_cost,
+//   force_check (a logged status check in batches, for the progress dialog)
 // Credentials entered in "Connect courier" are tested against the courier,
 // then stored in Vault by the service role; they never come back to a browser.
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -53,6 +54,10 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('cancel_shipment'), shipment_id: z.uuid() }),
   z.object({ action: z.literal('sync_status'), shipment_id: z.uuid() }),
   z.object({ action: z.literal('sync_all'), courier_id: z.uuid().optional() }),
+  z.object({
+    action: z.literal('force_check'), courier_id: z.uuid().optional(), scope: z.enum(['all', 'shipped']).default('all'),
+    run_id: z.uuid().optional(), after: z.uuid().optional(), batch: z.number().int().min(1).max(25).default(10),
+  }),
   z.object({ action: z.literal('tracking'), shipment_id: z.uuid() }),
   z.object({
     action: z.literal('delivery_cost'),
@@ -217,6 +222,78 @@ async function syncAll(client: SupabaseClient, admin: SupabaseClient, courierId?
   return { synced: results.length, results }
 }
 
+const SHIPPED = ['PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'ON_HOLD', 'RETURNING']
+type RunRow = { id: string; total: number; checked: number; changed: number; failed: number; finished_at: string | null }
+type CheckOutcome = { shipment_id: string; order_number: string; courier: string; before: string; status?: string; provider_status?: string; error?: string }
+
+/**
+ * One batch of a logged status check: the next `batch` active parcels after `after`
+ * (by id, so batches never repeat or skip one), each asked from its courier. A parcel
+ * that fails is tried once more before it is reported.
+ */
+async function checkBatch(client: SupabaseClient, admin: SupabaseClient, run: RunRow, opts: { scope: 'all' | 'shipped'; courierId?: string; after?: string; batch: number }) {
+  let query = client
+    .from('shipments')
+    .select('id, status, couriers!inner(name, api_enabled), orders(order_number)')
+    .eq('is_active', true)
+    .eq('couriers.api_enabled', true)
+    .in('status', opts.scope === 'shipped' ? SHIPPED : SYNCABLE)
+    .order('id')
+    .limit(opts.batch)
+  const merchant = merchantOf(client)
+  if (merchant) query = query.eq('merchant_id', merchant)
+  if (opts.courierId) query = query.eq('courier_id', opts.courierId)
+  if (opts.after) query = query.gt('id', opts.after)
+  const { data, error } = await query
+  if (error) throw new HttpError(500, 'Could not load shipments', 'INTERNAL')
+  const rows = (data ?? []) as unknown as Array<{ id: string; status: string; couriers: { name: string }; orders: { order_number: string } | null }>
+  const results: CheckOutcome[] = []
+  for (const row of rows) {
+    const base = { shipment_id: row.id, order_number: row.orders?.order_number ?? '', courier: row.couriers.name, before: row.status }
+    let outcome: CheckOutcome
+    try {
+      const r = await syncOne(client, admin, row.id)
+      outcome = { ...base, status: r.status, provider_status: r.provider_status }
+    } catch (first) {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 800))
+        const r = await syncOne(client, admin, row.id)
+        outcome = { ...base, status: r.status, provider_status: r.provider_status }
+      } catch (e) {
+        outcome = { ...base, error: ((e as Error).message || (first as Error).message || 'No answer').slice(0, 300) }
+      }
+    }
+    results.push(outcome)
+  }
+  const done = rows.length < opts.batch
+  const errors = results.filter((r) => r.error).map((r) => ({ order_number: r.order_number, courier: r.courier, error: r.error, at: new Date().toISOString() }))
+  const updated = await rpc<RunRow>(client, 'courier_sync_run_progress', {
+    p_run_id: run.id, p_checked: results.filter((r) => !r.error).length,
+    p_changed: results.filter((r) => !r.error && r.status !== r.before).length, p_errors: errors, p_done: done,
+  })
+  return { run: updated, results, next: done ? null : rows[rows.length - 1]?.id ?? null, done }
+}
+
+/** The scheduled check for one store, when its setting says it is due: every active parcel, batch by batch. */
+async function scheduledCheck(admin: SupabaseClient) {
+  if (!(await rpc<boolean>(admin, 'courier_sync_due'))) return { skipped: true }
+  let run = await rpc<RunRow>(admin, 'courier_sync_run_start', { p_trigger: 'SCHEDULED', p_scope: 'all', p_courier_id: null })
+  const deadline = Date.now() + 100_000
+  let after: string | undefined
+  for (let i = 0; i < 30; i++) {
+    const last = Date.now() > deadline || i === 29
+    const r = await checkBatch(admin, admin, run, { scope: 'all', after, batch: 20 })
+    run = r.run
+    if (r.done) break
+    after = r.next ?? undefined
+    if (last) {
+      run = await rpc<RunRow>(admin, 'courier_sync_run_progress', { p_run_id: run.id, p_checked: 0, p_changed: 0, p_errors: [], p_done: true })
+      break
+    }
+  }
+  return { run_id: run.id, checked: run.checked, changed: run.changed, failed: run.failed }
+}
+
 function notSupported(error: unknown): never {
   if (error instanceof CourierNotSupportedError) throw new HttpError(422, error.message, 'NOT_SUPPORTED')
   throw error
@@ -230,7 +307,8 @@ export default (
     // pg_cron (or the Worker's scheduler) can trigger a periodic sync: the same check as every other scheduled call.
     const input = parse(schema, body)
     if (input.action === 'sync_all' && await isCronRequest(req, adminClient())) {
-      return json(req, await forEachMerchant('courier', (admin) => syncAll(admin, admin, input.courier_id)))
+      // Scheduled: only stores that turned the automatic check on, and only when it is due.
+      return json(req, await forEachMerchant('courier', (admin) => scheduledCheck(admin)))
     }
     const staff = await requireStaff(req, PERMISSION[input.action] ?? 'shipments.manage')
     const client = staff.client
@@ -347,6 +425,13 @@ export default (
           return json(req, await syncOne(client, admin, input.shipment_id))
         case 'sync_all':
           return json(req, await syncAll(client, admin, input.courier_id))
+        case 'force_check': {
+          const run = input.run_id
+            ? { id: input.run_id, total: 0, checked: 0, changed: 0, failed: 0, finished_at: null }
+            : await rpc<RunRow>(client, 'courier_sync_run_start', { p_trigger: 'MANUAL', p_scope: input.scope, p_courier_id: input.courier_id ?? null })
+          const r = await checkBatch(client, admin, run, { scope: input.scope, courierId: input.courier_id, after: input.after, batch: input.batch })
+          return json(req, { ...r, run: { ...r.run, total: r.run.total || run.total } })
+        }
         case 'tracking': {
           const shipment = await loadShipment(client, input.shipment_id)
           const tracking = await (await courierProviderFor(admin, shipment.courier)).getTracking({
