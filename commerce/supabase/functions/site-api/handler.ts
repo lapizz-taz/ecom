@@ -82,7 +82,7 @@ export default (async (req: Request): Promise<Response> => {
     }
     if (req.method === 'POST' && path === '/v1/quote') {
       const input = parse(quoteSchema, { ...(await readJson<Record<string, unknown>>(req)), action: 'quote' })
-      return reply(req, await quoteCart(admin, input))
+      return reply(req, await quoteCart(admin, input, { ip: clientIp(req) }))
     }
     if (req.method === 'POST' && path === '/v1/orders') {
       const body = await readJson<Record<string, unknown>>(req)

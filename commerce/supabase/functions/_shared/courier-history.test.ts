@@ -93,9 +93,12 @@ describe('courier-history check (LLCG)', () => {
     expect(await provider.checkCustomer({ phone: '01712345678' })).toMatchObject({ ok: false, error: 'LLCG courier fraud checker did not answer in time' })
   })
 
-  it('is used only when a key is connected, and its failure is reported to the database', async () => {
+  it('is used only when a key is connected (without one the check is "unavailable"), and its failure is reported to the database', async () => {
     const settings = { providers: ['internal', 'courier_history'] }
-    expect(providersFromSettings(settings).map((p) => p.name)).toEqual(['internal'])
+    const none = providersFromSettings(settings)
+    expect(none.map((p) => p.name)).toEqual(['internal', 'courier_history'])
+    // Nothing connected is not "no history": the store's fallback for an unavailable check decides.
+    expect(await new FraudDetectionService(none).check({ phone: '01712345678' })).toMatchObject({ status: 'ERROR', error: 'courier_history: No courier history source is connected on the platform' })
     const failing = vi.fn().mockResolvedValue(jsonResponse({}, 500))
     const providers = providersFromSettings(settings, failing, { courierHistory: { api_key: 'k' } })
     expect(providers.map((p) => p.name)).toEqual(['internal', 'courier_history'])
@@ -220,14 +223,15 @@ describe('courier-history check through the platform meter', () => {
     return { m, finish }
   }
 
-  it('skips the lookup (no call to BD Courier) when the policy refuses it, without calling the check a failure', async () => {
+  it('skips the lookup (no call to BD Courier) when the policy refuses it, and records the check as unavailable, with the reason', async () => {
     const fetchFn = vi.fn()
     const { m, finish } = meter(false, 'NO_CREDITS')
     const providers = providersFromSettings({ providers: ['internal', 'courier_history'] }, fetchFn, { courierHistory: { api_key: 'k', service: 'bdcourier' } }, m)
     const payload = await new FraudDetectionService(providers).check({ phone: '01711000777' })
     expect(fetchFn).not.toHaveBeenCalled()
     expect(finish).not.toHaveBeenCalled()
-    expect(payload.status).toBe('SUCCESS')
+    expect(payload.status).toBe('ERROR')
+    expect(payload.error).toBe('courier_history: not run (NO_CREDITS) Not enough courier credits')
     expect(payload.provider_response.courier_history).toEqual({ skipped: 'NO_CREDITS', reason: 'Not enough courier credits' })
   })
 

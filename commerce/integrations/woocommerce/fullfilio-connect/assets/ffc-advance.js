@@ -1,7 +1,8 @@
-/* Fullfilio Connect: advance payment. When the phone number is typed, asks this
- * site (never Fullfilio directly) what the order needs, then has the checkout
- * recalculated so the "Pay on delivery" line and the advance show before the
- * order is placed. The site checks everything again when the order is placed. */
+/* Fullfilio Connect: order shield and advance payment. When the phone number is
+ * typed, asks this site (never Fullfilio directly) to check it, so the courier
+ * record is ready when the order is placed. With the advance payment on, the
+ * checkout is then recalculated so the "Pay on delivery" line and the advance show
+ * before the order is placed. The site checks everything again on placing it. */
 (function () {
   'use strict'
   var cfg = window.ffcAdvance || {}
@@ -21,10 +22,11 @@
     var refresh = function () { $(document.body).trigger('update_checkout') }
     $(document.body).on('change', '#billing_phone, #shipping_phone', function () {
       if (!fresh(this.value)) return
-      $.post(cfg.quoteUrl, { phone: this.value }).always(refresh)
+      var asked = $.post(cfg.quoteUrl, { phone: this.value })
+      if (cfg.advance) asked.always(refresh)
     })
     // After a refused order the totals may have changed: show them.
-    $(document.body).on('checkout_error', refresh)
+    if (cfg.advance) $(document.body).on('checkout_error', refresh)
     $(function () {
       var el = document.getElementById('billing_phone')
       if (el && el.value) $(el).trigger('change')
@@ -35,8 +37,14 @@
   document.addEventListener('change', function (e) {
     var t = e.target
     if (!t || (t.id !== 'billing-phone' && t.id !== 'shipping-phone')) return
+    if (!fresh(t.value)) return
     var blocks = window.wc && window.wc.blocksCheckout
-    if (!blocks || typeof blocks.extensionCartUpdate !== 'function' || !fresh(t.value)) return
-    blocks.extensionCartUpdate({ namespace: 'ffc-advance', data: { phone: t.value } })
+    if (cfg.advance && blocks && typeof blocks.extensionCartUpdate === 'function') {
+      blocks.extensionCartUpdate({ namespace: 'ffc-advance', data: { phone: t.value } })
+    } else if (cfg.quoteUrl && window.fetch) {
+      var body = new FormData()
+      body.append('phone', t.value)
+      fetch(cfg.quoteUrl, { method: 'POST', body: body, credentials: 'same-origin' }).catch(function () {})
+    }
   }, true)
 })()

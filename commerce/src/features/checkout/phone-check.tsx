@@ -4,10 +4,11 @@ import { Money } from '@/components/common/money'
 import { cn } from '@/lib/utils'
 import type { PaymentMethod, PaymentRequirement } from '@/types/domain'
 
-type CheckState = 'checking' | 'cod' | 'advance' | 'review' | 'blocked' | 'checked'
+type CheckState = 'checking' | 'cod' | 'advance' | 'review' | 'blocked' | 'checked' | 'deferred'
 
 /** What the server decided for this number, from the customer's point of view. */
-export function phoneCheckState(checking: boolean, requirement: PaymentRequirement | null | undefined, method: PaymentMethod): CheckState {
+export function phoneCheckState(checking: boolean, requirement: PaymentRequirement | null | undefined, method: PaymentMethod, deferred = false): CheckState {
+  if (deferred && !requirement) return 'deferred'
   if (checking || !requirement) return 'checking'
   if (requirement.mode === 'BLOCKED') return 'blocked'
   if (requirement.mode === 'REVIEW') return 'review'
@@ -24,6 +25,7 @@ export function PhoneCheckIcon({ state }: { state: CheckState | null }) {
   if (state === 'cod' || state === 'checked') return <CircleCheck className={cn(cls, 'text-emerald-600')} aria-hidden />
   if (state === 'advance') return <Wallet className={cn(cls, 'text-amber-600')} aria-hidden />
   if (state === 'review') return <PhoneCall className={cn(cls, 'text-sky-600')} aria-hidden />
+  if (state === 'deferred') return null
   return <ShieldAlert className={cn(cls, 'text-red-600')} aria-hidden />
 }
 
@@ -37,9 +39,10 @@ export function PhoneCheckStatus({ state, requirement }: { state: CheckState | n
     checking: { cls: 'text-muted-foreground', text: 'Checking delivery options for this number…' },
     cod: { cls: 'text-emerald-700', text: 'Cash on delivery available' },
     checked: { cls: 'text-emerald-700', text: 'Number confirmed' },
-    advance: { cls: 'text-amber-800', text: <>Pay <Money value={requirement?.amount ?? 0} /> delivery charge in advance to confirm</> },
+    advance: { cls: 'text-amber-800', text: <>Pay <Money value={requirement?.amount ?? 0} /> in advance to confirm this order</> },
     review: { cls: 'text-sky-800', text: "We'll call you to confirm this order" },
     blocked: { cls: 'text-red-700', text: 'Please call us to place this order' },
+    deferred: { cls: 'text-muted-foreground', text: "We'll confirm the payment options right after you place the order" },
   }
   return (
     <p className={cn('text-xs font-medium', lines[state].cls)} role="status" aria-live="polite">{lines[state].text}</p>

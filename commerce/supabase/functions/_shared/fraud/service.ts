@@ -132,7 +132,12 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
       const history = config ? new CourierHistoryProvider(config, fetchFn) : null
       const signIns = secrets.panel ? new CourierPanelProvider(secrets.panel, { fetchFn }) : null
       const panel = signIns?.connected.length ? signIns : null
-      if (!history && !panel) continue // nothing connected on the platform yet
+      if (!history && !panel) {
+        // The courier record is on but nothing is connected on the platform: that is
+        // "courier data unavailable" (the store's fallback decides), not "no history".
+        providers.push(new UnavailableProvider('courier_history', 'No courier history source is connected on the platform'))
+        continue
+      }
       const provider = panel ? new CourierSourcesProvider(history, panel) : history!
       providers.push(meter ? new MeteredProvider(provider, meter) : provider)
     }
@@ -160,6 +165,14 @@ export function providersFromSettings(settings: FraudSettings, fetchFn: typeof f
     }
   }
   return providers.length ? providers : [new InternalHistoryProvider()]
+}
+
+/** Stands in for a courier source that cannot run, so the check is recorded as unavailable. */
+export class UnavailableProvider implements FraudProvider {
+  constructor(readonly name: string, private readonly reason: string) {}
+  checkCustomer(): Promise<FraudProviderResult> {
+    return Promise.resolve({ provider: this.name, ok: false, counts: {}, error: this.reason })
+  }
 }
 
 /** The platform's courier-history key (service role only), or null. */
@@ -206,8 +219,10 @@ export class FraudDetectionService {
         p.checkCustomer(input).catch((error: Error) => ({ provider: p.name, ok: false, counts: {}, error: error.message })),
       ),
     )
-    // A lookup the usage policy refused is left out (the check uses the store's own history), not counted as a failure.
-    const external = results.filter((r) => r.provider !== 'internal' && !r.skipped)
+    // A lookup that failed, or that the usage policy refused (no credits, feature off), gave
+    // no courier data: the check is PARTIAL when another source answered, ERROR when none did.
+    // The store's own history still counts; with none, the store's "check failed" policy decides.
+    const external = results.filter((r) => r.provider !== 'internal')
     const failed = external.filter((r) => !r.ok)
     const counts: OutcomeCounts = {}
     for (const key of ['total', 'delivered', 'cancelled', 'returned', 'failed'] as const) {
@@ -221,7 +236,7 @@ export class FraudDetectionService {
       provider: external.find((r) => r.ok)?.provider ?? external[0]?.provider ?? 'internal',
       providers: results.map((r) => r.provider),
       status: failed.length === 0 ? 'SUCCESS' : failed.length === external.length ? 'ERROR' : 'PARTIAL',
-      error: failed.map((r) => `${r.provider}: ${r.error}`).join('; ') || undefined,
+      error: failed.map((r) => `${r.provider}: ${r.skipped ? `not run (${r.skipped})${r.error ? ` ${r.error}` : ''}` : r.error}`).join('; ') || undefined,
       provider_risk_score: maxDefined(results.map((r) => r.riskScore)),
       provider_courier_score: maxDefined(results.map((r) => r.courierScore)),
       provider_counts: counts,

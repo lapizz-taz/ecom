@@ -211,12 +211,14 @@ async function finishSetup(admin: SupabaseClient, c: Channel, actor: string | nu
 
 // --- importing ---------------------------------------------------------------------
 
-async function fraudCheckFor(admin: SupabaseClient, phone: string, orderValue: number): Promise<string | null> {
+async function fraudCheckFor(admin: SupabaseClient, phone: string, orderValue: number, shipping?: number): Promise<string | null> {
   const settings = await getSettings<FraudSettings>(admin, 'fraud')
   if (settings.enabled === false) return null
   const cached = await rpc<{ id: string | null } | null>(admin, 'recent_fraud_check', { p_phone: phone })
   if (cached?.id) return cached.id
-  const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check({ phone, orderValue }, { context: { source: 'sales_channel' } })
+  // The order's value goes with the check, so an advance it asks for is a real amount.
+  const context = { source: 'sales_channel', order_value: orderValue || null, subtotal: orderValue || null, delivery_charge: shipping ?? null }
+  const payload = await new FraudDetectionService(await loadFraudProviders(admin, settings)).check({ phone, orderValue }, { context })
   return (await rpc<{ id: string | null }>(admin, 'record_fraud_check', { p_input: payload })).id
 }
 
@@ -629,19 +631,24 @@ interface CheckoutAnswer {
   levels?: { good_min: number; mid_min: number; min_parcels: number } | null
 }
 
-/** The order shield: block list first, then the courier record (within the plugin's time budget). */
-async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: string; total: number; address: string; ip: string }, budgetMs: number) {
-  const args = { p_channel_id: c.id, p_phone: d.phone, p_ip: d.ip || null, p_address: d.address || null }
+/**
+ * The order shield: block list first, then the courier record (within the plugin's time budget),
+ * decided for this order (its total and shipping). A lookup that failed or is still running is
+ * "unavailable": the store's policy for that decides, never a silent cash on delivery.
+ */
+async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: string; total: number; address: string; ip: string; shipping?: number }, budgetMs: number) {
+  const args = { p_channel_id: c.id, p_phone: d.phone, p_ip: d.ip || null, p_address: d.address || null, p_total: d.total || null, p_shipping: d.shipping ?? null }
   const first = await rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: null })
-  if (first.decision === 'block') return first
-  const check = fraudCheckFor(admin, d.phone, d.total).catch((error) => {
+  if (first.decision === 'block' || first.reason === 'OFF') return first
+  const check = fraudCheckFor(admin, d.phone, d.total, d.shipping).catch((error) => {
     void logEvent({ level: 'WARN', category: 'FRAUD', source: 'channels', message: `${c.name}: courier check at checkout failed`, error })
     return null
   })
   const id = await Promise.race([check, new Promise<null>((r) => setTimeout(() => r(null), budgetMs))])
   if (!id) {
-    background(check) // the check finishes and is reused when the order arrives
-    return { decision: 'allow', reason: 'CHECK_PENDING', levels: first.levels ?? null }
+    background(check) // the check finishes and is reused for the next attempt and when the order arrives
+    const pending = await rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: null, p_unavailable: true })
+    return { ...pending, reason: 'CHECK_PENDING' }
   }
   return rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: id })
 }

@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.5.0
+Stable tag: 1.5.1
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,11 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.5.1 =
+* The order shield checks the phone number as soon as it is typed (classic and block checkout), so the courier record is ready when the order is placed — even with the advance payment off.
+* The advance Fullfilio asks for is the real amount for this order (it now includes the cart's shipping); before, an "advance" could show as 0.
+* A courier check that is still running or failed follows your Fullfilio "Couldn't check" policy (for example ask for the advance) instead of letting cash on delivery through, and is asked again after 30 seconds instead of being remembered for 10 minutes.
 
 = 1.5.0 =
 * Advance payment by delivery level: Fullfilio tells the checkout how reliable the customer is (Good, Medium, Low, New customer or Couldn't check), and you choose for each level: cash on delivery, the full delivery charge, a fixed amount, or a percentage of the order or of the delivery charge.

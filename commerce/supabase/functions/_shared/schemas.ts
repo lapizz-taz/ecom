@@ -66,6 +66,8 @@ export const quoteSchema = z.object({
   coupon_code: optionalText(32),
   phone: phoneSchema.optional().nullable().or(z.literal('')),
   payment_method: paymentMethodSchema.default('COD'),
+  /** Run the courier check for this phone now (once, after the price is shown); limited per visitor and store. */
+  check: z.boolean().optional().default(false),
   /** What the customer has typed so far, kept as an incomplete order if they leave. */
   lead: z.object({
     customer_name: optionalText(100),

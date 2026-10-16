@@ -8,7 +8,7 @@
  */
 
 define( 'ABSPATH', __DIR__ . '/' );
-define( 'FFC_VERSION', '1.5.0' );
+define( 'FFC_VERSION', '1.5.1' );
 define( 'FFC_URL', 'https://shop.test/wp-content/plugins/fullfilio-connect/' );
 define( 'MINUTE_IN_SECONDS', 60 );
 define( 'HOUR_IN_SECONDS', 3600 );
@@ -24,7 +24,7 @@ function add_filter() {}
 function get_option( $k, $d = false ) { return array_key_exists( $k, $GLOBALS['OPTIONS'] ) ? $GLOBALS['OPTIONS'][ $k ] : $d; }
 function update_option( $k, $v, $a = true ) { $GLOBALS['OPTIONS'][ $k ] = $v; return true; }
 function get_transient( $k ) { return isset( $GLOBALS['TRANSIENTS'][ $k ] ) ? $GLOBALS['TRANSIENTS'][ $k ] : false; }
-function set_transient( $k, $v, $t ) { $GLOBALS['TRANSIENTS'][ $k ] = $v; return true; }
+function set_transient( $k, $v, $t ) { $GLOBALS['TRANSIENTS'][ $k ] = $v; $GLOBALS['TTL'][ $k ] = $t; return true; }
 function wp_strip_all_tags( $s ) { return strip_tags( (string) $s ); }
 function wp_json_encode( $d ) { return json_encode( $d ); }
 function wc_format_decimal( $n, $dp = 2 ) { return number_format( (float) $n, $dp, '.', '' ); }
@@ -135,6 +135,33 @@ check( 'off: nothing applies', ! FFC_Advance::on() );
 FFC_Advance::save( array( 'enabled' => '1' ) );
 update_option( FFC_Settings::CONFIG, array( 'shield' => false ) );
 check( 'on but the order shield is off: nothing applies', ! FFC_Advance::on() );
+
+echo "Order shield (1.5.1)\n";
+// The shield alone (advance payment off): Fullfilio's answer decides.
+FFC_Advance::save( array( 'enabled' => '' ) );
+update_option( FFC_Settings::CONFIG, array( 'shield' => true, 'shield_fail_open' => true ) );
+class SimCart { public function get_shipping_total() { return 110; } public function get_shipping_tax() { return 10; } }
+WC()->cart = new SimCart();
+$GLOBALS['CALLS'] = array();
+answer( array( 'decision' => 'advance', 'reason' => 'ADVANCE', 'advance_amount' => 120, 'message' => 'Pay 120 tk in advance.', 'level' => array( 'tier' => 'LOW' ) ) );
+$d = FFC_Checkout::decision( '01844444444', 1370, 'cod', 'Mirpur' );
+check( 'the cart\'s shipping goes with the check', isset( $GLOBALS['CALLS'][0][1]['shipping'] ) && 120.0 === (float) $GLOBALS['CALLS'][0][1]['shipping'] );
+check( 'an advance answer has its amount', 'advance' === $d['decision'] && 120.0 === $d['advance_amount'] );
+$ref = new ReflectionMethod( 'FFC_Checkout', 'refuses' );
+$ref->setAccessible( true );
+check( 'cash on delivery is refused when Fullfilio asks for an advance', true === $ref->invoke( null, $d, 'cod' ) );
+check( 'an online payment goes ahead', false === $ref->invoke( null, $d, 'bkash' ) );
+FFC_Checkout::decision( '01844444444', 1370, 'bkash', 'Mirpur' );
+check( 'asked once per request and order value', 1 === count( $GLOBALS['CALLS'] ) );
+// A check still running: the store's "couldn't check" answer, asked again soon (not remembered for 10 minutes).
+answer( array( 'decision' => 'advance', 'reason' => 'CHECK_PENDING', 'advance_amount' => 120, 'message' => 'Pay 120 tk in advance.', 'level' => array( 'tier' => 'ERROR' ) ) );
+$p = FFC_Checkout::decision( '01855555555', 1370, 'cod', '' );
+$key = array_keys( $GLOBALS['TRANSIENTS'] )[0];
+check( 'a pending check follows the store\'s policy (here: advance), level "couldn\'t check"', 'advance' === $p['decision'] && 'ERROR' === $p['level'] );
+check( 'a pending answer is kept for 30 seconds only', 30 === $GLOBALS['TTL'][ $key ] );
+answer( array( 'decision' => 'allow', 'reason' => 'ALLOW', 'level' => array( 'tier' => 'GOOD' ) ) );
+FFC_Checkout::decision( '01866666666', 1370, 'cod', '' );
+check( 'a real answer is kept for 10 minutes', 600 === $GLOBALS['TTL'][ array_keys( $GLOBALS['TRANSIENTS'] )[0] ] );
 
 echo "\n$ok passed, $fail failed\n";
 exit( $fail ? 1 : 0 );

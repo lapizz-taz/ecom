@@ -23,7 +23,7 @@ export default (
 
     if (body.action === 'quote') {
       rateLimit(`quote:${ip}`, 60)
-      return json(req, await quoteCart(admin, parse(quoteSchema, body)))
+      return json(req, await quoteCart(admin, parse(quoteSchema, body), { ip }))
     }
 
     if (body.action === 'place') {
