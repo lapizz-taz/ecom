@@ -31,6 +31,11 @@ export function setStaffActive(userId: string, active: boolean) {
   return invokeFunction('admin-users', { action: active ? 'reactivate' : 'deactivate', user_id: userId })
 }
 
+/** Deletes a deactivated staff member: off the list and unable to sign in; their past work keeps their name. */
+export function deleteStaff(userId: string) {
+  return invokeFunction('admin-users', { action: 'delete', user_id: userId })
+}
+
 export async function listRoles() {
   const { data, error } = await supabase.from('roles').select('*, role_permissions(permission_id)').order('rank', { ascending: false })
   if (error) throw error

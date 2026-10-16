@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils'
 import { queueCounts, statusCounts } from '@/services/orders'
 import { isPlatformStaff } from '@/services/users'
 import { useStoreAddress } from '@/hooks/use-store-address'
+import { useNoAutoKeyboard } from '@/hooks/use-no-auto-keyboard'
 import { unlockSuperAdmin } from '@/lib/super-admin-gate'
 
 const COLLAPSED_KEY = 'admin-sidebar-collapsed'
@@ -247,6 +248,7 @@ export default function AdminLayout() {
     return !c
   }), [])
   useShortcuts({ search: () => setDialog('search'), toggleMenu: toggleCollapsed, help: () => setDialog('help') }, can)
+  useNoAutoKeyboard()
 
   useEffect(() => {
     document.title = `${config?.store.name ?? 'Store'} · Fullfilio`

@@ -108,6 +108,12 @@ class FFC_Health {
 			'wp_cron'        => ! ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ),
 			'action_scheduler' => function_exists( 'as_enqueue_async_action' ),
 			'features'       => FFC_Settings::config(),
+			// The advance follows Fullfilio; it needs an online payment method to take it.
+			'advance'        => array(
+				'follows_fullfilio' => FFC_Advance::on(),
+				'own_rules'         => FFC_Advance::local_rules(),
+				'online_gateways'   => FFC_Advance::online_gateways(),
+			),
 			'stock_keeper'   => FFC_Stock::managed_by_fullfilio() ? 'fullfilio' : 'woocommerce',
 			'outbox'         => FFC_Outbox::stats(),
 			'webhooks'       => self::webhooks(),

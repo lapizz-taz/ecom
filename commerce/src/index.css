@@ -376,6 +376,15 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* No blue box over the logo, links and buttons when they are tapped on a phone;
+     each control shows its own pressed and focus state instead. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* A mouse click does not leave a focus ring; the keyboard (focus-visible) still does. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
   h1, h2, h3 {
     @apply tracking-tight;
   }
@@ -611,11 +620,6 @@
   .btn-3d-danger { --b3d-rest: var(--b3d-danger); --b3d-hover: var(--b3d-danger); --b3d-press: var(--b3d-danger-press); }
   .btn-3d-site { --b3d-rest: var(--b3d-site); --b3d-hover: var(--b3d-site-hover); --b3d-press: var(--b3d-site-press); }
   .btn-3d-site-ghost { --b3d-rest: var(--b3d-site-ghost); --b3d-hover: var(--b3d-site-ghost); --b3d-press: var(--b3d-site-ghost-press); }
-}
-
-/* Toasts in the app's typeface (goey-toast sets the system font on its wrapper). */
-:root .gooey-wrapper, :root .gooey-wrapper button {
-  font-family: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Bengali", sans-serif;
 }
 
 @utility no-scrollbar {

@@ -236,7 +236,6 @@ function Rules() {
           {editRules && <Button size="sm" disabled={!rules} onClick={() => setConfirm('rules')}>Save access rules</Button>}
         </CardContent>
       </Card>
-      {can('subscriptions') && <GatewaysCard />}
       {confirm && (
         <ConfirmDialog open onOpenChange={(o) => !o && setConfirm(null)} reason reasonRequired
           title={confirm === 'rules' ? 'Change what account states allow?' : 'Save billing settings?'}
@@ -272,12 +271,19 @@ export default function SubscriptionsPage() {
           <TabsTrigger value="plans">Plans</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
           <TabsTrigger value="invoices">Invoices & payments</TabsTrigger>
+          <TabsTrigger value="payments">Payment setup</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           {can('settings') && <TabsTrigger value="rules">Billing rules</TabsTrigger>}
         </TabsList>
         <TabsContent value="plans"><Plans /></TabsContent>
         <TabsContent value="addons"><Addons /></TabsContent>
         <TabsContent value="invoices"><Invoices /></TabsContent>
+        <TabsContent value="payments">
+          <div className="max-w-3xl space-y-3">
+            <p className="text-sm text-muted-foreground">Fullfilio's own bKash and PayStation accounts: merchants pay their plans, renewals, upgrades and credits into these. A payment counts only when the gateway confirms it to the server.</p>
+            {can('subscriptions') ? <GatewaysCard /> : <p className="text-sm text-muted-foreground">You need the Subscriptions permission to change these.</p>}
+          </div>
+        </TabsContent>
         <TabsContent value="onboarding"><div className="grid gap-4 lg:grid-cols-2"><SignupRequests /><PendingActivations /><OnboardingCard /></div></TabsContent>
         {can('settings') && <TabsContent value="rules"><Rules /></TabsContent>}
       </Tabs>
