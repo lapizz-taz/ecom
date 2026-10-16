@@ -159,10 +159,10 @@ function Issues({ diag }: { diag: DomainDiagnosis }) {
 /** Where each DNS company keeps the records, and what trips people up there. */
 const PROVIDER_STEPS: Record<string, { where: string; tip?: string }> = {
   Hostinger: { where: 'hPanel → Domains → your domain → DNS / Nameservers → DNS records',
-    tip: 'Use www: add a CNAME for www to the address below (edit the existing www record). The root (@) cannot connect at Hostinger, so forward it to https://www.your-domain under Domains → your domain → Domain forwarding. Keep TTL at 300.' },
+    tip: 'The root (@) cannot connect at Hostinger. To keep your-domain.com, move its DNS to Cloudflare (free) and use a CNAME for @ there; or use www (a CNAME for www to the address below) and forward the root to it under Domains → Domain forwarding.' },
   Namecheap: { where: 'Domain List → Manage → Advanced DNS → Host records', tip: 'For @ pick ALIAS Record. Delete the URL Redirect / parking records for @.' },
   GoDaddy: { where: 'My Products → your domain → DNS → Manage DNS', tip: 'GoDaddy has no ALIAS at @: delete the A record for @ and use www, or move DNS to Cloudflare.' },
-  Cloudflare: { where: 'dash.cloudflare.com → your domain → DNS → Records', tip: 'Set each record to DNS only (grey cloud). A CNAME at @ works as is.' },
+  Cloudflare: { where: 'dash.cloudflare.com → your domain → DNS → Records', tip: 'For the root use a CNAME for @ to the address below (Cloudflare flattens it); set records to DNS only (grey cloud).' },
   Porkbun: { where: 'Domain Management → your domain → DNS', tip: 'For @ pick type ALIAS.' },
   'Name.com': { where: 'My Domains → your domain → Manage DNS Records', tip: 'For @ pick type ANAME.' },
   Google: { where: 'Squarespace Domains → your domain → DNS → DNS Settings' },
