@@ -24,7 +24,7 @@ import { formatDateTime, formatMoney, formatNumber, formatPercent, timeAgo, toNu
 import { cn } from '@/lib/utils'
 import {
   disconnectMetaAccount, financeAccounts, type MetaAccountInput, type MetaAdAccount, metaAdAccounts, metaPerformance, type MetaPerformanceRow,
-  type MetaTestResult, saveMetaAccount, setMetaTax, syncMeta, testMetaAccount,
+  type MetaSyncRun, type MetaTestResult, saveMetaAccount, setMetaTax, syncMeta, testMetaAccount,
 } from '@/services/marketing'
 
 const SYNC_PROBLEM: Record<string, string> = {
@@ -47,6 +47,60 @@ export function MetaAds() {
 const statusDot = (a: MetaAdAccount) => !a.is_active || a.connection_status === 'DISCONNECTED' ? 'bg-zinc-400'
   : a.connection_status === 'FAILED' || (a.last_sync_status && a.last_sync_status !== 'OK') ? 'bg-amber-500' : 'bg-emerald-500'
 
+/** Store-day dates (YYYY-MM-DD) n days before today. */
+const dayAgo = (n: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' })
+  .format(new Date(Date.now() - n * 86_400_000))
+const MAX_SYNC_DAYS = 31
+const spanDays = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000) + 1
+
+/** Sync a chosen period (today, yesterday, last 7 days or up to 31 custom days); spend goes to Expenses. */
+function SyncBar({ busy, onSync, last }: { busy: boolean; onSync: (range: { since: string; until: string }) => void; last: MetaSyncRun | null }) {
+  const today = dayAgo(0)
+  const [custom, setCustom] = useState(false)
+  const [since, setSince] = useState(dayAgo(6))
+  const [until, setUntil] = useState(today)
+  const span = since && until ? spanDays(since, until) : 0
+  const invalid = !since || !until || since > until || until > today || span > MAX_SYNC_DAYS
+  return (
+    <div className="grid gap-2 rounded-xl border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-sm font-medium">Sync</span>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onSync({ since: today, until: today })}>Today</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onSync({ since: dayAgo(1), until: dayAgo(1) })}>Yesterday</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onSync({ since: dayAgo(6), until: today })}>Last 7 days</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onSync({ since: dayAgo(29), until: today })}>Last 30 days</Button>
+        <Button size="sm" variant={custom ? 'secondary' : 'outline'} disabled={busy} onClick={() => setCustom(!custom)}><RefreshCw /> Custom range</Button>
+        {busy && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Spinner /> Syncing…</span>}
+      </div>
+      {custom && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-xs text-muted-foreground">From<Input type="date" value={since} max={until || today} onChange={(e) => setSince(e.target.value)} className="h-8 w-40" /></label>
+          <label className="grid gap-1 text-xs text-muted-foreground">To<Input type="date" value={until} min={since} max={today} onChange={(e) => setUntil(e.target.value)} className="h-8 w-40" /></label>
+          <Button size="sm" disabled={busy || invalid} onClick={() => onSync({ since, until })}>Sync {span > 0 ? `${span} day${span === 1 ? '' : 's'}` : ''}</Button>
+          <span className={cn('text-xs', span > MAX_SYNC_DAYS ? 'text-red-600' : 'text-muted-foreground')}>Up to {MAX_SYNC_DAYS} days at a time.</span>
+        </div>
+      )}
+      {last && (
+        <div className="grid gap-1.5">
+          <p className="flex items-center gap-1.5 text-xs font-medium">
+            {last.ok ? <CircleCheck className="size-3.5 text-emerald-500" /> : <Unplug className="size-3.5 text-amber-500" />}
+            {last.ok ? 'Completed' : 'Finished with problems'} · {last.accounts.length} account{last.accounts.length === 1 ? '' : 's'}
+          </p>
+          {last.accounts.map((a) => (
+            <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs">
+              <span className="font-medium">{a.name}</span>
+              {a.ok ? <Badge variant="success">Expense added</Badge> : <Badge variant="neutral">Failed</Badge>}
+              <span className="text-muted-foreground">
+                {a.ok ? <><Money value={a.cost ?? 0} /> for {a.since === a.until ? a.since : `${a.since} – ${a.until}`}</> : a.error}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Every Meta ad account: add, edit, sync, disconnect, plus VAT on ad spend. */
 export function MetaAccounts() {
   const { can } = useAuth()
@@ -64,13 +118,15 @@ export function MetaAccounts() {
     void queryClient.invalidateQueries({ queryKey: ['marketing'] })
     void queryClient.invalidateQueries({ queryKey: ['finance'] })
   }
+  const [lastRun, setLastRun] = useState<MetaSyncRun | null>(null)
   const sync = useMutation({
     meta: { silent: true },
-    mutationFn: (id?: string) => syncMeta(7, id),
+    mutationFn: (v?: string | { since: string; until: string }) => typeof v === 'object' ? syncMeta(7, undefined, v) : syncMeta(7, v),
     onSuccess: (r) => {
+      setLastRun(r)
       const failed = r.accounts.filter((a) => !a.ok)
       if (failed.length) toast.warning(`${failed.map((a) => a.name).join(', ')}: ${failed[0].error}`)
-      else toast.success(`Synced ${formatNumber(r.insights)} daily rows · ${formatMoney(r.cost)}`)
+      else toast.success(`Synced ${formatNumber(r.insights)} daily rows · ${formatMoney(r.cost)} added to expenses`)
       refresh()
     },
     onError: (e) => { toast.error((e as Error).message); refresh() },
@@ -92,16 +148,14 @@ export function MetaAccounts() {
         </CardDescription>
         {manage && (
           <CardAction className="flex gap-2">
-            {accounts.some((a) => a.is_active) && (
-              <Button size="sm" variant="outline" onClick={() => sync.mutate(undefined)} disabled={sync.isPending}>
-                {sync.isPending ? <Spinner /> : <RefreshCw />} Sync all
-              </Button>
-            )}
             <Button size="sm" onClick={() => setEditing('new')}><Plus /> Add account</Button>
           </CardAction>
         )}
       </CardHeader>
       <CardContent className="grid gap-3">
+        {manage && accounts.some((a) => a.is_active) && (
+          <SyncBar busy={sync.isPending} onSync={(range) => sync.mutate(range)} last={lastRun} />
+        )}
         {list.isLoading ? <LoadingState /> : list.error ? (
           <p className="text-sm text-red-700">{(list.error as Error).message}</p>
         ) : accounts.length === 0 ? (

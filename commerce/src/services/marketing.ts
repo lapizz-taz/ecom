@@ -119,8 +119,9 @@ export const saveMetaAccount = (input: MetaAccountInput) =>
     payment_account_id: input.paymentAccountId, is_active: input.isActive,
   })
 export const disconnectMetaAccount = (id: string) => invokeFunction<{ ok: boolean }>('meta-ads', { action: 'disconnect', id })
-export const syncMeta = (days: number, id?: string) =>
-  invokeFunction<{ ok: boolean; accounts: (MetaSyncResult & { id: string; name: string })[]; insights: number; cost: number }>('meta-ads', { action: 'sync', days, id })
+export type MetaSyncRun = { ok: boolean; accounts: (MetaSyncResult & { id: string; name: string; since?: string; until?: string })[]; insights: number; cost: number }
+export const syncMeta = (days: number, id?: string, range?: { since: string; until: string }) =>
+  invokeFunction<MetaSyncRun>('meta-ads', { action: 'sync', days, id, ...range })
 
 export async function setMetaTax(taxPercent: number) {
   const { error } = await supabase.rpc('meta_ads_set_tax', { p_tax_percent: taxPercent })
