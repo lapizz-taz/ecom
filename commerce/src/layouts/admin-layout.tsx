@@ -280,6 +280,10 @@ export default function AdminLayout() {
     return <AccountRestricted email={access.email} onSignOut={() => void signOut().then(() => navigate('/admin/login'))} />
   }
 
+  // Staff without the dashboard (sales figures) start on their work instead, e.g. the Call role on Web Orders.
+  if (location.pathname.replace(/\/+$/, '') === '/admin' && !can('dashboard.view')) {
+    return <Navigate to={can('orders.view') ? '/admin/orders/web' : '/admin/hr/attendance'} replace />
+  }
   const required = [...matches].reverse().map((m) => (m.handle as { permission?: string } | undefined)?.permission).find(Boolean)
   const allowed = !required || can(required)
   const onAction = (action: ShellAction) => { setMobileOpen(false); setDialog(action) }

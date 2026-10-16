@@ -5,8 +5,11 @@ import { advanceOrder, createOrder, createProduct, createStaff, inventory } from
 afterAll(closePool)
 
 const phone = () => `0171${String(Math.floor(Math.random() * 1e7)).padStart(7, '0')}`
-const order = (db: Db, id: string) =>
-  value<Record<string, any>>(db, `select to_jsonb(o) || jsonb_build_object('stage', public.order_stage(o.status, o.confirmed_at)) from public.orders o where id = $1`, [id])
+// Reads the whole row (cost columns included), so as the system rather than as staff.
+const order = async (db: Db, id: string) => {
+  await asSystem(db)
+  return value<Record<string, any>>(db, `select to_jsonb(o) || jsonb_build_object('stage', public.order_stage(o.status, o.confirmed_at)) from public.orders o where id = $1`, [id])
+}
 
 /** An approved order handed to a courier (status SHIPPED, picked up by the courier). */
 async function shipped(db: Db, variantId: string) {
