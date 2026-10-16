@@ -149,13 +149,13 @@ describe('domain check on Cloudflare (Cloudflare for SaaS)', () => {
   it('an ALIAS at the root (answers with our target\'s own addresses) is pointed, and the provider is named', async () => {
     const zone: Zone = {
       'stores.fullfilio.example': { A: ['104.21.50.1', '172.67.1.2'] },
-      'shop.com': { A: ['104.21.50.1', '172.67.1.2'], NS: ['dns1.registrar-servers.com', 'dns2.registrar-servers.com'] },
+      'shop.com': { A: ['104.21.50.1', '172.67.1.2'], NS: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'] },
     }
     const d = await diagnose('shop.com', { target, fetcher: cfFetch(zone) })
     expect(d.pointed).toBe(true)
     expect(d.records.every((r) => r.ok && r.note === 'Points to Fullfilio (ALIAS / flattening)')).toBe(true)
     expect(d.regions.every((r) => r.ok)).toBe(true)
-    expect(d.dns_host).toEqual({ provider: 'Namecheap', nameservers: ['dns1.registrar-servers.com', 'dns2.registrar-servers.com'], mixed: false })
+    expect(d.dns_host).toEqual({ provider: 'Cloudflare', nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], mixed: false })
     expect(d.issues.filter((i) => i.severity === 'error')).toEqual([])
   })
 
@@ -224,8 +224,8 @@ describe('scheduled domain re-check', () => {
   })
 })
 
-describe('root domain on a DNS company that runs on Cloudflare', () => {
-  it('says to use www for a Hostinger root, not for a subdomain or another company', async () => {
+describe('root domain needs Cloudflare DNS', () => {
+  it('flags a root on Hostinger or Namecheap, not on Cloudflare DNS and not a subdomain', async () => {
     const target = cloudflareTarget('stores.fullfilio.example')
     const zone: Zone = {
       'stores.fullfilio.example': { A: ['104.21.50.1'] },
@@ -234,12 +234,13 @@ describe('root domain on a DNS company that runs on Cloudflare', () => {
     }
     const f = fakeFetch(zone)
     const root = await diagnose('shop.com', { target, fetcher: f })
-    expect(root.issues[0]).toMatchObject({ code: 'USE_WWW', severity: 'error' })
-    expect(root.issues[0].detail).toMatch(/move its DNS to Cloudflare.*www\.shop\.com/)
-    const www = await diagnose('www.shop.com', { target, fetcher: f })
-    expect(www.issues.map((i) => i.code)).not.toContain('USE_WWW')
+    expect(root.issues[0]).toMatchObject({ code: 'NEEDS_CLOUDFLARE', severity: 'error', title: 'Main domain works only with Cloudflare DNS' })
+    expect(root.issues[0].detail).toMatch(/on Hostinger now.*www\.shop\.com/)
+    expect((await diagnose('www.shop.com', { target, fetcher: f })).issues.map((i) => i.code)).not.toContain('NEEDS_CLOUDFLARE')
     zone['shop.com'].NS = ['dns1.registrar-servers.com']
-    expect((await diagnose('shop.com', { target, fetcher: f })).issues.map((i) => i.code)).not.toContain('USE_WWW')
+    expect((await diagnose('shop.com', { target, fetcher: f })).issues.map((i) => i.code)).toContain('NEEDS_CLOUDFLARE')
+    zone['shop.com'].NS = ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com']
+    expect((await diagnose('shop.com', { target, fetcher: f })).issues.map((i) => i.code)).not.toContain('NEEDS_CLOUDFLARE')
   })
 })
 
