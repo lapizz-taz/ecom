@@ -225,6 +225,7 @@ export default function CheckoutPage() {
   const blocked = requirement?.mode === 'BLOCKED'
   const manual = config?.payments.providers.find((p) => p.type === 'manual')
   const walletAccounts = (manual?.accounts ?? []).filter((a) => ['BKASH', 'NAGAD', 'ROCKET'].includes(a.channel) && a.number)
+  const districtChosen = Boolean(watched.district)
   const payNow = !checkingPhone && requirement && (requirement.mode === 'ADVANCE' || requirement.mode === 'FULL') ? requirement.amount : 0
   // The risk check asked for an advance although the customer chose cash on delivery.
   const advanceRequired = method === 'COD' && payNow > 0
@@ -237,7 +238,7 @@ export default function CheckoutPage() {
   const walletChannel = walletAccounts.some((a) => a.channel === advance.channel) ? advance.channel
     : (walletAccounts[0]?.channel as AdvancePaymentValues['channel'] | undefined) ?? 'BKASH'
   const advancePay = (title: string, note?: ReactNode) => (
-    <AdvancePay title={title} note={note} amount={payNow} gateways={gateways} accounts={walletAccounts} via={via} onVia={(v) => { setPayVia(v); setAdvanceErrors({}) }}
+    <AdvancePay title={title} note={note} amount={districtChosen ? payNow : null} gateways={gateways} accounts={walletAccounts} via={via} onVia={(v) => { setPayVia(v); setAdvanceErrors({}) }}
       manual={{ ...advance, channel: walletChannel }} onManual={(v) => { setAdvance(v); setAdvanceErrors({}) }} errors={advanceErrors} />
   )
 
@@ -253,6 +254,16 @@ export default function CheckoutPage() {
       }
     }
     place.mutate({ values, advancePayment, gateway: gateway?.code ?? null })
+  }, (errors) => {
+    // Something is missing: bring it into view (on a phone it is usually far above the button) and say what.
+    const first = (['full_name', 'phone', 'address', 'district', 'email'] as const).find((k) => errors[k])
+    if (!first) return
+    toast.error(errors[first]?.message ?? 'Check your delivery details')
+    requestAnimationFrame(() => {
+      const el = document.getElementById(first)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el?.focus({ preventScroll: true })
+    })
   })
   const stockErrors = q?.stock_errors ?? []
   const districts = config?.delivery.districts ?? []
@@ -268,7 +279,7 @@ export default function CheckoutPage() {
   const gatewayName = gateway?.label.replace(/^Pay with /, '').replace(/ \(.*\)$/, '')
   const buttonContent = busy || checkingPhone
     ? <><Spinner /> {checkingPhone ? 'Checking…' : redirecting ? `Opening ${gatewayName}…` : 'Placing order…'}</>
-    : gateway ? <><Lock /> Pay {formatMoney(payNow)} with {gatewayName}</>
+    : gateway ? <><Lock /> {districtChosen ? `Pay ${formatMoney(payNow)} with ${gatewayName}` : `Pay with ${gatewayName}`}</>
     : <><Lock /> Confirm order</>
 
   return (
@@ -305,7 +316,7 @@ export default function CheckoutPage() {
               <Field label="District" error={form.formState.errors.district?.message}>
                 <Controller control={form.control} name="district" render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-11 w-full" aria-invalid={!!form.formState.errors.district}><SelectValue placeholder="Choose district" /></SelectTrigger>
+                    <SelectTrigger ref={field.ref} id="district" className="h-11 w-full" aria-invalid={!!form.formState.errors.district}><SelectValue placeholder="Choose district" /></SelectTrigger>
                     <SelectContent className="max-h-72">{districts.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                   </Select>
                 )} />
@@ -449,8 +460,9 @@ export default function CheckoutPage() {
                 <dt className="text-muted-foreground">Delivery</dt>
                 <dd>{!watched.district ? <span className="text-muted-foreground">Choose district</span> : delivery <= 0 ? 'Free' : <Money value={delivery} />}</dd>
               </div>
-              <div className="flex justify-between border-t pt-3 text-base font-semibold"><dt>Total</dt><dd><Money value={total} /></dd></div>
-              {payNow > 0 && (
+              <div className="flex justify-between border-t pt-3 text-base font-semibold"><dt>Total</dt>
+                <dd>{districtChosen ? <Money value={total} /> : <span className="text-sm font-normal text-muted-foreground">after delivery</span>}</dd></div>
+              {payNow > 0 && districtChosen && (
                 <div className="space-y-1.5 rounded-xl bg-muted/60 p-3">
                   <div className="flex justify-between font-medium"><dt>Pay now</dt><dd><Money value={payNow} /></dd></div>
                   <div className="flex justify-between text-muted-foreground"><dt>On delivery</dt><dd><Money value={Math.max(total - payNow, 0)} /></dd></div>
@@ -483,7 +495,7 @@ export default function CheckoutPage() {
           <div className="mx-auto flex max-w-5xl items-center gap-4">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">{payNow > 0 ? 'Pay now' : 'Total'}</p>
-              <p className="text-lg leading-tight font-semibold"><Money value={payNow > 0 ? payNow : total} /></p>
+              <p className="text-lg leading-tight font-semibold">{districtChosen ? <Money value={payNow > 0 ? payNow : total} /> : <span className="text-sm font-normal text-muted-foreground">Choose district</span>}</p>
             </div>
             <Button type="submit" size="lg" className="h-12 flex-1 rounded-xl text-base" disabled={!canSubmit}>{buttonContent}</Button>
           </div>
