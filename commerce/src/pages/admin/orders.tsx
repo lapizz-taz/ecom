@@ -137,8 +137,9 @@ export function OrdersPage({ view }: { view: View }) {
       return [
         ...all.filter((s) => !s.closes_order).map((s) => ({ key: s.code, label: s.label, count: web[s.code] ?? 0, hint: s.description })),
         { key: 'incomplete', label: 'Incomplete', count: counts.data?.incomplete ?? 0, hint: 'Typed a phone at checkout but did not order' },
+        { key: ADVANCE_TAB, label: 'Advance due', count: counts.data?.advance ?? 0, hint: 'The courier check asked for an advance; the order waits here until it is paid' },
         ...all.filter((s) => s.closes_order).map((s) => ({ key: s.code, label: s.label, count: web[s.code] ?? 0, hint: s.description })),
-        { key: 'all', label: 'All', count: Object.values(web).reduce((a, b) => a + b, 0), hint: null },
+        { key: 'all', label: 'All', count: Object.values(web).reduce((a, b) => a + b, (counts.data?.advance ?? 0)), hint: null },
       ]
     }
     if (view === 'approved') {
@@ -158,11 +159,14 @@ export function OrdersPage({ view }: { view: View }) {
   const baseFilters = useMemo((): OrderFilters => ({
     q: state.q || undefined,
     queue: view === 'all' ? undefined : view,
-    review_status: view === 'web' && !['all', 'incomplete'].includes(state.tab) ? state.tab : undefined,
+    review_status: view === 'web' && !['all', 'incomplete', ADVANCE_TAB].includes(state.tab) ? state.tab : undefined,
     stage: view === 'approved' && state.tab !== 'all' ? state.tab : undefined,
     follow_up_due: state.due === '1' || undefined,
     duplicates: state.dupes === '1' || undefined,
-    statuses: state.print === '1' ? ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP'] : state.advance === '1' ? ['ADVANCE_REQUIRED'] : undefined,
+    statuses: state.print === '1' ? ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP']
+      : state.advance === '1' || (view === 'web' && state.tab === ADVANCE_TAB) ? ['ADVANCE_REQUIRED']
+      // The call tabs leave out orders still waiting for their advance (they have their own tab).
+      : view === 'web' && state.tab !== 'all' ? NOT_WAITING_FOR_ADVANCE : undefined,
   }), [state.q, state.tab, state.due, state.dupes, state.print, state.advance, view])
   const withValues = (values: FilterValues): OrderFilters => {
     const f = { ...baseFilters, ...filtersFromValues(values) }
@@ -395,8 +399,8 @@ export function OrdersPage({ view }: { view: View }) {
     view === 'web' ? [
       { key: 'due', label: 'Call-backs due', icon: AlarmClock, value: counts.data?.follow_up_due, active: state.due === '1', alert: true,
         onClick: () => update({ tab: 'FOLLOW_UP', due: state.due === '1' ? '' : '1', print: '', dupes: '', advance: '' }) },
-      { key: 'advance', label: 'Waiting for advance', icon: Wallet, value: undefined, active: state.advance === '1',
-        onClick: () => update({ tab: 'all', advance: state.advance === '1' ? '' : '1', due: '', dupes: '', print: '' }) },
+      { key: 'advance', label: 'Waiting for advance', icon: Wallet, value: counts.data?.advance, active: state.tab === ADVANCE_TAB,
+        onClick: () => selectTab(state.tab === ADVANCE_TAB ? 'PROCESSING' : ADVANCE_TAB) },
       { key: 'dupes', label: 'Possible duplicates', icon: Copy, value: undefined, active: state.dupes === '1',
         onClick: () => update({ tab: 'all', dupes: state.dupes === '1' ? '' : '1', due: '', advance: '', print: '' }) },
     ] : view === 'approved' ? [
@@ -607,7 +611,12 @@ export default function AllOrdersPage() {
   return <OrdersPage view="all" />
 }
 
+/** Web Orders tab for orders waiting for the fraud-check advance. */
+const ADVANCE_TAB = 'advance_due'
+const NOT_WAITING_FOR_ADVANCE = (Object.keys(ORDER_STATUS) as OrderStatus[]).filter((s) => s !== 'ADVANCE_REQUIRED')
+
 function emptyHint(view: View, tab: string) {
+  if (view === 'web' && tab === ADVANCE_TAB) return 'Orders waiting for the customer to pay the advance show up here.'
   if (view === 'web') return tab === 'PROCESSING' ? 'New website orders land here.' : 'No orders with this call status.'
   if (view === 'approved') return 'Approved orders in this stage show up here.'
   return 'Orders will appear here as they come in.'

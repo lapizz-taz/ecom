@@ -279,6 +279,8 @@ export interface QueueCounts {
   approved: Partial<Record<OrderStage, number>>
   follow_up_due: number
   incomplete: number
+  /** Web orders waiting for the fraud-check advance (their own tab). */
+  advance?: number
 }
 
 export type ScanAction = 'READY_TO_SHIP' | 'SHIPPED' | 'RETURNED' | 'LOOKUP'
