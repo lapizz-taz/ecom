@@ -5,9 +5,9 @@ import { Link } from 'react-router'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
-import { supabase } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
 import { addBlock } from '@/services/order-tools'
+import { ordersFromIp } from '@/services/orders'
 
 /** "Chrome on Android", "Facebook app on iPhone" … from a browser's user agent. */
 export function describeDevice(ua: string | null | undefined): { label: string; mobile: boolean } | null {
@@ -32,12 +32,7 @@ export function OrderClientInfo({ orderId, ip, userAgent }: { orderId: string; i
   const others = useQuery({
     queryKey: ['orders-from-ip', ip, orderId],
     enabled: !!ip,
-    queryFn: async () => {
-      const { data, count, error } = await supabase.from('orders').select('id, order_number', { count: 'exact' })
-        .eq('client_ip', ip!).neq('id', orderId).order('created_at', { ascending: false }).limit(5)
-      if (error) throw error
-      return { total: count ?? 0, orders: data ?? [] }
-    },
+    queryFn: () => ordersFromIp(ip!, orderId),
   })
   const block = useMutation({
     mutationFn: (reason: string) => addBlock({ kind: 'IP', value: ip!, reason, orderId }),

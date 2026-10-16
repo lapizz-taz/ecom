@@ -103,6 +103,14 @@ export function phoneCustomerRecord(phone: string) {
   return invokeFunction<{ record: PhoneCustomerRecord; looked_up: boolean; lookup_error: string | null }>('fraud-check', { action: 'phone_record', phone })
 }
 
+/** Other orders placed from the same IP address (newest five, and how many in all). */
+export async function ordersFromIp(ip: string, exceptOrderId: string): Promise<{ total: number; orders: Array<{ id: string; order_number: string }> }> {
+  const { data, count, error } = await supabase.from('orders').select('id, order_number', { count: 'exact' })
+    .eq('client_ip', ip).neq('id', exceptOrderId).order('created_at', { ascending: false }).limit(5)
+  if (error) throw error
+  return { total: count ?? 0, orders: data ?? [] }
+}
+
 /** What is already known for a phone, without starting a courier lookup. */
 export async function knownPhoneRecord(phone: string): Promise<PhoneCustomerRecord> {
   const { data, error } = await supabase.rpc('admin_phone_customer_record', { p_phone: phone })
