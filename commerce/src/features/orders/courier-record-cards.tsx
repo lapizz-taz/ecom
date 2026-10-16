@@ -6,7 +6,7 @@ import { invokeFunction } from '@/lib/functions'
 import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import { type CourierLineRecord, type DeliveryPolicy, type OrderCustomerRecord, orderCustomerRecord } from '@/services/orders'
+import { type CourierLineRecord, type DeliveryPolicy, type OrderCustomerRecord, orderCustomerRecord, type PhoneCustomerRecord, phoneCustomerRecord } from '@/services/orders'
 import { deliveryRisk, type RiskLevel } from './delivery-risk'
 
 // The customer's delivery record: one panel, a small card per source — our own
@@ -113,13 +113,62 @@ export function CourierRecordCards({ orderId, phone, createdAt, className }: { o
   })
   if (record.isLoading) return <div className={cn('h-56 animate-pulse rounded-2xl border bg-muted/40', className)} />
   if (record.error || !record.data) return null
+  return (
+    <DeliveryRecordPanel data={record.data} waiting={waiting(record.data)} className={className} countsCurrentOrder
+      onRecheck={can('fraud.review') ? () => recheck.mutate() : undefined} rechecking={recheck.isPending} />
+  )
+}
 
-  const { check, ours, policy } = record.data
-  const risk = deliveryRisk(record.data)
+/**
+ * The same panel for a phone typed on New Order (or an incomplete checkout), before any order exists.
+ * The lookup reuses a check from the last half hour, so typing the same number again costs nothing.
+ */
+export function PhoneRecordCards({ phone, className }: { phone: string; className?: string }) {
+  const { can } = useAuth()
+  const record = useQuery({
+    queryKey: ['phone-record', phone],
+    queryFn: () => phoneCustomerRecord(phone),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const recheck = useMutation({
+    mutationFn: () => invokeFunction<{ check?: { status?: string; error?: string | null } }>('fraud-check', { phone }),
+    onSuccess: (r) => {
+      const c = r?.check
+      if (c?.status && c.status !== 'SUCCESS' && c.error) toast.error(c.error)
+      else toast.success('Delivery record refreshed')
+      void record.refetch()
+    },
+    onError: (e) => toast.error(e),
+  })
+  if (record.isLoading) {
+    return (
+      <section className={cn('flex items-center gap-2 rounded-2xl border bg-card px-4 py-4 text-sm text-muted-foreground', className)}>
+        <RefreshCw className="size-4 animate-spin" /> Checking {phone} with the couriers…
+      </section>
+    )
+  }
+  if (record.error || !record.data) {
+    return record.error ? <p className={cn('rounded-xl border px-4 py-3 text-xs text-muted-foreground', className)}>Couldn’t check the delivery record: {(record.error as Error).message}</p> : null
+  }
+  return (
+    <DeliveryRecordPanel data={record.data.record} waiting={false} className={className}
+      notice={record.data.lookup_error ? `The courier check could not run: ${record.data.lookup_error}` : !record.data.looked_up && !record.data.record.check ? 'Not checked yet: someone who can create orders or review fraud can run the check.' : undefined}
+      onRecheck={can('fraud.review') ? () => recheck.mutate() : undefined} rechecking={recheck.isPending} />
+  )
+}
+
+function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = false, onRecheck, rechecking, notice }: {
+  data: OrderCustomerRecord | PhoneCustomerRecord; waiting: boolean; className?: string
+  /** On an order's page the record includes that order itself. */ countsCurrentOrder?: boolean
+  onRecheck?: () => void; rechecking?: boolean; notice?: string
+}) {
+  const { check, ours, policy } = data
+  const risk = deliveryRisk(data as OrderCustomerRecord)
   const lines = (check?.couriers ?? []) as CourierLineRecord[]
   const byKey = new Map(lines.map((c) => [keyOf(c.courier), c]))
   const extra = lines.map((c) => keyOf(c.courier)).filter((k) => !ALWAYS.includes(k) && (byKey.get(k)!.orders > 0 || byKey.get(k)!.rate_only))
-  const earlier = Math.max((ours?.total ?? 0) - 1, 0)
+  const earlier = Math.max((ours?.total ?? 0) - (countsCurrentOrder ? 1 : 0), 0)
   const from = (src: string) => lines.filter((c) => c.source === src && !c.notice).map((c) => COURIERS[keyOf(c.courier)]?.name ?? c.name ?? c.courier)
   const groups = [
     from('sign_in').length ? `courier sign-ins (${from('sign_in').join(', ')})` : '',
@@ -133,17 +182,18 @@ export function CourierRecordCards({ orderId, phone, createdAt, className }: { o
       <div className="flex items-center justify-between gap-3 border-b pb-3">
         <h3 className="text-base font-medium">Delivery record</h3>
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>{waiting(record.data) ? 'Checking…' : check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
-          {can('fraud.review') && (
-            <button type="button" onClick={() => recheck.mutate()} disabled={recheck.isPending} aria-label="Check the delivery record again"
+          <span>{waiting ? 'Checking…' : check ? `Checked ${timeAgo(check.checked_at)}` : 'Not checked yet'}</span>
+          {onRecheck && (
+            <button type="button" onClick={onRecheck} disabled={rechecking} aria-label="Check the delivery record again"
               className="rounded-md p-1 hover:bg-muted hover:text-foreground disabled:opacity-50">
-              <RefreshCw className={cn('size-3.5', recheck.isPending && 'animate-spin')} />
+              <RefreshCw className={cn('size-3.5', rechecking && 'animate-spin')} />
             </button>
           )}
         </div>
       </div>
 
-      {!waiting(record.data) && risk.level !== 'unchecked' && (
+      {notice && <p className="mt-3 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">{notice}</p>}
+      {!waiting && risk.level !== 'unchecked' && (
         <div className="mt-3 flex flex-col items-start gap-1.5 sm:flex-row sm:gap-3">
           <span className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium', RISK_TONE[risk.level])}>{risk.label}</span>
           {risk.reasons.length > 0 && (

@@ -9,7 +9,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { invokeFunction } from '@/lib/functions'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { type CourierLineRecord, orderCustomerRecord } from '@/services/orders'
+import { type CourierLineRecord, knownPhoneRecord, type OrderCustomerRecord, orderCustomerRecord } from '@/services/orders'
 
 const COURIER_NAME: Record<string, string> = {
   pathao: 'Pathao', steadfast: 'Steadfast', redx: 'RedX', carrybee: 'CarryBee', paperfly: 'Paperfly', parceldex: 'ParcelDex', courierfast: 'CourierFast',
@@ -25,10 +25,16 @@ function rateColor(rate: number | null | undefined) {
     : rate >= 50 ? { text: 'text-amber-500', bar: 'bg-amber-500' } : { text: 'text-red-500', bar: 'bg-red-500' }
 }
 
-/** The customer's delivery record for an order: the courier check's rate, per-courier breakdown and our own orders. */
+/**
+ * The customer's delivery record for an order: the courier check's rate, per-courier breakdown and our own orders.
+ * Without an order (an incomplete checkout) it shows what is known for the phone.
+ */
 export function SuccessPanel({ orderId, phone, compact }: { orderId: string; phone: string; compact?: boolean }) {
   const { can } = useAuth()
-  const record = useQuery({ queryKey: ['order-record', orderId], queryFn: () => orderCustomerRecord(orderId) })
+  const record = useQuery({
+    queryKey: orderId ? ['order-record', orderId] : ['phone-known-record', phone],
+    queryFn: (): Promise<Pick<OrderCustomerRecord, 'check' | 'ours'>> => (orderId ? orderCustomerRecord(orderId) : knownPhoneRecord(phone)),
+  })
   const recheck = useMutation({
     mutationFn: () => invokeFunction('fraud-check', { phone }),
     onSuccess: () => { toast.success('Courier history refreshed'); void record.refetch() },

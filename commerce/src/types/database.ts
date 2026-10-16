@@ -11304,6 +11304,14 @@ export type Database = {
       }
     }
     Functions: {
+      _can_read_catalog: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      _can_see_costs: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       _canonical_district: {
         Args: {
           p_text: string
@@ -12122,6 +12130,18 @@ export type Database = {
           p_reason: string
           p_force?: boolean
           p_notify?: boolean
+        }
+        Returns: Json
+      }
+      admin_phone_courier_summaries: {
+        Args: {
+          p_phones: string[]
+        }
+        Returns: Json
+      }
+      admin_phone_customer_record: {
+        Args: {
+          p_phone: string
         }
         Returns: Json
       }
@@ -13802,6 +13822,10 @@ export type Database = {
         }
         Returns: Json
       }
+      hr_settings_get: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       hr_settings_save: {
         Args: {
           p: Json
@@ -13975,6 +13999,18 @@ export type Database = {
           p_order_id: string
         }
         Returns: Json
+      }
+      order_cost_summary: {
+        Args: {
+          p_order: string
+        }
+        Returns: Json
+      }
+      order_cost_total: {
+        Args: {
+          p_order: string
+        }
+        Returns: number
       }
       order_merge_info: {
         Args: {

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
-  ShieldAlert, ShoppingBag, Tag, Truck, Wallet,
+  ShieldAlert, ShieldCheck, ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
@@ -44,8 +44,9 @@ import {
 import { cn } from '@/lib/utils'
 import {
   approveOrders, bulkTransition, exportOrders, fulfillmentSummary, listCheckoutLeads, listReviewStatuses, type OrderFilters, orderFilterOptions,
-  queueCounts, searchOrders, setOrderTags, setWebOrderStatus, updateCheckoutLead,
+  phoneCourierSummaries, phoneCustomerRecord, queueCounts, searchOrders, setOrderTags, setWebOrderStatus, updateCheckoutLead,
 } from '@/services/orders'
+import { normalizePhone } from '@/lib/phone'
 import { listChannelImports } from '@/services/channels'
 import { syncAllShipments } from '@/services/couriers'
 import type { DuplicateGroup } from '@/services/orders'
@@ -850,6 +851,26 @@ function IncompleteCheckouts({ q }: { q: string }) {
     placeholderData: keepPreviousData,
     queryFn: () => listCheckoutLeads(['OPEN', 'CONTACTED'], q, PAGE_SIZE, (page - 1) * PAGE_SIZE),
   })
+  // Incomplete checkouts have no order, so no courier check runs for them by itself (the public price
+  // preview never starts a paid lookup). Show what is known for each phone; staff can check the rest.
+  const phones = (leads.data?.items ?? []).map((l) => l.phone).filter(Boolean)
+  const rates = useQuery({
+    queryKey: ['lead-courier-rates', phones],
+    enabled: phones.length > 0,
+    placeholderData: keepPreviousData,
+    queryFn: () => phoneCourierSummaries(phones),
+  })
+  const mayCheck = can('orders.create') || can('fraud.review')
+  const [checking, setChecking] = useState<string | null>(null)
+  const checkPhone = useMutation({
+    mutationFn: (phone: string) => { setChecking(phone); return phoneCustomerRecord(phone) },
+    onSuccess: (r) => {
+      if (r.lookup_error) toast.error(r.lookup_error)
+      void rates.refetch()
+    },
+    onError: (e) => toast.error(e),
+    onSettled: () => setChecking(null),
+  })
   const save = useMutation({
     mutationFn: ({ id, status, text }: { id: string; status: 'CONTACTED' | 'DISMISSED'; text?: string }) => updateCheckoutLead(id, status, text),
     onSuccess: (_d, v) => {
@@ -868,6 +889,19 @@ function IncompleteCheckouts({ q }: { q: string }) {
     {
       key: 'items', header: 'Cart',
       cell: (l) => <p className="line-clamp-2 max-w-56 text-xs">{((l.items ?? []) as LeadItem[]).map((i) => `${i.name ?? 'Item'}${i.variant ? ` · ${i.variant}` : ''} ×${i.quantity ?? 1}`).join(', ') || '—'}</p>,
+    },
+    {
+      key: 'history', header: 'Success Rate',
+      cell: (l) => {
+        const key = normalizePhone(l.phone)
+        const h = rates.data?.[key]
+        if (h || !mayCheck) return <SuccessRateCell h={h ?? null} orderId="" phone={l.phone} checking={checking === l.phone || (rates.isLoading && !rates.data)} />
+        return (
+          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={checking !== null} onClick={(e) => { e.stopPropagation(); checkPhone.mutate(l.phone) }}>
+            {checking === l.phone ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />} Check
+          </Button>
+        )
+      },
     },
     { key: 'total', header: 'Total', align: 'right', cell: (l) => <Money value={l.total} className="font-medium" /> },
     { key: 'source', header: 'Source', hideOnMobile: true, cell: (l) => <span className="text-xs">{l.source ?? 'Unknown'}</span> },

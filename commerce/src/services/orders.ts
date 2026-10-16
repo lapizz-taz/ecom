@@ -95,6 +95,29 @@ export interface OrderCustomerRecord {
   shipment: { courier: string; provider: string; tracking_number: string | null; consignment_id: string | null; cod_amount: number | null; uploaded: boolean; tracking_url: string | null } | null
 }
 
+/** The same record for a phone with no order yet (New Order, incomplete checkouts). */
+export type PhoneCustomerRecord = Omit<OrderCustomerRecord, 'shipment'> & { phone: string; shipment?: null }
+
+/** Looks the phone up with the couriers (reusing a check from the last half hour) and returns its record. */
+export function phoneCustomerRecord(phone: string) {
+  return invokeFunction<{ record: PhoneCustomerRecord; looked_up: boolean; lookup_error: string | null }>('fraud-check', { action: 'phone_record', phone })
+}
+
+/** What is already known for a phone, without starting a courier lookup. */
+export async function knownPhoneRecord(phone: string): Promise<PhoneCustomerRecord> {
+  const { data, error } = await supabase.rpc('admin_phone_customer_record', { p_phone: phone })
+  if (error) throw error
+  return fromJson<PhoneCustomerRecord>(data)
+}
+
+/** The latest success rate per phone, for a page of incomplete checkouts (only what is already known). */
+export async function phoneCourierSummaries(phones: string[]): Promise<Record<string, OrderListItem['courier_history']>> {
+  if (phones.length === 0) return {}
+  const { data, error } = await supabase.rpc('admin_phone_courier_summaries', { p_phones: phones })
+  if (error) throw error
+  return fromJson<Record<string, OrderListItem['courier_history']>>(data) ?? {}
+}
+
 export async function orderCustomerRecord(orderId: string): Promise<OrderCustomerRecord> {
   const { data, error } = await supabase.rpc('admin_order_customer_record', { p_order_id: orderId })
   if (error) throw error

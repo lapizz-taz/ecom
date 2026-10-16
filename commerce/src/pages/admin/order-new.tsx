@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { PhoneRecordCards } from '@/features/orders/courier-record-cards'
 import { SmartPaste } from '@/features/orders/smart-paste'
 import { VariantPicker } from '@/features/products/variant-picker'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -147,11 +148,12 @@ export default function NewOrderPage() {
       } else if (order?.id && orderSource) {
         await setOrderSource(order.id, orderSource).catch(() => toast.warning('Order created, but its source could not be saved'))
       }
+      // The courier check made while the phone was typed goes onto the order (no second lookup);
+      // without one, fraud reviewers run a fresh check, like an imported order gets.
       if (afterCreate === 'fraud' && order?.id) {
-        await invokeFunction('fraud-check', { order_id: order.id, apply: true }).catch(() => toast.warning('Order created, but the fraud check could not run'))
-      } else if (order?.id && can('fraud.review')) {
-        // The courier record for the success rate, like an imported order gets; it lands on the order by itself.
-        void invokeFunction('fraud-check', { order_id: order.id }).catch(() => undefined)
+        await invokeFunction('fraud-check', { order_id: order.id, apply: true, reuse: true }).catch(() => toast.warning('Order created, but the fraud check could not run'))
+      } else if (order?.id) {
+        void invokeFunction('fraud-check', { order_id: order.id, reuse: true }).catch(() => undefined)
       }
       return order
     },
@@ -239,6 +241,7 @@ export default function NewOrderPage() {
               <Field label="Internal note" htmlFor="n-inote"><Input id="n-inote" value={internalNote} onChange={(e) => setInternalNote(e.target.value)} /></Field>
             </CardContent>
           </Card>
+          {/^01[3-9]\d{8}$/.test(phone) && <PhoneRecordCards phone={phone} />}
           <Card>
             <CardHeader><CardTitle className="text-sm">Products</CardTitle></CardHeader>
             <CardContent className="space-y-3">
