@@ -50,6 +50,13 @@ export function dnsHostOf(ns: string): string | null {
 const nsOwner = (ns: string) => dnsHostOf(ns) ?? ns.toLowerCase().replace(/\.$/, '').split('.').slice(-2).join('.')
 
 // Addresses of other website builders: a domain still pointing there shows the old site.
+/**
+ * DNS companies whose DNS runs on Cloudflare itself. Cloudflare cannot verify a root
+ * domain there with a TXT record (no pre-validation for a domain already on Cloudflare),
+ * and the root cannot hold a real CNAME, so the root never goes live: use www instead.
+ */
+export const CLOUDFLARE_BACKED_DNS = new Set(['Hostinger'])
+
 const OLD_HOSTS: Array<[RegExp, string]> = [
   [/^23\.227\.38\.\d+$/, 'Shopify'], [/^2\.57\.91\.\d+$/, 'Hostinger (website or parking page)'],
   [/^185\.230\.63\.\d+$/, 'Wix'], [/^198\.185\.159\.\d+$|^198\.49\.23\.\d+$/, 'Squarespace'], [/^76\.76\.21\.\d+$/, 'Vercel'],
@@ -274,6 +281,10 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
   const owners = [...new Set(nameservers.map(nsOwner))]
   const dnsHost = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1 }
+  if (kind === 'apex' && onCloudflare && dnsHost.provider && CLOUDFLARE_BACKED_DNS.has(dnsHost.provider)) {
+    issues.push({ code: 'USE_WWW', severity: 'error', title: `Use www.${domain} — ${dnsHost.provider} cannot connect the root domain`,
+      detail: `${dnsHost.provider} runs its DNS on Cloudflare, and Cloudflare only connects a domain there through a CNAME record, which the root (@) cannot have. Connect www.${domain} instead (a CNAME for www to ${target.cname}), then at ${dnsHost.provider} redirect ${domain} to https://www.${domain}.` })
+  }
   if (dnsHost.mixed) {
     issues.push({ code: 'NS_MIXED', severity: 'error', title: 'Your domain uses nameservers from two companies',
       detail: `It lists ${nameservers.join(', ')}. Visitors randomly get the records of one or the other, so the old site keeps coming back. At the company where you bought the domain, set the nameservers to only one company (the one where you edit DNS), then wait an hour.` })

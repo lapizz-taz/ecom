@@ -126,6 +126,15 @@ function DomainsTab() {
         {open && (
           <DomainDetail inDialog d={open} primary={primary} canEdit={edit} checking={check.isPending} onBack={close}
             onCheck={() => check.mutate(open.domain)} onRemove={() => setRemoving(open.domain)}
+            onUseWww={async () => {
+              const www = `www.${open.domain}`
+              try {
+                const r = await addDomain(www)
+                await makePrimaryDomain(r.domain.domain)
+                toast.success(`${www} added as the primary domain — set its CNAME as shown`)
+                refresh(); update({ domain: r.domain.domain }, { resetPage: false })
+              } catch (e) { toast.error(toUserMessage(e)); throw e }
+            }}
             onMakePrimary={async () => {
               try { await makePrimaryDomain(open.domain); toast.success(`${open.domain} is now the primary domain`); refresh() }
               catch (e) { toast.error(toUserMessage(e)); throw e }

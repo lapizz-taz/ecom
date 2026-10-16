@@ -149,13 +149,13 @@ describe('domain check on Cloudflare (Cloudflare for SaaS)', () => {
   it('an ALIAS at the root (answers with our target\'s own addresses) is pointed, and the provider is named', async () => {
     const zone: Zone = {
       'stores.fullfilio.example': { A: ['104.21.50.1', '172.67.1.2'] },
-      'shop.com': { A: ['104.21.50.1', '172.67.1.2'], NS: ['ns1.dns-parking.com', 'ns2.dns-parking.com'] },
+      'shop.com': { A: ['104.21.50.1', '172.67.1.2'], NS: ['dns1.registrar-servers.com', 'dns2.registrar-servers.com'] },
     }
     const d = await diagnose('shop.com', { target, fetcher: cfFetch(zone) })
     expect(d.pointed).toBe(true)
     expect(d.records.every((r) => r.ok && r.note === 'Points to Fullfilio (ALIAS / flattening)')).toBe(true)
     expect(d.regions.every((r) => r.ok)).toBe(true)
-    expect(d.dns_host).toEqual({ provider: 'Hostinger', nameservers: ['ns1.dns-parking.com', 'ns2.dns-parking.com'], mixed: false })
+    expect(d.dns_host).toEqual({ provider: 'Namecheap', nameservers: ['dns1.registrar-servers.com', 'dns2.registrar-servers.com'], mixed: false })
     expect(d.issues.filter((i) => i.severity === 'error')).toEqual([])
   })
 
@@ -221,5 +221,24 @@ describe('scheduled domain re-check', () => {
     expect(dueForRecheck({ status: 'VERIFYING', checked_at: mins(60), created_at: mins(5 * 24 * 60) }, now)).toBe(true)
     expect(dueForRecheck({ status: 'ACTIVE', checked_at: null, created_at: null }, now)).toBe(false)
     expect(dueForRecheck({ status: 'REMOVED', checked_at: null, created_at: null }, now)).toBe(false)
+  })
+})
+
+describe('root domain on a DNS company that runs on Cloudflare', () => {
+  it('says to use www for a Hostinger root, not for a subdomain or another company', async () => {
+    const target = cloudflareTarget('stores.fullfilio.example')
+    const zone: Zone = {
+      'stores.fullfilio.example': { A: ['104.21.50.1'] },
+      'shop.com': { A: ['104.21.50.1'], NS: ['ns1.dns-parking.com', 'ns2.dns-parking.com'] },
+      'www.shop.com': { CNAME: ['stores.fullfilio.example'] },
+    }
+    const f = fakeFetch(zone)
+    const root = await diagnose('shop.com', { target, fetcher: f })
+    expect(root.issues[0]).toMatchObject({ code: 'USE_WWW', severity: 'error' })
+    expect(root.issues[0].detail).toContain('www.shop.com')
+    const www = await diagnose('www.shop.com', { target, fetcher: f })
+    expect(www.issues.map((i) => i.code)).not.toContain('USE_WWW')
+    zone['shop.com'].NS = ['dns1.registrar-servers.com']
+    expect((await diagnose('shop.com', { target, fetcher: f })).issues.map((i) => i.code)).not.toContain('USE_WWW')
   })
 })
