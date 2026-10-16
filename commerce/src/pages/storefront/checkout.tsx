@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Banknote, ChevronDown, Info, Lock, PhoneCall, ShieldAlert, ShieldCheck, ShoppingBag, Smartphone, Truck } from 'lucide-react'
+import { AlertTriangle, Banknote, ChevronDown, Info, Lock, PhoneCall, ShieldAlert, ShieldCheck, ShoppingBag, Smartphone, Tag, Truck } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
@@ -81,10 +81,12 @@ function Box({ error, className, children }: { error?: string; className?: strin
     </div>
   )
 }
-const box = 'h-12 rounded-md bg-background px-3 text-sm shadow-none'
+const box = 'h-11 rounded-[6px] bg-background px-3 text-sm shadow-none'
 /** Bordered list of choices (shipping, payment): rows share borders, the chosen one is outlined. */
-const choiceList = 'overflow-hidden rounded-md border'
-const choiceRow = 'relative flex cursor-pointer items-center gap-3 border-b px-4 py-3.5 text-sm font-normal last:border-b-0 has-[[data-state=checked]]:bg-muted/50 has-[[data-state=checked]]:shadow-[inset_0_0_0_1px_var(--foreground)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50'
+const choiceList = 'overflow-hidden rounded-[6px] border'
+/** Shopify's filled radio: a solid dot in the theme colour with a white centre. */
+const radio = 'data-[state=checked]:bg-primary [&_svg]:size-1.5 [&_svg]:fill-primary-foreground'
+const choiceRow = 'relative flex cursor-pointer items-center gap-3 border-b px-4 py-3.5 text-sm font-normal last:border-b-0 has-[[data-state=checked]]:bg-primary/[0.04] has-[[data-state=checked]]:shadow-[inset_0_0_0_1px_var(--primary)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50'
 
 export default function CheckoutPage() {
   const { data: config } = useStoreConfig()
@@ -92,6 +94,8 @@ export default function CheckoutPage() {
   const navigate = useNavigate()
   const { items, couponCode, setCoupon, clear } = useCart()
   const [couponInput, setCouponInput] = useState(couponCode)
+  const [mobileDiscount, setMobileDiscount] = useState(Boolean(couponCode))
+  const [summaryOpen, setSummaryOpen] = useState(false)
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
   const [advance, setAdvance] = useState<AdvancePaymentValues>({ channel: 'BKASH', sender_phone: '', transaction_id: '' })
   const [advanceErrors, setAdvanceErrors] = useState<Partial<Record<keyof AdvancePaymentValues, string>>>({})
@@ -365,7 +369,7 @@ export default function CheckoutPage() {
         {items.map((item) => (
           <li key={item.variantId} className="flex items-center gap-4 text-sm">
             <div className="relative shrink-0">
-              <img src={imageUrl(item.image, 120)} alt="" className="size-16 rounded-lg border bg-background object-cover" />
+              <img src={imageUrl(item.image, 120)} alt="" className="size-16 rounded-[6px] border bg-background object-cover" />
               <span className="absolute -top-2 -right-2 flex size-5 items-center justify-center rounded-full bg-foreground text-[11px] font-medium text-background">{item.quantity}</span>
             </div>
             <div className="min-w-0 flex-1">
@@ -381,7 +385,7 @@ export default function CheckoutPage() {
         <div className="flex gap-2">
           <Input value={couponInput} onChange={(e) => setCouponInput(e.target.value.toUpperCase())} placeholder="Discount code" aria-label="Discount code" className={box}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (couponInput.trim()) setCoupon(couponInput) } }} />
-          <Button type="button" variant="outline" className="h-12 rounded-md px-5" disabled={!couponInput.trim()} onClick={() => setCoupon(couponInput)}>Apply</Button>
+          <Button type="button" variant="outline" className="h-11 rounded-[6px] px-5" disabled={!couponInput.trim()} onClick={() => setCoupon(couponInput)}>Apply</Button>
         </div>
         {couponCode && q?.coupon && (
           <p className={cn('mt-2 text-xs', q.coupon.valid ? 'text-emerald-700' : 'text-destructive')}>
@@ -404,7 +408,7 @@ export default function CheckoutPage() {
           </dd>
         </div>
         {payNow > 0 && districtChosen && (
-          <div className="space-y-1.5 rounded-md border bg-background p-3">
+          <div className="space-y-1.5 rounded-[6px] border bg-background p-3">
             <div className="flex justify-between font-medium"><dt>Pay now</dt><dd><Money value={payNow} /></dd></div>
             <div className="flex justify-between text-muted-foreground"><dt>On delivery</dt><dd><Money value={Math.max(total - payNow, 0)} /></dd></div>
           </div>
@@ -434,7 +438,7 @@ export default function CheckoutPage() {
           <div className="pt-5">{summary}</div>
         </details>
 
-        <div className="space-y-8 px-4 pt-8 pb-32 sm:px-8 lg:pr-12 lg:pb-16 lg:pl-4">
+        <div className="space-y-8 px-4 pt-8 pb-12 sm:px-8 lg:pr-12 lg:pb-16 lg:pl-4">
           <Section id="co-contact" title="Contact" aside={!user && <Link to="/login?next=/checkout" className="text-sm underline underline-offset-4">Sign in</Link>}>
             <div className="grid gap-3">
               <Box error={err.phone?.message}>
@@ -458,8 +462,8 @@ export default function CheckoutPage() {
           </Section>
 
           <Section id="co-delivery" title="Delivery">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Box error={err.first_name?.message} className={cn(!split && 'sm:col-span-2')}>
+            <div className="grid grid-cols-2 gap-3">
+              <Box error={err.first_name?.message} className={cn(!split && 'col-span-2')}>
                 <Input id="first_name" autoComplete={split ? 'given-name' : 'name'} placeholder={split ? 'First name' : 'Full name'} aria-label={split ? 'First name' : 'Full name'} className={box}
                   {...form.register('first_name')} aria-invalid={!!err.first_name} />
               </Box>
@@ -469,40 +473,43 @@ export default function CheckoutPage() {
                     {...form.register('last_name')} aria-invalid={!!err.last_name} />
                 </Box>
               )}
-              <Box error={err.address?.message} className="sm:col-span-2">
+              <Box error={err.address?.message} className="col-span-2">
                 <Input id="address" autoComplete="street-address" placeholder="Address (house, road, area)" aria-label="Address" className={box}
                   {...form.register('address')} aria-invalid={!!err.address} />
               </Box>
               {fields.apartment !== 'hidden' && (
-                <Box error={err.apartment?.message} className="sm:col-span-2">
+                <Box error={err.apartment?.message} className="col-span-2">
                   <Input id="apartment" autoComplete="address-line2" placeholder={optional('Apartment, suite, etc.', fields.apartment)} aria-label="Apartment, suite, etc." className={box}
                     {...form.register('apartment')} aria-invalid={!!err.apartment} />
                 </Box>
               )}
-              <Box error={err.district?.message} className={cn(fields.area === 'hidden' && fields.postal_code === 'hidden' && 'sm:col-span-2')}>
+              <Box error={err.district?.message} className={cn(fields.area === 'hidden' && fields.postal_code === 'hidden' && 'col-span-2')}>
                 <Controller control={form.control} name="district" render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger ref={field.ref} id="district" className={cn(box, 'w-full data-[size=default]:h-12')} aria-label="District" aria-invalid={!!err.district}><SelectValue placeholder="District / City" /></SelectTrigger>
+                    <SelectTrigger ref={field.ref} id="district" className={cn(box, 'relative w-full data-[size=default]:h-11', field.value && 'pt-3.5')} aria-label="District" aria-invalid={!!err.district}>
+                      {field.value && <span className="pointer-events-none absolute top-1 left-3 text-[11px] text-muted-foreground">District / City</span>}
+                      <SelectValue placeholder="District / City" />
+                    </SelectTrigger>
                     <SelectContent className="max-h-72">{districts.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                   </Select>
                 )} />
               </Box>
               {fields.area !== 'hidden' && (
-                <Box error={err.area?.message} className={cn(fields.postal_code !== 'hidden' && 'sm:col-span-1')}>
+                <Box error={err.area?.message} className={cn(fields.postal_code !== 'hidden' && 'col-span-1')}>
                   <Input id="area" placeholder={optional('Area / Thana', fields.area)} aria-label="Area / Thana" className={box}
                     {...form.register('area')} aria-invalid={!!err.area} />
                 </Box>
               )}
               {fields.postal_code !== 'hidden' && (
-                <Box error={err.postal_code?.message} className={cn(fields.area !== 'hidden' && 'sm:col-span-2')}>
+                <Box error={err.postal_code?.message} className={cn(fields.area !== 'hidden' && 'col-span-2')}>
                   <Input id="postal_code" inputMode="numeric" autoComplete="postal-code" placeholder={optional('Postal code', fields.postal_code)} aria-label="Postal code" className={box}
                     {...form.register('postal_code')} aria-invalid={!!err.postal_code} />
                 </Box>
               )}
               {fields.note !== 'hidden' && (
-                <Box error={err.customer_note?.message} className="sm:col-span-2">
+                <Box error={err.customer_note?.message} className="col-span-2">
                   <Textarea id="customer_note" rows={2} placeholder={optional('Order note, e.g. call before coming', fields.note)} aria-label="Order note"
-                    className="min-h-0 resize-none rounded-md bg-background px-3 py-3 text-sm shadow-none" {...form.register('customer_note')} aria-invalid={!!err.customer_note} />
+                    className="min-h-0 resize-none rounded-[6px] bg-background px-3 py-3 text-sm shadow-none" {...form.register('customer_note')} aria-invalid={!!err.customer_note} />
                 </Box>
               )}
             </div>
@@ -510,7 +517,7 @@ export default function CheckoutPage() {
 
           <Section id="co-shipping" title="Shipping method">
             {!districtChosen ? (
-              <p className="rounded-md bg-muted/60 px-4 py-4 text-sm text-muted-foreground">Choose your district to see shipping methods.</p>
+              <p className="rounded-[6px] bg-muted/60 px-4 py-4 text-sm text-muted-foreground">Choose your district to see shipping methods.</p>
             ) : (
               <Controller control={form.control} name="delivery_method" render={({ field }) => (
                 <RadioGroup value={field.value} onValueChange={field.onChange} className={cn(choiceList, 'gap-0')}>
@@ -518,7 +525,7 @@ export default function CheckoutPage() {
                     const price = Math.max(baseDelivery + Number(m.extra_charge ?? 0), 0)
                     return (
                       <Label key={m.code} className={choiceRow}>
-                        <RadioGroupItem value={m.code} />
+                        <RadioGroupItem value={m.code} className={radio} />
                         <span className="flex-1 font-medium">{m.name}</span>
                         <span>{price <= 0 ? 'Free' : <Money value={price} />}</span>
                       </Label>
@@ -532,13 +539,13 @@ export default function CheckoutPage() {
           <Section id="co-payment" title="Payment">
             <p className="-mt-2 mb-3 text-xs text-muted-foreground">All transactions are secure and encrypted.</p>
             {!phoneValid ? (
-              <p className="rounded-md bg-muted/60 px-4 py-4 text-sm text-muted-foreground">Enter your mobile number to see how you can pay.</p>
+              <p className="rounded-[6px] bg-muted/60 px-4 py-4 text-sm text-muted-foreground">Enter your mobile number to see how you can pay.</p>
             ) : checkingPhone ? (
-              <div className="flex items-center gap-2 rounded-md bg-muted/60 px-4 py-4 text-sm text-muted-foreground" role="status">
+              <div className="flex items-center gap-2 rounded-[6px] bg-muted/60 px-4 py-4 text-sm text-muted-foreground" role="status">
                 <Spinner /> Checking payment options…
               </div>
             ) : blocked ? (
-              <div className="flex gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
+              <div className="flex gap-3 rounded-[6px] border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
                 <ShieldAlert className="mt-0.5 size-4 shrink-0" />
                 <div>
                   <p className="font-medium">{requirement?.message}</p>
@@ -550,7 +557,7 @@ export default function CheckoutPage() {
                 advancePay(`Pay ${requirement?.mode === 'FULL' ? 'for your order' : 'the advance'} to confirm`,
                   <>Then pay the remaining <Money value={requirement?.remaining_cod ?? Math.max(total - payNow, 0)} /> in cash when your parcel arrives.</>)
               ) : (
-                <div className="flex gap-3 rounded-md bg-amber-50 p-4 text-sm text-amber-950" role="status">
+                <div className="flex gap-3 rounded-[6px] bg-amber-50 p-4 text-sm text-amber-950" role="status">
                   <Info className="mt-0.5 size-4 shrink-0" />
                   <div>
                     <p className="font-medium">{requirement?.message}</p>
@@ -561,12 +568,12 @@ export default function CheckoutPage() {
             ) : (
               <div className="space-y-3">
                 {deferred && (
-                  <p className="flex items-center gap-2 rounded-md bg-muted/60 px-4 py-3 text-sm text-muted-foreground" role="status">
+                  <p className="flex items-center gap-2 rounded-[6px] bg-muted/60 px-4 py-3 text-sm text-muted-foreground" role="status">
                     <Info className="size-4 shrink-0" /> If this order needs an advance, you'll see the amount and how to pay right after you place it.
                   </p>
                 )}
                 {requirement?.mode === 'REVIEW' && (
-                  <p className="flex items-center gap-2 rounded-md bg-sky-50 px-4 py-3 text-sm text-sky-950" role="status">
+                  <p className="flex items-center gap-2 rounded-[6px] bg-sky-50 px-4 py-3 text-sm text-sky-950" role="status">
                     <PhoneCall className="size-4 shrink-0" /> We'll call you to confirm this order before it ships.
                   </p>
                 )}
@@ -574,7 +581,7 @@ export default function CheckoutPage() {
                   <RadioGroup value={field.value} onValueChange={field.onChange} className={cn(choiceList, 'gap-0')}>
                     {paymentOptions.map((o) => (
                       <Label key={o.value} className={choiceRow}>
-                        <RadioGroupItem value={o.value} />
+                        <RadioGroupItem value={o.value} className={radio} />
                         <span className="min-w-0 flex-1">
                           <span className="block font-medium">{o.label}</span>
                           <span className="block text-xs text-muted-foreground">{o.hint}</span>
@@ -593,16 +600,51 @@ export default function CheckoutPage() {
           </Section>
 
           {submitError && (
-            <div className="flex gap-2 rounded-md bg-red-50 p-3 text-sm text-red-800" role="alert">
+            <div className="flex gap-2 rounded-[6px] bg-red-50 p-3 text-sm text-red-800" role="alert">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" />
               <span>{submitError}{submitCode === 'INSUFFICIENT_STOCK' && <> <Link to="/cart" className="underline">Update cart</Link></>}</span>
             </div>
           )}
-          <div className="hidden lg:block">
-            <Button type="submit" size="lg" className="h-14 w-full rounded-md text-base" disabled={!canSubmit}>{buttonContent}</Button>
+          {/* Phones, like Shopify: discount, total and the button at the end of the form. */}
+          <div className="space-y-4 lg:hidden">
+            {mobileDiscount ? (
+              <div className="flex gap-2">
+                <Input value={couponInput} onChange={(e) => setCouponInput(e.target.value.toUpperCase())} placeholder="Discount code" aria-label="Discount code" className={box} autoFocus />
+                <Button type="button" variant="outline" className="h-11 rounded-[6px] px-4" disabled={!couponInput.trim()} onClick={() => setCoupon(couponInput)}>Apply</Button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setMobileDiscount(true)} className="inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-xs font-medium">
+                <Tag className="size-3.5" /> Add discount
+              </button>
+            )}
+            {couponCode && q?.coupon && (
+              <p className={cn('text-xs', q.coupon.valid ? 'text-emerald-700' : 'text-destructive')}>{q.coupon.message}</p>
+            )}
+            <button type="button" onClick={() => setSummaryOpen((v) => !v)} className="flex w-full items-center gap-3 text-left" aria-expanded={summaryOpen}>
+              <span className="relative shrink-0">
+                <img src={imageUrl(items[0]?.image ?? null, 80)} alt="" className="size-10 rounded-[6px] border bg-background object-cover" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">Total</span>
+                <span className="block text-xs text-muted-foreground">{itemCount} item{itemCount === 1 ? '' : 's'}</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">{currency}</span>
+                <span className="text-lg font-semibold">{districtChosen ? <Money value={total} /> : <Money value={subtotal} />}</span>
+                <ChevronDown className={cn('size-4 transition-transform', summaryOpen && 'rotate-180')} />
+              </span>
+            </button>
+            {summaryOpen && <div className="rounded-[6px] border bg-muted/40 p-4">{summary}</div>}
+            {payNow > 0 && districtChosen && (
+              <p className="text-sm">Pay now <b><Money value={payNow} /></b> · on delivery <Money value={Math.max(total - payNow, 0)} /></p>
+            )}
+          </div>
+          <div>
+            <Button type="submit" size="lg" className="h-12 w-full rounded-[6px] text-base font-semibold lg:h-14" disabled={!canSubmit}>{buttonContent}</Button>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="size-3.5" /> Your details are only used to deliver this order
             </p>
+            <Link to="/policies/privacy" className="mt-6 inline-block text-xs underline underline-offset-4 text-primary">Privacy policy</Link>
           </div>
         </div>
 
@@ -610,17 +652,6 @@ export default function CheckoutPage() {
           <div className="sticky top-24">{summary}</div>
         </aside>
 
-        {/* Phones: total and confirm button always in reach. */}
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
-          {submitError && <p className="mb-2 text-xs text-destructive">{submitError}</p>}
-          <div className="mx-auto flex max-w-5xl items-center gap-4">
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">{payNow > 0 ? 'Pay now' : 'Total'}</p>
-              <p className="text-lg leading-tight font-semibold">{districtChosen ? <Money value={payNow > 0 ? payNow : total} /> : <span className="text-sm font-normal text-muted-foreground">Choose district</span>}</p>
-            </div>
-            <Button type="submit" size="lg" className="h-12 flex-1 rounded-md text-base" disabled={!canSubmit}>{buttonContent}</Button>
-          </div>
-        </div>
       </form>
     </div>
   )
