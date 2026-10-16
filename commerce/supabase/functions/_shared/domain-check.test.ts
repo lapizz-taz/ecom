@@ -193,6 +193,10 @@ describe('domain check on Cloudflare (Cloudflare for SaaS)', () => {
     const found = await diagnose('www.shop.com', { target, expect: expect_, fetcher: cfFetch(zone) })
     expect(found.records.find((r) => r.type === 'TXT')).toMatchObject({ ok: true, note: 'Found' })
     expect(found.issues.map((i) => i.code)).not.toContain('TXT_MISSING')
+    // Added again: the hosting asks for a new code while the old one is still in DNS.
+    const again = await diagnose('www.shop.com', { target, expect: [{ ...expect_[0], value: 'new-456' }], fetcher: cfFetch(zone) })
+    expect(again.records.find((r) => r.type === 'TXT')).toMatchObject({ ok: false, note: 'Has an old value (abc-123) — change it to this one' })
+    expect(again.issues.find((i) => i.code === 'TXT_MISSING')?.title).toBe('Verification record has an old value')
   })
 
   it('names DNS companies and old website builders', () => {

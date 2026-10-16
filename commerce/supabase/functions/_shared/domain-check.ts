@@ -236,11 +236,16 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const expected = opts.expect ?? []
   const txtAnswers = await Promise.all(expected.map((e) => doh(fetcher, RESOLVERS[0].url, e.name, 'TXT')))
   const missingTxt: ExpectedRecord[] = []
+  const staleTxt: string[] = []
   expected.forEach((e, i) => {
-    const found = only(txtAnswers[i], 'TXT').some((v) => v.replace(/"/g, '').includes(e.value))
+    const values = only(txtAnswers[i], 'TXT').map((v) => v.replace(/"/g, '').trim())
+    const found = values.some((v) => v.includes(e.value))
+    // A record at this name with another value: left over from before the domain was added again.
+    const stale = found ? [] : values.filter((v) => v.length > 0)
     if (!found) missingTxt.push(e)
+    staleTxt.push(...stale)
     records.push({ type: 'TXT', name: e.name === domain ? name : e.name.replace(new RegExp(`\\.${apexOf(domain).replace(/\./g, '\\.')}$`), ''), value: e.value, ok: found,
-      note: found ? 'Found' : 'Not found yet — add it at your domain provider' })
+      note: found ? 'Found' : stale.length ? `Has an old value (${stale[0]}) — change it to this one` : 'Not found yet — add it at your domain provider' })
   })
 
   const pointedByDns = answersPoint(kind, a, target) || cnameValues.some(m.cname) || flattened || (proxied && servedByUs)
@@ -283,7 +288,9 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
         : `The old address is no longer in your records but some DNS servers still remember it. It clears by itself within a few hours.${dnsHost.mixed ? '' : ' If it keeps coming back after that, check your nameservers.'}` })
   }
   if (missingTxt.length) {
-    issues.push({ code: 'TXT_MISSING', severity: 'error', title: 'Verification record missing',
+    issues.push(staleTxt.length ? { code: 'TXT_MISSING', severity: 'error', title: 'Verification record has an old value',
+      detail: `The TXT record ${missingTxt.map((t) => t.name.split('.')[0]).join(', ')} still holds ${staleTxt[0]}. The domain was added again, which gives a new code: edit the record and paste the value shown below.` }
+      : { code: 'TXT_MISSING', severity: 'error', title: 'Verification record missing',
       detail: `Add the TXT record ${missingTxt.map((t) => t.name.split('.')[0]).join(', ')} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it.` })
   }
   // Nothing answered at all: say so instead of claiming the records are missing.
