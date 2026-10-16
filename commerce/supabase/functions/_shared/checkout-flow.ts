@@ -34,7 +34,7 @@ interface FraudCheckRow {
 }
 
 /** How long the customer waits for the courier lookup at checkout (a slow source is left out). */
-export const CHECKOUT_LOOKUP_MS = 8_000
+export const CHECKOUT_LOOKUP_MS = 4_000
 
 export async function fraudCheckFor(admin: SupabaseClient, phone: string, context: Record<string, unknown>, opts: { cacheOnly?: boolean; timeoutMs?: number } = {}): Promise<string | null> {
   const settings = await getSettings<FraudSettings>(admin, 'fraud')
