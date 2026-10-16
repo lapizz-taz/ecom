@@ -159,7 +159,7 @@ function Issues({ diag }: { diag: DomainDiagnosis }) {
 /** Where each DNS company keeps the records, and what trips people up there. */
 const PROVIDER_STEPS: Record<string, { where: string; tip?: string }> = {
   Hostinger: { where: 'hPanel → Domains → your domain → DNS / Nameservers → DNS records',
-    tip: 'For @ pick type ALIAS (Hostinger has no CNAME at @). Delete the old A record for @ first, and keep TTL at 300.' },
+    tip: 'Use www: add a CNAME for www to the address below (edit the existing www record). The root (@) cannot connect at Hostinger, so forward it to https://www.your-domain under Domains → your domain → Domain forwarding. Keep TTL at 300.' },
   Namecheap: { where: 'Domain List → Manage → Advanced DNS → Host records', tip: 'For @ pick ALIAS Record. Delete the URL Redirect / parking records for @.' },
   GoDaddy: { where: 'My Products → your domain → DNS → Manage DNS', tip: 'GoDaddy has no ALIAS at @: delete the A record for @ and use www, or move DNS to Cloudflare.' },
   Cloudflare: { where: 'dash.cloudflare.com → your domain → DNS → Records', tip: 'Set each record to DNS only (grey cloud). A CNAME at @ works as is.' },
@@ -200,9 +200,11 @@ function DnsHost({ diag }: { diag: DomainDiagnosis }) {
 }
 
 /** The full status of one domain: DNS records, regions, HTTPS, target and type. */
-export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove, onMakePrimary, onBack, inDialog }: {
+export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove, onMakePrimary, onUseWww, onBack, inDialog }: {
   d: StoreDomain; primary: string | null; canEdit: boolean; checking: boolean
   onCheck: () => void; onRemove: () => void; onMakePrimary: () => Promise<unknown>; onBack: () => void
+  /** The root cannot connect at this DNS company: connect www.<domain> and make it primary. */
+  onUseWww?: () => Promise<unknown>
   /** Shown inside the domain popup: no back link, edge-to-edge sections. */
   inDialog?: boolean
 }) {
@@ -211,6 +213,8 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const [typeOpen, setTypeOpen] = useState(false)
   const [type, setType] = useState<'primary' | 'redirect'>(d.is_primary ? 'primary' : 'redirect')
   const [saving, setSaving] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const useWww = diag?.issues.some((i) => i.code === 'USE_WWW') && canEdit && onUseWww
   const okRegions = diag?.regions.filter((r) => r.ok).length ?? 0
   const notes = diag?.issues.filter((i) => i.severity === 'info') ?? []
   const pointing = diag ? (diag.pointed ? (diag.issues.some((i) => i.severity !== 'info') ? 'warn' : 'ok') : 'bad') : 'wait'
@@ -237,6 +241,12 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>
             {diag && <Issues diag={diag} />}
+            {useWww && (
+              <Button size="sm" disabled={switching} onClick={async () => {
+                setSwitching(true)
+                try { await onUseWww() } finally { setSwitching(false) }
+              }}>{switching && <Spinner />} Use www.{d.domain} instead</Button>
+            )}
             {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} />}
             {diag && diag.records.length > 0 && (
               <div className="space-y-1.5">
