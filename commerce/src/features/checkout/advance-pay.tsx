@@ -20,7 +20,8 @@ const ACCENT: Record<string, string> = {
 export function AdvancePay({ title, note, amount, gateways, accounts, via, onVia, manual, onManual, errors }: {
   title: string
   note?: ReactNode
-  amount: number
+  /** null until the delivery charge is known (no district yet). */
+  amount: number | null
   gateways: Gateway[]
   accounts: PaymentAccount[]
   via: string
@@ -42,7 +43,9 @@ export function AdvancePay({ title, note, amount, gateways, accounts, via, onVia
           <p className="font-medium">{title}</p>
           {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
         </div>
-        <p className="text-xl font-semibold tabular-nums"><Money value={amount} /></p>
+        {amount === null
+          ? <p className="text-right text-xs text-muted-foreground">Choose your district<br />to see the amount</p>
+          : <p className="text-xl font-semibold tabular-nums"><Money value={amount} /></p>}
       </div>
       {options.length > 1 && (
         <div role="radiogroup" aria-label="How to pay" className="grid gap-2 sm:grid-cols-2">
@@ -60,7 +63,7 @@ export function AdvancePay({ title, note, amount, gateways, accounts, via, onVia
         </div>
       )}
       {via === 'manual' ? (
-        <AdvancePaymentFields bare title="" amount={amount} accounts={accounts} value={manual} onChange={onManual} errors={errors} />
+        <AdvancePaymentFields bare title="" amount={amount ?? 0} accounts={accounts} value={manual} onChange={onManual} errors={errors} />
       ) : chosen && (
         <p className="text-xs text-muted-foreground">You'll approve the payment on {chosen.label.replace(/^Pay with /, '')}'s secure page and come straight back. Your order is confirmed the moment it goes through.</p>
       )}

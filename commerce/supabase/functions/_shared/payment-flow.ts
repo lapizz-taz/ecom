@@ -1,20 +1,27 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotificationsInBackground } from './dispatch.ts'
+import { logEvent } from './monitoring.ts'
 import type { PaymentProvider, VerifiedPayment } from './payments/types.ts'
 import { merchantOf, rpc } from './supabase.ts'
 
 /**
  * Records a provider-verified payment. confirm_payment() is idempotent per
  * (provider, event id), so retries and duplicate webhooks are harmless.
+ *
+ * `attempt` is the gateway session the verdict is about (a browser return or
+ * IPN). A payment can have several attempts (the customer came back and tried
+ * again): one of them failing does not fail the payment while others may still
+ * be paid, so it stays pending and the reconcile job checks every attempt.
  */
 export async function recordVerifiedPayment(
   admin: SupabaseClient,
   provider: string,
   verified: VerifiedPayment,
+  attempt?: string,
 ): Promise<{ status: string; orderNumber: string | null }> {
   let query = admin
     .from('payments')
-    .select('currency, orders(order_number)')
+    .select('currency, status, provider_transaction_id, metadata, orders(order_number)')
     .eq('reference', verified.reference)
     .eq('provider', provider)
   const merchant = merchantOf(admin)
@@ -22,6 +29,11 @@ export async function recordVerifiedPayment(
   const { data: payment } = await query.maybeSingle()
   const orderNumber = (payment?.orders as { order_number?: string } | null)?.order_number ?? null
   if (!payment) return { status: 'unknown_payment', orderNumber: null }
+
+  const sessions = ((payment.metadata as { sessions?: string[] } | null)?.sessions ?? [])
+  if (!verified.success && attempt && payment.status === 'PENDING' && sessions.some((s) => s !== attempt)) {
+    return { status: 'attempt_failed', orderNumber }
+  }
 
   // A different currency is never accepted as payment of the order amount.
   const amount = verified.currency && verified.currency !== payment.currency ? null : verified.amount
@@ -37,6 +49,13 @@ export async function recordVerifiedPayment(
     p_success: verified.success,
   })
   if (result.status === 'succeeded' || result.status === 'failed') dispatchNotificationsInBackground(merchantOf(admin))
+  // Paid again on another attempt of a payment already paid: the money is real, so staff must see it.
+  if (result.status === 'already_succeeded' && verified.success && verified.providerTransactionId
+      && verified.providerTransactionId !== payment.provider_transaction_id) {
+    void logEvent({ level: 'ERROR', category: 'PAYMENT', source: 'payments', merchantId: merchantOf(admin),
+      message: `${provider} took a second payment for an order already paid: refund one`,
+      context: { reference: verified.reference, order_number: orderNumber, transaction: verified.providerTransactionId, amount: verified.amount } })
+  }
   return { status: result.status, orderNumber }
 }
 

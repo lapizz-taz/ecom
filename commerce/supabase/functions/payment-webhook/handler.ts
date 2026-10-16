@@ -65,7 +65,7 @@ export default (
       if (found?.reference) params.reference = found.reference
     }
     const verified = await provider.verifyCallback(params)
-    const result = await recordVerifiedPayment(admin, providerCode, verified)
+    const result = await recordVerifiedPayment(admin, providerCode, verified, session || undefined)
     // Unknown references are acknowledged so the gateway stops retrying, but logged.
     if (result.status === 'unknown_payment') {
       void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'payment-webhook', message: `${providerCode} notification for an unknown payment`,

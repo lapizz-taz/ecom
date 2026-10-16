@@ -35,13 +35,28 @@ function text(value: unknown): string | null {
   return value === null || value === undefined || value === '' ? null : String(value)
 }
 
+/**
+ * PayStation refuses an invoice number it has seen before (status_code 1008,
+ * "Duplicate invoice number"), and a payment can be tried several times (the
+ * customer comes back and pays again, maybe after trying bKash). So each attempt
+ * gets its own invoice: our reference plus "-T<time>".
+ */
+export function paystationInvoice(reference: string, now = Date.now()): string {
+  return `${reference}-T${now.toString(36).toUpperCase()}`
+}
+
+/** Our payment reference inside an invoice number (older attempts used the reference itself). */
+export function paystationReference(invoice: string): string {
+  return invoice.replace(/-T[0-9A-Z]+$/, '')
+}
+
 const SUCCESS = /^(success|successful|completed|paid)$/i
 const FAILED = /^(failed|failure|fail|cancel|canceled|cancelled|declined|expired)$/i
 
 export class PaystationProvider implements PaymentProvider {
   readonly code = 'paystation'
 
-  constructor(private readonly config: PaystationConfig, private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly config: PaystationConfig, private readonly fetchFn: FetchFn = fetch, private readonly now: () => number = Date.now) {}
 
   private get base(): string {
     return (this.config.baseUrl || (this.config.sandbox ? PAYSTATION_SANDBOX_URL : PAYSTATION_URL)).replace(/\/+$/, '')
@@ -70,10 +85,11 @@ export class PaystationProvider implements PaymentProvider {
 
   async initiate(ctx: PaymentInitContext): Promise<PaymentInitResult> {
     const { payment, order, urls } = ctx
+    const invoice = paystationInvoice(payment.reference, this.now())
     const body = await this.post('/initiate-payment', {
       merchantId: this.config.merchantId,
       password: this.config.password,
-      invoice_number: payment.reference,
+      invoice_number: invoice,
       currency: payment.currency || 'BDT',
       payment_amount: payment.amount.toFixed(2),
       pay_with_charge: this.config.payWithCharge ? '1' : '0',
@@ -89,7 +105,7 @@ export class PaystationProvider implements PaymentProvider {
     if (String(body.status_code) !== '200' || String(body.status).toLowerCase() !== 'success' || !url) {
       throw new Error(`PayStation could not start the payment: ${text(body.message) ?? `status ${text(body.status_code) ?? 'unknown'}`}`)
     }
-    return { type: 'redirect', redirectUrl: url, session: payment.reference }
+    return { type: 'redirect', redirectUrl: url, session: invoice }
   }
 
   /**
@@ -108,7 +124,7 @@ export class PaystationProvider implements PaymentProvider {
     const state = text(data.trx_status) ?? text(data.status) ?? ''
     if (SUCCESS.test(state) && text(data.trx_id)) {
       return {
-        reference: text(data.invoice_number) ?? invoice,
+        reference: paystationReference(text(data.invoice_number) ?? invoice),
         providerTransactionId: text(data.trx_id),
         amount: Number(data.payment_amount ?? data.amount),
         currency: text(data.currency) ?? 'BDT',
@@ -120,7 +136,7 @@ export class PaystationProvider implements PaymentProvider {
     }
     if (FAILED.test(state)) {
       return {
-        reference: invoice,
+        reference: paystationReference(invoice),
         providerTransactionId: null,
         amount: null,
         currency: null,
@@ -144,7 +160,7 @@ export class PaystationProvider implements PaymentProvider {
     const callbackStatus = (params.status ?? '').toLowerCase()
     if (FAILED.test(callbackStatus) && String(body.status_code) !== '200') {
       return {
-        reference: invoice, providerTransactionId: null, amount: null, currency: null, success: false,
+        reference: paystationReference(invoice), providerTransactionId: null, amount: null, currency: null, success: false,
         eventId: `paystation:${invoice}:${callbackStatus}`, eventType: `callback.${callbackStatus}`,
         reason: callbackStatus.startsWith('cancel') ? 'Cancelled on the PayStation page' : 'The payment failed on the PayStation page',
         raw: { callback: params, status: body },
@@ -159,7 +175,7 @@ export class PaystationProvider implements PaymentProvider {
     if (result) return result
     if (ageMinutes < 90) return null
     return {
-      reference: session, providerTransactionId: null, amount: null, currency: null, success: false,
+      reference: paystationReference(session), providerTransactionId: null, amount: null, currency: null, success: false,
       eventId: `paystation:${session}:expired`, eventType: 'reconcile.expired',
       reason: 'No payment arrived from PayStation', raw: body,
     }
