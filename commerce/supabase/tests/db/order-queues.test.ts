@@ -297,3 +297,29 @@ describe('incomplete checkouts and bulk moves', () => {
       expect((await row(db, b.id)).status).toBe('PENDING')
     }))
 })
+
+describe('web orders waiting for the advance', () => {
+  it('count in their own tab, not in the call tabs', () =>
+    inTx(async (db) => {
+      const p = await createProduct(db, { price: 500, stock: 10 })
+      const agent = await createStaff(db, 'ORDER_MANAGER')
+      await asUser(db, agent)
+      const before = await value<{ web: Record<string, number>; advance: number }>(db, `select public.admin_order_queue_counts()`)
+      const order = await placeOrder(db, { phone: '01711000502', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
+      await asSystem(db)
+      await db.query(`update public.orders set status = 'ADVANCE_REQUIRED' where id = $1`, [order.id])
+
+      await asUser(db, agent)
+      const after = await value<{ web: Record<string, number>; advance: number }>(db, `select public.admin_order_queue_counts()`)
+      expect(after.advance).toBe(before.advance + 1)
+      expect(after.web.PROCESSING ?? 0).toBe(before.web.PROCESSING ?? 0)
+
+      // The tab's list (statuses = ADVANCE_REQUIRED) has it; Processing without it does not.
+      const tab = await value<{ items: Array<{ id: string }> }>(db,
+        `select public.admin_search_orders('{"queue": "web", "statuses": ["ADVANCE_REQUIRED"]}'::jsonb)`)
+      expect(tab.items.map((o) => o.id)).toContain(order.id)
+      const processing = await value<{ items: Array<{ id: string }> }>(db,
+        `select public.admin_search_orders('{"queue": "web", "review_status": "PROCESSING", "statuses": ["CONFIRMATION_REQUIRED", "PENDING"]}'::jsonb)`)
+      expect(processing.items.map((o) => o.id)).not.toContain(order.id)
+    }))
+})
