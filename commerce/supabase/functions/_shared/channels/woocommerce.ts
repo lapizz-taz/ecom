@@ -4,7 +4,7 @@
 //   * API keys created by hand (WooCommerce → Settings → Advanced → REST API).
 // Only HTTPS sites are accepted, so keys never travel in clear text. Webhooks
 // carry X-WC-Webhook-Signature (HMAC of the body with a secret we choose).
-import { type Check, ChannelError, clean, hmacBase64, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
+import { type Check, ChannelError, clean, hmacBase64, ipAddress, money, type NormalizedOrder, safeEqual, touchFrom } from './common.ts'
 import type { CatalogItem } from './shopify.ts'
 import { pluginAttribution, PLUGIN_SLUG } from './woo-plugin.ts'
 import { env } from '../env.ts'
@@ -389,6 +389,7 @@ export interface WooOrder {
   id: number; number: string; status: string; currency: string; date_created_gmt?: string; date_paid_gmt?: string | null
   total: string; shipping_total: string; discount_total: string; total_tax?: string; payment_method?: string; payment_method_title?: string
   customer_note?: string; billing?: WooAddress; shipping?: WooAddress
+  customer_ip_address?: string; customer_user_agent?: string
   line_items: Array<{ product_id: number; variation_id: number; name: string; quantity: number; subtotal: string; sku?: string; image?: { src?: string } | null; meta_data?: Array<{ display_key?: string; display_value?: string }> }>
   meta_data?: Array<{ key: string; value: unknown }>
 }
@@ -440,6 +441,7 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
     gateway: clean(o.payment_method_title),
     note: clean(o.customer_note),
     attribution: fromPlugin ?? (touch ? { first_touch: touch, last_touch: touch } : null),
+    client: ipAddress(o.customer_ip_address) ? { ip: ipAddress(o.customer_ip_address), user_agent: clean(o.customer_user_agent)?.slice(0, 400) ?? null } : null,
     // Completed in WooCommerce: already sent, so not imported.
     fulfillment_status: o.status === 'completed' ? 'FULFILLED' : 'UNFULFILLED',
     // Line subtotals and shipping are always without tax in WooCommerce.

@@ -236,6 +236,11 @@ function afterImport(admin: SupabaseClient, r: IngestResult) {
 
 async function ingest(admin: SupabaseClient, c: Channel, order: NormalizedOrder, via: 'WEBHOOK' | 'SYNC' | 'RETRY'): Promise<IngestResult> {
   const r = await rpc<IngestResult>(admin, 'channel_ingest_order', { p_channel_id: c.id, p_order: order, p_via: via })
+  // The buyer's IP and browser from the store's own checkout (kept only when the order is new to us).
+  if (r.status === 'IMPORTED' && r.order_id && order.client?.ip) {
+    await rpc(admin, 'record_order_client', { p_order_id: r.order_id, p_ip: order.client.ip, p_user_agent: order.client.user_agent })
+      .catch((error) => console.error('Order IP not recorded:', (error as Error).message))
+  }
   if (r.status === 'FAILED') {
     void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'channels', message: `${c.name}: order ${order.number ?? order.external_id} not imported — ${r.error}`, context: { channel: c.id, external_id: order.external_id } })
   }

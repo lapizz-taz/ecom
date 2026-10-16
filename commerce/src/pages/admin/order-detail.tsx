@@ -29,6 +29,7 @@ import {
   RetainAdvanceDialog, ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
+import { OrderClientInfo } from '@/features/orders/order-client-info'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { eventLabel } from '@/features/sms/sms-text'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
@@ -556,6 +557,10 @@ export default function OrderDetailPage() {
                   <p className="text-xs text-muted-foreground">Lifetime spend <Money value={o.customer.total_spent} /> · cancelled {o.customer.cancelled_orders}</p>
                 </>
               )}
+              <div className="border-t pt-3">
+                <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Placed from</p>
+                <OrderClientInfo orderId={o.id} ip={o.client_ip} userAgent={o.user_agent} />
+              </div>
             </CardContent>
           </Card>
 
