@@ -123,7 +123,7 @@ class FFC_Updater {
 			'requires'     => $m['requires'],
 			'tested'       => $m['tested'],
 			'requires_php' => $m['requires_php'],
-			'icons'        => array(),
+			'icons'        => self::icons(),
 		);
 	}
 
@@ -150,6 +150,12 @@ class FFC_Updater {
 		return $transient;
 	}
 
+	/** The Fullfilio mark on the Plugins and Updates screens (shipped inside the plugin). */
+	private static function icons() {
+		$svg = FFC_URL . 'assets/icon.svg';
+		return array( 'svg' => $svg, '1x' => $svg, '2x' => $svg, 'default' => $svg );
+	}
+
 	/** "View details" on the Plugins screen. */
 	public static function info( $result, $action, $args ) {
 		if ( 'plugin_information' !== $action || ! is_object( $args ) || empty( $args->slug ) || self::SLUG !== $args->slug ) {
@@ -169,6 +175,7 @@ class FFC_Updater {
 			'tested'        => $m['tested'],
 			'requires_php'  => $m['requires_php'],
 			'download_link' => $m['package'],
+			'icons'         => self::icons(),
 			'sections'      => array(
 				'description' => $m['description'] ? $m['description'] : '<p>Connects this WooCommerce store to Fullfilio: instant orders, unfinished checkouts, checkout protection, ad tracking and stock.</p>',
 				'changelog'   => $m['changelog'],

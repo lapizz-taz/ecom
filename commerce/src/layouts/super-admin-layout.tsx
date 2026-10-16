@@ -44,18 +44,24 @@ const THEMES: Array<{ value: AdminTheme; label: string; icon: typeof Sun }> = [
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { can } = usePlatform()
+  const { search } = useLocation()
+  // Two links can share a page (one opens a tab): the one whose ?query matches is the active one.
+  const queryMatches = (to: string) => {
+    const q = to.split('?')[1]
+    return q ? search.includes(q) : !PLATFORM_NAV.some((i) => i.to.startsWith(`${to}?`) && search.includes(i.to.split('?')[1]))
+  }
   return (
     <nav className="flex flex-col gap-0.5 px-3 py-2" aria-label="Super Admin">
       {PLATFORM_NAV.filter((item) => can(item.module)).map((item) => (
         <NavLink
-          key={item.module}
+          key={item.to}
           to={item.to}
           end={item.to === '/super-admin'}
           onClick={onNavigate}
-          className={({ isActive }) => cn(
+          className={({ isActive: path }) => { const isActive = path && queryMatches(item.to); return cn(
             'group flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13.5px] text-sidebar-foreground/72 transition-[color,background-color,box-shadow] hover:bg-sidebar-accent hover:text-sidebar-foreground',
             isActive && 'bg-sidebar-active font-medium text-sidebar-foreground shadow-xs ring-1 ring-sidebar-border hover:bg-sidebar-active',
-          )}
+          ) }}
         >
           <item.icon className="size-[17px] shrink-0 text-sidebar-muted group-aria-[current=page]:text-brand" />
           <span className="truncate">{item.label}</span>

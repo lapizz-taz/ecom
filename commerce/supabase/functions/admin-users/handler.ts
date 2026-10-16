@@ -22,6 +22,7 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('set_role'), user_id: z.uuid(), role: roleSchema, is_active: z.boolean().default(true) }),
   z.object({ action: z.literal('deactivate'), user_id: z.uuid() }),
   z.object({ action: z.literal('reactivate'), user_id: z.uuid() }),
+  z.object({ action: z.literal('delete'), user_id: z.uuid() }),
 ])
 
 export default (
@@ -36,6 +37,7 @@ export default (
         const { data: profiles, error } = await staff.client
           .from('profiles')
           .select('id, email, full_name, phone, is_active, last_seen_at, created_at, roles(code, name)')
+          .is('removed_at', null)
           .order('created_at')
         if (error) throw new HttpError(500, 'Could not load staff', 'INTERNAL')
         const lastSignIn: Record<string, string | null> = {}
@@ -103,6 +105,19 @@ export default (
           if (clerkId) await setClerkUserBanned(clerkId, !active).catch((e) => { if (active) throw e })
         }
         return json(req, { profile })
+      }
+
+      case 'delete': {
+        // The database checks who may delete whom (deactivated first, never yourself, rank rules).
+        await rpc(staff.client, 'admin_staff_remove', { p_user_id: input.user_id })
+        await admin.auth.admin.updateUserById(input.user_id, { ban_duration: '876000h' })
+        if (await clerkEnabled()) {
+          const { data: login } = await admin.auth.admin.getUserById(input.user_id)
+          const clerkId = (login.user?.app_metadata?.clerk_user_id as string | undefined)
+            ?? (login.user?.email ? (await findClerkUserByEmail(login.user.email))?.id : undefined)
+          if (clerkId) await setClerkUserBanned(clerkId, true).catch(() => undefined)
+        }
+        return json(req, { ok: true })
       }
     }
   })

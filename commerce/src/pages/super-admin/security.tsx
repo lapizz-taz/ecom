@@ -106,7 +106,7 @@ function Refusals() {
 function credentialLabel(key: string): { label: string; to?: string } {
   if (key.startsWith('sms')) return { label: 'Platform SMS provider', to: '/super-admin/sms' }
   if (key.includes('bd_courier') || key.includes('courier_history')) return { label: 'BD Courier', to: '/super-admin/bd-courier' }
-  if (key.startsWith('billing') || key.includes('gateway.')) return { label: 'Payments to the platform', to: '/super-admin/subscriptions?tab=rules' }
+  if (key.startsWith('billing') || key.includes('gateway.')) return { label: 'Payments to the platform', to: '/super-admin/subscriptions?tab=payments' }
   if (key.startsWith('voicedrive.trunk')) return { label: 'PBX trunk password (one merchant)', to: '/super-admin/pbx' }
   if (key.startsWith('voicedrive')) return { label: key.endsWith('turn') ? 'PBX TURN secret' : 'PBX gateway token', to: '/super-admin/pbx?tab=gateway' }
   return { label: key }

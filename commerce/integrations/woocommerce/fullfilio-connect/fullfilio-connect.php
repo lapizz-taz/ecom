@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Fullfilio Connect for WooCommerce
  * Description:       Connects this WooCommerce store to Fullfilio: orders arrive instantly, unfinished checkouts are captured, risky orders are checked at checkout (with an advance payment by delivery level) and every order carries the ad it came from.
- * Version:           1.5.1
+ * Version:           1.5.2
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Fullfilio
@@ -19,7 +19,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FFC_VERSION', '1.5.1' );
+define( 'FFC_VERSION', '1.5.2' );
 define( 'FFC_FILE', __FILE__ );
 define( 'FFC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FFC_URL', plugin_dir_url( __FILE__ ) );

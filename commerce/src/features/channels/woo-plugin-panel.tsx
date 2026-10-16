@@ -45,6 +45,14 @@ function checks(r: PluginReport | null | undefined, online: boolean): Array<{ to
     : { tone: 'warn', label: 'Background tasks', detail: 'WP-Cron is off and Action Scheduler is missing: events wait for a real cron job' })
   out.push(r.checkout === 'classic' || r.checkout === 'blocks' ? { tone: 'ok', label: 'Checkout', detail: `${r.checkout === 'blocks' ? 'Block' : 'Classic'} checkout — both are supported` }
     : { tone: 'warn', label: 'Checkout', detail: 'No standard checkout page found; unfinished-checkout capture may miss the form' })
+  if (r.advance) {
+    const methods = r.advance.online_gateways ?? []
+    out.push(!r.advance.follows_fullfilio ? { tone: 'warn', label: 'Advance payment', detail: 'Off: turn on the order shield so riskier customers pay the advance set in Settings → Fraud' }
+      : methods.length ? { tone: 'ok', label: 'Advance payment', detail: `Follows Settings → Fraud · taken online by ${methods.join(', ')}` }
+        : { tone: 'fail', label: 'Advance payment', detail: 'No online payment method is switched on in WooCommerce (bKash, SSLCommerz, Nagad…), so a customer who needs an advance cannot order. Add one in WooCommerce → Settings → Payments.' })
+  } else if (online) {
+    out.push({ tone: 'warn', label: 'Advance payment', detail: 'Update the plugin to 1.5.2 so it collects the advance set in Settings → Fraud' })
+  }
   const failed = r.outbox?.failed ?? 0
   out.push(failed ? { tone: 'fail', label: 'Delivery queue', detail: `${failed} event(s) could not be delivered. In WordPress: WooCommerce → Fullfilio → "Send again".` }
     : { tone: 'ok', label: 'Delivery queue', detail: `${r.outbox?.pending ?? 0} waiting · ${r.outbox?.sent ?? 0} delivered this week` })

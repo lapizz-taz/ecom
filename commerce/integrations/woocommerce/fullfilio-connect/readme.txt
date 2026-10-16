@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.5.1
+Stable tag: 1.5.2
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -34,6 +34,11 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.5.2 =
+* The advance payment follows Fullfilio (Settings → Fraud) whenever the order shield is on: the customer pays the advance online and the rest on delivery. Your own per-level amounts on this site are now an optional extra.
+* Fullfilio sees whether an online payment method is ready to take the advance.
+* The Fullfilio icon shows on the Plugins and Updates screens.
 
 = 1.5.1 =
 * The order shield checks the phone number as soon as it is typed (classic and block checkout), so the courier record is ready when the order is placed — even with the advance payment off.

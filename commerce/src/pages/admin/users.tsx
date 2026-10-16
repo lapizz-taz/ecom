@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LayoutGrid, List, Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react'
+import { LayoutGrid, List, Plus, ShieldCheck, Trash2, UserCheck, UserX } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -20,7 +20,7 @@ import { formatDateTime, initials, timeAgo, titleCase } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { listDepartments, listEmployees } from '@/services/hr'
 import {
-  createStaffUser, listPermissions, listRoles, listStaffUsers, type RoleRow, setRolePermission, setStaffActive, setStaffRole, type StaffUser,
+  createStaffUser, deleteStaff, listPermissions, listRoles, listStaffUsers, type RoleRow, setRolePermission, setStaffActive, setStaffRole, type StaffUser,
 } from '@/services/users'
 
 export default function UsersPage() {
@@ -62,6 +62,11 @@ function StaffList() {
     mutationFn: ({ u, active }: { u: StaffUser; active: boolean }) => setStaffActive(u.id, active),
     onSuccess: (_, { active }) => { toast.success(active ? 'Access restored' : 'Access removed; they are signed out at their next request'); refresh() },
   })
+  const remove = useMutation({
+    mutationFn: (u: StaffUser) => deleteStaff(u.id),
+    onSuccess: () => { toast.success('Staff member deleted'); refresh() },
+    onError: (e) => toast.error((e as Error).message.replace(/^[A-Z_]+: /, '')),
+  })
   // Only roles at or below the caller's own rank can be granted (the database enforces this too).
   const isOwner = access?.role === 'OWNER'
   const rankOf = (code: string | undefined) => roles.data?.find((r) => r.code === code)?.rank ?? 0
@@ -102,7 +107,13 @@ function StaffList() {
       cell: (u) => !manageable(u) ? null : u.is_active ? (
         <Button size="sm" variant="ghost" onClick={() => confirm(`Remove ${u.email}'s access? You can restore it later.`) && setActive.mutate({ u, active: false })}><UserX /> Deactivate</Button>
       ) : (
-        <Button size="sm" variant="ghost" onClick={() => setActive.mutate({ u, active: true })}><UserCheck /> Reactivate</Button>
+        <div className="flex justify-end gap-1">
+          <Button size="sm" variant="ghost" onClick={() => setActive.mutate({ u, active: true })}><UserCheck /> Reactivate</Button>
+          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={remove.isPending}
+            onClick={() => confirm(`Delete ${u.email}? They leave the staff list and cannot sign in. Orders and notes they made keep their name.`) && remove.mutate(u)}>
+            <Trash2 /> Delete
+          </Button>
+        </div>
       ),
     },
   ]

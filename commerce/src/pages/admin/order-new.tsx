@@ -200,6 +200,7 @@ export default function NewOrderPage() {
       )}
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
+          <Reveal open={/^01[3-9]\d{8}$/.test(phone)}><PhoneRecordCards phone={phone} /></Reveal>
           <Card>
             <CardHeader><CardTitle className="text-sm">Customer & delivery</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -242,7 +243,6 @@ export default function NewOrderPage() {
               <Field label="Internal note" htmlFor="n-inote"><Input id="n-inote" value={internalNote} onChange={(e) => setInternalNote(e.target.value)} /></Field>
             </CardContent>
           </Card>
-          <Reveal open={/^01[3-9]\d{8}$/.test(phone)}><PhoneRecordCards phone={phone} /></Reveal>
           <Card>
             <CardHeader><CardTitle className="text-sm">Products</CardTitle></CardHeader>
             <CardContent className="space-y-3">

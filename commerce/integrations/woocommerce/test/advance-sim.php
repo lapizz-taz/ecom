@@ -131,7 +131,9 @@ check( 'a blocked customer is left to the order shield', '' === FFC_Advance::ver
 
 echo "Switched off\n";
 FFC_Advance::save( array( 'enabled' => '' ) );
-check( 'off: nothing applies', ! FFC_Advance::on() );
+check( 'own amounts off: still follows Fullfilio while the shield is on', FFC_Advance::on() && ! FFC_Advance::local_rules() );
+check( 'own amounts off: a level Fullfilio allows pays nothing in advance', 0.0 === (float) FFC_Advance::plan( array( 'decision' => 'allow', 'level' => 'MID' ), 1370, 120 )['advance'] );
+check( 'own amounts off: Fullfilio\'s advance is still collected', 55.0 === (float) FFC_Advance::plan( array( 'decision' => 'advance', 'level' => 'LOW', 'advance_amount' => 55 ), 1370, 120 )['advance'] );
 FFC_Advance::save( array( 'enabled' => '1' ) );
 update_option( FFC_Settings::CONFIG, array( 'shield' => false ) );
 check( 'on but the order shield is off: nothing applies', ! FFC_Advance::on() );
@@ -149,7 +151,8 @@ check( 'the cart\'s shipping goes with the check', isset( $GLOBALS['CALLS'][0][1
 check( 'an advance answer has its amount', 'advance' === $d['decision'] && 120.0 === $d['advance_amount'] );
 $ref = new ReflectionMethod( 'FFC_Checkout', 'refuses' );
 $ref->setAccessible( true );
-check( 'cash on delivery is refused when Fullfilio asks for an advance', true === $ref->invoke( null, $d, 'cod' ) );
+check( 'the shield leaves the advance to the advance step (part paid online)', false === $ref->invoke( null, $d, 'cod' ) );
+check( 'cash on delivery is refused when Fullfilio asks for an advance', false !== strpos( FFC_Advance::verdict( '01844444444', 'cod', 'Mirpur', 1370, 120, 0, 1370 ), "\u{09F3}120" ) );
 check( 'an online payment goes ahead', false === $ref->invoke( null, $d, 'bkash' ) );
 FFC_Checkout::decision( '01844444444', 1370, 'bkash', 'Mirpur' );
 check( 'asked once per request and order value', 1 === count( $GLOBALS['CALLS'] ) );

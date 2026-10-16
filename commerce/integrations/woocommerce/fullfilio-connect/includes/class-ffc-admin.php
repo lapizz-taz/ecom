@@ -725,7 +725,8 @@ CSS;
 
 		$warn = $shield ? '' : ' <span class="ffc-badge ffc-amber">Needs the order shield — turn it on in ' . esc_html( $name ) . '</span>';
 		echo '<div class="ffc-card"><div class="ffc-card-h"><h2><span class="ffc-mod-ic" style="background:#16a34a">' . self::icon( 'wallet' ) . '</span>Advance payment by delivery level</h2></div><div class="ffc-card-b">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-			. '<p class="ffc-desc">When the phone number is typed, ' . esc_html( $name ) . ' looks up how many of the customer\'s parcels were delivered and gives their level. Pick what each level pays before the order is placed. Cash on delivery is refused when an advance is needed; an online payment method takes the advance and a "' . esc_html( $s['label'] ) . '" line holds the rest. Levels use the thresholds set in ' . esc_html( $name ) . ' → Settings → Fraud.</p>'
+			. '<p class="ffc-desc">When the phone number is typed, ' . esc_html( $name ) . ' looks up how many of the customer\'s parcels were delivered and decides with the rules in ' . esc_html( $name ) . ' → Settings → Fraud. When it asks for an advance, cash on delivery is refused, an online payment method takes the advance and a "' . esc_html( $s['label'] ) . '" line holds the rest. This always works while the order shield is on.</p>'
+			. '<label class="ffc-check" style="display:flex;align-items:center;gap:10px;margin:4px 0 12px">' . self::switch_input( 'enabled', $s['enabled'] ) . ' Also use my own amount per level below (optional; the larger amount applies)</label>'
 			. '<div class="ffc-scroll"><table class="ffc-tbl"><thead><tr><th>Level</th><th>Advance</th><th>Amount / %</th></tr></thead><tbody>';
 		foreach ( $levels as $key => $l ) {
 			$r = $s['rules'][ $key ];
@@ -737,7 +738,7 @@ CSS;
 		}
 		echo '</tbody></table></div>';
 		echo '<p class="ffc-muted" style="margin:10px 0 0">The advance is rounded up to a whole amount and is never more than the order. If ' . esc_html( $name ) . '\'s own fraud rules also ask for an advance, the larger amount applies.</p>';
-		echo '</div><div class="ffc-card-f">' . self::status_text( $s['enabled'] && $shield, $warn ) . self::switch_input( 'enabled', $s['enabled'] ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped parts.
+		echo '</div><div class="ffc-card-f">' . self::status_text( $shield, $warn ) . '</div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped parts.
 
 		self::card_open( 'How it is paid', 'cart' );
 		echo '<p class="ffc-section" style="margin-top:0">Online payment methods that take the advance</p>';

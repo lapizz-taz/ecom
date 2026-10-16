@@ -26,9 +26,9 @@ import { type GlobalSettings, globalSettings, saveStoreDomains } from '@/service
 // there (they have their own checks); this page is the index.
 const CATALOG: Array<{ key: string; label: string; what: string; to?: string; system?: boolean }> = [
   { key: 'signup', label: 'Public sign-up', what: 'Whether new businesses can open their own account and start a plan at /start' },
-  { key: 'billing', label: 'Billing rules', what: 'Currency, invoice due days, grace period, expiry, the plan new merchants start on', to: '/super-admin/subscriptions?tab=rules' },
-  { key: 'access_rules', label: 'Account states', what: 'What each subscription state allows (full, read-only, blocked)', to: '/super-admin/subscriptions?tab=rules' },
-  { key: 'billing_gateways', label: 'Payments to the platform', what: 'bKash and PayStation accounts merchants pay into (credentials in the vault)', to: '/super-admin/subscriptions?tab=rules' },
+  { key: 'billing', label: 'Billing rules', what: 'Currency, invoice due days, grace period, expiry, the plan new merchants start on', to: '/super-admin/subscriptions?tab=payments' },
+  { key: 'access_rules', label: 'Account states', what: 'What each subscription state allows (full, read-only, blocked)', to: '/super-admin/subscriptions?tab=payments' },
+  { key: 'billing_gateways', label: 'Payments to the platform', what: 'bKash and PayStation accounts merchants pay into (credentials in the vault)', to: '/super-admin/subscriptions?tab=payments' },
   { key: 'credits', label: 'Credit adjustments', what: 'Adjustments above this many credits need a second person', to: '/super-admin/credits?tab=settings' },
   { key: 'sms', label: 'Platform SMS provider', what: 'Connection state and sender IDs (credentials in the vault)', to: '/super-admin/sms' },
   { key: 'usage.sms', label: 'SMS free use and charging', what: 'Free allowance, eligible plans and statuses, monthly cap, failed-message policy', to: '/super-admin/sms?tab=policy' },

@@ -42,6 +42,8 @@ export interface PluginReport {
   plugin_version?: string; wordpress?: string; woocommerce?: string | null; php?: string; site_url?: string; currency?: string | null
   hpos?: boolean; checkout?: 'classic' | 'blocks' | 'other' | 'missing' | 'unknown'; permalinks?: 'pretty' | 'plain'; https?: boolean
   wp_cron?: boolean; action_scheduler?: boolean
+  /** Plugin 1.5.2+: the advance follows Fullfilio and needs an online payment method to take it. */
+  advance?: { follows_fullfilio?: boolean; own_rules?: boolean; online_gateways?: string[] }
   outbox?: { pending: number; sending: number; failed: number; sent: number; oldest_pending: string | null }
   webhooks?: Array<{ id?: number; topic?: string; status?: string; failures?: number; error?: string }>
   state?: { last_ok_at?: string; last_error?: string; last_error_at?: string; last_heartbeat_at?: string }

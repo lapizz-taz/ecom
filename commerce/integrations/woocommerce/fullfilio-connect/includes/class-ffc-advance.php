@@ -6,10 +6,11 @@
  *   GOOD / MID / LOW  the courier success rate against the store's thresholds,
  *   NEW               too few parcels to judge,
  *   ERROR             the courier record could not be read in time.
- * For each level the store picks a rule here: cash on delivery (no advance),
- * the full delivery charge, a fixed amount, or a percentage of the order or of
- * the delivery charge. When Fullfilio's own rules ask for an advance too, the
- * larger amount applies.
+ * Fullfilio decides first (Settings → Fraud): when it asks for an advance, that
+ * amount is collected here. Optionally the store also picks a rule per level on
+ * this page: cash on delivery (no advance), the full delivery charge, a fixed
+ * amount, or a percentage of the order or of the delivery charge; the larger
+ * amount applies.
  *
  * How it is collected: cash on delivery is refused for the order and an online
  * payment method takes the advance. A negative fee line ("Pay on delivery
@@ -107,10 +108,32 @@ class FFC_Advance {
 		return function_exists( 'mb_substr' ) ? mb_substr( $value, 0, $max ) : substr( $value, 0, $max );
 	}
 
-	/** Needs the order shield, which is what asks Fullfilio for the delivery level. */
+	/**
+	 * Follows Fullfilio whenever the order shield is on: when Fullfilio's rules
+	 * (Settings → Fraud) ask for an advance, an online payment takes that amount.
+	 * The per-level rules on this page ("enabled") are an optional extra on top.
+	 */
 	public static function on() {
+		return FFC_Settings::enabled( 'shield' );
+	}
+
+	/** The store's own per-level amounts on this page are switched on. */
+	public static function local_rules() {
 		$s = self::settings();
-		return $s['enabled'] && FFC_Settings::enabled( 'shield' );
+		return (bool) $s['enabled'];
+	}
+
+	/** Online payment methods switched on in WooCommerce that can take an advance. */
+	public static function online_gateways() {
+		$out = array();
+		if ( function_exists( 'WC' ) && is_object( WC() ) && method_exists( WC(), 'payment_gateways' ) && WC()->payment_gateways() ) {
+			foreach ( WC()->payment_gateways()->payment_gateways() as $id => $g ) {
+				if ( 'yes' === ( isset( $g->enabled ) ? $g->enabled : 'no' ) && self::is_advance_gateway( $id ) ) {
+					$out[] = (string) $id;
+				}
+			}
+		}
+		return $out;
 	}
 
 	public static function init() {
@@ -156,7 +179,7 @@ class FFC_Advance {
 		$level = isset( $decision['level'] ) ? (string) $decision['level'] : '';
 		$base  = max( 0, (float) $base );
 		$need  = 0.0;
-		if ( isset( $s['rules'][ $level ] ) ) {
+		if ( $s['enabled'] && isset( $s['rules'][ $level ] ) ) {
 			$need = self::rule_amount( $s['rules'][ $level ]['rule'], $s['rules'][ $level ]['value'], $base, $delivery );
 		}
 		// Fullfilio's own rules asked for an advance: never less than that.
