@@ -6,8 +6,10 @@ import { appBase } from './storefront.ts'
 import { functionsBase } from './env.ts'
 import { HttpError } from './http.ts'
 import { type Gateway, gatewayFromCredentials, gatewaySandbox } from './payments/registry.ts'
-import type { PaymentProvider } from './payments/types.ts'
-import { adminClient } from './supabase.ts'
+import { logEvent } from './monitoring.ts'
+import { redactGatewayAnswer } from './payments/redact.ts'
+import type { PaymentProvider, VerifiedPayment } from './payments/types.ts'
+import { adminClient, rpc } from './supabase.ts'
 
 export const PLATFORM_GATEWAYS = ['bkash', 'paystation'] as const
 export const platformGatewaySecret = (code: Gateway) => `gateway.${code}`
@@ -42,6 +44,58 @@ export function panelBase(req?: Request): string {
 /** The billing function's own address (gateway returns and IPNs). */
 export function billingCallbackBase(): string {
   return `${functionsBase()}/billing`
+}
+
+/** Where a check came from, for the payment's check log. */
+export type CheckSource = 'RETURN' | 'IPN' | 'RECONCILE' | 'RECHECK'
+
+export interface ConfirmResult { status: string; invoice_id?: string; kind?: string; purpose?: string; payment_status?: string }
+
+/** What is stored with a check: the outcome, the gateway's own status word, and its answer without phone numbers or tokens. */
+export function checkPayload(verified: VerifiedPayment, source: CheckSource): Record<string, unknown> {
+  const outcome = verified.success ? 'succeeded'
+    : /cancel/i.test(verified.eventType) ? 'cancelled'
+    : /initiated|expired/i.test(verified.eventType) ? 'expired'
+    : 'failed'
+  return {
+    source, outcome, currency: verified.currency, gateway_status: verified.eventType.split('.').pop() ?? null,
+    raw: redactGatewayAnswer(verified.raw), event: verified.eventId, reason: verified.reason ?? null,
+  }
+}
+
+/**
+ * Records what the gateway confirmed for a platform payment. The database
+ * checks the amount, currency and transaction and applies the payment once.
+ */
+export async function confirmBillingPayment(merchantId: string, provider: string, reference: string, verified: VerifiedPayment, source: CheckSource): Promise<ConfirmResult> {
+  if (verified.reference && verified.reference !== reference) {
+    void logEvent({ level: 'ERROR', category: 'PAYMENT', source: 'billing', message: `${provider} confirmed a different payment than the one returned`,
+      context: { expected: reference, reported: verified.reference }, merchantId })
+    await rpc(adminClient(merchantId), 'billing_payment_check_log', {
+      p_reference: reference, p_provider: provider, p_source: source, p_outcome: 'reference_mismatch', p_gateway_status: null,
+      p_detail: { reported_reference: verified.reference },
+    }).catch(() => undefined)
+    return { status: 'reference_mismatch' }
+  }
+  return rpc<ConfirmResult>(adminClient(merchantId), 'billing_gateway_confirm', {
+    p_reference: reference, p_provider: provider, p_txn: verified.providerTransactionId, p_amount: verified.amount,
+    p_success: verified.success, p_payload: checkPayload(verified, source),
+  })
+}
+
+/** A check that changed nothing: the gateway could not be reached, is still working, or agrees with us. */
+export async function logBillingCheck(merchantId: string, provider: string, reference: string, source: CheckSource, outcome: 'pending' | 'error' | 'matches', detail: Record<string, unknown> = {}) {
+  await rpc(adminClient(merchantId), 'billing_payment_check_log', {
+    p_reference: reference, p_provider: provider, p_source: source, p_outcome: outcome, p_gateway_status: null, p_detail: detail,
+  }).catch(() => undefined)
+}
+
+/** How a confirmation reads to the merchant coming back from the gateway. */
+export function outcomeFor(status: string, verified?: VerifiedPayment): 'success' | 'review' | 'cancelled' | 'failed' {
+  if (['succeeded', 'already_succeeded'].includes(status)) return 'success'
+  if (['amount_mismatch', 'currency_mismatch', 'reference_mismatch', 'duplicate_transaction', 'unknown_payment'].includes(status)) return 'review'
+  if (status === 'cancelled' || (verified && /cancel/i.test(verified.eventType))) return 'cancelled'
+  return 'failed'
 }
 
 export type { SupabaseClient }

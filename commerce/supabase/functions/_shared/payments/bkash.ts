@@ -1,4 +1,4 @@
-import type { PaymentInitContext, PaymentInitResult, PaymentProvider, VerifiedPayment } from './types.ts'
+import type { PaymentInitContext, PaymentInitResult, PaymentProvider, RefundRequest, RefundResult, VerifiedPayment } from './types.ts'
 
 type FetchFn = typeof fetch
 
@@ -228,6 +228,41 @@ export class BkashProvider implements PaymentProvider {
     if (state === 'Authorized') return this.result(session, reference, await this.settle(session), 'reconcile')
     if (state === 'Initiated' && ageMinutes < 60) return null
     return this.result(session, reference, { ...status, statusMessage: state ? `bKash reports ${state}` : message(status, 'Unknown payment') }, 'reconcile')
+  }
+
+  /**
+   * Refund Transaction (Tokenized Checkout v1.2.0-beta): the same endpoint
+   * refunds when given an amount and reports the refund when given only the
+   * payment and transaction ids. A refund counts only when bKash answers
+   * transactionStatus "Completed" with a refundTrxID.
+   */
+  private refundResult(body: BkashResponse | null): RefundResult {
+    const done = !!body && body.transactionStatus === 'Completed' && !!text(body.refundTrxID) && (!body.statusCode || body.statusCode === '0000')
+    const pending = !!body && ['Initiated', 'Pending', 'Processing'].includes(String(body.transactionStatus ?? ''))
+    return {
+      success: done,
+      pending: !done && pending,
+      refundTransactionId: done ? text(body!.refundTrxID) : null,
+      amount: done ? Number(body!.amount) : null,
+      reason: done ? undefined : message(body, 'bKash did not confirm the refund'),
+      raw: body,
+    }
+  }
+
+  async refund(request: RefundRequest): Promise<RefundResult> {
+    const body = await this.call('/tokenized/checkout/payment/refund', {
+      paymentID: request.session,
+      trxID: request.transactionId,
+      amount: request.amount.toFixed(2),
+      sku: request.reference.slice(0, 255),
+      reason: request.reason.slice(0, 255),
+    })
+    return this.refundResult(body)
+  }
+
+  async refundStatus(session: string, transactionId: string): Promise<RefundResult> {
+    const body = await this.call('/tokenized/checkout/payment/refund', { paymentID: session, trxID: transactionId })
+    return this.refundResult(body)
   }
 
   /** Proves the credentials work (Settings → Payments → Connect). */

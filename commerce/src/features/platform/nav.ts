@@ -1,6 +1,6 @@
 import {
   Activity, Banknote, BarChart3, CreditCard, Database, LayoutDashboard, LifeBuoy, type LucideIcon, Megaphone, MessageSquare, PhoneCall, Plug, ScrollText,
-  Radio, Settings2, ShieldCheck, Siren, Store, ToggleRight, Truck, UsersRound, Wallet, Workflow,
+  Radio, Receipt, Settings2, ShieldCheck, Siren, Store, ToggleRight, Truck, UsersRound, Wallet, Workflow,
 } from 'lucide-react'
 
 export interface PlatformNavItem {
@@ -17,6 +17,7 @@ export const PLATFORM_NAV: PlatformNavItem[] = [
   { module: 'merchants', label: 'Live & Capacity', to: '/super-admin/live', icon: Radio },
   { module: 'employees', label: 'Employees & Roles', to: '/super-admin/employees', icon: UsersRound },
   { module: 'subscriptions', label: 'Subscriptions & Plans', to: '/super-admin/subscriptions', icon: CreditCard },
+  { module: 'subscriptions', label: 'Billing & Payments', to: '/super-admin/billing', icon: Receipt },
   { module: 'subscriptions', label: 'Fullfilio Payments', to: '/super-admin/subscriptions?tab=payments', icon: Banknote },
   { module: 'credits', label: 'Credits & Wallets', to: '/super-admin/credits', icon: Wallet },
   { module: 'sms', label: 'SMS Management', to: '/super-admin/sms', icon: MessageSquare },
