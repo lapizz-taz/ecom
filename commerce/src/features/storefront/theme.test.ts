@@ -52,7 +52,8 @@ describe('store theme', () => {
 
   it('product page layouts: minimal by default, bold fills its button, bad values are cleaned', () => {
     const d = resolveTheme({}).product_page
-    expect(d).toMatchObject({ layout: 'minimal', buy_now_style: 'outline', show_delivery: false })
+    expect(d).toMatchObject({ layout: 'minimal', buy_now_style: 'outline', button_radius: 6, show_delivery: false })
+    expect(resolveTheme({ theme: { product_page: { button_radius: 99 } } } as never).product_page.button_radius).toBe(24)
     expect(d.accordions.map((a) => a.content)).toEqual(['description', 'shipping', 'warranty'])
     expect(resolveTheme({ theme: { product_page: { layout: 'bold' } } } as never).product_page.buy_now_style).toBe('filled')
     const t = resolveTheme({ theme: { product_page: {

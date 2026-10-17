@@ -22,6 +22,8 @@ export interface ProductPageSettings {
   /** classic: image and thumbnails in a box; bold: edge-to-edge photo, delivery timeline; minimal: edge-to-edge photo, name and price in one row. */
   layout: 'classic' | 'bold' | 'minimal'
   buy_now_style: 'filled' | 'outline'
+  /** Corner radius of the quantity box and the two buttons, in px. */
+  button_radius: number
   accordions: ProductAccordion[]
   /** Purchased → Processing → Delivered with dates (bold and minimal layouts). */
   show_delivery: boolean
@@ -222,7 +224,7 @@ export const DEFAULT_THEME: StoreTheme = {
   product_card: { aspect: 'portrait', uppercase: true, sale_badge: true, gap: 'small', image_bg: '#f4f4f5' },
   collection: { banner: true, columns: 4 },
   product_page: {
-    layout: 'minimal', buy_now_style: 'outline',
+    layout: 'minimal', buy_now_style: 'outline', button_radius: 6,
     accordions: [
       { title: 'Product Details', content: 'description', text: '' },
       { title: 'Shipping Details', content: 'shipping', text: '' },
@@ -328,6 +330,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
     product_page: {
       layout: pp.layout === 'classic' || pp.layout === 'bold' ? pp.layout : dp.layout,
       buy_now_style: pp.buy_now_style === 'filled' ? 'filled' : pp.buy_now_style === 'outline' ? 'outline' : pp.layout === 'bold' ? 'filled' : dp.buy_now_style,
+      button_radius: typeof pp.button_radius === 'number' && Number.isFinite(pp.button_radius) ? Math.min(24, Math.max(0, Math.round(pp.button_radius))) : dp.button_radius,
       accordions: Array.isArray(pp.accordions)
         ? pp.accordions.filter((a): a is ProductAccordion => !!a && typeof a === 'object').slice(0, 8).map((a) => ({
           title: str(a.title).slice(0, 60),

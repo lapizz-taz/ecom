@@ -448,6 +448,7 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
         {toggle('Brand above the name', 'show_brand')}
         {toggle('“Sale” badge', 'show_sale_badge')}
         {toggle('Stock note', 'show_stock', '“5 left” / “In stock”. Out of stock always shows.')}
+        <FieldRow label="Button corners"><RangeInput value={pp.button_radius} onChange={(v) => set({ button_radius: v })} min={0} max={24} unit="px" /></FieldRow>
         {toggle('Quantity selector', 'show_quantity')}
         {toggle('“Buy it now” button', 'show_buy_now')}
         {pp.show_buy_now && (
