@@ -81,13 +81,26 @@ export interface OutgoingFile { name: string; mime: string; data: string }
 export const sendInboxMessage = (input: {
   conversation_id: string; text?: string; file?: OutgoingFile; image_url?: string; reply_to_id?: string; private_reply?: boolean
 }) => invokeFunction<{ ok: boolean; message_id: string | null }>('inbox', { action: 'send', ...input })
-export const inboxConfig = () => invokeFunction<{ merchant_id: string; app_id: string | null; has_app_secret: boolean; verify_token: string | null }>('inbox', { action: 'config' })
-export const saveInboxApp = (app_id: string, app_secret?: string) =>
-  invokeFunction<{ ok: boolean; verify_token: string }>('inbox', { action: 'save_app', app_id, app_secret: app_secret || undefined })
-export const connectPage = (page_token: string, instagram: boolean, comments: boolean) =>
-  invokeFunction<{ ok: boolean; channels: InboxChannel[]; warnings: string[] }>('inbox', { action: 'connect_page', page_token, instagram, comments })
-export const connectWhatsApp = (phone_number_id: string, waba_id: string, token: string) =>
-  invokeFunction<{ ok: boolean; channels: InboxChannel[]; warnings: string[] }>('inbox', { action: 'connect_whatsapp', phone_number_id, waba_id, token })
+/** Whether stores can connect yet (Super Admin saved the Meta app) and whether WhatsApp sign-up is on. */
+export const inboxConfig = () => invokeFunction<{ ready: boolean; whatsapp: boolean }>('inbox', { action: 'config' })
+
+export type MetaConnectKind = 'PAGES' | 'WHATSAPP'
+export interface MetaPageChoice {
+  id: string; name: string; picture: string | null; connected: boolean
+  instagram: { id: string; username: string | null; picture: string | null; connected: boolean } | null
+}
+export interface MetaNumberChoice { id: string; waba_id: string; display_phone: string | null; name: string | null; connected: boolean }
+export type MetaFinish = { kind: 'PAGES'; pages: MetaPageChoice[] } | { kind: 'WHATSAPP'; numbers: MetaNumberChoice[] }
+
+/** Meta's login address ("Continue with Facebook"); the browser goes there and comes back to /admin/inbox/meta-callback. */
+export const metaConnectStart = (kind: MetaConnectKind) => invokeFunction<{ url: string }>('inbox', { action: 'oauth_start', kind })
+/** The code Meta sent back → the Pages or WhatsApp numbers to choose from. */
+export const metaConnectFinish = (code: string, state: string) => invokeFunction<MetaFinish>('inbox', { action: 'oauth_finish', code, state })
+/** Connects what the owner picked. */
+export const metaConnect = (input: {
+  pages?: Array<{ id: string; facebook: boolean; instagram: boolean }>; comments?: boolean
+  numbers?: Array<{ id: string; waba_id: string }>; pin?: string
+}) => invokeFunction<{ ok: boolean; channels: InboxChannel[]; warnings: string[] }>('inbox', { action: 'oauth_connect', ...input })
 export const setChannelComments = (id: string, receive_comments: boolean) => invokeFunction<{ ok: boolean }>('inbox', { action: 'channel', id, receive_comments })
 export const disconnectChannel = (id: string) => invokeFunction<{ ok: boolean }>('inbox', { action: 'disconnect', id })
 export const whatsappMedia = (channel_id: string, media_id: string) => invokeFunction<{ mime: string; data: string }>('inbox', { action: 'media', channel_id, media_id })

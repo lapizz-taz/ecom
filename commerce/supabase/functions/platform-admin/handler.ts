@@ -11,6 +11,7 @@
 //   bd_courier_connect / bd_courier_test / bd_courier_disconnect   (BD Courier Integration)
 //   sms_connect / sms_disconnect / sms_balance / sms_send_test     (SMS Management)
 //   gateway_connect / gateway_disconnect                           (payments merchants make to the platform)
+//   meta_app_status / meta_app_save / meta_app_clear               (the Meta app stores use for "Continue with Facebook" in Messaging)
 //   pbx_trunk_secret / pbx_turn_secret / pbx_gateway_token          (PBX Setup: the shared VoiceDrive gateway)
 //   health                                                          (System Health: this runtime, its database and auth access, settings present)
 //   backups                                                         (Data Management: the project's backups from the Supabase Management API)
@@ -28,6 +29,7 @@ import {
   courierHistoryConfig, platformCourierHistorySecret, platformPanelCreds,
   PLATFORM_BD_COURIER_SECRET, PLATFORM_COURIER_PANEL_SECRET,
 } from '../_shared/fraud/service.ts'
+import { META_INBOX_APP_KEY, type MetaInboxApp } from '../_shared/inbox/oauth.ts'
 import { billingCallbackBase, PLATFORM_GATEWAYS, platformGateway, platformGatewaySecret } from '../_shared/platform-billing.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
@@ -133,6 +135,16 @@ const schema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('bd_courier_test'), test_phone: phoneSchema }),
   z.object({ action: z.literal('bd_courier_disconnect') }),
+  z.object({ action: z.literal('meta_app_status') }),
+  z.object({
+    action: z.literal('meta_app_save'),
+    app_id: z.string().trim().regex(/^[0-9]{5,30}$/, 'The App ID is the number at the top of the Meta app dashboard'),
+    app_secret: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The App Secret is the 32-character code in App settings → Basic').optional(),
+    login_config_id: z.string().trim().regex(/^[0-9]{5,30}$/, 'Use the Configuration ID from Facebook Login for Business'),
+    whatsapp_config_id: z.union([z.string().trim().regex(/^[0-9]{5,30}$/, 'Use the Embedded Signup Configuration ID'), z.literal('')]).optional(),
+    new_verify_token: z.boolean().optional(),
+  }),
+  z.object({ action: z.literal('meta_app_clear') }),
   z.object({
     action: z.literal('courier_panel_connect'),
     provider: z.enum(COURIER_PANEL_PROVIDERS),
@@ -333,6 +345,43 @@ export default (
         await rpc(admin, 'platform_secret_clear', { p_key: PLATFORM_BD_COURIER_SECRET, p_actor: user.id })
         const settings = await rpc(admin, 'platform_bd_courier_set_connection', { p_service: null, p_hint: null, p_actor: user.id, p_test_ok: null, p_error: null })
         return json(req, { ok: true, settings })
+      }
+
+      // ------------------------------------- Meta app for Messaging (one app, every store)
+      case 'meta_app_status': {
+        await require(client, 'integrations', 'view')
+        const app = await rpc<MetaInboxApp | null>(admin, 'platform_secret_get', { p_key: META_INBOX_APP_KEY }) ?? {}
+        const canManage = await rpc<boolean>(client, 'platform_can', { p_module: 'integrations', p_action: 'manage', p_merchant: null })
+        const base = appBase(req)
+        return json(req, {
+          app_id: app.app_id ?? null, login_config_id: app.login_config_id ?? null, whatsapp_config_id: app.whatsapp_config_id ?? null,
+          has_secret: !!app.app_secret, verify_token: canManage ? app.verify_token ?? null : null,
+          webhook_url: `${base}/functions/v1/inbox`, redirect_uri: `${base}/admin/inbox/meta-callback`, can_manage: canManage,
+        })
+      }
+      case 'meta_app_save': {
+        await require(client, 'integrations', 'manage')
+        const prev = await rpc<MetaInboxApp | null>(admin, 'platform_secret_get', { p_key: META_INBOX_APP_KEY }) ?? {}
+        const next: MetaInboxApp = {
+          app_id: input.app_id, app_secret: input.app_secret ?? (prev.app_id === input.app_id ? prev.app_secret : undefined),
+          login_config_id: input.login_config_id, whatsapp_config_id: input.whatsapp_config_id || undefined,
+          verify_token: input.new_verify_token || !prev.verify_token ? randomPassword(32).replace(/[^A-Za-z0-9]/g, '') : prev.verify_token,
+        }
+        if (!next.app_secret) throw new HttpError(422, 'Paste the App Secret', 'VALIDATION')
+        // The App ID and Secret must belong together: ask Meta for the app with its own app token.
+        const check = await fetch(`https://graph.facebook.com/v23.0/${next.app_id}?fields=id,name`, {
+          headers: { Authorization: `Bearer ${next.app_id}|${next.app_secret}` }, signal: AbortSignal.timeout(15_000),
+        })
+          .then((r) => r.json() as Promise<{ id?: string; name?: string; error?: { message?: string } }>)
+          .catch((e): { id?: string; name?: string; error?: { message?: string } } => ({ error: { message: (e as Error).message } }))
+        if (!check.id) throw new HttpError(422, `Meta did not accept this App ID and App Secret: ${check.error?.message ?? 'unknown error'}`, 'CONNECTION_FAILED')
+        await rpc(admin, 'platform_secret_store', { p_key: META_INBOX_APP_KEY, p_value: next, p_hint: `${check.name ?? 'Meta app'} · ${next.app_id}`, p_actor: user.id })
+        return json(req, { ok: true, name: check.name ?? null, verify_token: next.verify_token })
+      }
+      case 'meta_app_clear': {
+        await require(client, 'integrations', 'manage')
+        await rpc(admin, 'platform_secret_clear', { p_key: META_INBOX_APP_KEY, p_actor: user.id })
+        return json(req, { ok: true })
       }
 
       // ------------------------------------- Courier sign-in accounts (platform, under BD Courier)

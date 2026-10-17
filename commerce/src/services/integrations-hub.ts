@@ -1,6 +1,7 @@
 // Super Admin → Other Integrations: every merchant's connections and the
 // platform's own services. Merchant credentials never leave the merchant;
 // only state, last success and errors are shown.
+import { invokeFunction } from '@/lib/functions'
 import { type MerchantRef, platformRpc } from '@/services/platform'
 
 export interface IntegrationsOverview {
@@ -22,3 +23,15 @@ export interface IntegrationsOverview {
 export const integrationsOverview = () => platformRpc<IntegrationsOverview>('platform_integrations_overview')
 export const retryIntegration = (kind: 'store_jobs' | 'courier_events', id: string, reason?: string) =>
   platformRpc<{ requeued?: number; retried?: number; results?: Record<string, number> }>('platform_integration_retry', { p_kind: kind, p_id: id, p_reason: reason ?? null })
+
+// --- The Meta app stores use for "Continue with Facebook" (Messaging) ----------------
+export interface MetaAppStatus {
+  app_id: string | null; login_config_id: string | null; whatsapp_config_id: string | null; has_secret: boolean
+  /** Only for staff who may manage integrations. */
+  verify_token: string | null
+  webhook_url: string; redirect_uri: string; can_manage: boolean
+}
+export const metaAppStatus = () => invokeFunction<MetaAppStatus>('platform-admin', { action: 'meta_app_status' })
+export const saveMetaApp = (input: { app_id: string; app_secret?: string; login_config_id: string; whatsapp_config_id?: string; new_verify_token?: boolean }) =>
+  invokeFunction<{ ok: boolean; name: string | null; verify_token: string }>('platform-admin', { action: 'meta_app_save', ...input, app_secret: input.app_secret || undefined })
+export const clearMetaApp = () => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'meta_app_clear' })

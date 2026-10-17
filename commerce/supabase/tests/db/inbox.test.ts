@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { asAnon, asService, asUser, closePool, type Db, expectError, inTx, num, one, value } from '../support/db'
+import { MERCHANT_1, asAnon, asService, asSystem, asUser, closePool, type Db, expectError, inTx, num, one, value } from '../support/db'
 import { createStaff } from '../support/fixtures'
 
 afterAll(closePool)
@@ -118,5 +118,58 @@ describe('inbox: staff', () => {
       const rows = await db.query(`select status, error from public.inbox_messages where conversation_id = $1 and direction = 'OUT' order by created_at`, [r.conversation_id])
       expect(rows.rows.map((x) => x.status).sort()).toEqual(['FAILED', 'READ'])
       expect(await value(db, `select unread_count from public.inbox_conversations where id = $1`, [r.conversation_id])).toBe(0)
+    }))
+})
+
+describe('inbox: one Meta app for every store', () => {
+  /** A second merchant with the same defaults a new business starts with. */
+  async function createMerchant(db: Db): Promise<string> {
+    await asSystem(db, null)
+    const id = await value<string>(db, `insert into public.merchants (name) values ('Second shop') returning id`)
+    await asSystem(db, id)
+    await db.query(`select public._merchant_seed_defaults($1)`, [id])
+    return id
+  }
+  const owner = async (db: Db, key: string) => {
+    await asService(db, null)
+    return value<string | null>(db, `select public.merchant_for('inbox_account', $1)`, [key])
+  }
+  const save = (db: Db, p: Record<string, unknown>) => db.query(`select public.inbox_channel_save($1::jsonb, null)`, [JSON.stringify(p)])
+
+  it('sends each Page, Instagram account and number to the store that connected it', () =>
+    inTx(async (db) => {
+      await channel(db, 'FACEBOOK', '7770001')
+      await asService(db)
+      await save(db, { platform: 'INSTAGRAM', external_id: '1784000111', page_id: '7770001', name: '@isolation.pvt' })
+      await save(db, { platform: 'WHATSAPP', external_id: '5550001', waba_id: '6660001', name: 'Isolation' })
+
+      expect(await owner(db, 'FACEBOOK:7770001')).toBe(MERCHANT_1)
+      expect(await owner(db, 'INSTAGRAM:1784000111')).toBe(MERCHANT_1)
+      // Instagram messaging events can name the Page instead of the Instagram account.
+      expect(await owner(db, 'INSTAGRAM:7770001')).toBe(MERCHANT_1)
+      expect(await owner(db, 'WHATSAPP:5550001')).toBe(MERCHANT_1)
+      expect(await owner(db, 'FACEBOOK:999')).toBeNull()
+      expect(await owner(db, 'nonsense')).toBeNull()
+    }))
+
+  it('connects a Page to one store at a time', () =>
+    inTx(async (db) => {
+      const fb = await channel(db, 'FACEBOOK', '7770002')
+      const other = await createMerchant(db)
+      await asService(db, other)
+      await expectError(db, `select public.inbox_channel_save($1::jsonb, null)`,
+        [JSON.stringify({ platform: 'FACEBOOK', external_id: '7770002', name: 'Isolation Page' })], /already connected to another Fullfilio store/)
+
+      // Disconnected in the first store: the second can have it, and events follow.
+      await asService(db)
+      await db.query(`select public.inbox_channel_status($1, 'DISCONNECTED', null)`, [fb])
+      await asService(db, other)
+      await save(db, { platform: 'FACEBOOK', external_id: '7770002', name: 'Isolation Page' })
+      expect(await owner(db, 'FACEBOOK:7770002')).toBe(other)
+
+      // And merchant_for stays closed to signed-in users.
+      const staff = await createStaff(db, 'ADMIN')
+      await asUser(db, staff)
+      await expectError(db, `select public.merchant_for('inbox_account', 'FACEBOOK:7770002')`, [], /permission denied|PERMISSION_DENIED/i)
     }))
 })

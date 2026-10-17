@@ -60,7 +60,7 @@ const FOOTER: Array<[string, Array<[string, string]>]> = [
   ['Product', [['Orders', '/#orders'], ['Couriers', '/#couriers'], ['Fraud check', '/#fraud'], ['Store', '/#store'], ['Pricing', '/#pricing']]],
   ['Features', [['Shopify & WooCommerce', '/#integrations'], ['Theme editor', '/#store'], ['Insights', '/#insights'], ['Changelog', '/#changelog']]],
   ['Account', [['Sign up', '/start'], ['Log in', '/admin/login'], ['Forgot password', '/admin/forgot-password']]],
-  ['Company', [['Blog', '/blog'], ['Contact us', '/contact']]],
+  ['Company', [['Blog', '/blog'], ['Contact us', '/contact'], ['Privacy', '/privacy'], ['Terms', '/terms'], ['Data deletion', '/data-deletion']]],
 ]
 
 /** A site link: in-page anchors scroll on the home page, everything else routes. */
