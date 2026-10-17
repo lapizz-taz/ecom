@@ -49,4 +49,19 @@ describe('store theme', () => {
     expect(t.product_page).toMatchObject({ show_sku: false, show_tags: false, image_aspect: 'square', related_title: 'More like this', show_buy_now: true, show_description: true })
     expect(t.product_sections.map((s) => s.id)).toEqual([trust.id])
   })
+
+  it('product page layouts: minimal by default, bold fills its button, bad values are cleaned', () => {
+    const d = resolveTheme({}).product_page
+    expect(d).toMatchObject({ layout: 'minimal', buy_now_style: 'outline', show_delivery: false })
+    expect(d.accordions.map((a) => a.content)).toEqual(['description', 'shipping', 'warranty'])
+    expect(resolveTheme({ theme: { product_page: { layout: 'bold' } } } as never).product_page.buy_now_style).toBe('filled')
+    const t = resolveTheme({ theme: { product_page: {
+      layout: 'weird', delivery_min_days: 5, delivery_max_days: 2, highlights: ['600+ Happy Customers', 7],
+      accordions: [{ title: 'Care', content: 'nope', text: 'Keep dry' }, null],
+    } } } as never).product_page
+    expect(t.layout).toBe('minimal')
+    expect([t.delivery_min_days, t.delivery_max_days]).toEqual([5, 5])
+    expect(t.highlights).toEqual(['600+ Happy Customers'])
+    expect(t.accordions).toEqual([{ title: 'Care', content: 'custom', text: 'Keep dry' }])
+  })
 })
