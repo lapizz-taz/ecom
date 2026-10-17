@@ -12,8 +12,8 @@ import { isCronRequest } from '../_shared/cron.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { formOrQuery } from '../_shared/payment-flow.ts'
-import type { PaymentProvider, VerifiedPayment } from '../_shared/payments/types.ts'
-import { billingCallbackBase, panelBase, PLATFORM_GATEWAYS, platformGateway } from '../_shared/platform-billing.ts'
+import type { PaymentProvider } from '../_shared/payments/types.ts'
+import { billingCallbackBase, confirmBillingPayment, logBillingCheck, outcomeFor, panelBase, PLATFORM_GATEWAYS, platformGateway } from '../_shared/platform-billing.ts'
 import { parse } from '../_shared/schemas.ts'
 import { adminClient, optionalUser, rpc, userClient } from '../_shared/supabase.ts'
 
@@ -30,19 +30,6 @@ interface Created {
 }
 interface Found { payment_id: string; merchant_id: string; reference: string; status: string; invoice_id: string }
 interface Pending { payment_id: string; merchant_id: string; provider: string; reference: string; session: string; age_minutes: number }
-
-/** Records what the gateway said, for the payment's merchant. */
-async function confirm(merchantId: string, provider: string, expectedReference: string, verified: VerifiedPayment) {
-  if (verified.reference && verified.reference !== expectedReference) {
-    void logEvent({ level: 'ERROR', category: 'PAYMENT', source: 'billing', message: `${provider} confirmed a different payment than the one returned`,
-      context: { expected: expectedReference, reported: verified.reference }, merchantId })
-    return { status: 'reference_mismatch' }
-  }
-  return rpc<{ status: string; invoice_id: string; kind?: string }>(adminClient(merchantId), 'billing_gateway_confirm', {
-    p_reference: expectedReference, p_provider: provider, p_txn: verified.providerTransactionId, p_amount: verified.amount,
-    p_success: verified.success, p_payload: { raw: verified.raw, event: verified.eventId, reason: verified.reason ?? null },
-  })
-}
 
 export default (
   handle(async (req) => {
@@ -82,15 +69,14 @@ export default (
         const gateway = await platformGateway(provider as (typeof PLATFORM_GATEWAYS)[number], { allowDisabled: true })
         if (gateway.verifyCallback) {
           const verified = await gateway.verifyCallback(params)
-          const result = await confirm(found.merchant_id, provider, found.reference, verified)
-          outcome = ['succeeded', 'already_succeeded'].includes(result.status) ? 'success'
-            : ['amount_mismatch', 'reference_mismatch', 'duplicate_transaction'].includes(result.status) ? 'review'
-            : verified.eventType.includes('cancel') ? 'cancelled' : 'failed'
+          const result = await confirmBillingPayment(found.merchant_id, provider, found.reference, verified, callback === 'ipn' ? 'IPN' : 'RETURN')
+          outcome = outcomeFor(result.status, verified)
         }
       } catch (error) {
         // Not confirmed yet: the reconcile job asks the gateway again.
         void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'billing', message: `Could not verify a ${provider} billing return`, error,
           context: { reference: found.reference }, merchantId: found.merchant_id })
+        await logBillingCheck(found.merchant_id, provider, found.reference, callback === 'ipn' ? 'IPN' : 'RETURN', 'pending', { error: (error as Error).message })
         outcome = 'review'
       }
       return back(outcome, found.invoice_id)
@@ -114,14 +100,17 @@ export default (
             counts.waiting = (counts.waiting ?? 0) + 1
             continue
           }
-          const result = await confirm(p.merchant_id, p.provider, p.reference, verified)
+          const result = await confirmBillingPayment(p.merchant_id, p.provider, p.reference, verified, 'RECONCILE')
           counts[result.status] = (counts[result.status] ?? 0) + 1
         } catch (error) {
           counts.error = (counts.error ?? 0) + 1
           void logEvent({ level: 'WARN', category: 'PAYMENT', source: 'billing', message: `Could not reconcile a ${p.provider} billing payment`, error,
             context: { reference: p.reference }, merchantId: p.merchant_id })
+          await logBillingCheck(p.merchant_id, p.provider, p.reference, 'RECONCILE', 'error', { error: (error as Error).message })
         }
       }
+      // Attempts nobody finished (never reached the gateway, or two days without an answer).
+      counts.expired = await rpc<number>(adminClient(), 'billing_gateway_expire').catch(() => 0)
       return json(req, counts)
     }
 

@@ -51,8 +51,10 @@ describe('tenancy: structure', () => {
       // and expiry reminders read the platform's onboarding settings for the merchant's own plan; the public
       // sign-up-by-WhatsApp request keeps the visitor's details before any merchant exists; choosing a plan
       // reads the platform's public plans and applies the paid plan from the gateway callback; the root-domain
-      // proxy asks whether a web address belongs to any store before it gets a certificate.
-      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(105)
+      // proxy asks whether a web address belongs to any store before it gets a certificate; payments to the platform
+      // (gateway confirmations, their check log, expiry and refunds) work on the payment's own store and read the
+      // platform's prices and gateway switches.
+      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(119)
     }))
 
   it('turns existing data into Merchant #1', () =>

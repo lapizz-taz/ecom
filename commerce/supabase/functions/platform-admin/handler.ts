@@ -11,6 +11,8 @@
 //   bd_courier_connect / bd_courier_test / bd_courier_disconnect   (BD Courier Integration)
 //   sms_connect / sms_disconnect / sms_balance / sms_send_test     (SMS Management)
 //   gateway_connect / gateway_disconnect                           (payments merchants make to the platform)
+//   billing_recheck / billing_reconcile                             (ask the gateway again about one payment, or every payment in a period)
+//   billing_refund / billing_refund_check                           (send a refund through the gateway, or ask what became of one)
 //   meta_app_status / meta_app_save / meta_app_clear               (the Meta app stores use for "Continue with Facebook" in Messaging)
 //   pbx_trunk_secret / pbx_turn_secret / pbx_gateway_token          (PBX Setup: the shared VoiceDrive gateway)
 //   health                                                          (System Health: this runtime, its database and auth access, settings present)
@@ -30,7 +32,11 @@ import {
   PLATFORM_BD_COURIER_SECRET, PLATFORM_COURIER_PANEL_SECRET,
 } from '../_shared/fraud/service.ts'
 import { META_INBOX_APP_KEY, type MetaInboxApp } from '../_shared/inbox/oauth.ts'
-import { billingCallbackBase, PLATFORM_GATEWAYS, platformGateway, platformGatewaySecret } from '../_shared/platform-billing.ts'
+import { redactGatewayAnswer } from '../_shared/payments/redact.ts'
+import type { RefundResult } from '../_shared/payments/types.ts'
+import {
+  billingCallbackBase, confirmBillingPayment, logBillingCheck, PLATFORM_GATEWAYS, platformGateway, platformGatewaySecret,
+} from '../_shared/platform-billing.ts'
 import { parse, phoneSchema } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
 import {
@@ -185,6 +191,18 @@ const schema = z.discriminatedUnion('action', [
     }),
   }),
   z.object({ action: z.literal('gateway_disconnect'), provider: z.enum(PLATFORM_GATEWAYS) }),
+  z.object({ action: z.literal('billing_recheck'), payment_id: z.uuid() }),
+  z.object({ action: z.literal('billing_reconcile'), from: z.iso.date(), to: z.iso.date() }),
+  z.object({
+    action: z.literal('billing_refund'),
+    payment_id: z.uuid(),
+    amount: z.number().positive().max(10_000_000),
+    reason: z.string().trim().min(5, 'Give a reason (at least 5 characters)').max(500),
+    // Already returned another way (the gateway's own panel, bank): record it, do not send it.
+    manual: z.boolean().default(false),
+    reverse_credits: z.boolean().default(true),
+  }),
+  z.object({ action: z.literal('billing_refund_check'), refund_id: z.uuid() }),
   z.object({
     action: z.literal('pbx_trunk_secret'),
     merchant_id: z.uuid(),
@@ -241,6 +259,58 @@ async function timed(name: string, fn: () => Promise<string>) {
 // database's own 'cron_secret' (Vault), which is what the database scheduler sends (_shared/cron.ts).
 const REQUIRED_SETTINGS = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const
 const OPTIONAL_SETTINGS = ['PLATFORM_URL', 'CRON_SECRET', 'STOREFRONT_URL', 'SENTRY_DSN'] as const
+
+interface GatewayPayment {
+  payment_id: string; merchant_id: string; provider: string; reference: string; session: string | null
+  status: string; amount: number; txn: string | null; method?: string; age_minutes: number
+}
+interface RefundInfo { refund_id: string; status: string; amount: number; provider: string; session: string; txn: string; reference: string; merchant_id: string }
+
+const SETTLED = ['SUCCEEDED', 'REFUND_PENDING', 'REFUNDED']
+
+/**
+ * Asks the gateway about one payment and brings ours in line when the gateway
+ * is the one that knows better: a payment it completed is applied (once); one
+ * it never completed is closed. A payment we count as paid that the gateway
+ * does not is never undone here — it is flagged for a person.
+ */
+async function recheckPayment(p: GatewayPayment) {
+  const gateway = await platformGateway(p.provider as (typeof PLATFORM_GATEWAYS)[number], { allowDisabled: true })
+  if (!gateway.reconcile || !p.session) return { reference: p.reference, before: p.status, gateway: 'unsupported', result: 'skipped' }
+  const verified = await gateway.reconcile(p.session, p.reference, p.age_minutes)
+  if (!verified) {
+    await logBillingCheck(p.merchant_id, p.provider, p.reference, 'RECHECK', 'pending')
+    return { reference: p.reference, before: p.status, gateway: 'in progress', result: 'waiting' }
+  }
+  const gatewayState = verified.success ? 'completed' : (verified.eventType.split('.').pop() ?? 'not completed')
+  if (SETTLED.includes(p.status)) {
+    const agrees = verified.success && verified.providerTransactionId === p.txn && Number(verified.amount) === Number(p.amount)
+    if (!agrees) {
+      const note = verified.success
+        ? `The gateway reports transaction ${verified.providerTransactionId} for ${verified.amount}; we recorded ${p.txn} for ${p.amount}`
+        : `We count this payment as paid but the gateway reports "${gatewayState}"`
+      await rpc(adminClient(p.merchant_id), 'billing_payment_flag', {
+        p_payment: p.payment_id, p_source: 'RECHECK', p_note: note, p_gateway_status: gatewayState,
+        p_detail: { raw: redactGatewayAnswer(verified.raw) },
+      })
+      return { reference: p.reference, before: p.status, gateway: gatewayState, result: 'flagged' }
+    }
+    await logBillingCheck(p.merchant_id, p.provider, p.reference, 'RECHECK', 'matches')
+    return { reference: p.reference, before: p.status, gateway: gatewayState, result: 'matches' }
+  }
+  const result = await confirmBillingPayment(p.merchant_id, p.provider, p.reference, verified, 'RECHECK')
+  return { reference: p.reference, before: p.status, gateway: gatewayState, result: result.status }
+}
+
+/** Records the gateway's answer to a refund; leaves it open while the gateway is still working on it. */
+async function finishRefund(info: RefundInfo, answer: RefundResult | null, error?: string) {
+  if (answer && !answer.success && answer.pending) return { status: 'processing', refund_id: info.refund_id }
+  if (!answer) return { status: 'processing', refund_id: info.refund_id, message: error ?? 'The gateway did not answer; check the refund again in a few minutes' }
+  return rpc(adminClient(), 'billing_refund_finish', {
+    p_refund: info.refund_id, p_success: answer.success, p_provider_refund_id: answer.refundTransactionId,
+    p_error: answer.success ? null : (answer.reason ?? 'The gateway refused the refund'), p_payload: { raw: redactGatewayAnswer(answer.raw) },
+  })
+}
 
 const maskPhone = (to: string) => (to.length > 7 ? `${to.slice(0, -7)}••••${to.slice(-3)}` : to)
 
@@ -526,6 +596,90 @@ export default (
         await rpc(admin, 'platform_secret_clear', { p_key: platformGatewaySecret(input.provider), p_actor: user.id })
         const gateways = await rpc(admin, 'platform_billing_gateway_set', { p_provider: input.provider, p_connected: false, p_hint: null, p_sandbox: null, p_actor: user.id })
         return json(req, { ok: true, gateways })
+      }
+
+      // ------------------------------------------------- payments to the platform: re-check, reconcile, refund
+      case 'billing_recheck': {
+        const p = await rpc<GatewayPayment | null>(admin, 'billing_payment_get', { p_payment: input.payment_id })
+        if (!p) throw new HttpError(404, 'Payment not found', 'NOT_FOUND')
+        await require(client, 'subscriptions', 'manage', p.merchant_id)
+        if (p.method !== 'GATEWAY' || !p.session) throw new HttpError(422, 'This payment was not made through a gateway', 'VALIDATION')
+        try {
+          return json(req, await recheckPayment(p))
+        } catch (error) {
+          await logBillingCheck(p.merchant_id, p.provider, p.reference, 'RECHECK', 'error', { error: (error as Error).message })
+          throw new HttpError(502, `Could not ask the gateway: ${(error as Error).message}`, 'GATEWAY_ERROR')
+        }
+      }
+      case 'billing_reconcile': {
+        await require(client, 'subscriptions', 'manage')
+        const days = (Date.parse(input.to) - Date.parse(input.from)) / 86_400_000
+        if (!(days >= 0 && days <= 31)) throw new HttpError(422, 'Choose a period of up to 31 days', 'VALIDATION')
+        // Only the stores this employee may see.
+        const visible = await rpc<{ rows: Array<{ id: string }> }>(client, 'platform_billing_dashboard', {
+          p: { from: input.from, to: input.to, provider: 'bkash', limit: 200 },
+        })
+        const allowed = new Set(visible.rows.map((r) => r.id))
+        const list = (await rpc<GatewayPayment[]>(admin, 'billing_gateway_recheck_list', { p_from: input.from, p_to: input.to, p_limit: 200 }))
+          .filter((p) => allowed.has(p.payment_id)).slice(0, 50)
+        const rows = []
+        for (const p of list) {
+          try {
+            rows.push(await recheckPayment(p))
+          } catch (error) {
+            await logBillingCheck(p.merchant_id, p.provider, p.reference, 'RECHECK', 'error', { error: (error as Error).message })
+            rows.push({ reference: p.reference, before: p.status, gateway: 'unreachable', result: 'error' })
+          }
+        }
+        const counts: Record<string, number> = {}
+        for (const r of rows) counts[r.result] = (counts[r.result] ?? 0) + 1
+        return json(req, { checked: rows.length, more: visible.rows.length > list.length, counts, rows })
+      }
+      case 'billing_refund': {
+        await require(client, 'subscriptions', 'manage')
+        await require(client, 'credits', 'manage')
+        // The database checks the payment, the amount left and the employee's stores, and opens the refund.
+        const started = await rpc<{ status: string; refund_id: string; manual: boolean; provider?: string; session?: string; txn?: string; amount?: number; reference?: string }>(
+          client, 'platform_billing_refund_start', {
+            p_payment: input.payment_id, p_amount: input.amount, p_reason: input.reason, p_manual: input.manual, p_reverse_credits: input.reverse_credits,
+          })
+        if (started.manual || started.status !== 'processing') return json(req, started)
+        const p = await rpc<GatewayPayment>(admin, 'billing_payment_get', { p_payment: input.payment_id })
+        const info: RefundInfo = {
+          refund_id: started.refund_id, status: 'PROCESSING', amount: Number(started.amount), provider: started.provider!, session: started.session!,
+          txn: started.txn!, reference: started.reference!, merchant_id: p.merchant_id,
+        }
+        const gateway = await platformGateway(info.provider as (typeof PLATFORM_GATEWAYS)[number], { allowDisabled: true })
+        if (!gateway.refund) {
+          return json(req, await rpc(admin, 'billing_refund_finish', {
+            p_refund: info.refund_id, p_success: false, p_provider_refund_id: null, p_error: 'This gateway cannot refund from Fullfilio', p_payload: {},
+          }))
+        }
+        let answer: RefundResult | null = null
+        try {
+          answer = await gateway.refund({ session: info.session, transactionId: info.txn, amount: info.amount, reference: info.reference, reason: input.reason })
+          // A refused answer can mean "already refunded": ask for the refund's status before calling it failed.
+          if (!answer.success && !answer.pending && gateway.refundStatus) {
+            const status = await gateway.refundStatus(info.session, info.txn).catch(() => null)
+            if (status?.success) answer = status
+          }
+        } catch (error) {
+          return json(req, await finishRefund(info, null, `The gateway did not answer (${(error as Error).message}); check the refund again in a few minutes`))
+        }
+        return json(req, await finishRefund(info, answer))
+      }
+      case 'billing_refund_check': {
+        const info = await rpc<RefundInfo | null>(admin, 'billing_refund_get', { p_refund: input.refund_id })
+        if (!info) throw new HttpError(404, 'Refund not found', 'NOT_FOUND')
+        await require(client, 'subscriptions', 'manage', info.merchant_id)
+        if (info.status !== 'PROCESSING') return json(req, { status: info.status.toLowerCase(), refund_id: info.refund_id })
+        const gateway = await platformGateway(info.provider as (typeof PLATFORM_GATEWAYS)[number], { allowDisabled: true })
+        if (!gateway.refundStatus) throw new HttpError(422, 'This gateway cannot report refunds', 'VALIDATION')
+        try {
+          return json(req, await finishRefund(info, await gateway.refundStatus(info.session, info.txn)))
+        } catch (error) {
+          return json(req, await finishRefund(info, null, `The gateway did not answer (${(error as Error).message})`))
+        }
       }
 
       // ------------------------------------------------- PBX Setup (VoiceDrive gateway)

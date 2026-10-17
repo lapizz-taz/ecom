@@ -40,6 +40,27 @@ export interface VerifiedPayment {
   raw: unknown
 }
 
+/** What the gateway said about a refund. success=false with pending=true: ask again later. */
+export interface RefundResult {
+  success: boolean
+  pending?: boolean
+  refundTransactionId: string | null
+  amount: number | null
+  reason?: string
+  raw: unknown
+}
+
+export interface RefundRequest {
+  /** The gateway's id for the original attempt (bKash paymentID). */
+  session: string
+  /** The gateway transaction that paid (bKash trxID). */
+  transactionId: string
+  amount: number
+  /** Our payment reference, sent as bKash's sku. */
+  reference: string
+  reason: string
+}
+
 export interface PaymentProvider {
   readonly code: string
   initiate(ctx: PaymentInitContext): Promise<PaymentInitResult>
@@ -50,4 +71,8 @@ export interface PaymentProvider {
   /** Proves saved credentials work; returns a short confirmation. */
   /** Checks the credentials; callbackUrl is this store's return address (some gateways check it). */
   test?(callbackUrl?: string): Promise<string>
+  /** Sends money back for a completed payment. */
+  refund?(request: RefundRequest): Promise<RefundResult>
+  /** Asks what became of a refund sent earlier. */
+  refundStatus?(session: string, transactionId: string): Promise<RefundResult>
 }

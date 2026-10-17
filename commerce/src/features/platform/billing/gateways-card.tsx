@@ -65,7 +65,7 @@ export function GatewaysCard() {
                 <span className="font-medium">{GATEWAYS[code].name}</span>{' '}
                 {g.connected ? <Badge variant={g.enabled ? 'success' : 'neutral'}>{g.enabled ? 'taking payments' : 'connected, off'}</Badge> : <Badge variant="neutral">not connected</Badge>}
                 {g.sandbox && g.connected && <Badge variant="warning" className="ml-1">sandbox</Badge>}
-                {g.connected && <span className="block text-xs text-muted-foreground">{g.hint} · since {formatDateTime(g.connected_at ?? null)}</span>}
+                {g.connected && <span className="block text-xs text-muted-foreground">{g.hint} · since {formatDateTime(g.connected_at ?? null)} · last verified payment {g.last_verified_at ? formatDateTime(g.last_verified_at) : 'none yet'}</span>}
               </span>
               {manage && (
                 <span className="flex items-center gap-2">

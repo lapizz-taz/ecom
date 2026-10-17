@@ -131,7 +131,7 @@ export const saveSmsSettings = (p: { sender_ids?: string[]; sender_id?: string; 
 export const usageReport = (service: Service, from: string, to: string, merchant?: string | null) =>
   platformRpc<UsageReport>('platform_usage_report', { p_service: service, p_from: from, p_to: to, p_merchant: merchant ?? null })
 export const billingGateways = () =>
-  platformRpc<{ gateways: Record<'bkash' | 'paystation', { enabled?: boolean; connected?: boolean; hint?: string | null; sandbox?: boolean; connected_at?: string | null }>; can_manage: boolean }>(
+  platformRpc<{ gateways: Record<'bkash' | 'paystation', { enabled?: boolean; connected?: boolean; hint?: string | null; sandbox?: boolean; connected_at?: string | null; last_verified_at?: string | null }>; can_manage: boolean }>(
     'platform_billing_gateways')
 export const toggleBillingGateway = (provider: 'bkash' | 'paystation', enabled: boolean) => platformRpc('platform_billing_gateway_toggle', { p_provider: provider, p_enabled: enabled })
 
