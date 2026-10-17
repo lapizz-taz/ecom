@@ -104,6 +104,9 @@ export const metaConnect = (input: {
 }) => invokeFunction<{ ok: boolean; channels: InboxChannel[]; warnings: string[] }>('inbox', { action: 'oauth_connect', ...input })
 export const setChannelComments = (id: string, receive_comments: boolean) => invokeFunction<{ ok: boolean }>('inbox', { action: 'channel', id, receive_comments })
 export const disconnectChannel = (id: string) => invokeFunction<{ ok: boolean }>('inbox', { action: 'disconnect', id })
+/** A WhatsApp number connected with its IDs and an access token from Meta (API Setup or a system user). */
+export const connectWhatsAppManually = (input: { waba_id: string; phone_number_id: string; token: string }) =>
+  invokeFunction<{ ok: boolean; channels: InboxChannel[]; warnings: string[] }>('inbox', { action: 'whatsapp_manual', ...input })
 /** Takes the channel off the store for good, with its conversations. */
 export const removeChannel = (id: string) => invokeFunction<{ removed: boolean; conversations: number }>('inbox', { action: 'remove', id })
 export const whatsappMedia = (channel_id: string, media_id: string) => invokeFunction<{ mime: string; data: string }>('inbox', { action: 'media', channel_id, media_id })

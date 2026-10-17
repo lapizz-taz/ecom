@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, ExternalLink, Link2, Pencil, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react'
+import { Building2, ExternalLink, KeyRound, Link2, Pencil, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -23,7 +23,7 @@ import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import {
   deleteSavedReply, disconnectChannel, type InboxChannel, type InboxPlatform, inboxConfig, inboxOverview, type MetaConnectKind, metaConnectStart, savedReplies,
-  removeChannel, saveSavedReply, setChannelComments,
+  connectWhatsAppManually, removeChannel, saveSavedReply, setChannelComments,
 } from '@/services/inbox'
 
 type Filter = 'ALL' | InboxPlatform
@@ -46,6 +46,7 @@ export default function InboxChannelsPage() {
   const [removing, setRemoving] = useState<InboxChannel | null>(null)
   const [deleting, setDeleting] = useState<InboxChannel | null>(null)
   const [guide, setGuide] = useState<MetaConnectKind | null>(null)
+  const [manualWa, setManualWa] = useState(false)
   const [filter, setFilter] = useState<Filter>('ALL')
   const popup = useRef<Window | null>(null)
   const refresh = () => {
@@ -187,6 +188,11 @@ export default function InboxChannelsPage() {
                       {busy('WHATSAPP') ? <Spinner /> : <Link2 />} Connect WhatsApp
                     </Button>
                   )}
+                  {p === 'WHATSAPP' && ready && (
+                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setManualWa(true)}>
+                      <KeyRound /> Connect with an access token
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <p className="mt-auto text-xs text-muted-foreground">Ask an admin to connect channels.</p>
@@ -200,6 +206,7 @@ export default function InboxChannelsPage() {
       <SavedRepliesCard manage={manage} />
 
       <ConnectGuide kind={guide} onClose={() => setGuide(null)} onConnect={connect} />
+      <WhatsAppTokenDialog open={manualWa} onOpenChange={setManualWa} onDone={refresh} />
       <ConfirmDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} destructive title={`Disconnect ${removing?.name}?`}
         description="Its access is deleted and new messages stop arriving. Conversations already in the inbox stay." confirmLabel="Disconnect"
         onConfirm={async () => {
@@ -217,6 +224,53 @@ export default function InboxChannelsPage() {
           } catch (e) { onError(e); throw e }
         }} />
     </div>
+  )
+}
+
+/**
+ * A WhatsApp number connected with its IDs and an access token copied from Meta (WhatsApp →
+ * API Setup, or a system user's token). For numbers that cannot use Embedded Signup yet,
+ * such as Meta's test number. The token is kept encrypted like any other channel's.
+ */
+function WhatsAppTokenDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; onDone: () => void }) {
+  const [form, setForm] = useState({ waba_id: '', phone_number_id: '', token: '' })
+  const save = useMutation({
+    mutationFn: () => connectWhatsAppManually(form),
+    onSuccess: (r) => {
+      toast.success(`Connected ${r.channels.map((c) => c.name).join(', ')}`)
+      for (const w of r.warnings) toast.error(w)
+      setForm({ waba_id: '', phone_number_id: '', token: '' })
+      onOpenChange(false)
+      onDone()
+    },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const digits = (v: string) => v.replace(/\D/g, '')
+  const valid = form.waba_id.length >= 3 && form.phone_number_id.length >= 3 && form.token.length >= 20
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect WhatsApp with an access token</DialogTitle>
+          <DialogDescription>Copy these from Meta → your app → WhatsApp → API Setup. Use this for Meta's test number or a number you manage yourself.</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate() }}>
+          <Field label="WhatsApp Business Account ID" htmlFor="wa-waba">
+            <Input id="wa-waba" inputMode="numeric" value={form.waba_id} onChange={(e) => setForm({ ...form, waba_id: digits(e.target.value) })} placeholder="Messaging account ID" />
+          </Field>
+          <Field label="Phone number ID" htmlFor="wa-phone">
+            <Input id="wa-phone" inputMode="numeric" value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: digits(e.target.value) })} placeholder="Phone number ID" />
+          </Field>
+          <Field label="Access token" htmlFor="wa-token" hint="A token from API Setup lasts 24 hours; a system user's token keeps working. It is stored encrypted.">
+            <Input id="wa-token" type="password" autoComplete="off" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value.trim() })} placeholder="EAA…" />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={!valid || save.isPending}>{save.isPending && <Spinner />} Connect</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
