@@ -1,6 +1,6 @@
 import {
-  Activity, BarChart3, Boxes, Bug, ClipboardCheck, Globe, HelpCircle, LayoutDashboard, Megaphone, MessageSquare, Search, Settings,
-  ShieldCheck, ShoppingBag, Sparkles, Store, TrendingUp, UserCog, Users, Wallet,
+  BarChart3, Boxes, ClipboardCheck, Globe, HelpCircle, LayoutDashboard, Megaphone, MessageSquare, Search, Settings,
+  ShoppingBag, Store, TrendingUp, UserCog, Users, Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { QueueCounts } from '@/types/domain'
@@ -213,23 +213,19 @@ export const NAV: NavSection[] = [
         ],
       },
       {
-        label: 'Logs', to: '/admin/audit-logs', icon: <ShieldCheck />, permission: 'audit.view',
+        // Help, updates, reports and logs in one menu to keep the sidebar short.
+        label: 'Support & Logs', to: '/admin/help', icon: <HelpCircle />, shortcut: '?',
         children: [
-          { label: 'Audit Log', to: '/admin/audit-logs' },
-          { label: 'Deletion Logs', to: '/admin/audit-logs?view=deletions' },
-          { label: 'System Log', to: '/admin/system-logs' },
+          { label: 'Help Center', to: '/admin/help' },
+          { label: 'Updates', to: '/admin/updates' },
+          { label: 'My Bug Reports', to: '/admin/support/bugs' },
+          { label: 'My Feedback', to: '/admin/support/feedback' },
+          { label: 'System Status', to: '/admin/status' },
+          { label: 'Audit Log', to: '/admin/audit-logs', permission: 'audit.view' },
+          { label: 'Deletion Logs', to: '/admin/audit-logs?view=deletions', permission: 'audit.view' },
+          { label: 'System Log', to: '/admin/system-logs', permission: 'audit.view' },
         ],
       },
-    ],
-  },
-  {
-    label: 'Support',
-    items: [
-      { label: 'Help Center', to: '/admin/help', icon: <HelpCircle />, shortcut: '?' },
-      { label: 'Updates', to: '/admin/updates', icon: <Sparkles /> },
-      { label: 'My Bug Reports', to: '/admin/support/bugs', icon: <Bug /> },
-      { label: 'My Feedback', to: '/admin/support/feedback', icon: <MessageSquare /> },
-      { label: 'System Status', to: '/admin/status', icon: <Activity /> },
     ],
   },
 ]
@@ -252,7 +248,7 @@ export const MORE_PAGES: (NavChild & { parent: string })[] = [
   { parent: 'Settings', label: 'Fraud & Advance', to: '/admin/settings?tab=fraud', permission: 'settings.view' },
   { parent: 'Settings', label: 'Order Settings', to: '/admin/settings?tab=operations', permission: 'settings.view' },
   { parent: 'Settings', label: 'Finance Categories', to: '/admin/settings?tab=finance', permission: 'finance.view' },
-  { parent: 'Support', label: 'Contact Support', to: '/admin/help' },
+  { parent: 'Support & Logs', label: 'Contact Support', to: '/admin/help' },
 ]
 
 /** Two-key shortcuts ("G" then a letter) shown in the help sheet. */
