@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
+import { AutoOrderBar, useAutoOrder } from '@/features/orders/auto-order'
 import { toast } from '@/lib/toast'
 import { Can } from '@/components/common/permission-gate'
 import { ActivityTimeline } from '@/components/common/activity-timeline'
@@ -79,6 +80,7 @@ export default function OrderDetailPage() {
   const { can } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const auto = useAutoOrder(id)
   const order = useQuery({ queryKey: ['order', id], queryFn: () => getOrder(id) })
   const seesCosts = can('finance.view') || can('orders.price_override')
   const costs = useQuery({ queryKey: ['order', id, 'costs'], queryFn: () => orderCostSummary(id), enabled: seesCosts })
@@ -104,6 +106,8 @@ export default function OrderDetailPage() {
       if (r.approved) toast.success('Approved — it is now in Approved Orders')
       else toast.error(r.failed[0]?.error.replace(/^[A-Z_]+: /, '') ?? 'Could not approve this order')
       refresh()
+      // Working a queue: the next customer opens in this one's place.
+      if (r.approved && auto.queue) void auto.next()
     },
   })
   const fraudCheck = useMutation({
@@ -173,6 +177,8 @@ export default function OrderDetailPage() {
         </Link>
       </div>
 
+      <AutoOrderBar auto={auto} />
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -239,7 +245,10 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
-      {isWeb && !closed && <CallOutcomeCard order={o} onChanged={refresh} onApprove={() => approve.mutate()} approving={approve.isPending} />}
+      {isWeb && !closed && (
+        <CallOutcomeCard order={o} onChanged={refresh} onApprove={() => approve.mutate()} approving={approve.isPending || auto.moving}
+          onSaved={auto.queue ? () => void auto.next() : undefined} />
+      )}
 
       {o.duplicate_status === 'SUSPECTED' && related.data && (
         <Card className="border-amber-300 bg-amber-50/60">
@@ -698,26 +707,40 @@ function localInput(d: Date) {
 }
 
 /** Web orders: what happened on the call, and approval. */
-function CallOutcomeCard({ order, onChanged, onApprove, approving }: { order: OrderDetail; onChanged: () => void; onApprove: () => void; approving: boolean }) {
+const CANCEL_REASONS = ['Customer request', 'Out of stock', 'Duplicate order', 'Wrong number', 'Phone off', 'No answer', 'Fraudulent order', 'Price issue', 'Advance payment issue', 'Other']
+
+function CallOutcomeCard({ order, onChanged, onApprove, approving, onSaved }: {
+  order: OrderDetail; onChanged: () => void; onApprove: () => void; approving: boolean
+  /** Called once the status is saved (the Auto Order Dashboard then opens the next customer). */
+  onSaved?: () => void
+}) {
   const { can } = useAuth()
   const statuses = useQuery({ queryKey: ['review-statuses'], queryFn: () => listReviewStatuses(), staleTime: 60_000 })
   const [code, setCode] = useState(order.review_status)
   const [note, setNote] = useState('')
+  const [reason, setReason] = useState('')
   const [followUp, setFollowUp] = useState(() => localInput(new Date(Date.now() + 2 * 3600_000)))
   useEffect(() => setCode(order.review_status), [order.review_status])
   const current = statuses.data?.find((s) => s.code === order.review_status)
   const chosen = statuses.data?.find((s) => s.code === code)
   const save = useMutation({
-    mutationFn: () => setWebOrderStatus([order.id], code, note, chosen?.needs_follow_up ? new Date(followUp).toISOString() : null),
+    mutationFn: () => {
+      const text = chosen?.closes_order && reason ? [reason, note.trim()].filter(Boolean).join(' — ') : note
+      return setWebOrderStatus([order.id], code, text, chosen?.needs_follow_up ? new Date(followUp).toISOString() : null)
+    },
     onSuccess: (r) => {
-      if (r.updated) toast.success('Call status saved')
+      if (r.updated) toast.success(chosen?.closes_order ? `Order ${chosen.label.toLowerCase()}` : 'Status updated')
       else toast.error(r.failed[0]?.error.replace(/^[A-Z_]+: /, '') ?? 'Could not save')
       setNote('')
+      setReason('')
       onChanged()
+      if (r.updated) onSaved?.()
     },
   })
   const wa = waNumber(order.customer_phone)
   const dirty = code !== order.review_status || note.trim() !== '' || (chosen?.needs_follow_up ?? false)
+  // Closing an order (cancelled, invalid, duplicate) needs a reason.
+  const needsReason = !!chosen?.closes_order && !reason
   const blocked = ['ADVANCE_REQUIRED', 'FRAUD_REVIEW'].includes(order.status) && !can('fraud.review')
   return (
     <Card>
@@ -758,10 +781,16 @@ function CallOutcomeCard({ order, onChanged, onApprove, approving }: { order: Or
               {chosen?.needs_follow_up && (
                 <Input type="datetime-local" className="h-8" value={followUp} onChange={(e) => setFollowUp(e.target.value)} aria-label="Call back at" />
               )}
+              {chosen?.closes_order && (
+                <Select value={reason} onValueChange={setReason}>
+                  <SelectTrigger size="sm" aria-label="Reason"><SelectValue placeholder="Select a reason" /></SelectTrigger>
+                  <SelectContent>{CANCEL_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
             </div>
             <Textarea rows={1} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What did the customer say?" aria-label="Call note" className="min-h-8" />
-            <Button size="sm" type="submit" variant={chosen?.closes_order ? 'destructive' : 'outline'} disabled={!dirty || save.isPending}>
-              {save.isPending && <Spinner />} {chosen?.closes_order ? `Close as ${chosen.label}` : 'Save'}
+            <Button size="sm" type="submit" variant={chosen?.closes_order ? 'destructive' : onSaved ? 'default' : 'outline'} disabled={!dirty || needsReason || save.isPending || approving}>
+              {save.isPending && <Spinner />} {chosen?.closes_order ? `Close as ${chosen.label}` : onSaved ? 'Update & next' : 'Save'}
             </Button>
           </form>
         )}

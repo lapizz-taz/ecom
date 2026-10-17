@@ -74,6 +74,8 @@ export type CallQueue = 'processing' | 'incomplete' | 'good_no_response' | 'no_r
 export interface CallClaim { kind: 'ORDER' | 'LEAD'; id: string; queue: CallQueue }
 export interface AutoOrderDashboard {
   queues: Record<CallQueue, number>
+  /** Held back for now: called under 30 minutes ago, or a call-back still ahead. */
+  waiting?: Partial<Record<CallQueue, { count: number; next_at: string | null }>>
   report: { taken: number; approved: number; shipped: number; delivered: number; returned: number }
   claim: (CallClaim & { expires_at: string }) | null
 }
