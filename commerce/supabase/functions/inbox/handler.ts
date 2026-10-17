@@ -65,6 +65,9 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('channel'), id: z.string().uuid(), receive_comments: z.boolean() }),
   z.object({ action: z.literal('disconnect'), id: z.string().uuid() }),
   z.object({ action: z.literal('remove'), id: z.string().uuid() }),
+  // A WhatsApp number connected with its IDs and a token from Meta (API Setup or a system user),
+  // for numbers that cannot go through Embedded Signup yet, such as Meta's test number.
+  z.object({ action: z.literal('whatsapp_manual'), waba_id: digits, phone_number_id: digits, token: z.string().trim().min(20).max(2000) }),
   z.object({
     action: z.literal('send'), conversation_id: z.string().uuid(), text: z.string().max(4000).optional(),
     file: file.optional(), image_url: z.string().url().max(1000).optional(), reply_to_id: z.string().uuid().optional(),
@@ -388,6 +391,24 @@ export default (
         await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
         const out = await rpc<{ removed: boolean; conversations: number }>(admin, 'inbox_channel_remove', { p_id: c.id, p_actor: staff.user.id })
         return json(req, out)
+      }
+
+      case 'whatsapp_manual': {
+        if (!appSecret) throw new HttpError(422, 'Connecting with Facebook is not switched on yet. Ask Fullfilio support.', 'NOT_CONFIGURED')
+        const g = new InboxGraph(input.token, appSecret)
+        let numbers: Array<{ id: string; display_phone_number?: string; verified_name?: string }>
+        try {
+          numbers = (await g.get<{ data?: typeof numbers }>(`${input.waba_id}/phone_numbers`, { fields: 'id,display_phone_number,verified_name' })).data ?? []
+        } catch (e) {
+          throw metaError(e)
+        }
+        const n = numbers.find((x) => x.id === input.phone_number_id)
+        if (!n) throw new HttpError(422, 'This phone number ID is not in that WhatsApp Business Account. Copy both IDs from Meta → WhatsApp → API Setup.', 'NOT_FOUND')
+        const out: Connected = { channels: [], warnings: [] }
+        await connectNumber(admin, appSecret, staff.user.id, { id: n.id, waba_id: input.waba_id, display_phone: n.display_phone_number ?? null, name: n.verified_name ?? null },
+          input.token, undefined, out)
+        if (!out.channels.length) throw new HttpError(422, out.warnings.join(' ') || 'Meta did not accept this number.', 'META_REJECTED')
+        return json(req, { ok: true, ...out })
       }
 
       case 'media': {
