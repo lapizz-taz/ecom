@@ -32,8 +32,11 @@ export interface MetaInboxApp {
 
 /** PAGES and BUSINESS both connect Pages (and their Instagram); they differ in Meta's dialog. */
 export type OAuthKind = 'PAGES' | 'BUSINESS' | 'WHATSAPP'
-/** w: started in a popup window, so the callback hands the code back to the page that opened it. */
-export interface OAuthState { m: string; u: string; k: OAuthKind; exp: number; n: string; w?: 1 }
+/**
+ * w: started in a popup window, so the callback hands the code back to the page that opened it.
+ * c: WhatsApp number kept on the WhatsApp Business app too (coexistence), not moved to API-only.
+ */
+export interface OAuthState { m: string; u: string; k: OAuthKind; exp: number; n: string; w?: 1; c?: 1 }
 
 const graphVersion = () => env('META_GRAPH_VERSION') ?? 'v23.0'
 const graphRoot = () => `${(env('META_GRAPH_URL') ?? 'https://graph.facebook.com').replace(/\/+$/, '')}/${graphVersion()}`
@@ -73,7 +76,7 @@ export async function readState(secret: string, state: string, now = Date.now())
 }
 
 /** Meta's login dialog for this kind of connection. */
-export function loginUrl(app: MetaInboxApp, kind: OAuthKind, redirectUri: string, state: string): string {
+export function loginUrl(app: MetaInboxApp, kind: OAuthKind, redirectUri: string, state: string, coexist = false): string {
   const configId = kind === 'WHATSAPP' ? app.whatsapp_config_id : kind === 'BUSINESS' ? app.business_config_id : app.login_config_id
   const u = new URL(`https://www.facebook.com/${graphVersion()}/dialog/oauth`)
   u.searchParams.set('client_id', app.app_id ?? '')
@@ -82,7 +85,10 @@ export function loginUrl(app: MetaInboxApp, kind: OAuthKind, redirectUri: string
   u.searchParams.set('config_id', configId ?? '')
   u.searchParams.set('response_type', 'code')
   u.searchParams.set('override_default_response_type', 'true')
-  if (kind === 'WHATSAPP') u.searchParams.set('extras', JSON.stringify({ setup: {}, featureType: '', sessionInfoVersion: '3' }))
+  // Coexistence keeps the number working in the WhatsApp Business app while Fullfilio uses the API.
+  if (kind === 'WHATSAPP') {
+    u.searchParams.set('extras', JSON.stringify({ setup: {}, featureType: coexist ? 'whatsapp_business_app_onboarding' : '', sessionInfoVersion: '3' }))
+  }
   return u.toString()
 }
 
