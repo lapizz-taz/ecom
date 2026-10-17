@@ -42,12 +42,9 @@ export function LiveDashboardView() {
   return (
     <div className="space-y-4">
       <Card className="gap-0 overflow-hidden p-0">
-        <div className="flex flex-wrap items-start justify-between gap-3 p-4 pt-5">
+        <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div className="min-w-0">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium tracking-wide text-primary uppercase">
-              <Activity className="size-3" /> Team Pulse · live
-            </span>
-            <p className="mt-2 text-xl font-semibold">Live dashboard</p>
+            <p className="text-base font-semibold">Live dashboard</p>
             <p className="text-sm text-muted-foreground">Attendance, active work, breaks and recent activity in one view.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
