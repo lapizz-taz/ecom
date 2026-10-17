@@ -19,7 +19,7 @@ import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import {
   deleteSavedReply, disconnectChannel, type InboxChannel, inboxConfig, inboxOverview, type MetaConnectKind, metaConnectStart, savedReplies,
-  saveSavedReply, setChannelComments,
+  removeChannel, saveSavedReply, setChannelComments,
 } from '@/services/inbox'
 
 const STEPS: Array<{ icon: typeof Lock; title: string; text: string }> = [
@@ -35,6 +35,7 @@ export default function InboxChannelsPage() {
   const overview = useQuery({ queryKey: ['inbox-overview'], queryFn: inboxOverview })
   const config = useQuery({ queryKey: ['inbox-config'], queryFn: inboxConfig })
   const [removing, setRemoving] = useState<InboxChannel | null>(null)
+  const [deleting, setDeleting] = useState<InboxChannel | null>(null)
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['inbox-overview'] })
     void qc.invalidateQueries({ queryKey: ['inbox-config'] })
@@ -118,6 +119,10 @@ export default function InboxChannelsPage() {
                       {manage && c.status !== 'DISCONNECTED' && (
                         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoving(c)}>Disconnect</Button>
                       )}
+                      {manage && (
+                        <Button size="icon-sm" variant="ghost" className="text-muted-foreground hover:text-destructive" title="Remove from Fullfilio"
+                          aria-label={`Remove ${c.name}`} onClick={() => setDeleting(c)}><Trash2 /></Button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -144,7 +149,7 @@ export default function InboxChannelsPage() {
                 </li>
               ))}
             </ol>
-            <p className="mt-4 text-xs text-muted-foreground">To remove access later, disconnect here or in Facebook → Settings → Business integrations.</p>
+            <p className="mt-4 text-xs text-muted-foreground">To remove access later, disconnect or remove it here, or in Facebook → Settings → Business integrations.</p>
           </CardContent>
         </Card>
       </div>
@@ -153,6 +158,17 @@ export default function InboxChannelsPage() {
         description="Its access is deleted and new messages stop arriving. Conversations already in the inbox stay." confirmLabel="Disconnect"
         onConfirm={async () => {
           try { await disconnectChannel(removing!.id); toast.success('Disconnected'); refresh() } catch (e) { onError(e); throw e }
+        }} />
+      <ConfirmDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} destructive title={`Remove ${deleting?.name}?`}
+        description="It is taken off this store and its conversations and messages in the inbox are deleted. Nothing changes on Facebook or Instagram; you can connect it again later."
+        confirmLabel="Remove"
+        onConfirm={async () => {
+          try {
+            await removeChannel(deleting!.id)
+            toast.success('Removed')
+            refresh()
+            void qc.invalidateQueries({ queryKey: ['inbox-list'] })
+          } catch (e) { onError(e); throw e }
         }} />
     </div>
   )

@@ -172,4 +172,22 @@ describe('inbox: one Meta app for every store', () => {
       await asUser(db, staff)
       await expectError(db, `select public.merchant_for('inbox_account', 'FACEBOOK:7770002')`, [], /permission denied|PERMISSION_DENIED/i)
     }))
+
+  it('removes a channel with its conversations, only from the system side, and frees the Page', () =>
+    inTx(async (db) => {
+      const fb = await channel(db, 'FACEBOOK', '7770031')
+      const r = await ingest(db, { channel_id: fb, thread_key: 'psid-31', message: { external_id: 'rm_1', body: 'hello' } })
+      const staff = await createStaff(db, 'ADMIN')
+      await asUser(db, staff)
+      await expectError(db, `select public.inbox_channel_remove($1, null)`, [fb], /permission denied|PERMISSION_DENIED/i)
+
+      await asService(db)
+      expect(await value(db, `select public.inbox_channel_remove($1, null)`, [fb])).toEqual({ removed: true, conversations: 1 })
+      expect(num(await value(db, `select count(*) from public.inbox_conversations where id = $1`, [r.conversation_id]))).toBe(0)
+      expect(num(await value(db, `select count(*) from public.inbox_messages where conversation_id = $1`, [r.conversation_id]))).toBe(0)
+      expect(num(await value(db, `select count(*) from public.audit_logs where entity_id = $1 and action = 'inbox_channel.removed'`, [fb]))).toBe(1)
+      expect(await owner(db, 'FACEBOOK:7770031')).toBeNull()
+      await asService(db)
+      await expectError(db, `select public.inbox_channel_remove($1, null)`, [fb], /NOT_FOUND/)
+    }))
 })

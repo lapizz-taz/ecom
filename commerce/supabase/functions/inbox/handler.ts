@@ -64,6 +64,7 @@ const schema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('channel'), id: z.string().uuid(), receive_comments: z.boolean() }),
   z.object({ action: z.literal('disconnect'), id: z.string().uuid() }),
+  z.object({ action: z.literal('remove'), id: z.string().uuid() }),
   z.object({
     action: z.literal('send'), conversation_id: z.string().uuid(), text: z.string().max(4000).optional(),
     file: file.optional(), image_url: z.string().url().max(1000).optional(), reply_to_id: z.string().uuid().optional(),
@@ -365,6 +366,24 @@ export default (
         await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
         await rpc(admin, 'inbox_channel_status', { p_id: c.id, p_status: 'DISCONNECTED', p_error: null })
         return json(req, { ok: true })
+      }
+
+      case 'remove': {
+        const [c] = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: input.id })
+        if (!c) throw new HttpError(404, 'Channel not found', 'NOT_FOUND')
+        // Stop Meta sending this Page's events, unless the store's other channel (its Facebook
+        // Page or Instagram account) still uses the same Page. Best effort: the token may be gone.
+        const pageOf = (x: Channel) => (x.platform === 'FACEBOOK' ? x.external_id : x.platform === 'INSTAGRAM' ? x.page_id : null)
+        const page = pageOf(c)
+        if (page) {
+          const others = await rpc<Channel[]>(admin, 'inbox_channels_for', {})
+          const shared = others.some((o) => o.id !== c.id && o.status !== 'DISCONNECTED' && pageOf(o) === page)
+          const t = shared ? '' : (await secret<{ access_token?: string }>(admin, channelKey(c.id))).access_token ?? ''
+          if (t) await new InboxGraph(t, appSecret).delete(`${page}/subscribed_apps`).catch(() => null)
+        }
+        await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
+        const out = await rpc<{ removed: boolean; conversations: number }>(admin, 'inbox_channel_remove', { p_id: c.id, p_actor: staff.user.id })
+        return json(req, out)
       }
 
       case 'media': {
