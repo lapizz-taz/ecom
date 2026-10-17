@@ -175,7 +175,7 @@ export default function ScanPage() {
                 <ScanBarcode className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground" />
                 <Input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCorrect="off" spellCheck={false}
                   placeholder="Scan or type order / tracking no."
-                  className="h-14 rounded-full pl-12 font-mono text-lg" aria-label="Barcode" />
+                  className="h-14 rounded-[10px] pl-12 font-mono text-lg" aria-label="Barcode" />
               </div>
               <Button type="submit" size="lg" className="h-14 px-7" disabled={!code.trim()}>
                 {busy ? <Spinner /> : 'Go'}
