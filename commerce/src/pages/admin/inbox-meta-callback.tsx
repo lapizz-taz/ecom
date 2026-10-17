@@ -158,7 +158,7 @@ function NumberPicker({ data, onDone }: { data: Extract<MetaFinish, { kind: 'WHA
   const [pin, setPin] = useState('')
   const numbers = data.numbers.filter((n) => picked.has(n.id)).map((n) => ({ id: n.id, waba_id: n.waba_id }))
   const connect = useMutation({
-    mutationFn: () => metaConnect({ numbers, pin }),
+    mutationFn: () => metaConnect({ numbers, pin: data.coexist ? undefined : pin }),
     onSuccess: (r) => { report(r); onDone() },
     onError: (e) => toast.error(toUserMessage(e)),
   })
@@ -183,13 +183,17 @@ function NumberPicker({ data, onDone }: { data: Extract<MetaFinish, { kind: 'WHA
             ))}
           </ul>
         )}
-        <Field label="Two-step verification PIN (6 digits)" hint="If the number already has a WhatsApp two-step PIN, enter it. Otherwise choose one and keep it safe.">
-          <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="off" className="w-40 tracking-[0.3em]" placeholder="••••••" />
-        </Field>
+        {data.coexist ? (
+          <p className="rounded-[10px] bg-muted px-3 py-2.5 text-xs text-muted-foreground">This number stays on the WhatsApp Business app. Keep the app open on the phone while your chats sync.</p>
+        ) : (
+          <Field label="Two-step verification PIN (6 digits)" hint="If the number already has a WhatsApp two-step PIN, enter it. Otherwise choose one and keep it safe.">
+            <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="off" className="w-40 tracking-[0.3em]" placeholder="••••••" />
+          </Field>
+        )}
       </CardContent>
       <CardFooter className="justify-between gap-2">
         <Button asChild variant="ghost"><Link to={CHANNELS}>Cancel</Link></Button>
-        <Button onClick={() => connect.mutate()} disabled={connect.isPending || numbers.length === 0 || pin.length !== 6}>
+        <Button onClick={() => connect.mutate()} disabled={connect.isPending || numbers.length === 0 || (!data.coexist && pin.length !== 6)}>
           {connect.isPending ? <Spinner /> : <CheckCircle2 />} Connect
         </Button>
       </CardFooter>

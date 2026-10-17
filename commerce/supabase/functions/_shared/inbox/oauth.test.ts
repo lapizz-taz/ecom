@@ -43,7 +43,10 @@ describe('Continue with Facebook: Meta calls', () => {
     expect(biz.searchParams.get('config_id')).toBe('777000222')
     const wa = new URL(loginUrl(app, 'WHATSAPP', 'https://x/cb', 'st'))
     expect(wa.searchParams.get('config_id')).toBe(app.whatsapp_config_id)
-    expect(JSON.parse(wa.searchParams.get('extras')!)).toMatchObject({ sessionInfoVersion: '3' })
+    expect(JSON.parse(wa.searchParams.get('extras')!)).toMatchObject({ sessionInfoVersion: '3', featureType: '' })
+    // Keeping the number on the WhatsApp Business app asks Meta for the coexistence sign-up.
+    const coexist = new URL(loginUrl(app, 'WHATSAPP', 'https://x/cb', 'st', true))
+    expect(JSON.parse(coexist.searchParams.get('extras')!)).toMatchObject({ featureType: 'whatsapp_business_app_onboarding' })
   })
 
   it('swaps the code for a token, then for a long-lived one (Pages only)', async () => {

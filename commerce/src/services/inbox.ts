@@ -91,10 +91,12 @@ export interface MetaPageChoice {
   instagram: { id: string; username: string | null; picture: string | null; connected: boolean } | null
 }
 export interface MetaNumberChoice { id: string; waba_id: string; display_phone: string | null; name: string | null; connected: boolean }
-export type MetaFinish = { kind: 'PAGES' | 'BUSINESS'; pages: MetaPageChoice[] } | { kind: 'WHATSAPP'; numbers: MetaNumberChoice[] }
+export type MetaFinish = { kind: 'PAGES' | 'BUSINESS'; pages: MetaPageChoice[] } | { kind: 'WHATSAPP'; coexist?: boolean; numbers: MetaNumberChoice[] }
 
 /** Meta's login address ("Continue with Facebook"); the browser goes there and comes back to /admin/inbox/meta-callback. */
-export const metaConnectStart = (kind: MetaConnectKind, popup = false) => invokeFunction<{ url: string }>('inbox', { action: 'oauth_start', kind, popup })
+/** coexist: keep the WhatsApp number working in the WhatsApp Business app as well. */
+export const metaConnectStart = (kind: MetaConnectKind, popup = false, coexist = false) =>
+  invokeFunction<{ url: string }>('inbox', { action: 'oauth_start', kind, popup, coexist })
 /** The code Meta sent back → the Pages or WhatsApp numbers to choose from. */
 export const metaConnectFinish = (code: string, state: string) => invokeFunction<MetaFinish>('inbox', { action: 'oauth_finish', code, state })
 /** Connects what the owner picked. */

@@ -9,7 +9,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -47,6 +49,7 @@ export default function InboxChannelsPage() {
   const [deleting, setDeleting] = useState<InboxChannel | null>(null)
   const [guide, setGuide] = useState<MetaConnectKind | null>(null)
   const [manualWa, setManualWa] = useState(false)
+  const [waOpen, setWaOpen] = useState(false)
   const [filter, setFilter] = useState<Filter>('ALL')
   const popup = useRef<Window | null>(null)
   const refresh = () => {
@@ -63,20 +66,22 @@ export default function InboxChannelsPage() {
 
   // Meta's sign-in opens in a window over this page; without pop-ups it takes over the tab instead.
   const start = useMutation({
-    mutationFn: ({ kind, inPopup }: { kind: MetaConnectKind; inPopup: boolean }) => metaConnectStart(kind, inPopup),
+    mutationFn: ({ kind, inPopup, coexist }: { kind: MetaConnectKind; inPopup: boolean; coexist?: boolean }) => metaConnectStart(kind, inPopup, coexist),
     onSuccess: (r, v) => {
       const w = popup.current
       if (v.inPopup && w && !w.closed) { w.location.href = r.url; w.focus() } else window.location.assign(r.url)
     },
     onError: (e) => { popup.current?.close(); popup.current = null; onError(e) },
   })
-  const connect = (kind: MetaConnectKind) => {
+  const connect = (kind: MetaConnectKind, coexist?: boolean) => {
     setGuide(null)
+    setWaOpen(false)
     const w = openMetaWindow()
     popup.current = w
-    start.mutate({ kind, inPopup: !!w })
+    start.mutate({ kind, inPopup: !!w, coexist })
   }
-  const begin = (kind: MetaConnectKind) => (guideSkipped() ? connect(kind) : setGuide(kind))
+  // WhatsApp asks first whether the number stays on the WhatsApp Business app.
+  const begin = (kind: MetaConnectKind) => (kind === 'WHATSAPP' ? setWaOpen(true) : guideSkipped() ? connect(kind) : setGuide(kind))
   const comments = useMutation({ mutationFn: ({ id, on }: { id: string; on: boolean }) => setChannelComments(id, on), onSuccess: refresh, onError })
 
   if (overview.isLoading || config.isLoading) return <LoadingState />
@@ -207,6 +212,7 @@ export default function InboxChannelsPage() {
 
       <ConnectGuide kind={guide} onClose={() => setGuide(null)} onConnect={connect} />
       <WhatsAppTokenDialog open={manualWa} onOpenChange={setManualWa} onDone={refresh} />
+      <WhatsAppConnectDialog open={waOpen} onOpenChange={setWaOpen} busy={busy('WHATSAPP')} onContinue={(coexist) => connect('WHATSAPP', coexist)} />
       <ConfirmDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} destructive title={`Disconnect ${removing?.name}?`}
         description="Its access is deleted and new messages stop arriving. Conversations already in the inbox stay." confirmLabel="Disconnect"
         onConfirm={async () => {
@@ -224,6 +230,72 @@ export default function InboxChannelsPage() {
           } catch (e) { onError(e); throw e }
         }} />
     </div>
+  )
+}
+
+/**
+ * "Connect WhatsApp": first the owner says whether the number stays on the WhatsApp Business app
+ * (coexistence: chats keep working on the phone and history is shared) or becomes an API-only number,
+ * then Meta's sign-up opens to pick or add the number.
+ */
+function WhatsAppConnectDialog({ open, onOpenChange, onContinue, busy }: {
+  open: boolean; onOpenChange: (o: boolean) => void; onContinue: (coexist: boolean) => void; busy: boolean
+}) {
+  const [mode, setMode] = useState<'COEXIST' | 'API'>('COEXIST')
+  const [understood, setUnderstood] = useState(false)
+  const [ready, setReady] = useState(false)
+  const close = (o: boolean) => { if (!o) { setReady(false); setUnderstood(false) } onOpenChange(o) }
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><PlatformIcon platform="WHATSAPP" className="size-5" /> Connect WhatsApp</DialogTitle>
+          <DialogDescription>Keep using your WhatsApp Business app and reply from Fullfilio too, or connect a number only Fullfilio uses.</DialogDescription>
+        </DialogHeader>
+        {!ready ? (
+          <div className="space-y-3">
+            <RadioGroup value={mode} onValueChange={(v) => setMode(v as 'COEXIST' | 'API')} className="gap-2">
+              <label className={`flex cursor-pointer gap-3 rounded-[10px] border p-3 ${mode === 'COEXIST' ? 'border-primary bg-primary/5' : ''}`}>
+                <RadioGroupItem value="COEXIST" className="mt-0.5" />
+                <span className="text-sm">
+                  <span className="font-medium">Keep WhatsApp Business app + Fullfilio</span>
+                  <span className="block text-xs text-muted-foreground">Use WhatsApp Business app 2.24.17 or newer. Allow chat history sharing when Meta asks; keep the app open while it syncs.</span>
+                </span>
+              </label>
+              <label className={`flex cursor-pointer gap-3 rounded-[10px] border p-3 ${mode === 'API' ? 'border-primary bg-primary/5' : ''}`}>
+                <RadioGroupItem value="API" className="mt-0.5" />
+                <span className="text-sm">
+                  <span className="font-medium">Connect an API-only or new number</span>
+                  <span className="block text-xs text-muted-foreground">The number works only through Fullfilio (no WhatsApp app on a phone).</span>
+                </span>
+              </label>
+            </RadioGroup>
+            {mode === 'API' && (
+              <label className="flex items-start gap-2 text-xs">
+                <Checkbox checked={understood} onCheckedChange={(v) => setUnderstood(v === true)} className="mt-0.5" />
+                I understand this number will use the Cloud API without WhatsApp Business app messaging or calling.
+              </label>
+            )}
+            <DialogFooter>
+              <Button disabled={mode === 'API' && !understood} onClick={() => setReady(true)}>Prepare connection</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm">Complete Meta sign-up, then select the numbers to connect.</p>
+            <p className="text-xs text-muted-foreground">{mode === 'COEXIST'
+              ? 'Pick your existing WhatsApp Business number when Meta asks, and scan the code with the WhatsApp Business app.'
+              : 'Pick a number or add a new one; Meta sends a code by SMS or call to verify it.'}</p>
+            <DialogFooter className="gap-2 sm:justify-between">
+              <Button variant="ghost" onClick={() => setReady(false)}>Back</Button>
+              <Button className="gap-2 bg-[#25D366] text-white hover:bg-[#25D366]/90" disabled={busy} onClick={() => onContinue(mode === 'COEXIST')}>
+                {busy ? <Spinner /> : <PlatformIcon platform="WHATSAPP" className="size-4 brightness-0 invert" />} Continue with Meta
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

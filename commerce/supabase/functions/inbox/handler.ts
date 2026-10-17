@@ -38,7 +38,7 @@ const PENDING_MINUTES = 30
 /** 10 MB of file, as base64 in the request. */
 const MAX_FILE_BASE64 = 14 * 1024 * 1024
 
-interface Pending { kind: OAuthKind; token: string; user: string; expires_at: string }
+interface Pending { kind: OAuthKind; token: string; user: string; expires_at: string; coexist?: boolean }
 interface Channel {
   id: string; platform: 'FACEBOOK' | 'INSTAGRAM' | 'WHATSAPP'; external_id: string; page_id: string | null
   name: string; status: string; receive_comments: boolean
@@ -53,7 +53,7 @@ const digits = z.string().trim().regex(/^[0-9]{3,40}$/, 'Use the number shown in
 
 const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('config') }),
-  z.object({ action: z.literal('oauth_start'), kind: z.enum(['PAGES', 'BUSINESS', 'WHATSAPP']), popup: z.boolean().optional() }),
+  z.object({ action: z.literal('oauth_start'), kind: z.enum(['PAGES', 'BUSINESS', 'WHATSAPP']), popup: z.boolean().optional(), coexist: z.boolean().optional() }),
   z.object({ action: z.literal('oauth_finish'), code: z.string().trim().min(10).max(2000), state: z.string().trim().min(10).max(2000) }),
   z.object({
     action: z.literal('oauth_connect'),
@@ -241,7 +241,9 @@ async function connectPage(admin: SupabaseClient, appSecret: string, actor: stri
 }
 
 /** A WhatsApp number from Embedded Signup: subscribe its account, register the number, save. */
-async function connectNumber(admin: SupabaseClient, appSecret: string, actor: string, number: GrantedNumber, token: string, pin: string | undefined, out: Connected) {
+async function connectNumber(
+  admin: SupabaseClient, appSecret: string, actor: string, number: GrantedNumber, token: string, pin: string | undefined, out: Connected, coexist = false,
+) {
   const g = new InboxGraph(token, appSecret)
   const label = number.name ?? number.display_phone ?? number.id
   try {
@@ -250,13 +252,21 @@ async function connectNumber(admin: SupabaseClient, appSecret: string, actor: st
     out.warnings.push(`${label}: Meta did not let Fullfilio receive this number's messages (${(e as Error).message}).`)
     return
   }
-  if (pin) {
+  // A number kept on the WhatsApp Business app is already registered there; registering again would move it off the app.
+  if (pin && !coexist) {
     await g.post(`${number.id}/register`, { messaging_product: 'whatsapp', pin })
       .catch((e) => out.warnings.push(`${label}: the number could not be registered for the Cloud API (${(e as Error).message}). If it already has a two-step PIN, connect again with that PIN.`))
   }
   await saveChannel(admin, actor, {
     platform: 'WHATSAPP', external_id: number.id, waba_id: number.waba_id, name: label, display_phone: number.display_phone,
   }, token, out)
+  // Coexistence: ask Meta to share the app's contacts and chat history (allowed once, soon after sign-up).
+  if (coexist) {
+    for (const sync_type of ['smb_app_state_sync', 'history']) {
+      await g.post(`${number.id}/smb_app_data`, { messaging_product: 'whatsapp', sync_type })
+        .catch((e) => out.warnings.push(`${label}: chat history could not be requested (${(e as Error).message}). New messages still arrive.`))
+    }
+  }
 }
 
 async function pendingToken(admin: SupabaseClient, user: string): Promise<Pending> {
@@ -292,8 +302,11 @@ export default (
         if (input.kind === 'BUSINESS' && !app.business_config_id) {
           throw new HttpError(422, 'Connecting with a business portfolio is not switched on yet. Use "Connect with Page access".', 'NOT_CONFIGURED')
         }
-        const state = await signState(appSecret, { m: staff.merchantId, u: staff.user.id, k: input.kind, ...(input.popup ? { w: 1 as const } : {}) })
-        return json(req, { url: loginUrl(app, input.kind, redirectUri(req), state) })
+        const coexist = input.kind === 'WHATSAPP' && !!input.coexist
+        const state = await signState(appSecret, {
+          m: staff.merchantId, u: staff.user.id, k: input.kind, ...(input.popup ? { w: 1 as const } : {}), ...(coexist ? { c: 1 as const } : {}),
+        })
+        return json(req, { url: loginUrl(app, input.kind, redirectUri(req), state, coexist) })
       }
 
       case 'oauth_finish': {
@@ -310,7 +323,8 @@ export default (
           throw metaError(e)
         }
         await rpc(admin, 'integration_secret_store', {
-          p_key: PENDING_KEY, p_value: { kind: state.k, token, user: staff.user.id, expires_at: new Date(Date.now() + PENDING_MINUTES * 60_000).toISOString() },
+          p_key: PENDING_KEY,
+          p_value: { kind: state.k, token, user: staff.user.id, coexist: state.c === 1, expires_at: new Date(Date.now() + PENDING_MINUTES * 60_000).toISOString() },
           p_hint: hint(token), p_actor: staff.user.id,
         })
         const mine = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: null, p_platform: null, p_external_id: null })
@@ -327,7 +341,7 @@ export default (
             })
           }
           const numbers = await grantedNumbers(app, token)
-          return json(req, { kind: state.k, numbers: numbers.map((n) => ({ ...n, connected: active.has(`WHATSAPP:${n.id}`) })) })
+          return json(req, { kind: state.k, coexist: state.c === 1, numbers: numbers.map((n) => ({ ...n, connected: active.has(`WHATSAPP:${n.id}`) })) })
         } catch (e) {
           throw metaError(e)
         }
@@ -349,7 +363,7 @@ export default (
             for (const pick of input.numbers) {
               const number = granted.get(pick.id)
               if (!number) { out.warnings.push(`Number ${pick.id} was not shared with Fullfilio during sign-up.`); continue }
-              await connectNumber(admin, appSecret, staff.user.id, number, pending.token, input.pin, out)
+              await connectNumber(admin, appSecret, staff.user.id, number, pending.token, input.pin, out, !!pending.coexist)
             }
           }
         } catch (e) {
