@@ -114,6 +114,9 @@ async function webhook(req: Request): Promise<Response> {
   const raw = await req.text()
   if (raw.length > 1024 * 1024) throw new HttpError(413, 'Too large', 'PAYLOAD_TOO_LARGE')
   if (!app.app_secret || !(await validSignature(raw, req.headers.get('x-hub-signature-256'), app.app_secret))) {
+    // Meta signs with the app secret saved in Super Admin: a mismatch means the two differ.
+    void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'inbox', message: 'Meta webhook refused: the signature does not match the saved App Secret',
+      context: { bytes: raw.length, has_secret: !!app.app_secret } })
     throw new HttpError(401, 'Bad signature', 'BAD_SIGNATURE')
   }
   let body: unknown
@@ -149,15 +152,16 @@ async function webhook(req: Request): Promise<Response> {
   }
 
   let stored = 0
+  const skipped = { no_store: 0, no_channel: 0 }
   for (const e of events) {
     let merchantId: string | null = null
     try {
       const store = await storeFor(e)
-      if (!store) continue
+      if (!store) { skipped.no_store++; continue }
       merchantId = store.merchantId
       const { admin } = store.ctx
       const channel = await channelFor(store.ctx, e)
-      if (!channel) continue
+      if (!channel) { skipped.no_channel++; continue }
       if (e.type === 'status' && e.status) {
         await rpc(admin, 'inbox_message_status', { p_channel: channel.id, p_external_id: e.status.external_id, p_status: e.status.status, p_error: e.status.error ?? null })
         continue
@@ -188,6 +192,10 @@ async function webhook(req: Request): Promise<Response> {
         context: { platform: e.platform, account: e.account_id, type: e.type } })
     }
   }
+  // One line per delivery, so "messages are not arriving" can be told apart from "Meta sends nothing".
+  const root = body && typeof body === 'object' ? body as { object?: unknown; entry?: Array<{ id?: unknown }> } : {}
+  void logEvent({ level: 'INFO', category: 'WEBHOOK', source: 'inbox', message: `Meta webhook: ${events.length} event(s), ${stored} stored`,
+    context: { object: root.object ?? null, accounts: (root.entry ?? []).slice(0, 5).map((x) => String(x?.id ?? '')), types: [...new Set(events.map((e) => e.type))], ...skipped } })
   return json(req, { ok: true, events: events.length, stored })
 }
 
