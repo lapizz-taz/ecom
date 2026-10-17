@@ -15,6 +15,7 @@ import courierRelay from '../supabase/functions/courier-relay/handler.ts'
 import courierWebhook from '../supabase/functions/courier-webhook/handler.ts'
 import domains from '../supabase/functions/domains/handler.ts'
 import fraudCheck from '../supabase/functions/fraud-check/handler.ts'
+import inbox from '../supabase/functions/inbox/handler.ts'
 import metaAds from '../supabase/functions/meta-ads/handler.ts'
 import notificationsDispatch from '../supabase/functions/notifications-dispatch/handler.ts'
 import paymentWebhook from '../supabase/functions/payment-webhook/handler.ts'
@@ -43,6 +44,7 @@ export const FUNCTIONS: Record<string, Handler> = {
   'courier-webhook': courierWebhook,
   'domains': domains,
   'fraud-check': fraudCheck,
+  'inbox': inbox,
   'meta-ads': metaAds,
   'notifications-dispatch': notificationsDispatch,
   'payment-webhook': paymentWebhook,
