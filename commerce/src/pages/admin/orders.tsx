@@ -432,7 +432,7 @@ export function OrdersPage({ view }: { view: View }) {
             const highlight = c.alert && (c.value ?? 0) > 0
             return (
               <button key={c.key} type="button" onClick={c.onClick} aria-pressed={c.active}
-                className={cn('press flex shrink-0 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-sm transition-colors hover:border-foreground/25',
+                className={cn('press flex shrink-0 items-center gap-2 rounded-[10px] border bg-card px-3.5 py-1.5 text-sm transition-colors hover:border-foreground/25',
                   c.active && 'border-foreground/40', highlight && 'border-amber-300 text-amber-800')}>
                 <c.icon className={cn('size-3.5 text-muted-foreground', highlight && 'text-amber-700')} />
                 <span className="text-muted-foreground">{c.label}</span>
@@ -447,7 +447,7 @@ export function OrdersPage({ view }: { view: View }) {
         <div className={cn('flex gap-1', view === 'approved' ? 'no-scrollbar overflow-x-auto rounded-xl border bg-card p-1' : '-mx-1 overflow-x-auto px-1 pb-1')} role="tablist">
           {tabs.map((t) => (
             <button key={t.key} type="button" role="tab" aria-selected={state.tab === t.key} onClick={() => selectTab(t.key)} title={t.hint ?? undefined}
-              className={cn('flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors',
+              className={cn('flex shrink-0 items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[13px] transition-colors',
                 state.tab === t.key ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-card hover:text-foreground')}>
               {t.label}
               {counts.data && <span className={cn('text-xs tabular-nums', state.tab === t.key ? 'opacity-70' : 'opacity-80')}>{t.count}</span>}

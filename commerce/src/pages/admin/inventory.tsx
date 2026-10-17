@@ -92,7 +92,7 @@ export default function InventoryPage() {
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist">
         {([['overview', 'Overview'], ['alerts', 'Low stock alerts'], ['stock', 'Stock'], ['dead', 'Dead stock'], ['abc', 'ABC analysis'], ['forecast', 'Forecast']] as const).map(([k, l]) => (
           <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => update({ view: k, status: '', q: '' })}
-            className={cn('shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors', view === k ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-card hover:text-foreground')}>
+            className={cn('shrink-0 rounded-[10px] px-3.5 py-1.5 text-sm transition-colors', view === k ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-card hover:text-foreground')}>
             {l}
           </button>
         ))}
