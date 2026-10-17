@@ -625,7 +625,7 @@ export function HrSettingsView() {
       </div>
       {edit && (
         <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
-          <Button size="lg" className="pointer-events-auto rounded-full shadow-lg" onClick={() => save.mutate()} disabled={save.isPending || !v.work_days.length || !warnOk}>
+          <Button size="lg" className="pointer-events-auto shadow-lg" onClick={() => save.mutate()} disabled={save.isPending || !v.work_days.length || !warnOk}>
             {save.isPending ? <Spinner /> : <Settings2 />} Save settings
           </Button>
         </div>

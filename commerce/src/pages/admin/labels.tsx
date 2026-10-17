@@ -111,7 +111,7 @@ export default function LabelsPage() {
           </SelectContent>
         </Select>}
         <Button variant="outline" size="sm" asChild><Link to="/admin/label-builder"><Palette /> Edit design</Link></Button>
-        <Button size="lg" className="rounded-full" onClick={start} disabled={!printable.length || print.isPending}>
+        <Button size="lg" onClick={start} disabled={!printable.length || print.isPending}>
           {print.isPending ? <Spinner /> : <Printer />} Print {printable.length} {kind === 'invoice' ? 'invoice' : 'label'}{printable.length === 1 ? '' : 's'}
         </Button>
       </div>

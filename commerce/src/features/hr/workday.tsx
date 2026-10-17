@@ -124,7 +124,7 @@ function BreakOverlay({ day }: { day: MyDay }) {
       </div>
 
       <div className="mx-auto w-full max-w-sm space-y-2 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <Button size="lg" className="h-12 w-full rounded-full text-base" onClick={() => actions.endBreak.mutate()} disabled={actions.endBreak.isPending}>
+        <Button size="lg" className="h-12 w-full text-base" onClick={() => actions.endBreak.mutate()} disabled={actions.endBreak.isPending}>
           {actions.endBreak.isPending ? <Spinner /> : <LogIn />} I’m back
         </Button>
         {day.rules.block_during_breaks && day.rules.require_check_in && <p className="text-center text-[11px] text-muted-foreground">Work pages open again when the break ends.</p>}
