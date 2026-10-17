@@ -18,7 +18,8 @@ async function webOrder(db: Db, phone: string, set: Record<string, unknown> = {}
 }
 type Next = { kind: string; id: string; queue: string } | null
 const openNext = (db: Db, queue: string, skip: string[] = []) => value<Next>(db, `select public.auto_order_open_next($1, $2::uuid[])`, [queue, skip])
-const dashboard = (db: Db) => value<{ queues: Record<string, number>; report: Record<string, number>; claim: { id: string } | null }>(db, `select public.auto_order_dashboard()`)
+type Waiting = Record<string, { count: number; next_at: string | null }>
+const dashboard = (db: Db) => value<{ queues: Record<string, number>; waiting: Waiting; report: Record<string, number>; claim: { id: string } | null }>(db, `select public.auto_order_dashboard()`)
 
 describe('Auto Order Dashboard', () => {
   it('puts each order in its queue and opens the oldest one first', () =>
@@ -35,6 +36,11 @@ describe('Auto Order Dashboard', () => {
       await asUser(db, agent)
       const d = await dashboard(db)
       expect(d.queues).toMatchObject({ processing: 2, no_response: 1, on_hold: 1, advance_payment: 1, good_no_response: 0 })
+      // Held back, not lost: the one just called and the call-back still ahead.
+      expect(d.waiting.no_response.count).toBe(1)
+      expect(d.waiting.on_hold.count).toBe(1)
+      expect(d.waiting.good_no_response).toMatchObject({ count: 0, next_at: null })
+      expect(new Date(d.waiting.no_response.next_at!).getTime()).toBeGreaterThan(Date.now() + 25 * 60_000)
       expect((await openNext(db, 'processing'))?.id).toBe(older)
       expect((await openNext(db, 'no_response'))?.id).toBe(noAnswer)
       expect((await openNext(db, 'on_hold'))?.id).toBe(due)
