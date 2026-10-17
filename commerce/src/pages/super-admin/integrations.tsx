@@ -1,19 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { RotateCcw } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Check, Copy, RotateCcw } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { PageHeader } from '@/components/common/page-header'
 import { StatCard } from '@/components/common/stat-card'
-import { CardsSkeleton, EmptyState, ErrorState } from '@/components/common/states'
+import { CardsSkeleton, EmptyState, ErrorState, Spinner } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUrlState } from '@/hooks/use-url-state'
+import { toUserMessage } from '@/lib/errors'
 import { formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { type IntegrationsOverview, integrationsOverview, retryIntegration } from '@/services/integrations-hub'
+import {
+  clearMetaApp, type IntegrationsOverview, integrationsOverview, metaAppStatus, retryIntegration, saveMetaApp,
+} from '@/services/integrations-hub'
 import type { MerchantRef } from '@/services/platform'
 
 const ok = (s: string | null | undefined) => /^(CONNECTED|ACTIVE|OK|online)$/i.test(s ?? '')
@@ -73,6 +79,7 @@ export default function OtherIntegrationsPage() {
             <StatCard label="Ad accounts" value={formatNumber(d.ads.length)} hint={`${d.ads.filter((a) => /error/i.test(a.status)).length} with errors`} />
           </div>
           <Platform p={d.platform} />
+          <MetaAppCard />
           <Tabs value={state.tab} onValueChange={(tab) => update({ tab })}>
             <TabsList>
               <TabsTrigger value="stores">Shopify & WooCommerce</TabsTrigger>
@@ -162,5 +169,86 @@ export default function OtherIntegrationsPage() {
         </>
       )}
     </div>
+  )
+}
+
+function CopyValue({ label, value }: { label: string; value: string }) {
+  const [done, setDone] = useState(false)
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-2 rounded-[10px] border bg-muted/40 px-2.5 py-1.5">
+        <code className="min-w-0 flex-1 truncate text-xs">{value}</code>
+        <Button size="icon-sm" variant="ghost" className="size-6" aria-label={`Copy ${label}`}
+          onClick={() => void navigator.clipboard.writeText(value).then(() => { setDone(true); setTimeout(() => setDone(false), 1500) }).catch(() => undefined)}>
+          {done ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** The one Meta app every store connects through ("Continue with Facebook" in Messaging). */
+function MetaAppCard() {
+  const qc = useQueryClient()
+  const status = useQuery({ queryKey: ['platform-meta-app'], queryFn: metaAppStatus })
+  const [form, setForm] = useState<{ app_id: string; app_secret: string; login_config_id: string; whatsapp_config_id: string } | null>(null)
+  const [clearing, setClearing] = useState(false)
+  const done = () => void qc.invalidateQueries({ queryKey: ['platform-meta-app'] })
+  const save = useMutation({
+    mutationFn: (newToken: boolean) => saveMetaApp({ ...form!, new_verify_token: newToken }),
+    onSuccess: (r) => { toast.success(`Saved${r.name ? `: ${r.name}` : ''}`); setForm(null); done() },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const s = status.data
+  if (status.error) return <ErrorState error={status.error} onRetry={() => status.refetch()} />
+  if (!s) return null
+  const saved = !!(s.app_id && s.has_secret && s.login_config_id)
+  const edit = () => setForm({ app_id: s.app_id ?? '', app_secret: '', login_config_id: s.login_config_id ?? '', whatsapp_config_id: s.whatsapp_config_id ?? '' })
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle className="text-sm">Meta app (Messaging)</CardTitle>
+          <CardDescription>Stores connect Facebook Pages, Instagram and WhatsApp through this app with “Continue with Facebook”. The App Secret is kept encrypted and never shown.</CardDescription>
+        </div>
+        <Badge variant={saved ? 'success' : 'neutral'}>{saved ? (s.whatsapp_config_id ? 'Pages, Instagram & WhatsApp' : 'Pages & Instagram') : 'Not set up'}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {form ? (
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate(false) }}>
+            <div className="space-y-1.5"><Label htmlFor="meta-app-id">App ID</Label><Input id="meta-app-id" value={form.app_id} inputMode="numeric" onChange={(e) => setForm({ ...form, app_id: e.target.value.trim() })} placeholder="1653473169830242" /></div>
+            <div className="space-y-1.5"><Label htmlFor="meta-app-secret">App Secret</Label><Input id="meta-app-secret" type="password" autoComplete="off" value={form.app_secret} onChange={(e) => setForm({ ...form, app_secret: e.target.value.trim() })} placeholder={s.has_secret ? 'Saved — paste only to change' : 'From App settings → Basic'} /></div>
+            <div className="space-y-1.5"><Label htmlFor="meta-login-config">Login for Business configuration ID</Label><Input id="meta-login-config" value={form.login_config_id} inputMode="numeric" onChange={(e) => setForm({ ...form, login_config_id: e.target.value.trim() })} placeholder="911022668675556" /></div>
+            <div className="space-y-1.5"><Label htmlFor="meta-wa-config">WhatsApp Embedded Signup configuration ID (optional)</Label><Input id="meta-wa-config" value={form.whatsapp_config_id} inputMode="numeric" onChange={(e) => setForm({ ...form, whatsapp_config_id: e.target.value.trim() })} placeholder="After Tech Provider approval" /></div>
+            <div className="flex gap-2 sm:col-span-2">
+              <Button type="submit" disabled={save.isPending || !form.app_id || !form.login_config_id || (!form.app_secret && !s.has_secret)}>{save.isPending && <Spinner />} Check with Meta & save</Button>
+              <Button type="button" variant="ghost" onClick={() => setForm(null)}>Cancel</Button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+            <span>App ID <span className="font-mono">{s.app_id ?? '—'}</span></span>
+            <span>Login configuration <span className="font-mono">{s.login_config_id ?? '—'}</span></span>
+            <span>WhatsApp configuration <span className="font-mono">{s.whatsapp_config_id ?? 'not yet'}</span></span>
+            {s.can_manage && (
+              <span className="ml-auto flex gap-2">
+                <Button size="sm" variant="outline" onClick={edit}>{saved ? 'Change' : 'Set up'}</Button>
+                {saved && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setClearing(true)}>Remove</Button>}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CopyValue label="Valid OAuth redirect URI (Facebook Login for Business → Settings)" value={s.redirect_uri} />
+          <CopyValue label="Webhook callback URL (Webhooks → Page, Instagram, WhatsApp)" value={s.webhook_url} />
+          {s.verify_token && <CopyValue label="Webhook verify token" value={s.verify_token} />}
+        </div>
+      </CardContent>
+      <ConfirmDialog open={clearing} onOpenChange={setClearing} destructive title="Remove the Meta app?"
+        description="Stores can no longer connect, and messages stop arriving for every connected Page, Instagram account and WhatsApp number until it is saved again."
+        confirmLabel="Remove" onConfirm={async () => { await clearMetaApp(); toast.success('Removed'); done() }} />
+    </Card>
   )
 }

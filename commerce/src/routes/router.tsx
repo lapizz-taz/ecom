@@ -160,6 +160,7 @@ const shared: RouteObject[] = [
       admin('sms', () => import('@/pages/admin/sms'), 'sms.view'),
       admin('inbox', () => import('@/pages/admin/inbox'), 'inbox.view'),
       admin('inbox/channels', () => import('@/pages/admin/inbox-channels'), 'inbox.view'),
+      admin('inbox/meta-callback', () => import('@/pages/admin/inbox-meta-callback'), 'inbox.manage'),
       admin('coupons', () => import('@/pages/admin/coupons'), 'coupons.manage'),
       admin('settings', () => import('@/pages/admin/settings'), 'settings.view'),
       admin('settings/devices', () => import('@/pages/admin/device-approvals'), 'devices.manage'),
@@ -198,6 +199,7 @@ const marketing: RouteObject[] = [
   { path: '/contact', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/contact')) },
   { path: '/blog', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/blog')) },
   { path: '/blog/:slug', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/blog-post')) },
+  ...['/privacy', '/terms', '/data-deletion'].map((path) => ({ path, errorElement: <RouteError />, ...page(() => import('@/pages/marketing/legal')) })),
   { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/not-found')) },
 ]
 

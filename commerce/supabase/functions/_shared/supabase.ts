@@ -50,7 +50,7 @@ export function merchantOf(client: SupabaseClient): string | null {
 export type MerchantLookup =
   | 'channel' | 'channel_oauth_state' | 'ad_oauth_state' | 'courier' | 'consignment' | 'payment_session' | 'payment'
   | 'site_api_key' | 'store_domain' | 'pbx_bkash_reference' | 'pbx_bkash_payment' | 'pbx_sip_username' | 'pbx_did'
-  | 'pbx_business_code' | 'pbx_call' | 'order' | 'profile'
+  | 'pbx_business_code' | 'pbx_call' | 'order' | 'profile' | 'inbox_account'
 
 /** The merchant that owns something arriving from outside (webhook, return URL, API key), or null. */
 export async function merchantFor(kind: MerchantLookup, key: string | null | undefined): Promise<string | null> {
