@@ -13,6 +13,11 @@ describe('Continue with Facebook: signed state', () => {
     expect(await readState(app.app_secret, state, now + 16 * 60_000)).toBeNull()
   })
 
+  it('carries the business kind and the popup mark', async () => {
+    const state = await signState(app.app_secret, { m: 'store-1', u: 'user-1', k: 'BUSINESS', w: 1 })
+    expect(await readState(app.app_secret, state)).toMatchObject({ k: 'BUSINESS', w: 1 })
+  })
+
   it('refuses a state signed with another secret or changed on the way', async () => {
     const state = await signState(app.app_secret, { m: 'store-1', u: 'user-1', k: 'WHATSAPP' })
     expect(await readState('another-secret-entirely', state)).toBeNull()
@@ -33,6 +38,9 @@ describe('Continue with Facebook: Meta calls', () => {
       state: 'st', response_type: 'code', override_default_response_type: 'true',
     })
     expect(pages.searchParams.has('extras')).toBe(false)
+    // "Connect using Business" uses its own (system-user) configuration.
+    const biz = new URL(loginUrl({ ...app, business_config_id: '777000222' }, 'BUSINESS', 'https://x/cb', 'st'))
+    expect(biz.searchParams.get('config_id')).toBe('777000222')
     const wa = new URL(loginUrl(app, 'WHATSAPP', 'https://x/cb', 'st'))
     expect(wa.searchParams.get('config_id')).toBe(app.whatsapp_config_id)
     expect(JSON.parse(wa.searchParams.get('extras')!)).toMatchObject({ sessionInfoVersion: '3' })

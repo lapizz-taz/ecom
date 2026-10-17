@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { handBack, startedInPopup } from '@/features/inbox/meta-popup'
 import { PlatformIcon } from '@/features/inbox/ui'
 import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
@@ -30,14 +31,28 @@ export default function InboxMetaCallbackPage() {
   const state = params.get('state') ?? ''
   const denied = params.get('error') || params.get('error_reason')
   const started = useRef(false)
+  // Opened as Meta's popup: hand the answer to the Channels page behind it, then close.
+  const [handing, setHanding] = useState(() => !!state && startedInPopup(state))
 
   // The code works only once: never send it twice (React runs effects twice in development).
   const finish = useMutation({ mutationFn: () => metaConnectFinish(code, state) })
   useEffect(() => {
-    if (started.current || denied || !code || !state) return
+    if (started.current) return
+    if (handing) {
+      started.current = true
+      void handBack(window.location.search).then((taken) => {
+        if (taken) { window.close(); return }
+        started.current = false
+        setHanding(false)
+      })
+      return
+    }
+    if (denied || !code || !state) return
     started.current = true
     finish.mutate()
-  }, [code, state, denied, finish])
+  }, [code, state, denied, finish, handing])
+
+  if (handing) return <LoadingState label="Finishing in Fullfilio…" />
 
   if (denied || (!code && !finish.isPending)) {
     return (
@@ -67,9 +82,9 @@ export default function InboxMetaCallbackPage() {
     void qc.invalidateQueries({ queryKey: ['inbox-overview'] })
     navigate(CHANNELS, { replace: true })
   }
-  return finish.data.kind === 'PAGES'
-    ? <PagePicker data={finish.data} onDone={done} />
-    : <NumberPicker data={finish.data} onDone={done} />
+  return finish.data.kind === 'WHATSAPP'
+    ? <NumberPicker data={finish.data} onDone={done} />
+    : <PagePicker data={finish.data} onDone={done} />
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -81,7 +96,7 @@ function report(r: { channels: Array<{ name: string }>; warnings: string[] }) {
   r.warnings.forEach((w) => toast.warning(w))
 }
 
-function PagePicker({ data, onDone }: { data: Extract<MetaFinish, { kind: 'PAGES' }>; onDone: () => void }) {
+function PagePicker({ data, onDone }: { data: Exclude<MetaFinish, { kind: 'WHATSAPP' }>; onDone: () => void }) {
   // Everything not connected yet starts ticked.
   const [picked, setPicked] = useState(() => new Set(data.pages.flatMap((p) => [
     ...(p.connected ? [] : [`fb:${p.id}`]), ...(p.instagram && !p.instagram.connected ? [`ig:${p.id}`] : []),

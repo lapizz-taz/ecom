@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Lock, MessageCircleReply, Pencil, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Building2, ExternalLink, Link2, Pencil, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { Field } from '@/components/common/field'
 import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
@@ -10,150 +11,195 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { ConnectGuide, guideSkipped } from '@/features/inbox/connect-guide'
+import { listenForMetaAnswer, openMetaWindow } from '@/features/inbox/meta-popup'
 import { MessagingTabs } from '@/features/inbox/messaging-tabs'
-import { PLATFORM, PlatformIcon } from '@/features/inbox/ui'
+import { PlatformIcon } from '@/features/inbox/ui'
 import { toUserMessage } from '@/lib/errors'
 import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import {
-  deleteSavedReply, disconnectChannel, type InboxChannel, inboxConfig, inboxOverview, type MetaConnectKind, metaConnectStart, savedReplies,
+  deleteSavedReply, disconnectChannel, type InboxChannel, type InboxPlatform, inboxConfig, inboxOverview, type MetaConnectKind, metaConnectStart, savedReplies,
   removeChannel, saveSavedReply, setChannelComments,
 } from '@/services/inbox'
 
-const STEPS: Array<{ icon: typeof Lock; title: string; text: string }> = [
-  { icon: Lock, title: 'Sign in with Facebook', text: 'Log in to Facebook and allow Fullfilio. Your password never comes to Fullfilio.' },
-  { icon: ShieldCheck, title: 'Pick Pages, Instagram & WhatsApp', text: 'Choose which Pages, Instagram accounts and WhatsApp numbers to connect. You can change this any time.' },
-  { icon: MessageCircleReply, title: 'Reply from one inbox', text: 'Messages and comments arrive in the inbox; replies go out from the same Page, account or number.' },
-]
+type Filter = 'ALL' | InboxPlatform
+
+const TITLE: Record<InboxPlatform, string> = { FACEBOOK: 'Facebook Page', INSTAGRAM: 'Instagram Account', WHATSAPP: 'WhatsApp Business Account' }
+const BLURB: Record<InboxPlatform, string> = {
+  FACEBOOK: 'Messenger conversations, and comments on your posts and ads.',
+  INSTAGRAM: 'DMs, story replies and comments on your posts and Reels.',
+  WHATSAPP: 'Chats with customers on your business number.',
+}
+const profileUrl = (c: InboxChannel): string | null => (c.platform === 'INSTAGRAM' && c.username ? `https://www.instagram.com/${c.username}` : null)
 
 export default function InboxChannelsPage() {
   const { can } = useAuth()
   const manage = can('inbox.manage')
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const overview = useQuery({ queryKey: ['inbox-overview'], queryFn: inboxOverview })
   const config = useQuery({ queryKey: ['inbox-config'], queryFn: inboxConfig })
   const [removing, setRemoving] = useState<InboxChannel | null>(null)
   const [deleting, setDeleting] = useState<InboxChannel | null>(null)
+  const [guide, setGuide] = useState<MetaConnectKind | null>(null)
+  const [filter, setFilter] = useState<Filter>('ALL')
+  const popup = useRef<Window | null>(null)
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['inbox-overview'] })
     void qc.invalidateQueries({ queryKey: ['inbox-config'] })
   }
   const onError = (e: unknown) => toast.error(toUserMessage(e))
 
-  // Off to Meta's login; it comes back to /admin/inbox/meta-callback.
-  const start = useMutation({ mutationFn: (kind: MetaConnectKind) => metaConnectStart(kind), onSuccess: (r) => window.location.assign(r.url), onError })
+  // Meta's window hands its answer back here; the pick-your-Pages step then opens on this tab.
+  useEffect(() => listenForMetaAnswer((search) => {
+    popup.current = null
+    navigate(`/admin/inbox/meta-callback${search}`)
+  }), [navigate])
+
+  // Meta's sign-in opens in a window over this page; without pop-ups it takes over the tab instead.
+  const start = useMutation({
+    mutationFn: ({ kind, inPopup }: { kind: MetaConnectKind; inPopup: boolean }) => metaConnectStart(kind, inPopup),
+    onSuccess: (r, v) => {
+      const w = popup.current
+      if (v.inPopup && w && !w.closed) { w.location.href = r.url; w.focus() } else window.location.assign(r.url)
+    },
+    onError: (e) => { popup.current?.close(); popup.current = null; onError(e) },
+  })
+  const connect = (kind: MetaConnectKind) => {
+    setGuide(null)
+    const w = openMetaWindow()
+    popup.current = w
+    start.mutate({ kind, inPopup: !!w })
+  }
+  const begin = (kind: MetaConnectKind) => (guideSkipped() ? connect(kind) : setGuide(kind))
   const comments = useMutation({ mutationFn: ({ id, on }: { id: string; on: boolean }) => setChannelComments(id, on), onSuccess: refresh, onError })
 
   if (overview.isLoading || config.isLoading) return <LoadingState />
   if (overview.error) return <ErrorState error={overview.error} onRetry={() => overview.refetch()} />
   const ready = !!config.data?.ready
+  const business = !!config.data?.business
   const whatsapp = !!config.data?.whatsapp
   const channels = overview.data!.channels
-  const busy = (k: MetaConnectKind) => start.isPending && start.variables === k
+  const busy = (k: MetaConnectKind) => start.isPending && start.variables?.kind === k
+  const numbered = channels.map((c) => ({ c, n: channels.filter((o) => o.platform === c.platform && o.created_at <= c.created_at).length }))
+  const shown = numbered.filter(({ c }) => filter === 'ALL' || c.platform === filter)
+  const adds = (['FACEBOOK', 'INSTAGRAM', 'WHATSAPP'] as const).filter((p) => filter === 'ALL' || p === filter)
 
   return (
     <div className="space-y-4">
       <MessagingTabs unread={overview.data!.counts.unread} />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="min-w-0 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Connect channels</CardTitle>
-              <CardDescription>Sign in with Facebook to bring your Page, Instagram and WhatsApp messages and comments into Fullfilio.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!ready ? (
-                <p className="rounded-[10px] bg-amber-500/10 px-3 py-2.5 text-sm">Connecting with Facebook is not switched on yet. Fullfilio is finishing the setup with Meta; this page will let you connect as soon as it is ready.</p>
-              ) : manage ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button className="gap-2 bg-[#1877F2] text-white hover:bg-[#1877F2]/90" disabled={start.isPending} onClick={() => start.mutate('PAGES')}>
-                    {busy('PAGES') ? <Spinner /> : <PlatformIcon platform="FACEBOOK" className="size-4 brightness-0 invert" />} Continue with Facebook
-                  </Button>
-                  <Button variant="outline" className="gap-2" disabled={start.isPending || !whatsapp} onClick={() => start.mutate('WHATSAPP')}
-                    title={whatsapp ? undefined : 'Opens once Meta approves Fullfilio for WhatsApp'}>
-                    {busy('WHATSAPP') ? <Spinner /> : <PlatformIcon platform="WHATSAPP" className="size-4" />} Connect WhatsApp
-                  </Button>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">Channels</h1>
+          <p className="text-sm text-muted-foreground">Connect Facebook Pages, Instagram and WhatsApp. Messages and comments arrive in the inbox; replies go out from the same Page, account or number.</p>
+        </div>
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
+          <TabsList>
+            <TabsTrigger value="ALL">All</TabsTrigger>
+            <TabsTrigger value="FACEBOOK">Facebook</TabsTrigger>
+            <TabsTrigger value="INSTAGRAM">Instagram</TabsTrigger>
+            <TabsTrigger value="WHATSAPP">WhatsApp</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      {!ready && (
+        <p className="rounded-[10px] bg-amber-500/10 px-3 py-2.5 text-sm">Connecting with Facebook is not switched on yet. Fullfilio is finishing the setup with Meta; you can connect as soon as it is ready.</p>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {shown.map(({ c, n }) => (
+          <Card key={c.id} className="flex flex-col">
+            <CardContent className="flex flex-1 flex-col gap-3 p-4">
+              <div className="flex items-start justify-between gap-2">
+                {c.avatar_url ? <img src={c.avatar_url} alt="" className="size-9 rounded-full object-cover" /> : <PlatformIcon platform={c.platform} className="size-9" />}
+                <Badge variant={c.status === 'OK' ? 'success' : c.status === 'FAILED' ? 'danger' : 'neutral'}>{c.status === 'OK' ? 'Connected' : c.status === 'FAILED' ? 'Needs reconnecting' : 'Disconnected'}</Badge>
+              </div>
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-semibold"><PlatformIcon platform={c.platform} className="size-3.5" /> {TITLE[c.platform]} {n}</p>
+                <p className="text-xs text-muted-foreground">{BLURB[c.platform]}</p>
+              </div>
+              <div className="rounded-[10px] bg-muted/50 px-3 py-2">
+                <p className="text-[11px] text-muted-foreground">{c.platform === 'WHATSAPP' ? 'Number' : c.platform === 'INSTAGRAM' ? 'Account' : 'Page name'}</p>
+                <p className="flex min-w-0 items-center gap-1 text-sm font-medium">
+                  <span className="truncate">{c.platform === 'WHATSAPP' ? c.display_phone ?? c.name : c.name}</span>
+                  {profileUrl(c) && <a href={profileUrl(c)!} target="_blank" rel="noreferrer" aria-label={`Open ${c.name}`} className="text-muted-foreground hover:text-foreground"><ExternalLink className="size-3.5" /></a>}
+                </p>
+                <p className="text-[11px] text-muted-foreground">{c.last_event_at ? `Last message ${timeAgo(c.last_event_at)}` : 'No messages yet'}</p>
+              </div>
+              {c.status_error && <p className="text-xs text-destructive">{c.status_error}</p>}
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+                {c.platform !== 'WHATSAPP' && c.status !== 'DISCONNECTED' && (
+                  <label className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+                    <Switch checked={c.receive_comments} disabled={!manage} onCheckedChange={(on) => comments.mutate({ id: c.id, on })} /> Comments
+                  </label>
+                )}
+                {manage && ready && c.status !== 'OK' && (
+                  <Button size="sm" variant="outline" className="gap-1.5" disabled={start.isPending || (c.platform === 'WHATSAPP' && !whatsapp)}
+                    onClick={() => begin(c.platform === 'WHATSAPP' ? 'WHATSAPP' : 'PAGES')}><RefreshCw /> Reconnect</Button>
+                )}
+                {manage && c.status !== 'DISCONNECTED' && (
+                  <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setRemoving(c)}><Unplug /> Disconnect</Button>
+                )}
+                {manage && (
+                  <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" title="Remove from Fullfilio"
+                    aria-label={`Remove ${c.name}`} onClick={() => setDeleting(c)}><Trash2 /></Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+
+        {adds.map((p) => (
+          <Card key={`add-${p}`} className="flex flex-col border-dashed">
+            <CardContent className="flex flex-1 flex-col gap-3 p-4">
+              <PlatformIcon platform={p} className="size-9" />
+              <div>
+                <p className="text-sm font-semibold">{channels.some((c) => c.platform === p) ? `Add another ${TITLE[p]}` : TITLE[p]}</p>
+                <p className="text-xs text-muted-foreground">{BLURB[p]}</p>
+                {p === 'INSTAGRAM' && <p className="mt-1 text-xs text-muted-foreground">Instagram connects through the Facebook Page your professional account is linked to.</p>}
+                {p === 'WHATSAPP' && !whatsapp && <p className="mt-1 text-xs text-muted-foreground">Opens once Meta approves Fullfilio as a WhatsApp provider.</p>}
+              </div>
+              {manage ? (
+                <div className="mt-auto grid gap-2 pt-1">
+                  {p === 'FACEBOOK' && (
+                    <>
+                      <Button className="gap-2 bg-[#1877F2] text-white hover:bg-[#1877F2]/90" disabled={!ready || start.isPending} onClick={() => begin('PAGES')}>
+                        {busy('PAGES') ? <Spinner /> : <Link2 />} Connect with Page access
+                      </Button>
+                      {business && (
+                        <Button variant="outline" className="gap-2" disabled={!ready || start.isPending} onClick={() => begin('BUSINESS')}>
+                          {busy('BUSINESS') ? <Spinner /> : <Building2 />} Connect using Business
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  {p === 'INSTAGRAM' && (
+                    <Button className="gap-2" disabled={!ready || start.isPending} onClick={() => begin('PAGES')}>
+                      {busy('PAGES') ? <Spinner /> : <Link2 />} Connect Instagram
+                    </Button>
+                  )}
+                  {p === 'WHATSAPP' && (
+                    <Button variant="outline" className="gap-2" disabled={!ready || !whatsapp || start.isPending} onClick={() => begin('WHATSAPP')}>
+                      {busy('WHATSAPP') ? <Spinner /> : <Link2 />} Connect WhatsApp
+                    </Button>
+                  )}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Ask an admin to connect channels.</p>
-              )}
-              {ready && manage && !whatsapp && <p className="text-xs text-muted-foreground">WhatsApp opens once Meta approves Fullfilio as a WhatsApp provider. Facebook Pages and Instagram work now.</p>}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Connected channels</CardTitle>
-              <CardDescription>Messages and comments from these arrive in the inbox. Replies go out from the same Page, account or number.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {channels.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Nothing connected yet.</p>
-              ) : (
-                <ul className="divide-y rounded-lg border">
-                  {channels.map((c) => (
-                    <li key={c.id} className="flex flex-wrap items-center gap-3 px-3 py-3">
-                      {c.avatar_url ? <img src={c.avatar_url} alt="" className="size-9 rounded-full object-cover" /> : <PlatformIcon platform={c.platform} className="size-9" />}
-                      <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                          {c.name}
-                          <Badge variant={c.status === 'OK' ? 'success' : c.status === 'FAILED' ? 'danger' : 'neutral'}>{c.status === 'OK' ? 'Connected' : c.status === 'FAILED' ? 'Needs reconnecting' : 'Disconnected'}</Badge>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {PLATFORM[c.platform].label}{c.display_phone && ` · ${c.display_phone}`}
-                          {c.last_event_at ? ` · last message ${timeAgo(c.last_event_at)}` : ' · no messages yet'}
-                        </p>
-                        {c.status_error && <p className="mt-1 text-xs text-destructive">{c.status_error}</p>}
-                      </div>
-                      {c.platform !== 'WHATSAPP' && c.status !== 'DISCONNECTED' && (
-                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Switch checked={c.receive_comments} disabled={!manage} onCheckedChange={(on) => comments.mutate({ id: c.id, on })} /> Comments
-                        </label>
-                      )}
-                      {manage && ready && c.status !== 'OK' && (
-                        <Button size="sm" variant="outline" className="gap-1.5" disabled={start.isPending || (c.platform === 'WHATSAPP' && !whatsapp)}
-                          onClick={() => start.mutate(c.platform === 'WHATSAPP' ? 'WHATSAPP' : 'PAGES')}><RefreshCw /> Reconnect</Button>
-                      )}
-                      {manage && c.status !== 'DISCONNECTED' && (
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoving(c)}>Disconnect</Button>
-                      )}
-                      {manage && (
-                        <Button size="icon-sm" variant="ghost" className="text-muted-foreground hover:text-destructive" title="Remove from Fullfilio"
-                          aria-label={`Remove ${c.name}`} onClick={() => setDeleting(c)}><Trash2 /></Button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <p className="mt-auto text-xs text-muted-foreground">Ask an admin to connect channels.</p>
               )}
             </CardContent>
           </Card>
-          <SavedRepliesCard manage={manage} />
-        </div>
-
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle className="text-base">How it works</CardTitle>
-            <CardDescription>Fullfilio is a Meta app; you only sign in and choose.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ol className="space-y-4">
-              {STEPS.map((s, i) => (
-                <li key={s.title} className="flex gap-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted"><s.icon className="size-4" /></span>
-                  <div className="text-sm">
-                    <p className="font-medium">{i + 1}. {s.title}</p>
-                    <p className="text-xs leading-relaxed text-muted-foreground">{s.text}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-4 text-xs text-muted-foreground">To remove access later, disconnect or remove it here, or in Facebook → Settings → Business integrations.</p>
-          </CardContent>
-        </Card>
+        ))}
       </div>
 
+      <p className="text-xs text-muted-foreground">Your Facebook password never comes to Fullfilio. To take access away later, disconnect or remove the channel here, or in Facebook → Settings → Business integrations.</p>
+      <SavedRepliesCard manage={manage} />
+
+      <ConnectGuide kind={guide} onClose={() => setGuide(null)} onConnect={connect} />
       <ConfirmDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} destructive title={`Disconnect ${removing?.name}?`}
         description="Its access is deleted and new messages stop arriving. Conversations already in the inbox stay." confirmLabel="Disconnect"
         onConfirm={async () => {

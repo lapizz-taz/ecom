@@ -26,12 +26,14 @@ export const retryIntegration = (kind: 'store_jobs' | 'courier_events', id: stri
 
 // --- The Meta app stores use for "Continue with Facebook" (Messaging) ----------------
 export interface MetaAppStatus {
-  app_id: string | null; login_config_id: string | null; whatsapp_config_id: string | null; has_secret: boolean
+  app_id: string | null; login_config_id: string | null; business_config_id: string | null; whatsapp_config_id: string | null; has_secret: boolean
   /** Only for staff who may manage integrations. */
   verify_token: string | null
   webhook_url: string; redirect_uri: string; can_manage: boolean
 }
 export const metaAppStatus = () => invokeFunction<MetaAppStatus>('platform-admin', { action: 'meta_app_status' })
-export const saveMetaApp = (input: { app_id: string; app_secret?: string; login_config_id: string; whatsapp_config_id?: string; new_verify_token?: boolean }) =>
+export const saveMetaApp = (input: {
+  app_id: string; app_secret?: string; login_config_id: string; business_config_id?: string; whatsapp_config_id?: string; new_verify_token?: boolean
+}) =>
   invokeFunction<{ ok: boolean; name: string | null; verify_token: string }>('platform-admin', { action: 'meta_app_save', ...input, app_secret: input.app_secret || undefined })
 export const clearMetaApp = () => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'meta_app_clear' })
