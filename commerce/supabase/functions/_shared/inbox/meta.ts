@@ -57,6 +57,10 @@ export class InboxGraph {
     return this.url(path, params).then((u) => this.call<T>(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }))
   }
 
+  delete<T = Record<string, unknown>>(path: string, params: Record<string, string> = {}): Promise<T> {
+    return this.url(path, params).then((u) => this.call<T>(u, { method: 'DELETE' }))
+  }
+
   postForm<T = Record<string, unknown>>(path: string, form: FormData): Promise<T> {
     return this.url(path).then((u) => this.call<T>(u, { method: 'POST', body: form }))
   }

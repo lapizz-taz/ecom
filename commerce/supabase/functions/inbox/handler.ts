@@ -53,7 +53,7 @@ const digits = z.string().trim().regex(/^[0-9]{3,40}$/, 'Use the number shown in
 
 const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('config') }),
-  z.object({ action: z.literal('oauth_start'), kind: z.enum(['PAGES', 'WHATSAPP']) }),
+  z.object({ action: z.literal('oauth_start'), kind: z.enum(['PAGES', 'BUSINESS', 'WHATSAPP']), popup: z.boolean().optional() }),
   z.object({ action: z.literal('oauth_finish'), code: z.string().trim().min(10).max(2000), state: z.string().trim().min(10).max(2000) }),
   z.object({
     action: z.literal('oauth_connect'),
@@ -64,6 +64,7 @@ const schema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('channel'), id: z.string().uuid(), receive_comments: z.boolean() }),
   z.object({ action: z.literal('disconnect'), id: z.string().uuid() }),
+  z.object({ action: z.literal('remove'), id: z.string().uuid() }),
   z.object({
     action: z.literal('send'), conversation_id: z.string().uuid(), text: z.string().max(4000).optional(),
     file: file.optional(), image_url: z.string().url().max(1000).optional(), reply_to_id: z.string().uuid().optional(),
@@ -278,14 +279,17 @@ export default (
 
     switch (input.action) {
       case 'config':
-        return json(req, { ready: appReady(app), whatsapp: appReady(app) && !!app.whatsapp_config_id })
+        return json(req, { ready: appReady(app), business: appReady(app) && !!app.business_config_id, whatsapp: appReady(app) && !!app.whatsapp_config_id })
 
       case 'oauth_start': {
         if (!appReady(app)) throw new HttpError(422, 'Connecting with Facebook is not switched on yet. Ask Fullfilio support.', 'NOT_CONFIGURED')
         if (input.kind === 'WHATSAPP' && !app.whatsapp_config_id) {
           throw new HttpError(422, 'WhatsApp connection opens once Meta approves Fullfilio as a WhatsApp Tech Provider.', 'NOT_CONFIGURED')
         }
-        const state = await signState(appSecret, { m: staff.merchantId, u: staff.user.id, k: input.kind })
+        if (input.kind === 'BUSINESS' && !app.business_config_id) {
+          throw new HttpError(422, 'Connecting with a business portfolio is not switched on yet. Use "Connect with Page access".', 'NOT_CONFIGURED')
+        }
+        const state = await signState(appSecret, { m: staff.merchantId, u: staff.user.id, k: input.kind, ...(input.popup ? { w: 1 as const } : {}) })
         return json(req, { url: loginUrl(app, input.kind, redirectUri(req), state) })
       }
 
@@ -297,6 +301,7 @@ export default (
         }
         let token: string
         try {
+          // A business (system-user) token from "Connect using Business" already lasts; only a person's is extended.
           token = await exchangeCode(app, input.code, redirectUri(req), state.k === 'PAGES')
         } catch (e) {
           throw metaError(e)
@@ -308,7 +313,7 @@ export default (
         const mine = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: null, p_platform: null, p_external_id: null })
         const active = new Set(mine.filter((c) => c.status !== 'DISCONNECTED').map((c) => `${c.platform}:${c.external_id}`))
         try {
-          if (state.k === 'PAGES') {
+          if (state.k !== 'WHATSAPP') {
             const pages = await grantedPages(token, appSecret)
             return json(req, {
               kind: state.k,
@@ -329,7 +334,7 @@ export default (
         const pending = await pendingToken(admin, staff.user.id)
         const out: Connected = { channels: [], warnings: [] }
         try {
-          if (pending.kind === 'PAGES') {
+          if (pending.kind !== 'WHATSAPP') {
             const granted = new Map((await grantedPages(pending.token, appSecret)).map((p) => [p.id, p]))
             for (const pick of input.pages) {
               const page = granted.get(pick.id)
@@ -365,6 +370,24 @@ export default (
         await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
         await rpc(admin, 'inbox_channel_status', { p_id: c.id, p_status: 'DISCONNECTED', p_error: null })
         return json(req, { ok: true })
+      }
+
+      case 'remove': {
+        const [c] = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: input.id })
+        if (!c) throw new HttpError(404, 'Channel not found', 'NOT_FOUND')
+        // Stop Meta sending this Page's events, unless the store's other channel (its Facebook
+        // Page or Instagram account) still uses the same Page. Best effort: the token may be gone.
+        const pageOf = (x: Channel) => (x.platform === 'FACEBOOK' ? x.external_id : x.platform === 'INSTAGRAM' ? x.page_id : null)
+        const page = pageOf(c)
+        if (page) {
+          const others = await rpc<Channel[]>(admin, 'inbox_channels_for', {})
+          const shared = others.some((o) => o.id !== c.id && o.status !== 'DISCONNECTED' && pageOf(o) === page)
+          const t = shared ? '' : (await secret<{ access_token?: string }>(admin, channelKey(c.id))).access_token ?? ''
+          if (t) await new InboxGraph(t, appSecret).delete(`${page}/subscribed_apps`).catch(() => null)
+        }
+        await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
+        const out = await rpc<{ removed: boolean; conversations: number }>(admin, 'inbox_channel_remove', { p_id: c.id, p_actor: staff.user.id })
+        return json(req, out)
       }
 
       case 'media': {

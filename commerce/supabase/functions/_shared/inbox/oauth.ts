@@ -19,16 +19,21 @@ export const META_INBOX_APP_KEY = 'meta.inbox_app'
 export interface MetaInboxApp {
   app_id?: string
   app_secret?: string
-  /** Facebook Login for Business configuration: Pages and Instagram. */
+  /** Facebook Login for Business configuration: Pages and Instagram ("Connect with Page access"). */
   login_config_id?: string
+  /** Optional second configuration with a business (system-user) token: the owner picks a
+   *  business portfolio and its Pages ("Connect using Business"). */
+  business_config_id?: string
   /** WhatsApp Embedded Signup configuration. */
   whatsapp_config_id?: string
   /** What Meta must send back when the webhook address is verified. */
   verify_token?: string
 }
 
-export type OAuthKind = 'PAGES' | 'WHATSAPP'
-export interface OAuthState { m: string; u: string; k: OAuthKind; exp: number; n: string }
+/** PAGES and BUSINESS both connect Pages (and their Instagram); they differ in Meta's dialog. */
+export type OAuthKind = 'PAGES' | 'BUSINESS' | 'WHATSAPP'
+/** w: started in a popup window, so the callback hands the code back to the page that opened it. */
+export interface OAuthState { m: string; u: string; k: OAuthKind; exp: number; n: string; w?: 1 }
 
 const graphVersion = () => env('META_GRAPH_VERSION') ?? 'v23.0'
 const graphRoot = () => `${(env('META_GRAPH_URL') ?? 'https://graph.facebook.com').replace(/\/+$/, '')}/${graphVersion()}`
@@ -60,7 +65,7 @@ export async function readState(secret: string, state: string, now = Date.now())
   try {
     const s = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as OAuthState
     if (typeof s.exp !== 'number' || s.exp * 1000 < now) return null
-    if (s.k !== 'PAGES' && s.k !== 'WHATSAPP') return null
+    if (s.k !== 'PAGES' && s.k !== 'BUSINESS' && s.k !== 'WHATSAPP') return null
     return s
   } catch {
     return null
@@ -69,7 +74,7 @@ export async function readState(secret: string, state: string, now = Date.now())
 
 /** Meta's login dialog for this kind of connection. */
 export function loginUrl(app: MetaInboxApp, kind: OAuthKind, redirectUri: string, state: string): string {
-  const configId = kind === 'WHATSAPP' ? app.whatsapp_config_id : app.login_config_id
+  const configId = kind === 'WHATSAPP' ? app.whatsapp_config_id : kind === 'BUSINESS' ? app.business_config_id : app.login_config_id
   const u = new URL(`https://www.facebook.com/${graphVersion()}/dialog/oauth`)
   u.searchParams.set('client_id', app.app_id ?? '')
   u.searchParams.set('redirect_uri', redirectUri)

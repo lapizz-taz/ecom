@@ -192,7 +192,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
 function MetaAppCard() {
   const qc = useQueryClient()
   const status = useQuery({ queryKey: ['platform-meta-app'], queryFn: metaAppStatus })
-  const [form, setForm] = useState<{ app_id: string; app_secret: string; login_config_id: string; whatsapp_config_id: string } | null>(null)
+  const [form, setForm] = useState<{ app_id: string; app_secret: string; login_config_id: string; business_config_id: string; whatsapp_config_id: string } | null>(null)
   const [clearing, setClearing] = useState(false)
   const done = () => void qc.invalidateQueries({ queryKey: ['platform-meta-app'] })
   const save = useMutation({
@@ -204,7 +204,9 @@ function MetaAppCard() {
   if (status.error) return <ErrorState error={status.error} onRetry={() => status.refetch()} />
   if (!s) return null
   const saved = !!(s.app_id && s.has_secret && s.login_config_id)
-  const edit = () => setForm({ app_id: s.app_id ?? '', app_secret: '', login_config_id: s.login_config_id ?? '', whatsapp_config_id: s.whatsapp_config_id ?? '' })
+  const edit = () => setForm({
+    app_id: s.app_id ?? '', app_secret: '', login_config_id: s.login_config_id ?? '', business_config_id: s.business_config_id ?? '', whatsapp_config_id: s.whatsapp_config_id ?? '',
+  })
 
   return (
     <Card>
@@ -221,6 +223,7 @@ function MetaAppCard() {
             <div className="space-y-1.5"><Label htmlFor="meta-app-id">App ID</Label><Input id="meta-app-id" value={form.app_id} inputMode="numeric" onChange={(e) => setForm({ ...form, app_id: e.target.value.trim() })} placeholder="1653473169830242" /></div>
             <div className="space-y-1.5"><Label htmlFor="meta-app-secret">App Secret</Label><Input id="meta-app-secret" type="password" autoComplete="off" value={form.app_secret} onChange={(e) => setForm({ ...form, app_secret: e.target.value.trim() })} placeholder={s.has_secret ? 'Saved — paste only to change' : 'From App settings → Basic'} /></div>
             <div className="space-y-1.5"><Label htmlFor="meta-login-config">Login for Business configuration ID</Label><Input id="meta-login-config" value={form.login_config_id} inputMode="numeric" onChange={(e) => setForm({ ...form, login_config_id: e.target.value.trim() })} placeholder="911022668675556" /></div>
+            <div className="space-y-1.5"><Label htmlFor="meta-business-config">Business login configuration ID (optional, “Connect using Business”)</Label><Input id="meta-business-config" value={form.business_config_id} inputMode="numeric" onChange={(e) => setForm({ ...form, business_config_id: e.target.value.trim() })} placeholder="System-user token configuration" /></div>
             <div className="space-y-1.5"><Label htmlFor="meta-wa-config">WhatsApp Embedded Signup configuration ID (optional)</Label><Input id="meta-wa-config" value={form.whatsapp_config_id} inputMode="numeric" onChange={(e) => setForm({ ...form, whatsapp_config_id: e.target.value.trim() })} placeholder="After Tech Provider approval" /></div>
             <div className="flex gap-2 sm:col-span-2">
               <Button type="submit" disabled={save.isPending || !form.app_id || !form.login_config_id || (!form.app_secret && !s.has_secret)}>{save.isPending && <Spinner />} Check with Meta & save</Button>
@@ -231,6 +234,7 @@ function MetaAppCard() {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
             <span>App ID <span className="font-mono">{s.app_id ?? '—'}</span></span>
             <span>Login configuration <span className="font-mono">{s.login_config_id ?? '—'}</span></span>
+            <span>Business login <span className="font-mono">{s.business_config_id ?? 'not yet'}</span></span>
             <span>WhatsApp configuration <span className="font-mono">{s.whatsapp_config_id ?? 'not yet'}</span></span>
             {s.can_manage && (
               <span className="ml-auto flex gap-2">

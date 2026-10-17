@@ -148,6 +148,7 @@ const schema = z.discriminatedUnion('action', [
     app_secret: z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The App Secret is the 32-character code in App settings → Basic').optional(),
     login_config_id: z.string().trim().regex(/^[0-9]{5,30}$/, 'Use the Configuration ID from Facebook Login for Business'),
     whatsapp_config_id: z.union([z.string().trim().regex(/^[0-9]{5,30}$/, 'Use the Embedded Signup Configuration ID'), z.literal('')]).optional(),
+    business_config_id: z.union([z.string().trim().regex(/^[0-9]{5,30}$/, 'Use the Configuration ID of the business (system-user) login'), z.literal('')]).optional(),
     new_verify_token: z.boolean().optional(),
   }),
   z.object({ action: z.literal('meta_app_clear') }),
@@ -424,7 +425,8 @@ export default (
         const canManage = await rpc<boolean>(client, 'platform_can', { p_module: 'integrations', p_action: 'manage', p_merchant: null })
         const base = appBase(req)
         return json(req, {
-          app_id: app.app_id ?? null, login_config_id: app.login_config_id ?? null, whatsapp_config_id: app.whatsapp_config_id ?? null,
+          app_id: app.app_id ?? null, login_config_id: app.login_config_id ?? null, business_config_id: app.business_config_id ?? null,
+          whatsapp_config_id: app.whatsapp_config_id ?? null,
           has_secret: !!app.app_secret, verify_token: canManage ? app.verify_token ?? null : null,
           webhook_url: `${base}/functions/v1/inbox`, redirect_uri: `${base}/admin/inbox/meta-callback`, can_manage: canManage,
         })
@@ -434,7 +436,8 @@ export default (
         const prev = await rpc<MetaInboxApp | null>(admin, 'platform_secret_get', { p_key: META_INBOX_APP_KEY }) ?? {}
         const next: MetaInboxApp = {
           app_id: input.app_id, app_secret: input.app_secret ?? (prev.app_id === input.app_id ? prev.app_secret : undefined),
-          login_config_id: input.login_config_id, whatsapp_config_id: input.whatsapp_config_id || undefined,
+          login_config_id: input.login_config_id, business_config_id: input.business_config_id || undefined,
+          whatsapp_config_id: input.whatsapp_config_id || undefined,
           verify_token: input.new_verify_token || !prev.verify_token ? randomPassword(32).replace(/[^A-Za-z0-9]/g, '') : prev.verify_token,
         }
         if (!next.app_secret) throw new HttpError(422, 'Paste the App Secret', 'VALIDATION')
