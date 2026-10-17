@@ -4,14 +4,14 @@ import {
   Package, Paintbrush, PanelBottom, PanelTop, Plus, Redo2, ShoppingBag, ShoppingCart, Smartphone, Store, Trash2, Undo2, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { Spinner } from '@/components/common/states'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { useSettingDraft } from '@/features/settings/setting-form'
 import {
-  ACCENTS, DEFAULT_THEME, FONTS, makeSection, RADII, resolveTheme, SECTIONS, type MenuLink, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
+  ACCENTS, DEFAULT_THEME, FONTS, makeSection, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { ColorInput, FieldRow, inputClass, ListField, RangeInput, SchemaField, SelectInput } from '@/features/theme-editor/fields'
 import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-picker'
@@ -37,6 +37,7 @@ const PAGES: Array<{ value: Page; label: string; icon: ReactNode }> = [
 export default function StoreThemePage() {
   const s = useSettingDraft('storefront')
   const navigate = useNavigate()
+  const location = useLocation()
   const { data: config } = useStoreConfig()
   const frame = useRef<HTMLIFrameElement>(null)
   const [tab, setTab] = useState<Tab>('sections')
@@ -140,7 +141,12 @@ export default function StoreThemePage() {
     setSections([...sections.slice(0, i + 1), copy, ...sections.slice(i + 1)])
     setSelected(copy.id)
   }
-  const exit = () => { if (!s.dirty || window.confirm('Leave without saving your changes?')) navigate('/admin/store/sales-channels') }
+  // Back to the page the editor was opened from; Sales Channels when opened directly.
+  const exit = () => {
+    if (s.dirty && !window.confirm('Leave without saving your changes?')) return
+    if (location.key !== 'default') navigate(-1)
+    else navigate('/admin/channels')
+  }
   const h = history.current
   const current = sections.find((x) => x.id === selected)
 
@@ -425,19 +431,76 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
     const toggle = (label: string, key: keyof StoreTheme['product_page'], hint?: string) => (
       <FieldRow label={label} hint={hint} inline><Switch checked={!!pp[key]} onCheckedChange={(v) => set({ [key]: v })} /></FieldRow>
     )
+    const classic = pp.layout === 'classic'
+    const rows = pp.accordions
+    const setRow = (i: number, patch: Partial<ProductAccordion>) => set({ accordions: rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) })
+    const dayInput = (key: 'delivery_min_days' | 'delivery_max_days') => (
+      <input type="number" min={0} max={30} className={inputClass} value={pp[key]} aria-label={key === 'delivery_min_days' ? 'Earliest day' : 'Latest day'}
+        onChange={(e) => set({ [key]: Math.min(30, Math.max(0, Number(e.target.value) || 0)) })} />
+    )
     return (
       <>
+        <FieldRow label="Layout" hint={classic ? 'Photo with thumbnails in a box.' : pp.layout === 'bold' ? 'Edge-to-edge photo, name in italics, delivery timeline.' : 'Edge-to-edge photo, name and price in one row.'}>
+          <SelectInput value={pp.layout} onChange={(v) => set({ layout: v as typeof pp.layout, ...(v === 'bold' ? { buy_now_style: 'filled', show_delivery: true } : v === 'minimal' ? { buy_now_style: 'outline' } : {}) })}
+            options={[{ value: 'minimal', label: 'Minimal' }, { value: 'bold', label: 'Bold' }, { value: 'classic', label: 'Classic' }]} />
+        </FieldRow>
         <FieldRow label="Image shape"><SelectInput value={pp.image_aspect} onChange={(v) => set({ image_aspect: v as typeof pp.image_aspect })} options={[{ value: 'portrait', label: 'Portrait (4:5)' }, { value: 'square', label: 'Square' }]} /></FieldRow>
         {toggle('Brand above the name', 'show_brand')}
         {toggle('“Sale” badge', 'show_sale_badge')}
-        {toggle('Stock note', 'show_stock', '“Only 3 left” / “In stock”. Out of stock always shows.')}
+        {toggle('Stock note', 'show_stock', '“5 left” / “In stock”. Out of stock always shows.')}
         {toggle('Quantity selector', 'show_quantity')}
-        {toggle('“Buy now” button', 'show_buy_now')}
-        {toggle('Description', 'show_description')}
-        {pp.show_description && <FieldRow label="Description heading"><input className={inputClass} value={pp.description_title} placeholder="Description" onChange={(e) => set({ description_title: e.target.value })} /></FieldRow>}
-        {toggle('Shipping and warranty', 'show_details')}
-        {toggle('SKU', 'show_sku')}
-        {toggle('Tags', 'show_tags')}
+        {toggle('“Buy it now” button', 'show_buy_now')}
+        {pp.show_buy_now && (
+          <FieldRow label="“Buy it now” style">
+            <SelectInput value={pp.buy_now_style} onChange={(v) => set({ buy_now_style: v as typeof pp.buy_now_style })} options={[{ value: 'outline', label: 'Outline' }, { value: 'filled', label: 'Filled' }]} />
+          </FieldRow>
+        )}
+        {classic ? (
+          <>
+            {toggle('Description', 'show_description')}
+            {pp.show_description && <FieldRow label="Description heading"><input className={inputClass} value={pp.description_title} placeholder="Description" onChange={(e) => set({ description_title: e.target.value })} /></FieldRow>}
+            {toggle('Shipping and warranty', 'show_details')}
+            {toggle('SKU', 'show_sku')}
+            {toggle('Tags', 'show_tags')}
+          </>
+        ) : (
+          <>
+            {toggle('Delivery timeline', 'show_delivery', 'Purchased → Processing → Delivered, dated from today.')}
+            {pp.show_delivery && (
+              <FieldRow label="Delivered in (days)">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">{dayInput('delivery_min_days')}<span className="text-zinc-500">to</span>{dayInput('delivery_max_days')}</div>
+              </FieldRow>
+            )}
+            <ListField label="Highlights" item={[{ key: 'text', label: 'e.g. 600+ Happy Customers' }]} max={4} value={pp.highlights.map((text) => ({ text }))}
+              onChange={(v) => set({ highlights: v.map((x) => x.text ?? '') })} />
+            <FieldRow label="Note" hint="Put **stars** around words to make them bold.">
+              <input className={inputClass} value={pp.promo_text} placeholder="Use code **SAVE3** to get **3% OFF**" onChange={(e) => set({ promo_text: e.target.value })} />
+            </FieldRow>
+            <FieldRow label="Accordion rows" hint="Rows with no text on a product are hidden on that product.">
+              <div className="grid gap-2">
+                {rows.map((row, i) => (
+                  <div key={i} className="grid gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
+                    <input className={inputClass} aria-label={`Row ${i + 1} title`} placeholder="Title" value={row.title} onChange={(e) => setRow(i, { title: e.target.value })} />
+                    <SelectInput value={row.content} onChange={(v) => setRow(i, { content: v as ProductAccordion['content'] })}
+                      options={[{ value: 'description', label: 'Product description' }, { value: 'shipping', label: 'Product shipping note' }, { value: 'warranty', label: 'Product warranty / care' }, { value: 'custom', label: 'My own text' }]} />
+                    {row.content === 'custom' && (
+                      <textarea className={cn(inputClass, 'h-20 py-1.5')} aria-label={`Row ${i + 1} text`} placeholder="Same text on every product" value={row.text}
+                        onChange={(e) => setRow(i, { text: e.target.value })} />
+                    )}
+                    <span className="flex items-center justify-end gap-3 text-[11px]">
+                      {i > 0 && <button type="button" className="text-zinc-500 hover:underline" onClick={() => set({ accordions: [...rows.slice(0, i - 1), row, rows[i - 1], ...rows.slice(i + 1)] })}>Move up</button>}
+                      <button type="button" className="flex items-center gap-1 text-red-600 hover:underline" onClick={() => set({ accordions: rows.filter((_, j) => j !== i) })}><Trash2 className="size-3" /> Remove</button>
+                    </span>
+                  </div>
+                ))}
+                {rows.length < 8 && (
+                  <button type="button" onClick={() => set({ accordions: [...rows, { title: '', content: 'custom', text: '' }] })}
+                    className="flex items-center gap-1.5 text-[13px] font-medium text-[#2c6ecb] hover:underline"><Plus className="size-3.5" /> Add row</button>
+                )}
+              </div>
+            </FieldRow>
+          </>
+        )}
         <p className="text-[11px] leading-snug text-zinc-500">Photos, options, prices and text are set on each product.</p>
       </>
     )

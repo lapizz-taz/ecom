@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { ShoppingBag, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ErrorState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { QuantityStepper } from '@/features/cart/cart-drawer'
 import { useCart } from '@/features/cart/cart-store'
 import { PriceTag, ProductGrid } from '@/features/storefront/product-card'
+import {
+  BuyButtons, DeliveryTimeline, EdgeGallery, Highlights, OptionPicker, ProductAccordions, PromoNote, StockDot,
+} from '@/features/storefront/product-layouts'
 import { SectionFrame, ThemeSections } from '@/features/storefront/sections'
 import { adEvent } from '@/features/storefront/ad-pixels'
 import { useStoreTheme } from '@/features/storefront/theme-context'
@@ -107,6 +108,75 @@ export default function ProductPage() {
   }
 
   const sku = variant?.sku ?? product.sku
+  const buttons = (
+    <BuyButtons pp={pp} quantity={quantity} max={maxQty} onQuantity={(v) => setQuantity(Math.max(1, Math.min(v, maxQty)))}
+      disabled={!canBuy} onAdd={() => addToCart(false)} onBuy={() => addToCart(true)} />
+  )
+  const related = pp.show_related && product.related.length > 0 && (
+    <SectionFrame id="product-related" label="Related products">
+      <section className="mx-auto max-w-6xl px-4 py-12">
+        {pp.related_title && <h2 className="mb-5 text-xl font-semibold">{pp.related_title}</h2>}
+        <ProductGrid products={product.related} />
+      </section>
+    </SectionFrame>
+  )
+
+  if (pp.layout !== 'classic') {
+    const bold = pp.layout === 'bold'
+    const first = product.option_names[0]
+    const firstCount = first ? optionValues(product, first).length : 0
+    const countText = firstCount > 1 ? `${firstCount} ${first.toLowerCase()}${first.toLowerCase().endsWith('s') ? '' : 's'}` : ''
+    const desc = product.short_description?.trim()
+      || (product.description && product.description.length > 170 ? `${product.description.slice(0, 170).trimEnd()}…` : product.description?.trim())
+    const onSale = (variant?.compare_at_price ?? 0) > (variant?.price ?? 0)
+    const price = <PriceTag price={variant?.price ?? product.price} compareAt={variant?.compare_at_price ?? product.compare_at_price} className={bold ? 'text-lg' : 'shrink-0'} />
+    return (
+      <div>
+        <SectionFrame id="product-info" label="Product information">
+          <div className="grid md:grid-cols-2">
+            <EdgeGallery product={product} index={imageIndex} onIndex={setImageIndex} aspect={pp.image_aspect} background={theme.product_card.image_bg} />
+            <div className="mx-auto w-full max-w-[460px] space-y-5 px-4 py-6 md:py-10">
+              {bold ? (
+                <div className="space-y-3">
+                  {pp.show_brand && product.brand && <p className="text-xs text-muted-foreground">{product.brand}</p>}
+                  <h1 className="text-xl italic sm:text-2xl">{product.name}</h1>
+                  {(pp.show_stock || !variant?.in_stock) && <StockDot inStock={Boolean(variant?.in_stock)} available={variant?.available ?? null} missing={!variant} />}
+                  <div className="flex items-center gap-2">{price}{pp.show_sale_badge && onSale && <Badge variant="destructive">Sale</Badge>}</div>
+                  {desc && <p className="text-xs leading-relaxed italic text-muted-foreground">{desc}</p>}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(pp.show_stock || !variant?.in_stock) && <StockDot inStock={Boolean(variant?.in_stock)} available={variant?.available ?? null} missing={!variant} />}
+                  <div className="flex items-center justify-between gap-3 border-y px-2 py-2.5 text-[11px]">
+                    <h1 className="min-w-0 font-medium uppercase">
+                      {product.name}{countText && <span className="font-normal normal-case text-muted-foreground"> · {countText}</span>}
+                    </h1>
+                    <div className="flex shrink-0 items-center gap-2">{pp.show_sale_badge && onSale && <Badge variant="destructive">Sale</Badge>}{price}</div>
+                  </div>
+                  {desc && <p className="text-xs leading-relaxed italic text-muted-foreground">{desc}</p>}
+                </div>
+              )}
+
+              {product.option_names.map((name) => (
+                <OptionPicker key={name} product={product} name={name} values={optionValues(product, name)} selected={selected[name]}
+                  onSelect={(value) => setSelected((s) => ({ ...s, [name]: value }))}
+                  isAvailable={(value) => Boolean(findVariant(product, { ...selected, [name]: value })?.in_stock)} />
+              ))}
+
+              {buttons}
+              {pp.show_delivery && <DeliveryTimeline minDays={pp.delivery_min_days} maxDays={pp.delivery_max_days} />}
+              <Highlights items={pp.highlights} />
+              <PromoNote text={pp.promo_text} />
+              <ProductAccordions rows={pp.accordions} product={product} variant={bold ? 'chevron' : 'plus'} />
+            </div>
+          </div>
+        </SectionFrame>
+        {related}
+        <ThemeSections sections={theme.product_sections} />
+      </div>
+    )
+  }
+
   return (
     <div>
       <SectionFrame id="product-info" label="Product information">
@@ -174,11 +244,7 @@ export default function ProductPage() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-3">
-                {pp.show_quantity && <QuantityStepper value={quantity} max={maxQty} onChange={(v) => setQuantity(Math.max(1, Math.min(v, maxQty)))} size="default" />}
-                <Button size="lg" className="flex-1" disabled={!canBuy} onClick={() => addToCart(false)}><ShoppingBag /> Add to cart</Button>
-              </div>
-              {pp.show_buy_now && <Button size="lg" variant="outline" className="w-full" disabled={!canBuy} onClick={() => addToCart(true)}><Zap /> Buy now</Button>}
+              {buttons}
 
               {pp.show_description && product.description && (
                 <div className="space-y-2 border-t pt-5">
@@ -210,14 +276,7 @@ export default function ProductPage() {
         </div>
       </SectionFrame>
 
-      {pp.show_related && product.related.length > 0 && (
-        <SectionFrame id="product-related" label="Related products">
-          <section className="mx-auto max-w-6xl px-4 pb-12">
-            {pp.related_title && <h2 className="mb-5 text-xl font-semibold">{pp.related_title}</h2>}
-            <ProductGrid products={product.related} />
-          </section>
-        </SectionFrame>
-      )}
+      {related}
       <ThemeSections sections={theme.product_sections} />
     </div>
   )

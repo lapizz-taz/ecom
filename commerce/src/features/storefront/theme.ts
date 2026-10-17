@@ -14,8 +14,23 @@ export type SectionType = 'hero' | 'collections' | 'featured' | 'new' | 'trust' 
 export type Settings = Record<string, unknown>
 export interface ThemeSection { id: string; type: SectionType; enabled: boolean; settings: Settings }
 export interface MenuLink { label: string; link: string }
+/** A collapsible row under the buttons; its text comes from the product or is typed in. */
+export interface ProductAccordion { title: string; content: 'description' | 'shipping' | 'warranty' | 'custom'; text: string }
+
 /** What the product page shows, edited under Products in the theme builder. */
 export interface ProductPageSettings {
+  /** classic: image and thumbnails in a box; bold: edge-to-edge photo, delivery timeline; minimal: edge-to-edge photo, name and price in one row. */
+  layout: 'classic' | 'bold' | 'minimal'
+  buy_now_style: 'filled' | 'outline'
+  accordions: ProductAccordion[]
+  /** Purchased → Processing → Delivered with dates (bold and minimal layouts). */
+  show_delivery: boolean
+  delivery_min_days: number
+  delivery_max_days: number
+  /** Short lines with an icon, e.g. "600+ Happy Customers". */
+  highlights: string[]
+  /** A small note under the highlights; **text** is bold. */
+  promo_text: string
   image_aspect: 'portrait' | 'square'
   show_brand: boolean
   show_sale_badge: boolean
@@ -207,6 +222,13 @@ export const DEFAULT_THEME: StoreTheme = {
   product_card: { aspect: 'portrait', uppercase: true, sale_badge: true, gap: 'small', image_bg: '#f4f4f5' },
   collection: { banner: true, columns: 4 },
   product_page: {
+    layout: 'minimal', buy_now_style: 'outline',
+    accordions: [
+      { title: 'Product Details', content: 'description', text: '' },
+      { title: 'Shipping Details', content: 'shipping', text: '' },
+      { title: 'Care', content: 'warranty', text: '' },
+    ],
+    show_delivery: false, delivery_min_days: 1, delivery_max_days: 2, highlights: [], promo_text: '',
     image_aspect: 'portrait', show_brand: true, show_sale_badge: true, show_stock: true, show_quantity: true, show_buy_now: true,
     show_description: true, description_title: 'Description', show_details: true, show_sku: true, show_tags: true,
     show_related: true, related_title: 'You may also like',
@@ -229,6 +251,7 @@ const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{
 const hex = (v: unknown, d: string) => (isHex(v) ? v : d)
 const str = (v: unknown, d = '') => (typeof v === 'string' ? v : d)
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
+const days = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(30, Math.max(0, Math.round(v))) : d)
 const links = (v: unknown): MenuLink[] => (Array.isArray(v) ? v : [])
   .filter((l): l is MenuLink => !!l && typeof l === 'object' && typeof (l as MenuLink).label === 'string')
   .map((l) => ({ label: l.label, link: str(l.link, '/') })).slice(0, 12)
@@ -303,6 +326,20 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
     },
     collection: { banner: bool(col.banner, true), columns: ([2, 3, 4, 5] as const).includes(col.columns as 2) ? (col.columns as 2 | 3 | 4 | 5) : 4 },
     product_page: {
+      layout: pp.layout === 'classic' || pp.layout === 'bold' ? pp.layout : dp.layout,
+      buy_now_style: pp.buy_now_style === 'filled' ? 'filled' : pp.buy_now_style === 'outline' ? 'outline' : pp.layout === 'bold' ? 'filled' : dp.buy_now_style,
+      accordions: Array.isArray(pp.accordions)
+        ? pp.accordions.filter((a): a is ProductAccordion => !!a && typeof a === 'object').slice(0, 8).map((a) => ({
+          title: str(a.title).slice(0, 60),
+          content: (['description', 'shipping', 'warranty', 'custom'] as const).includes(a.content) ? a.content : 'custom',
+          text: str(a.text).slice(0, 2000),
+        }))
+        : dp.accordions.map((a) => ({ ...a })),
+      show_delivery: bool(pp.show_delivery, dp.show_delivery),
+      delivery_min_days: days(pp.delivery_min_days, dp.delivery_min_days),
+      delivery_max_days: Math.max(days(pp.delivery_min_days, dp.delivery_min_days), days(pp.delivery_max_days, dp.delivery_max_days)),
+      highlights: Array.isArray(pp.highlights) ? pp.highlights.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 60)).slice(0, 4) : [],
+      promo_text: str(pp.promo_text).slice(0, 120),
       image_aspect: pp.image_aspect === 'square' ? 'square' : 'portrait',
       show_brand: bool(pp.show_brand, dp.show_brand), show_sale_badge: bool(pp.show_sale_badge, dp.show_sale_badge),
       show_stock: bool(pp.show_stock, dp.show_stock), show_quantity: bool(pp.show_quantity, dp.show_quantity),
