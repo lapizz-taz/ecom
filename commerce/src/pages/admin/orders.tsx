@@ -486,7 +486,7 @@ export function OrdersPage({ view }: { view: View }) {
           </>
         )}
         {selected.size > 0 && view === 'approved' && (
-          <span className="enter flex items-center gap-1 rounded-full border bg-card py-1 pr-1 pl-3 text-sm">
+          <span className="enter flex items-center gap-1 rounded-[10px] border bg-card py-1 pr-1 pl-3 text-sm">
             <span className="font-medium tabular-nums">{selected.size} selected</span>
             <Button variant="ghost" size="sm" className="h-7" onClick={() => setSelected(new Set())}>Clear</Button>
           </span>
