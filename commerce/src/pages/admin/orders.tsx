@@ -488,7 +488,7 @@ export function OrdersPage({ view }: { view: View }) {
         {selected.size > 0 && view === 'approved' && (
           <span className="enter flex items-center gap-1 rounded-full border bg-card py-1 pr-1 pl-3 text-sm">
             <span className="font-medium tabular-nums">{selected.size} selected</span>
-            <Button variant="ghost" size="sm" className="h-7 rounded-full" onClick={() => setSelected(new Set())}>Clear</Button>
+            <Button variant="ghost" size="sm" className="h-7" onClick={() => setSelected(new Set())}>Clear</Button>
           </span>
         )}
       </div>
@@ -1150,7 +1150,7 @@ function BulkTagButton({ known, onAdd }: { known: string[]; onAdd: (tag: string)
   const [text, setText] = useState('')
   return (
     <Popover>
-      <PopoverTrigger asChild><Button size="sm" variant="outline" className="rounded-full"><Tag /> Tag</Button></PopoverTrigger>
+      <PopoverTrigger asChild><Button size="sm" variant="outline"><Tag /> Tag</Button></PopoverTrigger>
       <PopoverContent align="start" className="grid w-60 gap-2 p-3">
         <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) { onAdd(text.trim().slice(0, TAG_LIMIT)); setText('') } }} className="flex gap-1.5">
           <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={TAG_LIMIT} placeholder="Tag name" className="h-8" aria-label="Tag name" />

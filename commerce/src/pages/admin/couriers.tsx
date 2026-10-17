@@ -242,17 +242,17 @@ function CourierList() {
             <p className="text-sm text-muted-foreground">{integration.blurb}</p>
             {can('couriers.manage') && (
               <div className="mt-auto flex flex-wrap gap-2">
-                <Button size="sm" variant={connected ? 'outline' : 'default'} className="rounded-full" onClick={() => setConnecting(integration)}>
+                <Button size="sm" variant={connected ? 'outline' : 'default'} onClick={() => setConnecting(integration)}>
                   {connected ? <Settings2 /> : <PlugZap />} {connected ? 'Settings' : 'Connect'}
                 </Button>
                 {connected && row && (
                   <>
-                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => test.mutate(row.id)} disabled={test.isPending}><Plug /> Test</Button>
-                    <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setDisconnecting(row)}><Unplug /> Disconnect</Button>
+                    <Button size="sm" variant="outline" onClick={() => test.mutate(row.id)} disabled={test.isPending}><Plug /> Test</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setDisconnecting(row)}><Unplug /> Disconnect</Button>
                   </>
                 )}
                 {row && (integration.code === 'pathao' || integration.code === 'steadfast') && (
-                  <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setWebhookFor({ courier: row, provider: integration.code as 'pathao' | 'steadfast' })}>
+                  <Button size="sm" variant="ghost" onClick={() => setWebhookFor({ courier: row, provider: integration.code as 'pathao' | 'steadfast' })}>
                     <Webhook /> Webhook{(row.config as { webhook_secret_hint?: string } | null)?.webhook_secret_hint ? ' ✓' : ''}
                   </Button>
                 )}

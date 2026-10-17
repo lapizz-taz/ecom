@@ -9,10 +9,10 @@ import { cn } from '@/lib/utils'
 // 'YYYY-MM-DD' strings so they drop in where <input type="date"> was.
 
 const trigger = (size: 'sm' | 'default') => cn(
-  'flex min-w-0 items-center gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow,border-color] outline-none',
+  'flex min-w-0 items-center gap-2 rounded-[10px] border border-input bg-card px-3 text-left text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow,border-color] outline-none',
   'hover:border-foreground/20 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive',
   'data-[state=open]:border-ring data-[state=open]:ring-[3px] data-[state=open]:ring-ring/15',
-  size === 'sm' ? 'h-8 rounded-[7px] text-[13px]' : 'h-9',
+  size === 'sm' ? 'h-8 text-[13px]' : 'h-9',
 )
 
 /** Opening the calendar puts keyboard focus on the chosen (or today's) day. */
