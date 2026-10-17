@@ -41,8 +41,7 @@ export function LiveDashboardView() {
   ]
   return (
     <div className="space-y-4">
-      <Card className="relative gap-0 overflow-hidden p-0">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/80 via-primary to-primary/40" />
+      <Card className="gap-0 overflow-hidden p-0">
         <div className="flex flex-wrap items-start justify-between gap-3 p-4 pt-5">
           <div className="min-w-0">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium tracking-wide text-primary uppercase">

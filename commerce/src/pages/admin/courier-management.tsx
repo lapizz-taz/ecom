@@ -132,7 +132,7 @@ function ParcelsView({ state, update, returnsOnly }: {
       <div className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
         {tabs.map((t) => (
           <button key={t.value} type="button" onClick={() => { setSelected(new Set()); update({ tab: t.value }) }}
-            className={cn('flex shrink-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-all duration-200',
+            className={cn('flex shrink-0 items-center gap-2 rounded-[10px] border px-3 py-1.5 text-sm transition-all duration-200',
               tab === t.value ? 'border-foreground bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:border-foreground/40 hover:text-foreground')}>
             {t.label}
             <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', tab === t.value ? 'bg-background/20' : 'bg-muted')}>{counts ? counts[t.value] : '·'}</span>
