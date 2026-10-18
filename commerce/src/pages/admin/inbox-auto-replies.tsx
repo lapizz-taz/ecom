@@ -3,7 +3,6 @@ import { Ban, Clock, FlaskConical, Loader2, Plus, ShieldCheck, Trash2, X, Zap } 
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ErrorState, LoadingState } from '@/components/common/states'
-import { StatCard } from '@/components/common/stat-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -59,31 +58,29 @@ export default function InboxAutoRepliesPage() {
   return (
     <div className="space-y-4">
       <MessagingTabs unread={inbox.data?.counts.unread} comments={inbox.data?.comments?.awaiting} />
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="flex items-center gap-2 text-lg font-semibold"><Zap className="size-5" /> Auto Replies</h1>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="w-32 text-[11px] text-muted-foreground">
-            {a.rules.length} of {a.limit} Auto Replies
-            <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${(100 * a.rules.length) / a.limit}%` }} /></div>
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <h1 className="flex min-w-0 items-center gap-2 text-lg font-semibold"><Zap className="size-5 shrink-0" /> Auto Replies</h1>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setTrying(true)} aria-label="Try a message"><FlaskConical /> <span className="hidden sm:inline">Try a message</span></Button>
+            {manage && <Button size="sm" className="gap-1.5" disabled={a.rules.length >= a.limit} onClick={() => { update({ tab: 'rules' }); setEditing(blank()) }}><Plus /> New<span className="hidden sm:inline"> Auto Reply</span></Button>}
           </div>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setTrying(true)}><FlaskConical /> Try a message</Button>
-          {manage && <Button size="sm" className="gap-1.5" disabled={a.rules.length >= a.limit} onClick={() => { update({ tab: 'rules' }); setEditing(blank()) }}><Plus /> New Auto Reply</Button>}
         </div>
+        <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tabular-nums">
+          <span><b className="font-medium text-foreground">{formatNumber(a.stats.sent_today)}</b> today</span>
+          <span><b className="font-medium text-foreground">{formatNumber(a.stats.sent_7d)}</b> this week</span>
+          <span><b className="font-medium text-foreground">{formatNumber(a.stats.follow_ups_7d)}</b> follow-ups</span>
+          <span><b className="font-medium text-foreground">{formatNumber(a.stats.hidden_7d)}</b> hidden</span>
+          {a.stats.failed_7d > 0 && <span className="text-red-500"><b className="font-medium">{formatNumber(a.stats.failed_7d)}</b> failed</span>}
+          <span>{a.rules.length}/{a.limit} rules</span>
+        </p>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b">
+      <div className="-mx-1 flex gap-1 overflow-x-auto border-b px-1 [scrollbar-width:none]">
         {TABS.map(([v, l]) => (
           <button key={v} type="button" onClick={() => update({ tab: v })}
-            className={cn('-mb-px border-b-2 border-transparent px-3 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground', tab === v && 'border-primary font-medium text-foreground')}>{l}</button>
+            className={cn('-mb-px shrink-0 border-b-2 border-transparent px-2.5 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground sm:px-3', tab === v && 'border-primary font-medium text-foreground')}>{l}</button>
         ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="Auto replies today" value={formatNumber(a.stats.sent_today)} />
-        <StatCard label="Auto replies, 7 days" value={formatNumber(a.stats.sent_7d)} />
-        <StatCard label="Follow-ups, 7 days" value={formatNumber(a.stats.follow_ups_7d)} />
-        <StatCard label="Comments hidden, 7 days" value={formatNumber(a.stats.hidden_7d)} />
-        <StatCard label="Failed, 7 days" value={formatNumber(a.stats.failed_7d)} tone={a.stats.failed_7d ? 'negative' : 'default'} />
       </div>
 
       {tab === 'rules' && <Rules a={a} manage={manage} editing={editing} setEditing={setEditing} onChanged={refresh} onChannels={() => update({ tab: 'channels' })} />}
@@ -157,7 +154,7 @@ function Rules({ a, manage, editing, setEditing, onChanged, onChannels }: {
             </div>
           ))}
         </div>
-        <div className="min-h-64 rounded-xl border bg-card">
+        <div className={cn('min-h-64 rounded-xl border bg-card', !editing && 'hidden lg:block')}>
           {editing ? <RuleEditor key={('id' in editing && editing.id) || 'new'} a={a} rule={editing} manage={manage} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged() }} />
             : <div className="flex h-full min-h-64 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground"><Zap className="size-5" />Select an Auto Reply to edit<br />or create a new one to get started.</div>}
         </div>

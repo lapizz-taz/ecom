@@ -1,5 +1,5 @@
 import {
-  BarChart3, Boxes, ClipboardCheck, Globe, HelpCircle, LayoutDashboard, Megaphone, MessageSquare, Search, Settings,
+  BarChart3, Boxes, ClipboardCheck, Globe, HelpCircle, Inbox, LayoutDashboard, Megaphone, MessageSquare, Search, Settings,
   ShoppingBag, Store, TrendingUp, UserCog, Users, Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -107,15 +107,20 @@ export const NAV: NavSection[] = [
         ],
       },
       {
-        label: 'Messaging', to: '/admin/inbox', icon: <MessageSquare />, permission: 'inbox.view',
+        label: 'Inbox', to: '/admin/inbox', icon: <Inbox />, permission: 'inbox.view',
         badge: (c) => c.inbox,
         children: [
-          { label: 'Inbox', to: '/admin/inbox', badge: (c) => c.inbox },
+          { label: 'Chats', to: '/admin/inbox', badge: (c) => c.inbox },
           { label: 'Comments', to: '/admin/inbox/comments' },
           { label: 'Auto Replies', to: '/admin/inbox/auto-replies' },
-          { label: 'SMS', to: '/admin/sms', permission: 'sms.view', feature: 'sms' },
-          { label: 'SMS Log', to: '/admin/sms?tab=messages', permission: 'sms.view', feature: 'sms' },
           { label: 'Channels', to: '/admin/inbox/channels' },
+        ],
+      },
+      {
+        label: 'SMS', to: '/admin/sms', icon: <MessageSquare />, permission: 'sms.view',
+        children: [
+          { label: 'Send SMS', to: '/admin/sms', feature: 'sms' },
+          { label: 'SMS Log', to: '/admin/sms?tab=messages', feature: 'sms' },
         ],
       },
       {

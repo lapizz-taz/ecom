@@ -86,8 +86,8 @@ export function Thread({ id, onBack, onTogglePanel, draft, onDraft, onInsert, on
   const disabled = c.channel_status === 'DISCONNECTED' ? 'This channel is disconnected. Connect it again under Messaging → Channels to reply.' : null
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-3 border-b px-3 py-2.5">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <header className="flex min-w-0 items-center gap-1.5 border-b px-2 py-2 sm:gap-2 sm:px-3">
         <Button size="icon-sm" variant="ghost" className="lg:hidden" onClick={onBack} aria-label="Back to conversations"><ArrowLeft /></Button>
         <ChatAvatar name={c.customer_name} src={c.customer_avatar} platform={c.platform} />
         <div className="min-w-0 flex-1">
@@ -98,16 +98,16 @@ export function Thread({ id, onBack, onTogglePanel, draft, onDraft, onInsert, on
           </p>
         </div>
         {c.status !== 'DONE' && (
-          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => update.mutate({ status: 'DONE' })}><CircleCheck className="size-3.5" /> Done</Button>
+          <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2 text-xs" onClick={() => update.mutate({ status: 'DONE' })} aria-label="Done"><CircleCheck className="size-4" /> <span className="hidden sm:inline">Done</span></Button>
         )}
-        <Button size="icon-sm" variant="ghost" aria-label={c.starred ? 'Unstar' : 'Star'} onClick={() => update.mutate({ starred: !c.starred })}>
+        <Button size="icon-sm" variant="ghost" className="hidden sm:inline-flex" aria-label={c.starred ? 'Unstar' : 'Star'} onClick={() => update.mutate({ starred: !c.starred })}>
           <Star className={cn(c.starred && 'fill-amber-400 text-amber-400')} />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
-              <span className={cn('size-1.5 rounded-full', c.status === 'OPEN' ? 'bg-emerald-500' : c.status === 'FOLLOW_UP' ? 'bg-amber-500' : 'bg-muted-foreground')} />
-              {STATUS_LABEL[c.status]}
+            <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2 text-xs" aria-label={`Status: ${STATUS_LABEL[c.status]}`}>
+              <span className={cn('size-2 rounded-full', c.status === 'OPEN' ? 'bg-emerald-500' : c.status === 'FOLLOW_UP' ? 'bg-amber-500' : 'bg-muted-foreground')} />
+              <span className="hidden sm:inline">{STATUS_LABEL[c.status]}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -126,6 +126,7 @@ export function Thread({ id, onBack, onTogglePanel, draft, onDraft, onInsert, on
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => update.mutate({ unread: true })}>Mark as unread</DropdownMenuItem>
+            <DropdownMenuItem className="sm:hidden" onClick={() => update.mutate({ starred: !c.starred })}>{c.starred ? 'Unstar' : 'Star'}</DropdownMenuItem>
             {c.post?.url && <DropdownMenuItem asChild><a href={c.post.url} target="_blank" rel="noreferrer">Open the post <ExternalLink className="ml-auto" /></a></DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>

@@ -117,7 +117,7 @@ export function Composer({ conversationId, kind, disabled, replyTo, onClearReply
       )}
       <div className="rounded-xl border bg-background focus-within:ring-2 focus-within:ring-ring/30">
         <Textarea ref={box} value={text} onChange={(e) => setText(e.target.value)} rows={2} disabled={!!disabled}
-          placeholder={kind === 'COMMENT' && !privateReply ? 'Reply under the comment…' : 'Type your message… (Enter to send, Shift+Enter for a new line)'}
+          placeholder={kind === 'COMMENT' && !privateReply ? 'Reply under the comment…' : 'Type a message…'}
           className="max-h-48 min-h-[56px] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }} />
         <div className="flex flex-wrap items-center gap-0.5 px-2 pb-2">
