@@ -115,7 +115,7 @@ describe('branch stock', () => {
       await advanceOrder(db, a.id, ['CONFIRMED'])
       await advanceOrder(db, b.id, ['CONFIRMED'])
       await asUser(db, admin)
-      const r = await value<Array<{ branch_id: string; orders: number }>>(db, `select public.branch_report(current_date - 1, current_date)`)
+      const r = await value<Array<{ branch_id: string; orders: number }>>(db, `select public.branch_report((now() at time zone 'Asia/Dhaka')::date - 1, (now() at time zone 'Asia/Dhaka')::date)`)
       expect(r.find((x) => x.branch_id === o.branches[0].id)?.orders).toBe(1)
       expect(r.find((x) => x.branch_id === store.id)?.orders).toBe(1)
 

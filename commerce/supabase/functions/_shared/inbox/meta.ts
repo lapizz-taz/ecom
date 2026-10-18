@@ -192,3 +192,54 @@ export async function sendMessage(g: InboxGraph, t: SendTarget, input: SendInput
   }
   return { external_id: r.message_id ?? null, attachments }
 }
+
+export type CommentOp = 'like' | 'unlike' | 'hide' | 'unhide' | 'delete'
+
+/** Like, hide or delete a Facebook or Instagram comment (or the Page's own reply). */
+export async function commentAction(g: InboxGraph, platform: 'FACEBOOK' | 'INSTAGRAM', commentId: string, op: CommentOp): Promise<void> {
+  if (platform === 'INSTAGRAM') {
+    if (op === 'like' || op === 'unlike') throw new MetaApiError('Instagram does not let apps like comments. Reply to it instead.')
+    if (op === 'delete') await g.delete(commentId)
+    else await g.post(commentId, {}, { hide: op === 'hide' ? 'true' : 'false' })
+    return
+  }
+  if (op === 'like') await g.post(`${commentId}/likes`, {})
+  else if (op === 'unlike') await g.delete(`${commentId}/likes`)
+  else if (op === 'delete') await g.delete(commentId)
+  else await g.post(commentId, { is_hidden: op === 'hide' })
+}
+
+export interface PostDetails {
+  caption: string | null; image_url: string | null; permalink: string | null; media_type: string | null
+  posted_at: string | null; likes: number | null; shares: number | null; comments: number | null; is_ad: boolean
+}
+
+type FbPost = {
+  message?: string; full_picture?: string; permalink_url?: string; created_time?: string; status_type?: string
+  shares?: { count?: number }; reactions?: { summary?: { total_count?: number } }; comments?: { summary?: { total_count?: number } }
+  is_eligible_for_promotion?: boolean; promotion_status?: string
+}
+type IgMedia = {
+  caption?: string; media_url?: string; thumbnail_url?: string; permalink?: string; timestamp?: string
+  like_count?: number; comments_count?: number; media_type?: string; media_product_type?: string
+}
+
+/** The caption, picture, link and counts of the post or ad a comment is on. */
+export async function fetchPost(g: InboxGraph, platform: 'FACEBOOK' | 'INSTAGRAM', postId: string): Promise<PostDetails> {
+  if (platform === 'INSTAGRAM') {
+    const m = await g.get<IgMedia>(postId, { fields: 'caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type,media_product_type' })
+    return {
+      caption: m.caption ?? null, image_url: m.media_type === 'VIDEO' ? (m.thumbnail_url ?? null) : (m.media_url ?? m.thumbnail_url ?? null),
+      permalink: m.permalink ?? null, media_type: m.media_product_type === 'REELS' ? 'REELS' : (m.media_type ?? null), posted_at: m.timestamp ?? null,
+      likes: m.like_count ?? null, shares: null, comments: m.comments_count ?? null, is_ad: m.media_product_type === 'AD',
+    }
+  }
+  const p = await g.get<FbPost>(postId, {
+    fields: 'message,full_picture,permalink_url,created_time,status_type,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)',
+  })
+  return {
+    caption: p.message ?? null, image_url: p.full_picture ?? null, permalink: p.permalink_url ?? null, media_type: p.status_type ?? null,
+    posted_at: p.created_time ?? null, likes: p.reactions?.summary?.total_count ?? null, shares: p.shares?.count ?? null,
+    comments: p.comments?.summary?.total_count ?? null, is_ad: false,
+  }
+}

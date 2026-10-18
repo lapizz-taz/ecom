@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertCircle, ArrowLeft, Check, CheckCheck, Clock, Copy, ExternalLink, FileText, MapPin, MoreVertical, PanelRight, Pin, PinOff, Reply,
+  AlertCircle, ArrowLeft, Check, CheckCheck, CircleCheck, Clock, Copy, ExternalLink, FileText, MapPin, MoreVertical, PanelRight, Pin, PinOff, Reply,
   Star, UserRound,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -11,17 +11,21 @@ import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { type Attachment, type ConversationStatus, inboxMarkRead, inboxStaff, type InboxMessage, type InboxThread, inboxThread, inboxUpdate, whatsappMedia } from '@/services/inbox'
+import { ChatActions } from './chat-actions'
 import { Composer } from './composer'
 import { ChatAvatar, dayLabel, PLATFORM } from './ui'
 
 const STATUS_LABEL: Record<ConversationStatus, string> = { OPEN: 'Open', FOLLOW_UP: 'Follow-up', DONE: 'Done' }
 
-export function Thread({ id, onBack, onTogglePanel, draft, onDraft }: {
+export function Thread({ id, onBack, onTogglePanel, draft, onDraft, onInsert, onOrderDraft }: {
   id: string
   onBack: () => void
   onTogglePanel: () => void
   draft: string | null
   onDraft: () => void
+  /** Puts text into the message box (order status, invoice). */
+  onInsert: (text: string) => void
+  onOrderDraft: () => void
 }) {
   const qc = useQueryClient()
   const thread = useQuery({ queryKey: ['inbox-thread', id], queryFn: () => inboxThread(id), refetchInterval: 5_000 })
@@ -93,6 +97,9 @@ export function Thread({ id, onBack, onTogglePanel, draft, onDraft }: {
             {c.assigned_name && <> · <UserRound className="inline size-3" /> {c.assigned_name}</>}
           </p>
         </div>
+        {c.status !== 'DONE' && (
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => update.mutate({ status: 'DONE' })}><CircleCheck className="size-3.5" /> Done</Button>
+        )}
         <Button size="icon-sm" variant="ghost" aria-label={c.starred ? 'Unstar' : 'Star'} onClick={() => update.mutate({ starred: !c.starred })}>
           <Star className={cn(c.starred && 'fill-amber-400 text-amber-400')} />
         </Button>
@@ -160,6 +167,7 @@ export function Thread({ id, onBack, onTogglePanel, draft, onDraft }: {
         </div>
       </div>
 
+      <ChatActions data={thread.data!} onInsert={onInsert} onOrderDraft={onOrderDraft} onTogglePanel={onTogglePanel} />
       <Composer conversationId={id} kind={c.kind} replyTo={replyTo} onClearReply={() => setReplyTo(null)} onSent={refresh} draft={draft} onDraft={onDraft}
         disabled={disabled ?? (outsideWindow && c.platform === 'WHATSAPP' ? 'More than 24 hours since the customer last wrote: WhatsApp only allows approved templates now. Ask them to message again.' : null)} />
       {outsideWindow && c.platform !== 'WHATSAPP' && !disabled && (
