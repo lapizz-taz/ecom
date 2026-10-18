@@ -4,7 +4,7 @@
 -- Three kinds of rows, read together:
 --   * manual income and expenses the team records (salaries, servers, rent…);
 --   * daily Meta ad spend from Fullfilio's own ad accounts, synced by the
---     meta-ads function (spend in USD converted at the account's rate);
+--     platform-admin function (spend in USD converted at the account's rate);
 --   * money merchants paid the platform — subscriptions, credits, add-ons and
 --     VoiceDrive packages — and refunds sent back, read straight from billing
 --     (never copied, so they cannot drift).
