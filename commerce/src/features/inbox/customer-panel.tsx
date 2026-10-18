@@ -103,11 +103,11 @@ export function CustomerPanel({ id, onDraft, onOpen, onClose, onOrderDraft }: {
           </div>
         )}
         {can('orders.create') && (
-          <div className="grid grid-cols-2 gap-2">
-            <Button size="sm" onClick={createOrder} className="gap-1.5"><ShoppingBag /> Open order draft</Button>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={createOrder} className="min-w-0 flex-1 gap-1.5"><ShoppingBag /> <span className="truncate">Order draft</span></Button>
             {form.phone
-              ? <Button size="sm" variant="outline" asChild><a href={`tel:${form.phone}`} className="gap-1.5"><Phone /> Call</a></Button>
-              : <Button size="sm" variant="outline" disabled className="gap-1.5"><Phone /> Call</Button>}
+              ? <Button size="sm" variant="outline" className="shrink-0 px-2.5" asChild><a href={`tel:${form.phone}`} title={`Call ${form.phone}`} aria-label="Call"><Phone /></a></Button>
+              : <Button size="sm" variant="outline" disabled className="shrink-0 px-2.5" title="No mobile number yet" aria-label="Call"><Phone /></Button>}
           </div>
         )}
 
