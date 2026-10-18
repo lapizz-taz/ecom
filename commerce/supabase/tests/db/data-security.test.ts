@@ -206,4 +206,46 @@ describe('data management', () => {
       await asPlatform(db, superB)
       await expectError(db, `select public.platform_deletion_request_execute($1, $2)`, [req.id, m.name], /only an approved/)
     }))
+
+  it('deletes the whole merchant from an approved request once the wait is over, after a fresh export', () =>
+    inTx(async (db) => {
+      const superA = await createPlatformStaff(db, 'SUPER_ADMIN')
+      const superB = await createPlatformStaff(db, 'SUPER_ADMIN')
+      const viewer = await createPlatformStaff(db, 'VIEWER')
+      const m = await newMerchant(db, superA)
+      await asSystem(db, m.id)
+      await db.query(`insert into public.customers (merchant_id, full_name, phone) values ($1, 'Rahim Uddin', '01711000111')`, [m.id])
+      await asUser(db, m.owner, 'owner@shop.example', m.id)
+      const req = await value<{ id: string }>(db, `select public.merchant_data_deletion_request('Please delete our business')`)
+      await asPlatform(db, superA)
+      await value(db, `select public.platform_deletion_request_decide($1, true, 'Owner confirmed by phone')`, [req.id])
+
+      await asPlatform(db, superB)
+      await expectError(db, `select public.platform_deletion_request_delete_merchant($1, $2)`, [req.id, m.name], /waiting period/)
+      await asSystem(db, null)
+      await db.query(`update public.merchant_deletion_requests set erase_after = now() - interval '1 minute' where id = $1`, [req.id])
+      await asPlatform(db, viewer)
+      await expectError(db, `select public.platform_deletion_request_delete_merchant($1, $2)`, [req.id, m.name], /PERMISSION_DENIED/)
+      await asPlatform(db, superA)
+      await expectError(db, `select public.platform_deletion_request_delete_merchant($1, $2)`, [req.id, m.name], /approved it cannot/)
+      await asPlatform(db, superB)
+      await expectError(db, `select public.platform_deletion_request_delete_merchant($1, 'someone else')`, [req.id], /type the merchant/)
+      await expectError(db, `select public.platform_deletion_request_delete_merchant($1, $2)`, [req.id, m.name], /full export/)
+      await value(db, `select public.platform_merchant_export($1, 'Copy before deleting')`, [m.id])
+
+      // Open account: no need to close it first.
+      const done = await value<{ status: string; result: Record<string, number>; merchant: { name: string; status: string } }>(db,
+        `select public.platform_deletion_request_delete_merchant($1, $2)`, [req.id, m.name.toUpperCase()])
+      expect(done.status).toBe('COMPLETED')
+      expect(done.merchant.status).toBe('CLOSED')
+      expect(done.merchant.name).toMatch(/^Deleted merchant #\d+$/)
+      expect(done.result.logins_removed).toBe(1)
+
+      await asSystem(db, null)
+      expect(await value(db, `select count(*)::int from public.customers where merchant_id = $1`, [m.id])).toBe(0)
+      expect(await value(db, `select count(*)::int from public.account_removals where from_merchant = $1`, [m.id])).toBe(1)
+      expect(await value(db, `select count(*)::int from public.platform_audit_logs where action = 'data.merchant_deleted' and merchant_id = $1`, [m.id])).toBe(1)
+      await asPlatform(db, superB)
+      await expectError(db, `select public.platform_deletion_request_delete_merchant($1, $2)`, [req.id, m.name], /only an approved/)
+    }))
 })
