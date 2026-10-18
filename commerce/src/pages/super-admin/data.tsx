@@ -32,7 +32,7 @@ const DELETION: Record<DeletionStatus, { label: string; variant: BadgeVariant }>
   REJECTED: { label: 'Rejected', variant: 'neutral' }, CANCELLED: { label: 'Cancelled', variant: 'neutral' }, COMPLETED: { label: 'Erased', variant: 'success' },
 }
 const TABLE_LABEL: Record<string, string> = {
-  merchants: 'Merchants', orders: 'Orders', order_items: 'Order items', customers: 'Customers', products: 'Products', shipments: 'Shipments',
+  merchants: 'Merchants', deleted_merchants: 'Deleted merchants (money records kept)', orders: 'Orders', order_items: 'Order items', customers: 'Customers', products: 'Products', shipments: 'Shipments',
   invoices: 'Platform invoices', platform_payments: 'Platform payments', credit_ledger: 'Credit ledger entries', audit_logs: 'Audit log entries',
 }
 const ERASED = 'Customers’ names, phone numbers, emails, addresses and notes (customers, orders, saved addresses, leads, carts, abandoned checkouts, contact messages, coupon uses, payments, SMS log, fraud checks, call records) and raw payloads from stores, couriers and gateways.'
@@ -339,7 +339,7 @@ export default function DataManagementPage() {
       {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !d ? <CardsSkeleton count={4} /> : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Database size" value={d.database.size} icon={<Database />} hint={`${formatNumber(d.database.tables.orders)} orders · ${formatNumber(d.database.tables.merchants)} merchants`} />
+            <StatCard label="Database size" value={d.database.size} icon={<Database />} hint={`${formatNumber(d.database.tables.orders)} orders · ${formatNumber(d.database.tables.merchants)} merchant${d.database.tables.merchants === 1 ? '' : 's'}${d.database.tables.deleted_merchants ? ` (+${formatNumber(d.database.tables.deleted_merchants)} deleted)` : ''}`} />
             <StatCard label="Open deletion requests" value={formatNumber(open)} tone={open ? 'warning' : 'default'} />
             <StatCard label="Failed imports (30 days)" value={formatNumber(d.imports.failed_30d)} icon={<FileWarning />} tone={d.imports.failed_30d ? 'warning' : 'default'} />
             <StatCard label="Last restore test" value={d.restore_tests[0] ? d.restore_tests[0].result.toLowerCase() : 'never'}
