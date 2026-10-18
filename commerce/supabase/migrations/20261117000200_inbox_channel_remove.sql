@@ -1,5 +1,5 @@
 -- =============================================================================
--- Messaging → Channels: remove a Page, Instagram account or WhatsApp number
+-- Inbox → Channels: remove a Page, Instagram account or WhatsApp number
 -- from the store for good (Disconnect only stops it; the row stays in the list).
 -- Its conversations and messages go with it. The `inbox` function clears the
 -- saved token and stops Meta's webhooks for the Page first, then calls this.
