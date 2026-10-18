@@ -274,3 +274,43 @@ export async function fetchDailySpend(graph: MetaGraph, accountId: string, since
   }, 20)
   return rows.filter((r) => typeof r.date_start === 'string').map((r) => ({ date: String(r.date_start), spend: Number(r.spend ?? 0) || 0 }))
 }
+
+// What Meta counts as a lead, a registration and a started conversation (one name each, the first found).
+const LEAD_TYPES = ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_web_lead']
+const REGISTRATION_TYPES = ['complete_registration', 'offsite_conversion.fb_pixel_complete_registration', 'onsite_web_complete_registration']
+const MESSAGE_TYPES = ['onsite_conversion.messaging_conversation_started_7d', 'onsite_conversion.total_messaging_connection']
+
+const firstOf = (list: ActionList, types: string[]) => {
+  for (const type of types) {
+    const hit = list?.find((a) => a.action_type === type)
+    if (hit) return Number(hit.value) || 0
+  }
+  return 0
+}
+
+export interface AdResultRow {
+  ad_id: string; adset_id: string | null; campaign_id: string | null; date: string
+  spend: number; impressions: number; clicks: number; link_clicks: number
+  leads: number; registrations: number; messages: number; purchases: number
+}
+
+/** Daily numbers per ad (no placement split) with leads, registrations and conversations, for one window. */
+export async function fetchAdResults(graph: MetaGraph, accountId: string, since: string, until: string): Promise<AdResultRow[]> {
+  const rows = await graph.all<Record<string, unknown>>(`${normalizeAccountId(accountId)}/insights`, {
+    level: 'ad',
+    time_increment: '1',
+    time_range: JSON.stringify({ since, until }),
+    fields: 'ad_id,adset_id,campaign_id,spend,impressions,clicks,inline_link_clicks,actions,date_start',
+    limit: '500',
+  }, 200)
+  const n = (v: unknown) => Number(v ?? 0) || 0
+  return rows.filter((r) => r.ad_id).map((r) => {
+    const actions = r.actions as ActionList
+    return {
+      ad_id: String(r.ad_id), adset_id: (r.adset_id as string) ?? null, campaign_id: (r.campaign_id as string) ?? null, date: String(r.date_start),
+      spend: n(r.spend), impressions: n(r.impressions), clicks: n(r.clicks), link_clicks: n(r.inline_link_clicks),
+      leads: firstOf(actions, LEAD_TYPES), registrations: firstOf(actions, REGISTRATION_TYPES), messages: firstOf(actions, MESSAGE_TYPES),
+      purchases: pickPurchase(actions),
+    }
+  })
+}

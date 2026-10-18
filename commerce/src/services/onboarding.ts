@@ -1,3 +1,4 @@
+import { currentAttribution } from '@/lib/attribution'
 import { authRedirect } from '@/lib/auth-links'
 import { supabase } from '@/lib/supabase'
 
@@ -60,7 +61,16 @@ export async function selfOnboard(business: SignupBusiness): Promise<SelfOnboard
   // store address exists until they do.
   const { data, error } = await supabase.rpc('merchant_self_onboard' as never, { p: { ...business, online_store: false } } as never)
   if (error) throw error
-  return data as unknown as SelfOnboardResult
+  const result = data as unknown as SelfOnboardResult
+  if (!result.already) void leadTouch('SELF_SIGNUP', result.merchant_id)
+  return result
+}
+
+/** How this visitor reached the website (ad, link, referral), kept with their sign-up for Fullfilio's ads report. Never blocks the sign-up. */
+async function leadTouch(kind: 'WHATSAPP_SIGNUP' | 'SELF_SIGNUP', ref: string) {
+  try {
+    await supabase.rpc('public_lead_touch' as never, { p_kind: kind, p_ref: ref, p_attr: currentAttribution() } as never)
+  } catch { /* only a report */ }
 }
 
 export interface SignupRequestResult { id: string; reference: string; whatsapp_number: string; message: string }
@@ -69,7 +79,9 @@ export interface SignupRequestResult { id: string; reference: string; whatsapp_n
 export async function signupRequest(business: SignupBusiness & { email?: string }): Promise<SignupRequestResult> {
   const { data, error } = await supabase.rpc('public_signup_request' as never, { p: business } as never)
   if (error) throw error
-  return data as unknown as SignupRequestResult
+  const result = data as unknown as SignupRequestResult
+  void leadTouch('WHATSAPP_SIGNUP', result.id)
+  return result
 }
 
 /** The WhatsApp link that opens a chat with the number and the message typed in. */
@@ -158,7 +170,7 @@ export async function suggestStoreSlug(name: string): Promise<string> {
 /** The website contact form. */
 export interface ContactInput { name: string; email?: string; phone?: string; business?: string; topic: 'SALES' | 'SUPPORT' | 'PARTNERSHIP' | 'GENERAL'; message: string }
 export async function submitContact(input: ContactInput): Promise<{ id: number }> {
-  const { data, error } = await supabase.rpc('platform_contact_submit' as never, { p: { ...input, page: location.pathname } } as never)
+  const { data, error } = await supabase.rpc('platform_contact_submit' as never, { p: { ...input, page: location.pathname, attribution: currentAttribution() } } as never)
   if (error) throw error
   return data as unknown as { id: number }
 }

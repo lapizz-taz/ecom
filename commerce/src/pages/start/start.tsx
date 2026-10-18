@@ -13,6 +13,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { ClerkSignUpForm } from '@/features/auth/clerk-signup'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker, Steps } from '@/features/onboarding/signup-parts'
+import { useTrackVisit } from '@/features/site/site-chrome'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
@@ -34,6 +35,7 @@ const EMPTY: SignupBusiness = {
  */
 export default function StartPage() {
   useAdminTheme()
+  useTrackVisit()
   const { session, access, loading, accessLoading, usesClerk } = useAuth()
   const linkPending = useClerkLinkPending()
   const minPassword = 8
