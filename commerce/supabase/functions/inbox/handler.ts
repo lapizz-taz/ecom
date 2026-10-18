@@ -9,8 +9,15 @@
 //   oauth_connect  connect the picked Pages, Instagram accounts or numbers         inbox.manage
 //   channel        turn comments on/off for a channel                              inbox.manage
 //   disconnect     forget a channel's token (conversations stay)                   inbox.manage
-//   send           reply in a conversation (text, file, product image)            inbox.reply
+//   send           reply in a conversation (text, file, product image); comments
+//                  can be answered in public, in private or both at once         inbox.reply
+//   comment_action like, hide or delete a comment                                 inbox.reply
+//   post_refresh   read a post's caption, picture and counts again                inbox.view
 //   media          a WhatsApp photo / voice note / file for the inbox              inbox.view
+//
+// Scheduled (x-cron-secret): automation_cron sends the follow-ups that are due.
+// New customer messages are hidden (moderation) or answered (auto replies) as
+// they arrive, by what inbox_automation_plan decides.
 //
 // Meta (no sign-in), one address for every store: /inbox
 //   GET   webhook verification (hub.verify_token must match the app's token)
@@ -18,8 +25,9 @@
 //         goes to the store its Page, Instagram account or number belongs to.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
-import { attachmentType, hint, InboxGraph, type OutgoingFile, sendMessage } from '../_shared/inbox/meta.ts'
+import { attachmentType, commentAction, type CommentOp, fetchPost, hint, InboxGraph, type OutgoingFile, type PostDetails, sendMessage } from '../_shared/inbox/meta.ts'
 import {
   exchangeCode, type GrantedNumber, type GrantedPage, grantedNumbers, grantedPages, loginUrl, META_INBOX_APP_KEY,
   type MetaInboxApp, type OAuthKind, pageFields, readState, signState,
@@ -29,7 +37,7 @@ import { MetaApiError } from '../_shared/meta/graph.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
-import { adminClient, merchantFor, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, merchantFor, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const channelKey = (id: string) => `inbox.channel.${id.replace(/-/g, '')}`
 /** The token from a Facebook sign-in, kept for 30 minutes while the owner picks what to connect. */
@@ -43,6 +51,16 @@ interface Channel {
   id: string; platform: 'FACEBOOK' | 'INSTAGRAM' | 'WHATSAPP'; external_id: string; page_id: string | null
   name: string; status: string; receive_comments: boolean
 }
+interface SendContext {
+  kind: 'MESSAGE' | 'COMMENT'; thread_key: string; customer_external_id: string | null; last_customer_message_at: string | null
+  channel: { id: string; platform: Channel['platform']; external_id: string; page_id: string | null; status: string }
+}
+interface AutomationPlan {
+  moderate?: { hide: boolean; reason: string }
+  replies?: Array<{ rule_id: string; name: string; reply_text: string | null; private_text: string | null; like: boolean }>
+}
+/** Messages older than this (a webhook retried late, or history synced in) are never answered by themselves. */
+const AUTOMATION_MAX_AGE_MS = 30 * 60_000
 
 const file = z.object({
   name: z.string().trim().min(1).max(200),
@@ -72,9 +90,18 @@ const schema = z.discriminatedUnion('action', [
     action: z.literal('send'), conversation_id: z.string().uuid(), text: z.string().max(4000).optional(),
     file: file.optional(), image_url: z.string().url().max(1000).optional(), reply_to_id: z.string().uuid().optional(),
     private_reply: z.boolean().optional(),
+    // Comments: also (or only) message the person privately.
+    private_text: z.string().max(4000).optional(),
   }),
+  z.object({ action: z.literal('comment_action'), message_id: z.string().uuid(), op: z.enum(['like', 'unlike', 'hide', 'unhide', 'delete']) }),
+  z.object({ action: z.literal('post_refresh'), channel_id: z.string().uuid(), post_id: z.string().trim().min(1).max(200) }),
   z.object({ action: z.literal('media'), channel_id: z.string().uuid(), media_id: digits }),
 ])
+
+const OP_LABEL: Record<CommentOp, string> = { like: 'Liked', unlike: 'Like removed', hide: 'Hidden', unhide: 'Shown again', delete: 'Deleted' }
+const OP_FLAGS: Record<CommentOp, Record<string, boolean>> = {
+  like: { liked: true }, unlike: { liked: false }, hide: { hidden: true }, unhide: { hidden: false }, delete: { removed: true },
+}
 
 async function secret<T>(admin: SupabaseClient, key: string): Promise<T> {
   const { data, error } = await admin.rpc('integration_secret_get', { p_key: key })
@@ -98,6 +125,57 @@ function base64(bytes: Uint8Array): string {
 
 const metaError = (e: unknown) => new HttpError(422, e instanceof Error ? e.message : String(e), 'META_REJECTED')
 const redirectUri = (req: Request) => `${appBase(req)}/admin/inbox/meta-callback`
+
+// ------------------------------------------------------------------ automation
+/** Sends one message nobody typed (an auto reply or a follow-up) and records it either way. */
+async function autoSend(admin: SupabaseClient, appSecret: string, token: string | null, a: {
+  conversation_id: string; text: string; private_reply?: boolean; auto: 'AUTO_REPLY' | 'FOLLOW_UP'; rule_id?: string | null; message_id?: string | null
+}): Promise<boolean> {
+  const ctx = await rpc<SendContext>(admin, 'inbox_send_context', { p_conversation: a.conversation_id })
+  const log = (status: string, detail: string | null) => rpc(admin, 'inbox_automation_record', {
+    p: { kind: a.auto, status, rule_id: a.rule_id ?? null, conversation_id: a.conversation_id, message_id: a.message_id ?? null, detail },
+  })
+  const inside = insideReplyWindow(ctx.last_customer_message_at)
+  // An automatic message may not use the human-agent tag: outside 24 hours it waits for the customer.
+  if (ctx.kind === 'MESSAGE' && !inside) {
+    await log('SKIPPED', 'More than 24 hours since the customer wrote: Meta does not allow it')
+    return false
+  }
+  const t = token ?? (ctx.channel.status === 'DISCONNECTED' ? '' : (await secret<{ access_token?: string }>(admin, channelKey(ctx.channel.id))).access_token ?? '')
+  if (!t) {
+    await log('FAILED', 'The channel is disconnected')
+    return false
+  }
+  const outgoing = { conversation_id: a.conversation_id, body: a.text, attachments: [], auto_kind: a.auto, private_reply: !!a.private_reply }
+  try {
+    const sent = await sendMessage(new InboxGraph(t, appSecret), {
+      platform: ctx.channel.platform, account_id: ctx.channel.external_id, page_id: ctx.channel.page_id, kind: ctx.kind, to: ctx.thread_key, inside_window: inside,
+    }, { text: a.text, private_reply: a.private_reply })
+    await rpc(admin, 'inbox_record_outgoing', { p: { ...outgoing, external_id: sent.external_id }, p_actor: null })
+    await log('SENT', ctx.kind === 'COMMENT' ? (a.private_reply ? 'Private message' : 'Public reply') : null)
+    return true
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    await rpc(admin, 'inbox_record_outgoing', { p: { ...outgoing, error: message }, p_actor: null }).catch(() => undefined)
+    await log('FAILED', message).catch(() => undefined)
+    return false
+  }
+}
+
+/** Every minute while one is due: the follow-ups each store scheduled. */
+async function automationCron(): Promise<Record<string, unknown>> {
+  const app = await metaApp()
+  const run = await forEachMerchant('inbox', async (admin) => {
+    const due = await rpc<Array<{ conversation_id: string; text: string }>>(admin, 'inbox_follow_ups_claim', { p_limit: 50 })
+    let sent = 0
+    for (const d of due) {
+      if (await autoSend(admin, app.app_secret ?? '', null, { conversation_id: d.conversation_id, text: d.text, auto: 'FOLLOW_UP' })) sent++
+    }
+    return { due: due.length, sent }
+  })
+  const sent = run.results.reduce((n, r) => n + (r.ok ? r.result.sent : 0), 0)
+  return { ok: true, merchants: run.merchants, failed: run.failed, sent }
+}
 
 // ------------------------------------------------------------------ webhook
 interface StoreContext { admin: SupabaseClient; channels: Map<string, Channel | null>; tokens: Map<string, string> }
@@ -155,6 +233,54 @@ async function webhook(req: Request): Promise<Response> {
     return ctx.tokens.get(c.id)!
   }
 
+  // A post's caption and picture, read once per delivery when its first comment arrives.
+  const posts = new Set<string>()
+  const refreshPost = async (ctx: StoreContext, c: Channel, postId: string) => {
+    const k = `${c.id}:${postId}`
+    if (posts.has(k) || c.platform === 'WHATSAPP') return
+    posts.add(k)
+    const t = await tokenFor(ctx, c)
+    if (!t) return
+    let details: Partial<PostDetails> = {}
+    let error: string | null = null
+    try {
+      details = await fetchPost(new InboxGraph(t, app.app_secret), c.platform, postId)
+    } catch (err) {
+      error = (err as Error).message
+    }
+    await rpc(ctx.admin, 'inbox_post_save', { p: { channel_id: c.id, external_id: postId, ...details, error } })
+  }
+  // Moderation and auto replies for a new customer message.
+  const automate = async (ctx: StoreContext, c: Channel, e: InboxEvent, r: { conversation_id: string; message_id: string }) => {
+    const plan = await rpc<AutomationPlan>(ctx.admin, 'inbox_automation_plan', { p_conversation: r.conversation_id, p_message: r.message_id })
+    if (!plan.moderate?.hide && !plan.replies?.length) return
+    const t = await tokenFor(ctx, c)
+    const commentId = e.message?.external_id
+    if (plan.moderate?.hide) {
+      if (!commentId || c.platform === 'WHATSAPP') return
+      const record = (status: string, detail: string) => rpc(ctx.admin, 'inbox_automation_record', {
+        p: { kind: 'MODERATION', status, conversation_id: r.conversation_id, message_id: r.message_id, detail },
+      })
+      try {
+        await commentAction(new InboxGraph(t, app.app_secret), c.platform, commentId, 'hide')
+        await record('DONE', plan.moderate.reason)
+      } catch (err) {
+        await record('FAILED', `${plan.moderate.reason}: ${(err as Error).message}`)
+      }
+      return
+    }
+    for (const rule of plan.replies ?? []) {
+      if (rule.like && commentId && c.platform === 'FACEBOOK') {
+        await commentAction(new InboxGraph(t, app.app_secret), 'FACEBOOK', commentId, 'like')
+          .then(() => rpc(ctx.admin, 'inbox_message_flags', { p_message: r.message_id, p: { liked: true, detail: `Liked by auto reply "${rule.name}"` }, p_actor: null }))
+          .catch(() => undefined)
+      }
+      const base = { conversation_id: r.conversation_id, auto: 'AUTO_REPLY' as const, rule_id: rule.rule_id, message_id: r.message_id }
+      if (rule.reply_text) await autoSend(ctx.admin, app.app_secret ?? '', t || null, { ...base, text: rule.reply_text })
+      if (rule.private_text) await autoSend(ctx.admin, app.app_secret ?? '', t || null, { ...base, text: rule.private_text, private_reply: true })
+    }
+  }
+
   let stored = 0
   const skipped = { no_store: 0, no_channel: 0 }
   for (const e of events) {
@@ -176,10 +302,16 @@ async function webhook(req: Request): Promise<Response> {
       }
       if (e.type !== 'message' || !e.thread_key || !e.message) continue
       if (e.kind === 'COMMENT' && !channel.receive_comments) continue
-      const r = await rpc<{ conversation_id: string; needs_profile: boolean; duplicate: boolean }>(admin, 'inbox_ingest', {
+      const r = await rpc<{ conversation_id: string; message_id: string; needs_profile: boolean; needs_post: boolean; duplicate: boolean; direction: 'IN' | 'OUT' }>(admin, 'inbox_ingest', {
         p: { channel_id: channel.id, kind: e.kind ?? 'MESSAGE', thread_key: e.thread_key, customer: e.customer ?? {}, post: e.post ?? null, message: e.message },
       })
       if (!r.duplicate) stored++
+      if (r.needs_post && e.post?.id) await refreshPost(store.ctx, channel, e.post.id).catch(() => undefined)
+      const fresh = !e.message.created_at || Date.now() - Date.parse(e.message.created_at) < AUTOMATION_MAX_AGE_MS
+      if (!r.duplicate && r.direction === 'IN' && fresh) {
+        await automate(store.ctx, channel, e, r).catch((err) => void logEvent({ level: 'ERROR', category: 'WEBHOOK', source: 'inbox', merchantId,
+          message: `Auto reply / moderation failed: ${(err as Error).message}`, context: { conversation_id: r.conversation_id } }))
+      }
       // Messenger and Instagram send only an id: look the name up once.
       if (r.needs_profile && channel.platform !== 'WHATSAPP' && e.customer?.external_id) {
         const t = await tokenFor(store.ctx, channel)
@@ -283,8 +415,14 @@ export default (
     if (req.method === 'GET' || req.headers.has('x-hub-signature-256')) return webhook(req)
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
 
-    const input = parse(schema, await readJson(req, MAX_FILE_BASE64 + 64 * 1024))
-    const permission = input.action === 'send' ? 'inbox.reply' : input.action === 'config' || input.action === 'media' ? 'inbox.view' : 'inbox.manage'
+    const body = await readJson(req, MAX_FILE_BASE64 + 64 * 1024)
+    if ((body as { action?: unknown } | null)?.action === 'automation_cron') {
+      if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Only the scheduler may run this', 'UNAUTHORIZED')
+      return json(req, await automationCron())
+    }
+    const input = parse(schema, body)
+    const permission = input.action === 'send' || input.action === 'comment_action' ? 'inbox.reply'
+      : input.action === 'config' || input.action === 'media' || input.action === 'post_refresh' ? 'inbox.view' : 'inbox.manage'
     const staff = await requireStaff(req, permission)
     const admin = staff.admin
     const app = await metaApp()
@@ -442,12 +580,45 @@ export default (
         }
       }
 
+      case 'comment_action': {
+        const { data: m } = await admin.from('inbox_messages').select('id, external_id, conversation_id')
+          .eq('id', input.message_id).eq('merchant_id', staff.merchantId).maybeSingle()
+        if (!m?.external_id) throw new HttpError(404, 'Comment not found', 'NOT_FOUND')
+        const ctx = await rpc<SendContext>(admin, 'inbox_send_context', { p_conversation: m.conversation_id })
+        if (ctx.kind !== 'COMMENT' || ctx.channel.platform === 'WHATSAPP') throw new HttpError(422, 'Only comments can be liked, hidden or deleted', 'VALIDATION')
+        if (ctx.channel.status === 'DISCONNECTED') throw new HttpError(422, 'This channel is disconnected. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
+        const t = (await secret<{ access_token?: string }>(admin, channelKey(ctx.channel.id))).access_token
+        if (!t) throw new HttpError(422, 'This channel has no access token. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
+        try {
+          await commentAction(new InboxGraph(t, appSecret), ctx.channel.platform, m.external_id, input.op)
+        } catch (e) {
+          await rpc(admin, 'inbox_automation_record', { p: { kind: 'COMMENT_ACTION', status: 'FAILED', conversation_id: m.conversation_id, message_id: m.id,
+            detail: `${OP_LABEL[input.op]}: ${e instanceof Error ? e.message : String(e)}`, actor: staff.user.id } }).catch(() => undefined)
+          throw metaError(e)
+        }
+        await rpc(admin, 'inbox_message_flags', { p_message: m.id, p: { ...OP_FLAGS[input.op], detail: OP_LABEL[input.op] }, p_actor: staff.user.id })
+        return json(req, { ok: true })
+      }
+
+      case 'post_refresh': {
+        const [c] = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: input.channel_id })
+        if (!c || c.platform === 'WHATSAPP') throw new HttpError(404, 'Channel not found', 'NOT_FOUND')
+        const t = (await secret<{ access_token?: string }>(admin, channelKey(c.id))).access_token
+        if (!t) throw new HttpError(422, 'This channel is disconnected', 'NOT_CONNECTED')
+        let details: PostDetails
+        try {
+          details = await fetchPost(new InboxGraph(t, appSecret), c.platform, input.post_id)
+        } catch (e) {
+          throw metaError(e)
+        }
+        await rpc(admin, 'inbox_post_save', { p: { channel_id: c.id, external_id: input.post_id, ...details } })
+        return json(req, { ok: true, post: details })
+      }
+
       case 'send': {
-        if (!input.text?.trim() && !input.file && !input.image_url) throw new HttpError(422, 'Write a message or attach something', 'VALIDATION')
-        const ctx = await rpc<{
-          kind: 'MESSAGE' | 'COMMENT'; thread_key: string; customer_external_id: string | null; last_customer_message_at: string | null
-          channel: { id: string; platform: Channel['platform']; external_id: string; page_id: string | null; status: string }
-        }>(admin, 'inbox_send_context', { p_conversation: input.conversation_id })
+        const privateText = input.private_text?.trim()
+        if (!input.text?.trim() && !input.file && !input.image_url && !privateText) throw new HttpError(422, 'Write a message or attach something', 'VALIDATION')
+        const ctx = await rpc<SendContext>(admin, 'inbox_send_context', { p_conversation: input.conversation_id })
         if (ctx.channel.status === 'DISCONNECTED') throw new HttpError(422, 'This channel is disconnected. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
         const t = (await secret<{ access_token?: string }>(admin, channelKey(ctx.channel.id))).access_token
         if (!t) throw new HttpError(422, 'This channel has no access token. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
@@ -460,29 +631,37 @@ export default (
         }
         const to = ctx.kind === 'COMMENT' ? (replyExternal ?? ctx.thread_key) : ctx.thread_key
         const g = new InboxGraph(t, appSecret)
-        const outgoing = {
-          conversation_id: input.conversation_id, body: input.text?.trim() || null, reply_to_id: input.reply_to_id ?? null,
-          attachments: input.file ? [{ type: attachmentType(input.file.mime), name: input.file.name, mime: input.file.mime }]
-            : input.image_url ? [{ type: 'image', url: input.image_url }] : [],
-        }
-        try {
-          const sent = await sendMessage(g, {
-            platform: ctx.channel.platform, account_id: ctx.channel.external_id, page_id: ctx.channel.page_id, kind: ctx.kind, to,
-            inside_window: insideReplyWindow(ctx.last_customer_message_at),
-          }, { text: input.text, file: input.file as OutgoingFile | undefined, image_url: input.image_url, reply_to_external_id: replyExternal, private_reply: input.private_reply })
-          const r = await rpc<{ message_id: string | null }>(admin, 'inbox_record_outgoing', {
-            p: { ...outgoing, external_id: sent.external_id, attachments: sent.attachments.length ? sent.attachments : outgoing.attachments },
-            p_actor: staff.user.id,
-          })
-          return json(req, { ok: true, message_id: r.message_id })
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e)
-          await rpc(admin, 'inbox_record_outgoing', { p: { ...outgoing, error: message }, p_actor: staff.user.id }).catch(() => undefined)
-          if (e instanceof MetaApiError && e.tokenInvalid) {
-            await rpc(admin, 'inbox_channel_status', { p_id: ctx.channel.id, p_status: 'FAILED', p_error: message }).catch(() => undefined)
+        // A comment answered "both": the public reply first, then the private message (which carries any file).
+        const parts: Array<{ text?: string; file?: OutgoingFile; image_url?: string; private_reply?: boolean }> = ctx.kind === 'COMMENT' && privateText
+          ? [...(input.text?.trim() ? [{ text: input.text }] : []), { text: privateText, file: input.file as OutgoingFile | undefined, image_url: input.image_url, private_reply: true }]
+          : [{ text: input.text, file: input.file as OutgoingFile | undefined, image_url: input.image_url, private_reply: input.private_reply }]
+        let messageId: string | null = null
+        for (const part of parts) {
+          const outgoing = {
+            conversation_id: input.conversation_id, body: part.text?.trim() || null, reply_to_id: input.reply_to_id ?? null, private_reply: !!part.private_reply,
+            attachments: part.file ? [{ type: attachmentType(part.file.mime), name: part.file.name, mime: part.file.mime }]
+              : part.image_url ? [{ type: 'image', url: part.image_url }] : [],
           }
-          throw metaError(e)
+          try {
+            const sent = await sendMessage(g, {
+              platform: ctx.channel.platform, account_id: ctx.channel.external_id, page_id: ctx.channel.page_id, kind: ctx.kind, to,
+              inside_window: insideReplyWindow(ctx.last_customer_message_at),
+            }, { text: part.text, file: part.file, image_url: part.image_url, reply_to_external_id: replyExternal, private_reply: part.private_reply })
+            const r = await rpc<{ message_id: string | null }>(admin, 'inbox_record_outgoing', {
+              p: { ...outgoing, external_id: sent.external_id, attachments: sent.attachments.length ? sent.attachments : outgoing.attachments },
+              p_actor: staff.user.id,
+            })
+            messageId = r.message_id
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            await rpc(admin, 'inbox_record_outgoing', { p: { ...outgoing, error: message }, p_actor: staff.user.id }).catch(() => undefined)
+            if (e instanceof MetaApiError && e.tokenInvalid) {
+              await rpc(admin, 'inbox_channel_status', { p_id: ctx.channel.id, p_status: 'FAILED', p_error: message }).catch(() => undefined)
+            }
+            throw metaError(e)
+          }
         }
+        return json(req, { ok: true, message_id: messageId })
       }
     }
   })

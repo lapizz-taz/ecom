@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { InboxGraph, sendMessage } from './meta.ts'
+import { commentAction, fetchPost, InboxGraph, sendMessage } from './meta.ts'
 import { insideReplyWindow, parseWebhook, toIso, validSignature } from './parse.ts'
 
 describe('inbox webhooks: Messenger and Instagram', () => {
@@ -143,5 +143,39 @@ describe('inbox: sending', () => {
     const g = new InboxGraph('T', '', fetchFn as unknown as typeof fetch)
     await expect(sendMessage(g, { platform: 'FACEBOOK', account_id: 'P', kind: 'MESSAGE', to: 'U', inside_window: true }, { text: 'x' }))
       .rejects.toThrow(/24 hours/)
+  })
+})
+
+describe('inbox: comment actions and posts', () => {
+  const graph = (reply: Record<string, unknown> = { success: true }) => {
+    const fetchFn = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify(reply), { status: 200 }))
+    return { g: new InboxGraph('TOKEN', '', fetchFn as unknown as typeof fetch), fetchFn }
+  }
+  const call = (fetchFn: ReturnType<typeof graph>['fetchFn'], i = 0) => ({
+    url: String(fetchFn.mock.calls[i][0]), method: fetchFn.mock.calls[i][1]?.method ?? 'GET',
+    body: JSON.parse(String(fetchFn.mock.calls[i][1]?.body ?? '{}')),
+  })
+
+  it('likes, hides and deletes Facebook comments; hides Instagram ones but cannot like them', async () => {
+    const { g, fetchFn } = graph()
+    await commentAction(g, 'FACEBOOK', 'P_1_c1', 'like')
+    expect(call(fetchFn)).toMatchObject({ method: 'POST' })
+    expect(call(fetchFn).url).toContain('/P_1_c1/likes')
+    await commentAction(g, 'FACEBOOK', 'P_1_c1', 'hide')
+    expect(call(fetchFn, 1)).toMatchObject({ method: 'POST', body: { is_hidden: true } })
+    await commentAction(g, 'FACEBOOK', 'P_1_c1', 'delete')
+    expect(call(fetchFn, 2).method).toBe('DELETE')
+    await commentAction(g, 'INSTAGRAM', '1789', 'unhide')
+    expect(call(fetchFn, 3).url).toContain('/1789?hide=false')
+    await expect(commentAction(g, 'INSTAGRAM', '1789', 'like')).rejects.toThrow(/Instagram does not let apps like/)
+  })
+
+  it('reads a Facebook post and an Instagram Reel', async () => {
+    const fb = graph({ message: 'Magnetic earrings', full_picture: 'https://x/a.jpg', permalink_url: 'https://fb/p', created_time: '2026-09-24T10:00:00+0000',
+      shares: { count: 95 }, reactions: { summary: { total_count: 492 } }, comments: { summary: { total_count: 47 } } })
+    expect(await fetchPost(fb.g, 'FACEBOOK', 'P_1')).toMatchObject({ caption: 'Magnetic earrings', likes: 492, shares: 95, comments: 47, image_url: 'https://x/a.jpg' })
+    expect(call(fb.fetchFn).url).toContain('reactions.summary')
+    const ig = graph({ caption: 'Gothic drop', media_type: 'VIDEO', thumbnail_url: 'https://x/t.jpg', media_url: 'https://x/v.mp4', media_product_type: 'REELS', like_count: 12 })
+    expect(await fetchPost(ig.g, 'INSTAGRAM', '1790')).toMatchObject({ image_url: 'https://x/t.jpg', media_type: 'REELS', likes: 12 })
   })
 })

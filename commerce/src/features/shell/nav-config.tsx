@@ -111,7 +111,8 @@ export const NAV: NavSection[] = [
         badge: (c) => c.inbox,
         children: [
           { label: 'Inbox', to: '/admin/inbox', badge: (c) => c.inbox },
-          { label: 'Comments', to: '/admin/inbox?kind=COMMENT' },
+          { label: 'Comments', to: '/admin/inbox/comments' },
+          { label: 'Auto Replies', to: '/admin/inbox/auto-replies' },
           { label: 'SMS', to: '/admin/sms', permission: 'sms.view', feature: 'sms' },
           { label: 'SMS Log', to: '/admin/sms?tab=messages', permission: 'sms.view', feature: 'sms' },
           { label: 'Channels', to: '/admin/inbox/channels' },

@@ -1,5 +1,5 @@
 import { Check, ClipboardPaste, Sparkles, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { type PastedOrder, parseOrderText } from '@/lib/order-paste'
@@ -11,14 +11,22 @@ const FIELDS: Array<{ key: keyof PastedOrder; label: string }> = [
 ]
 
 /** One box for the whole message: paste it and the order form fills itself. */
-export function SmartPaste({ districts, onFill }: { districts: readonly string[]; onFill: (order: PastedOrder) => void }) {
-  const [text, setText] = useState('')
+export function SmartPaste({ districts, onFill, initial }: { districts: readonly string[]; onFill: (order: PastedOrder) => void; initial?: string }) {
+  const [text, setText] = useState(initial ?? '')
   const [found, setFound] = useState<PastedOrder | null>(null)
   const run = (value: string) => {
     const order = parseOrderText(value, districts.length ? districts : undefined)
     setFound(order)
     if (Object.keys(order).length) onFill(order)
   }
+  // Text handed over (a chat's messages): read it once the districts are known.
+  const ranInitial = useRef(false)
+  useEffect(() => {
+    if (!initial || ranInitial.current || !districts.length) return
+    ranInitial.current = true
+    run(initial)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial, districts])
   const pasteFromClipboard = async () => {
     try {
       const value = await navigator.clipboard.readText()

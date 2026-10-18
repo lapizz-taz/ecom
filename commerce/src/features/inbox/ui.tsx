@@ -66,3 +66,29 @@ export function dayLabel(value: string, now = new Date()): string {
 }
 
 export const EMOJI = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘', '😉', '😎', '🤗', '🤔', '😅', '😢', '😭', '😡', '🙏', '👍', '👎', '👌', '✌️', '👏', '🙌', '💪', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '💯', '🔥', '✨', '🎉', '🎁', '🛍️', '📦', '🚚', '✅', '❌', '⏰', '📞', '💬', '💰', '🏷️', '⭐', '🌸']
+
+/** "now", "5m", "6h", "3d": how long ago, as short as possible. */
+export function shortAgo(value: string | null | undefined, now = Date.now()): string {
+  if (!value) return ''
+  const minutes = Math.max(0, Math.floor((now - Date.parse(value)) / 60_000))
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
+/** "Waiting 6h": amber under a day, red after. */
+export function Waiting({ since, className }: { since: string | null | undefined; className?: string }) {
+  if (!since) return null
+  const late = Date.now() - Date.parse(since) >= 86_400_000
+  return <span className={cn('text-[11px] font-medium whitespace-nowrap tabular-nums', late ? 'text-red-500' : 'text-amber-500', className)}>Waiting {shortAgo(since)}</span>
+}
+
+/** Time left in Meta's 24-hour reply window: "16h 7m left". */
+export function windowLeft(lastCustomerMessageAt: string | null | undefined, now = Date.now()): { label: string; open: boolean; minutes: number } {
+  if (!lastCustomerMessageAt) return { label: 'No customer message yet', open: false, minutes: 0 }
+  const minutes = Math.floor((Date.parse(lastCustomerMessageAt) + 86_400_000 - now) / 60_000)
+  if (minutes <= 0) return { label: '24-hour window closed', open: false, minutes: 0 }
+  return { label: `${Math.floor(minutes / 60)}h ${minutes % 60}m left`, open: true, minutes }
+}

@@ -12,7 +12,8 @@ export interface InboxChannel {
 }
 export interface InboxOverview {
   channels: InboxChannel[]
-  counts: { open: number; follow_up: number; done: number; unread: number; mine: number; unassigned: number; starred: number }
+  counts: { open: number; follow_up: number; done: number; unread: number; awaiting: number; mine: number; unassigned: number; starred: number }
+  comments: { awaiting: number; unread: number }
   labels: string[]
 }
 export interface ConversationRow {
@@ -21,6 +22,8 @@ export interface ConversationRow {
   status: ConversationStatus; starred: boolean; labels: string[]; assigned_to: string | null; assigned_name: string | null
   unread_count: number; last_message_at: string | null; last_message_preview: string | null; last_message_direction: 'IN' | 'OUT' | null
   linked_order_id: string | null; post_title: string | null
+  customer_id: string | null; has_order: boolean; awaiting_since: string | null; last_customer_message_at: string | null
+  auto_follow_up_at: string | null; remind_at: string | null; no_reply_needed: boolean
 }
 export interface Attachment {
   type: 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'location' | 'product' | 'other'
@@ -30,12 +33,24 @@ export interface InboxMessage {
   id: string; direction: 'IN' | 'OUT'; external_id: string | null; body: string | null; attachments: Attachment[]
   reply_to: { id: string; body: string; direction: 'IN' | 'OUT' } | null
   sender_name: string | null; status: 'RECEIVED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'; error: string | null; created_at: string
+  hidden: boolean; liked: boolean; removed_at: string | null; filtered: string | null
+  auto_kind: 'AUTO_REPLY' | 'FOLLOW_UP' | null; private_reply: boolean
+}
+export interface PostDetail {
+  id: string; channel_id: string; external_id: string; caption: string | null; image_url: string | null; permalink: string | null
+  media_type: string | null; is_ad: boolean; posted_at: string | null; likes: number | null; shares: number | null; comments: number | null
+  fetch_error: string | null
+}
+export interface HistoryEntry {
+  id: string; kind: 'AUTO_REPLY' | 'FOLLOW_UP' | 'MODERATION' | 'COMMENT_ACTION'
+  status: 'SENT' | 'FAILED' | 'SKIPPED' | 'DONE' | 'SCHEDULED' | 'CANCELLED'; detail: string | null; rule_name: string | null; actor_name: string | null; created_at: string
 }
 export interface InboxThread {
   conversation: ConversationRow & {
     thread_key: string; customer_external_id: string | null; customer_address: string | null; customer_id: string | null
     post: { id: string; url?: string; title?: string; type?: string } | null; pinned_message_id: string | null
     channel_avatar: string | null; channel_status: string; last_customer_message_at: string | null; created_at: string
+    post_external_id: string | null; auto_follow_up_text: string | null; follow_up_by_name: string | null; remind_note: string | null
   }
   messages: InboxMessage[]
   has_more: boolean
@@ -48,10 +63,13 @@ export interface InboxThread {
   } | null
   orders: Array<{ id: string; order_number: string; status: string; total_amount: number; created_at: string; items: number; linked: boolean }>
   other_conversations: Array<{ id: string; platform: InboxPlatform; kind: string; status: ConversationStatus; last_message_at: string | null; last_message_preview: string | null }>
+  post_detail: PostDetail | null
+  history: HistoryEntry[]
 }
 export interface InboxFilters {
   status?: ConversationStatus | ''; platform?: InboxPlatform | ''; kind?: 'MESSAGE' | 'COMMENT' | ''
   unread?: boolean; starred?: boolean; assigned?: 'me' | 'none' | ''; label?: string; q?: string; limit?: number; offset?: number
+  awaiting?: boolean; has_order?: boolean; tagged?: boolean; sort?: 'recent' | 'oldest' | 'waiting' | ''
 }
 
 const rpc = async <T>(fn: string, args: Record<string, unknown> = {}): Promise<T> => {
@@ -75,11 +93,79 @@ export const savedReplies = () => rpc<Array<{ id: string; title: string; body: s
 export const saveSavedReply = (r: { id?: string; title: string; body: string }) => rpc<string>('inbox_saved_reply_save', { p: r })
 export const deleteSavedReply = (id: string) => rpc<void>('inbox_saved_reply_delete', { p_id: id })
 export const inboxUnread = () => rpc<number>('inbox_unread_count')
+export const inboxBulk = (ids: string[], patch: Partial<{ status: ConversationStatus; read: boolean; no_reply_needed: boolean; assigned_to: string | null; add_label: string }>) =>
+  rpc<number>('inbox_bulk', { p_ids: ids, p: patch })
+/** An automatic message if the customer does not answer; null minutes cancels it. */
+export const setFollowUp = (id: string, minutes: number | null, text?: string) => rpc<void>('inbox_follow_up_set', { p_id: id, p_minutes: minutes, p_text: text ?? null })
+export const setReminder = (id: string, at: string | null, note?: string) => rpc<void>('inbox_reminder_set', { p_id: id, p_at: at, p_note: note ?? null })
+export const orderMessage = (orderId: string, kind: 'STATUS' | 'INVOICE') => rpc<string>('inbox_order_message', { p_order: orderId, p_kind: kind })
+
+// ---- comments
+export type CommentState = 'all' | 'awaiting' | 'replied' | 'no_reply' | 'unread' | 'liked' | 'hidden' | 'deleted' | 'filtered'
+export interface CommentFilters { platform?: InboxPlatform | ''; state?: CommentState; q?: string }
+export interface CommentPost {
+  channel_id: string; post_id: string | null; platform: InboxPlatform; channel_name: string; caption: string | null; image_url: string | null
+  permalink: string | null; posted_at: string | null; is_ad: boolean; media_type: string | null; likes: number | null; shares: number | null
+  meta_comments: number | null; matching: number; awaiting: number; total: number; latest: string | null; last_at: string | null
+}
+export interface CommentItem {
+  id: string; channel_id: string; platform: InboxPlatform; channel_name: string; post_id: string | null; post_caption: string | null; post_image: string | null
+  customer_name: string | null; customer_avatar: string | null; customer_external_id: string | null; status: ConversationStatus; no_reply_needed: boolean
+  unread_count: number; awaiting_since: string | null; labels: string[]; assigned_to: string | null; assigned_name: string | null; last_message_at: string | null
+  comment: { id: string | null; external_id: string | null; body: string | null; attachments: Attachment[]; sender_name: string | null; created_at: string | null
+    hidden: boolean | null; liked: boolean | null; removed_at: string | null; filtered: string | null }
+  replies: number; replied: boolean
+  last_reply: { body: string; direction: 'IN' | 'OUT'; sender_name: string | null; created_at: string; auto_kind: string | null; private_reply: boolean; status: string } | null
+}
+const clean = (p: object) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== '' && v !== undefined && v !== false))
+export const commentsOverview = (f: CommentFilters) =>
+  rpc<{ counts: { all: number; awaiting: number; unread: number; matching: number }; posts: CommentPost[] }>('inbox_comments_overview', { p: clean(f) })
+export const commentsList = (f: CommentFilters & { channel_id?: string; post_id?: string | null; limit?: number; offset?: number }) =>
+  rpc<{ total: number; items: CommentItem[] }>('inbox_comments', { p: Object.fromEntries(Object.entries(f).filter(([k, v]) => (k === 'post_id' ? v !== undefined : v !== '' && v !== undefined && v !== false))) })
+export type CommentOp = 'like' | 'unlike' | 'hide' | 'unhide' | 'delete'
+export const commentAction = (message_id: string, op: CommentOp) => invokeFunction<{ ok: boolean }>('inbox', { action: 'comment_action', message_id, op })
+export const refreshPost = (channel_id: string, post_id: string) => invokeFunction<{ ok: boolean }>('inbox', { action: 'post_refresh', channel_id, post_id })
+
+// ---- auto replies
+export interface AutoReplyRule {
+  id: string; name: string; enabled: boolean; is_default: boolean; applies_to: 'MESSAGE' | 'COMMENT' | 'BOTH'; keywords: string[]
+  match: 'CONTAINS' | 'EXACT'; channel_ids: string[]; post_ids: string[]; reply_text: string | null; private_text: string | null
+  like_comment: boolean; once_per_customer: boolean; sent_count: number; last_sent_at: string | null; sort_order: number; created_at: string
+}
+export interface InboxAutomation {
+  settings: {
+    auto_reply_channels: string[]; moderation_channels: string[]
+    moderation: { enabled: boolean; hide_phone: boolean; hide_links: boolean; keywords: string[] }
+    follow_up: { enabled: boolean; after_minutes: number; text?: string | null; default_text: string }
+  }
+  rules: AutoReplyRule[]
+  channels: Array<{ id: string; platform: InboxPlatform; name: string; status: string; receive_comments: boolean; auto_reply: boolean; moderation: boolean }>
+  limit: number
+  stats: { sent_today: number; sent_7d: number; follow_ups_7d: number; hidden_7d: number; failed_7d: number }
+}
+export type AutoReplyInput = Partial<Omit<AutoReplyRule, 'sent_count' | 'last_sent_at' | 'created_at'>> & { name: string }
+export const inboxAutomation = () => rpc<InboxAutomation>('inbox_automation')
+export const saveInboxSettings = (p: Partial<{
+  auto_reply_channels: string[]; moderation_channels: string[]; moderation: InboxAutomation['settings']['moderation']
+  follow_up: { enabled: boolean; after_minutes: number; text?: string | null }
+}>) => rpc<void>('inbox_settings_save', { p })
+export const saveAutoReply = (r: AutoReplyInput) => rpc<string>('inbox_auto_reply_save', { p: r })
+export const toggleAutoReply = (id: string, enabled: boolean) => rpc<void>('inbox_auto_reply_toggle', { p_id: id, p_enabled: enabled })
+export const deleteAutoReply = (id: string) => rpc<void>('inbox_auto_reply_delete', { p_id: id })
+export const tryAutoReply = (text: string, kind: 'MESSAGE' | 'COMMENT', channel: string | null, first: boolean) =>
+  rpc<{ moderation: { reason: string; active: boolean } | null; rule: { id: string; name: string; reply_text: string | null; private_text: string | null; default: boolean } | null; running: boolean }>(
+    'inbox_auto_reply_try', { p_text: text, p_kind: kind, p_channel: channel, p_first: first })
+export interface ActivityItem {
+  id: string; kind: HistoryEntry['kind']; status: HistoryEntry['status']; detail: string | null; created_at: string; rule_name: string | null; actor_name: string | null
+  conversation_id: string | null; customer_name: string | null; conversation_kind: 'MESSAGE' | 'COMMENT' | null; platform: InboxPlatform | null; message: string | null
+}
+export const inboxActivity = (p: { kind?: string; status?: string; limit?: number; offset?: number }) =>
+  rpc<{ total: number; items: ActivityItem[] }>('inbox_activity', { p: clean(p) })
 
 // ---- the inbox function (talks to Meta)
 export interface OutgoingFile { name: string; mime: string; data: string }
 export const sendInboxMessage = (input: {
-  conversation_id: string; text?: string; file?: OutgoingFile; image_url?: string; reply_to_id?: string; private_reply?: boolean
+  conversation_id: string; text?: string; file?: OutgoingFile; image_url?: string; reply_to_id?: string; private_reply?: boolean; private_text?: string
 }) => invokeFunction<{ ok: boolean; message_id: string | null }>('inbox', { action: 'send', ...input })
 /** Whether stores can connect yet (Super Admin saved the Meta app) and whether WhatsApp sign-up is on. */
 export const inboxConfig = () => invokeFunction<{ ready: boolean; business?: boolean; whatsapp: boolean }>('inbox', { action: 'config' })
@@ -143,6 +229,24 @@ export async function chatProducts(q: string): Promise<ChatProduct[]> {
 // ---- staff to assign
 export async function inboxStaff(): Promise<Array<{ id: string; full_name: string | null }>> {
   const { data, error } = await supabase.from('profiles').select('id, full_name').eq('is_active', true).not('role_id', 'is', null).is('deleted_at', null).order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+// ---- linking a chat to an order or a customer
+export async function findOrdersToLink(q: string): Promise<Array<{ id: string; order_number: string; status: string; total_amount: number; customer_name: string }>> {
+  const term = q.replace(/[%,()]/g, ' ').trim()
+  if (term.length < 2) return []
+  const { data, error } = await supabase.from('orders').select('id, order_number, status, total_amount, customer_name')
+    .or(`order_number.ilike.%${term}%,customer_phone.ilike.%${term.replace(/\D/g, '') || term}%`).order('created_at', { ascending: false }).limit(8)
+  if (error) throw error
+  return (data ?? []).map((o) => ({ ...o, total_amount: Number(o.total_amount) }))
+}
+export async function findCustomersToLink(q: string): Promise<Array<{ id: string; full_name: string; phone: string; total_orders: number }>> {
+  const term = q.replace(/[%,()]/g, ' ').trim()
+  if (term.length < 2) return []
+  const { data, error } = await supabase.from('customers').select('id, full_name, phone, total_orders')
+    .or(`full_name.ilike.%${term}%,phone.ilike.%${term.replace(/\D/g, '') || term}%`).order('last_order_at', { ascending: false, nullsFirst: false }).limit(8)
   if (error) throw error
   return data ?? []
 }

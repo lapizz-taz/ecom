@@ -9,6 +9,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { ConversationList } from '@/features/inbox/conversation-list'
 import { CustomerPanel } from '@/features/inbox/customer-panel'
 import { MessagingTabs } from '@/features/inbox/messaging-tabs'
+import { OrderDraftDialog } from '@/features/inbox/order-draft'
 import { Thread } from '@/features/inbox/thread'
 import { PlatformIcon } from '@/features/inbox/ui'
 import { useUrlState } from '@/hooks/use-url-state'
@@ -17,7 +18,10 @@ import { type InboxFilters, inboxOverview } from '@/services/inbox'
 
 export default function InboxPage() {
   const { can } = useAuth()
-  const [state, update] = useUrlState({ c: '', status: 'OPEN', platform: '', kind: '', label: '', assigned: '', unread: '', starred: '' })
+  const [state, update] = useUrlState({
+    c: '', status: 'OPEN', platform: '', kind: 'MESSAGE', label: '', assigned: '', unread: '', starred: '', awaiting: '', orders: '', tagged: '', sort: '',
+  })
+  const [orderDraft, setOrderDraft] = useState(false)
   const [panel, setPanel] = useState(true)
   const [mobilePanel, setMobilePanel] = useState(false)
   const [draft, setDraft] = useState<string | null>(null)
@@ -27,10 +31,12 @@ export default function InboxPage() {
   const filters: InboxFilters = {
     status: state.status as InboxFilters['status'], platform: state.platform as InboxFilters['platform'], kind: state.kind as InboxFilters['kind'],
     label: state.label, assigned: state.assigned as InboxFilters['assigned'], unread: state.unread === '1', starred: state.starred === '1',
+    awaiting: state.awaiting === '1', has_order: state.orders === '1', tagged: state.tagged === '1', sort: state.sort as InboxFilters['sort'],
   }
   const setFilters = (f: InboxFilters) => update({
-    status: f.status ?? 'OPEN', platform: f.platform ?? '', kind: f.kind ?? '', label: f.label ?? '', assigned: f.assigned ?? '',
-    unread: f.unread ? '1' : '', starred: f.starred ? '1' : '',
+    status: f.status ?? 'OPEN', platform: f.platform ?? '', kind: f.kind ?? 'MESSAGE', label: f.label ?? '', assigned: f.assigned ?? '',
+    unread: f.unread ? '1' : '', starred: f.starred ? '1' : '', awaiting: f.awaiting ? '1' : '', orders: f.has_order ? '1' : '',
+    tagged: f.tagged ? '1' : '', sort: f.sort ?? '',
   }, { resetPage: false })
   const open = (id: string) => update({ c: id }, { resetPage: false })
   const sendDraft = (text: string) => { setDraft(text); setMobilePanel(false) }
@@ -42,7 +48,7 @@ export default function InboxPage() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <MessagingTabs unread={overview.data!.counts.unread} />
+        <MessagingTabs unread={overview.data!.counts.unread} comments={overview.data!.comments.awaiting} />
         <div className="flex items-center gap-2">
           {channels.map((c) => (
             <span key={c.id} className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs', c.status === 'FAILED' && 'border-destructive/50 text-destructive')} title={c.status_error ?? undefined}>
@@ -71,6 +77,7 @@ export default function InboxPage() {
           <section className={cn('min-h-0', !state.c && 'hidden lg:block')}>
             {state.c ? (
               <Thread id={state.c} onBack={() => update({ c: '' }, { resetPage: false })} draft={draft} onDraft={clearDraft}
+                onInsert={sendDraft} onOrderDraft={() => setOrderDraft(true)}
                 onTogglePanel={() => (window.matchMedia('(min-width: 1280px)').matches ? setPanel((p) => !p) : setMobilePanel(true))} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -80,7 +87,7 @@ export default function InboxPage() {
           </section>
           {state.c && panel && (
             <aside className="hidden min-h-0 w-80 border-l xl:block">
-              <CustomerPanel id={state.c} onDraft={sendDraft} onOpen={open} />
+              <CustomerPanel id={state.c} onDraft={sendDraft} onOpen={open} onOrderDraft={() => setOrderDraft(true)} />
             </aside>
           )}
         </div>
@@ -89,9 +96,11 @@ export default function InboxPage() {
       <Sheet open={mobilePanel && !!state.c} onOpenChange={setMobilePanel}>
         <SheetContent side="right" className="w-full p-0 sm:max-w-sm">
           <SheetTitle className="sr-only">Customer</SheetTitle>
-          {state.c && <CustomerPanel id={state.c} onDraft={sendDraft} onOpen={(id) => { open(id); setMobilePanel(false) }} onClose={() => setMobilePanel(false)} />}
+          {state.c && <CustomerPanel id={state.c} onDraft={sendDraft} onOpen={(id) => { open(id); setMobilePanel(false) }} onClose={() => setMobilePanel(false)}
+            onOrderDraft={() => { setMobilePanel(false); setOrderDraft(true) }} />}
         </SheetContent>
       </Sheet>
+      {state.c && <OrderDraftDialog conversationId={state.c} open={orderDraft} onOpenChange={setOrderDraft} />}
     </div>
   )
 }

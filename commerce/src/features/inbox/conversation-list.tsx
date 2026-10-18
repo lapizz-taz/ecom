@@ -1,15 +1,22 @@
-import { useQuery } from '@tanstack/react-query'
-import { Inbox, MessageCircle, MessagesSquare, Search, SlidersHorizontal, Star, UserRound } from 'lucide-react'
-import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlarmClock, ArrowDownUp, BellRing, Check, CircleCheck, Inbox, ListChecks, MessageCircle, MessagesSquare, Search, SlidersHorizontal, Star, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { BulkBar } from '@/components/common/bulk-bar'
 import { Spinner } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { useAuth } from '@/features/auth/auth-context'
 import { useDebounce } from '@/hooks/use-debounce'
+import { toUserMessage } from '@/lib/errors'
+import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import { type ConversationStatus, type InboxFilters, inboxList, type InboxOverview, type InboxPlatform } from '@/services/inbox'
-import { ChatAvatar, chatTime, PLATFORM } from './ui'
+import { type ConversationStatus, inboxBulk, type InboxFilters, inboxList, type InboxOverview, type InboxPlatform } from '@/services/inbox'
+import { ChatAvatar, chatTime, PLATFORM, Waiting } from './ui'
 
 const TABS: Array<{ value: ConversationStatus; label: string; count: keyof InboxOverview['counts'] }> = [
   { value: 'OPEN', label: 'Open', count: 'open' },
@@ -24,19 +31,52 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
   filters: InboxFilters
   onFilters: (f: InboxFilters) => void
 }) {
+  const qc = useQueryClient()
+  const { user } = useAuth()
   const [q, setQ] = useState(filters.q ?? '')
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
   const search = useDebounce(q, 300)
   const query = { ...filters, q: search || undefined, limit: 100 }
   const list = useQuery({ queryKey: ['inbox-list', query], queryFn: () => inboxList(query), refetchInterval: 8_000, placeholderData: (p) => p })
   const set = (patch: Partial<InboxFilters>) => onFilters({ ...filters, ...patch })
   const platforms = [...new Set((overview?.channels ?? []).map((c) => c.platform))]
-  const active = [filters.platform, filters.kind, filters.unread, filters.starred, filters.assigned, filters.label].filter(Boolean).length
+  const active = [filters.platform, filters.kind !== 'MESSAGE' && filters.kind, filters.unread, filters.starred, filters.assigned, filters.label,
+    filters.awaiting, filters.has_order, filters.tagged].filter(Boolean).length
+  const key = JSON.stringify(query)
+  useEffect(() => { setPicked(new Set()) }, [key])
+  const bulk = useMutation({
+    mutationFn: (patch: Parameters<typeof inboxBulk>[1]) => inboxBulk([...picked], patch),
+    onSuccess: (n) => {
+      toast.success(`${n} updated`)
+      setPicked(new Set())
+      void qc.invalidateQueries({ queryKey: ['inbox-list'] })
+      void qc.invalidateQueries({ queryKey: ['inbox-overview'] })
+    },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const quick: Array<{ key: 'unread' | 'awaiting' | 'has_order' | 'tagged'; label: string; dot?: string }> = [
+    { key: 'unread', label: 'Unread' }, { key: 'awaiting', label: 'Awaiting', dot: 'bg-amber-500' },
+    { key: 'has_order', label: 'Orders', dot: 'bg-emerald-500' }, { key: 'tagged', label: 'Pin tags' },
+  ]
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="space-y-3 border-b p-3">
         <div className="flex items-center gap-2">
           <h2 className="flex-1 text-sm font-semibold">Inbox</h2>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="Sort"><ArrowDownUp /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Sort</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={filters.sort || 'recent'} onValueChange={(v) => set({ sort: v === 'recent' ? '' : v as InboxFilters['sort'] })}>
+                <DropdownMenuRadioItem value="recent">Newest first</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="waiting">Waiting longest</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="oldest">Oldest first</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="icon-sm" variant={selecting ? 'secondary' : 'ghost'} aria-label="Select conversations" onClick={() => { setSelecting((v) => !v); setPicked(new Set()) }}><ListChecks /></Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon-sm" variant="ghost" aria-label="Filters" className="relative">
@@ -51,7 +91,7 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Type</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem checked={filters.kind === 'MESSAGE'} onCheckedChange={(v) => set({ kind: v ? 'MESSAGE' : '' })}>Messages</DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem checked={filters.kind === 'MESSAGE'} onCheckedChange={(v) => set({ kind: v ? 'MESSAGE' : '' })}>Chats</DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem checked={filters.kind === 'COMMENT'} onCheckedChange={(v) => set({ kind: v ? 'COMMENT' : '' })}>Post & ad comments</DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem checked={!!filters.unread} onCheckedChange={(v) => set({ unread: v })}>Unread only</DropdownMenuCheckboxItem>
@@ -71,6 +111,15 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, number or message" className="h-8 pl-8 text-sm" aria-label="Search conversations" />
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {quick.map((x) => (
+            <button key={x.key} type="button" onClick={() => set({ [x.key]: !filters[x.key] })}
+              className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]', filters[x.key] ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}>
+              {x.dot && <span className={cn('size-1.5 rounded-full', x.dot)} />}{x.label}
+              {x.key === 'awaiting' && overview && overview.counts.awaiting > 0 && <span className="tabular-nums opacity-70">{overview.counts.awaiting}</span>}
+            </button>
+          ))}
         </div>
         <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-0.5" role="tablist">
           {TABS.map((t) => (
@@ -99,9 +148,13 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
         ) : (
           <ul>
             {list.data.items.map((c) => (
-              <li key={c.id}>
+              <li key={c.id} className="flex items-stretch border-b">
+                {selecting && (
+                  <span className="flex items-center pl-3"><Checkbox checked={picked.has(c.id)} aria-label="Select"
+                    onCheckedChange={(v) => setPicked((p) => { const n = new Set(p); if (v) n.add(c.id); else n.delete(c.id); return n })} /></span>
+                )}
                 <button type="button" onClick={() => onSelect(c.id)}
-                  className={cn('flex w-full gap-3 border-b px-3 py-3 text-left transition-colors hover:bg-muted/50', selected === c.id && 'bg-muted')}>
+                  className={cn('flex min-w-0 flex-1 gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50', selected === c.id && 'bg-muted')}>
                   <ChatAvatar name={c.customer_name} src={c.customer_avatar} platform={c.platform} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
@@ -124,7 +177,11 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
                         ? <Badge variant="neutral" className="gap-1 px-1.5 py-0 text-[10px]"><UserRound className="size-3" /> {c.assigned_name.split(' ')[0]}</Badge>
                         : <span className="text-[10px] text-muted-foreground">Unassigned</span>}
                       {c.labels.slice(0, 2).map((l) => <Badge key={l} variant="violet" className="px-1.5 py-0 text-[10px]">{l}</Badge>)}
-                      {c.linked_order_id && <Badge variant="success" className="px-1.5 py-0 text-[10px]">Order</Badge>}
+                      {c.customer_id && <Badge variant="info" className="gap-1 px-1.5 py-0 text-[10px]"><UserRound className="size-2.5" /> Customer</Badge>}
+                      {c.has_order && <Badge variant="success" className="px-1.5 py-0 text-[10px]">Order</Badge>}
+                      {c.auto_follow_up_at && <AlarmClock className="size-3 text-violet-500" aria-label="Auto follow-up scheduled" />}
+                      {c.remind_at && <BellRing className="size-3 text-amber-500" aria-label="Reminder" />}
+                      {c.awaiting_since && c.status !== 'DONE' && <Waiting since={c.awaiting_since} className="ml-auto text-[10px]" />}
                     </span>
                   </span>
                 </button>
@@ -132,6 +189,12 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
             ))}
           </ul>
         )}
+        <BulkBar count={picked.size} onClear={() => setPicked(new Set())} noun="chats">
+          <Button size="sm" variant="ghost" disabled={bulk.isPending} onClick={() => bulk.mutate({ status: 'DONE', read: true })}><CircleCheck /> Done</Button>
+          <Button size="sm" variant="ghost" disabled={bulk.isPending} onClick={() => bulk.mutate({ read: true })}><Check /> Mark read</Button>
+          {user && <Button size="sm" variant="ghost" disabled={bulk.isPending} onClick={() => bulk.mutate({ assigned_to: user.id })}><UserRound /> Assign to me</Button>}
+          <Button size="sm" variant="ghost" disabled={bulk.isPending} onClick={() => bulk.mutate({ status: 'FOLLOW_UP' })}><AlarmClock /> Follow-up</Button>
+        </BulkBar>
         {list.data && list.data.total > list.data.items.length && (
           <p className="px-3 py-3 text-center text-xs text-muted-foreground">Showing the newest {list.data.items.length} of {list.data.total}. Search to find older ones.</p>
         )}

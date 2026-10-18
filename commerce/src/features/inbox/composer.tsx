@@ -213,7 +213,7 @@ function ProductPicker({ disabled, onPick }: { disabled: boolean; onPick: (p: Ch
   const products = useQuery({ queryKey: ['chat-products', term], queryFn: () => chatProducts(term), enabled: open })
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="Send a product" disabled={disabled}><Package /></Button></PopoverTrigger>
+      <PopoverTrigger asChild><Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={disabled}><Package className="size-3.5" /> Send a product</Button></PopoverTrigger>
       <PopoverContent className="w-80 p-2" align="start">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a product" className="mb-2 h-8" autoFocus />
         <div className="max-h-72 space-y-0.5 overflow-y-auto">
@@ -234,7 +234,7 @@ function ProductPicker({ disabled, onPick }: { disabled: boolean; onPick: (p: Ch
   )
 }
 
-function SavedReplies({ onPick, disabled }: { onPick: (body: string) => void; disabled: boolean }) {
+export function SavedReplies({ onPick, disabled }: { onPick: (body: string) => void; disabled: boolean }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const replies = useQuery({ queryKey: ['inbox-saved-replies'], queryFn: savedReplies, enabled: open, staleTime: 60_000 })

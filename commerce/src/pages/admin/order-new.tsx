@@ -42,7 +42,10 @@ interface Line {
   available: number | null
 }
 
-export default function NewOrderPage() {
+/** A chat's order draft: opened from the Inbox, filled from the conversation, linked to it when created. */
+export interface ChatOrderDraft { conversation: string; name?: string; phone?: string; address?: string; text?: string }
+
+export default function NewOrderPage({ draft, onCreated }: { draft?: ChatOrderDraft; onCreated?: (orderId: string) => void } = {}) {
   const navigate = useNavigate()
   const { can } = useAuth()
   const sources = useOrderSources()
@@ -90,10 +93,10 @@ export default function NewOrderPage() {
 
   // Or from a phone call (VoiceDrive → new caller): just the number.
   // From the inbox: the name, number and address the customer gave in the chat.
-  const callerPhone = params.get('phone')
-  const conversationId = params.get('conversation')
-  const chatName = params.get('name')
-  const chatAddress = params.get('address')
+  const callerPhone = draft ? draft.phone ?? null : params.get('phone')
+  const conversationId = draft ? draft.conversation : params.get('conversation')
+  const chatName = draft ? draft.name ?? null : params.get('name')
+  const chatAddress = draft ? draft.address ?? null : params.get('address')
   useEffect(() => {
     if (callerPhone && !leadId && !cartId) setCustomer((v) => (v.phone ? v : { ...v, phone: callerPhone }))
     if (chatName && !leadId && !cartId) setCustomer((v) => (v.full_name ? v : { ...v, full_name: chatName }))
@@ -170,7 +173,8 @@ export default function NewOrderPage() {
       // Started from a chat: link the order to it and go back to the conversation.
       if (conversationId && order?.id) {
         await inboxUpdate(conversationId, { linked_order_id: order.id }).catch(() => toast.warning('Order created, but it could not be linked to the chat'))
-        navigate(`/admin/inbox?c=${conversationId}`)
+        if (onCreated) onCreated(order.id)
+        else navigate(`/admin/inbox?c=${conversationId}`)
         return
       }
       navigate(`/admin/orders/${order?.id}`)
@@ -198,7 +202,7 @@ export default function NewOrderPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="New order" description="Phone, Messenger or walk-in orders. Prices, stock and delivery are checked on the server." />
+      {!draft && <PageHeader title="New order" description="Phone, Messenger or walk-in orders. Prices, stock and delivery are checked on the server." />}
       {lead.data && (
         <div className="rounded-lg border bg-card p-3 text-sm">
           From an incomplete checkout · {lead.data.phone}{lead.data.source ? <> · came from <span className="font-medium">{lead.data.source}</span></> : ''}.
@@ -217,7 +221,7 @@ export default function NewOrderPage() {
           <Card>
             <CardHeader><CardTitle className="text-sm">Customer & delivery</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2"><SmartPaste districts={config?.delivery.districts ?? []} onFill={fillFromPaste} /></div>
+              <div className="sm:col-span-2"><SmartPaste districts={config?.delivery.districts ?? []} onFill={fillFromPaste} initial={draft?.text} /></div>
               <Field label="Phone" htmlFor="n-phone" required>
                 <Input id="n-phone" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} inputMode="tel" />
               </Field>

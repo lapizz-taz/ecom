@@ -61,6 +61,11 @@ export const JOBS: CronJob[] = [
     run: async (r) => (await r.exists('platform_ad_accounts', 'is_active=eq.true')) && r.call('platform-admin', { action: 'ad_spend_cron', days: 3 }),
   },
   {
+    // Inbox follow-ups that are due (Messaging → Auto Replies → Auto follow-up, and "Follow up on this chat").
+    name: 'inbox-automation', schedule: '* * * * *',
+    run: async (r) => (await r.rpc('inbox_automation_due')) === true && r.call('inbox', { action: 'automation_cron' }),
+  },
+  {
     name: 'notifications-dispatch', schedule: '* * * * *',
     run: async (r) => ((await r.exists('notification_logs', `status=eq.QUEUED&next_attempt_at=lte.${new Date().toISOString()}`))
       || (await r.exists('notification_logs', `channel=eq.SMS&status=eq.SENT&delivery_status=eq.PENDING&sent_at=lt.${minutesAgo(1, new Date())}`)))
