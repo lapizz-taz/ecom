@@ -21,12 +21,12 @@ describe('cron expressions (UTC)', () => {
 })
 
 describe('scheduled jobs', () => {
-  it('are the 15 Supabase pg_cron jobs with their schedules', () => {
+  it('are the 16 Supabase pg_cron jobs with their schedules', () => {
     expect(Object.fromEntries(JOBS.map((j) => [j.name, j.schedule]))).toEqual({
       'account-removals': '* * * * *', 'ad-platforms-sync': '47 */3 * * *', 'billing-run': '7 * * * *',
       'channel-sync-jobs': '* * * * *', 'channels-sync': '37 * * * *', 'courier-status-sync': '*/15 * * * *', 'courier-webhook-retry': '*/5 * * * *',
       'domains-recheck': '*/10 * * * *', 'expire-unpaid-advance-orders': '*/15 * * * *', 'hr-auto-checkout': '*/5 * * * *', 'meta-ads-sync': '17 */3 * * *', 'notifications-dispatch': '* * * * *',
-      'payments-reconcile': '*/5 * * * *', 'platform-ops': '*/10 * * * *', 'voicedrive-sweep': '* * * * *',
+      'payments-reconcile': '*/5 * * * *', 'platform-ads-sync': '27 */3 * * *', 'platform-ops': '*/10 * * * *', 'voicedrive-sweep': '* * * * *',
     })
   })
 

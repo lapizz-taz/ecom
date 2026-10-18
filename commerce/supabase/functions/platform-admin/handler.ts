@@ -14,11 +14,15 @@
 //   billing_recheck / billing_reconcile                             (ask the gateway again about one payment, or every payment in a period)
 //   billing_refund / billing_refund_check                           (send a refund through the gateway, or ask what became of one)
 //   meta_app_status / meta_app_save / meta_app_clear               (the Meta app stores use for "Continue with Facebook" in Messaging)
+//   ad_account_test / ad_account_save / ad_account_disconnect / ad_account_sync
+//                                                                   (Fullfilio's own Meta ad accounts: daily spend into Income & Expenses)
+//   ad_spend_cron                                                   (pg_cron only, no sign-in: the same sync for every active account)
 //   pbx_trunk_secret / pbx_turn_secret / pbx_gateway_token          (PBX Setup: the shared VoiceDrive gateway)
 //   health                                                          (System Health: this runtime, its database and auth access, settings present)
 //   backups                                                         (Data Management: the project's backups from the Supabase Management API)
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
+import { isCronRequest } from '../_shared/cron.ts'
 import { env, runtimeVersion } from '../_shared/env.ts'
 import { clerkEnabled, ensureClerkAccount } from '../_shared/clerk.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
@@ -32,6 +36,10 @@ import {
   PLATFORM_BD_COURIER_SECRET, PLATFORM_COURIER_PANEL_SECRET,
 } from '../_shared/fraud/service.ts'
 import { META_INBOX_APP_KEY, type MetaInboxApp } from '../_shared/inbox/oauth.ts'
+import { normalizeAccountId } from '../_shared/meta/graph.ts'
+import {
+  checkAdAccount, type PlatformAdAccount, platformAdSecretKey, platformAdSecrets, spendWindow, syncPlatformAdAccounts, syncPlatformAdSpend, tokenHint,
+} from '../_shared/platform-ads.ts'
 import { redactGatewayAnswer } from '../_shared/payments/redact.ts'
 import type { RefundResult } from '../_shared/payments/types.ts'
 import {
@@ -103,6 +111,15 @@ async function storePanelLogins(admin: SupabaseClient, logins: Record<CourierPan
   } else {
     await rpc(admin, 'platform_secret_clear', { p_key: PLATFORM_COURIER_PANEL_SECRET, p_actor: actor })
   }
+}
+
+const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v)
+const adCredentials = {
+  id: z.uuid().optional(),
+  app_id: z.preprocess(blankToUndefined, z.string().trim().regex(/^[0-9]{5,32}$/, 'The App ID is a number from App settings → Basic').optional()),
+  app_secret: z.preprocess(blankToUndefined, z.string().trim().regex(/^[A-Za-z0-9]{16,64}$/, 'The App Secret is a 32-character code from App settings → Basic').optional()),
+  access_token: z.preprocess(blankToUndefined, z.string().trim().min(20).max(1000).regex(/^[A-Za-z0-9_|.-]+$/, 'That does not look like a Meta access token').optional()),
+  ad_account_id: z.string().trim().regex(/^(act_)?[0-9]{3,32}$/, 'Enter the ad account ID (the number, without act_)').transform(normalizeAccountId),
 }
 
 const schema = z.discriminatedUnion('action', [
@@ -214,6 +231,19 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('pbx_gateway_token') }),
   z.object({ action: z.literal('health') }),
   z.object({ action: z.literal('backups') }),
+  z.object({ action: z.literal('ad_account_test'), ...adCredentials }),
+  z.object({
+    action: z.literal('ad_account_save'),
+    ...adCredentials,
+    name: z.string().trim().min(2, 'Give the account a name').max(80),
+    usd_rate: z.number().positive('The rate must be more than 0').max(100000),
+    is_active: z.boolean().default(true),
+  }),
+  z.object({ action: z.literal('ad_account_disconnect'), id: z.uuid() }),
+  z.object({
+    action: z.literal('ad_account_sync'), id: z.uuid().optional(), days: z.number().int().min(1).max(90).default(3),
+    since: z.iso.date().optional(), until: z.iso.date().optional(),
+  }),
 ])
 
 // VoiceDrive gateway secrets are the platform's: one gateway serves every merchant.
@@ -325,10 +355,18 @@ async function require(client: SupabaseClient, module: string, action: string, m
 export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
+    const body = await readJson(req) as { action?: string; days?: number } | null
+    if (body?.action === 'ad_spend_cron') {
+      // The schedule: Fullfilio's ad spend, with nobody signed in.
+      if (!(await isCronRequest(req, adminClient()))) throw new HttpError(403, 'Only the scheduler may run this', 'PERMISSION_DENIED')
+      const days = Number.isInteger(body.days) && body.days! >= 1 && body.days! <= 30 ? body.days! : 3
+      const accounts = await syncPlatformAdAccounts(adminClient(), { days })
+      return json(req, { ok: accounts.every((r) => r.ok), accounts })
+    }
     const user = await optionalUser(req)
     if (!user) throw new HttpError(401, 'Please sign in', 'UNAUTHENTICATED')
     rateLimit(`platform-admin:${user.id}:${clientIp(req)}`, 30)
-    const input = parse(schema, await readJson(req))
+    const input = parse(schema, body)
     // Acts as the employee: the database checks their platform permissions.
     const client = userClient(req)
     const admin = adminClient()
@@ -741,6 +779,74 @@ export default (
           .sort((a, b) => String(b.inserted_at).localeCompare(String(a.inserted_at)))
         return json(req, { configured: true, ref, ok: true, region: body.region ?? null, pitr_enabled: Boolean(body.pitr_enabled),
           last_completed: backups.find((b) => /complete/i.test(b.status ?? ''))?.inserted_at ?? null, backups: backups.slice(0, 30) })
+      }
+      // ------------------------------------- Fullfilio's own Meta ad accounts (Income & Expenses)
+      case 'ad_account_test': {
+        await require(client, 'finance', 'manage')
+        // Fields left empty when editing fall back to what is saved.
+        const saved = input.id ? await platformAdSecrets(admin, input.id) : {}
+        const result = await checkAdAccount({ access_token: input.access_token ?? saved.access_token, app_secret: input.app_secret ?? saved.app_secret },
+          input.app_id, input.ad_account_id)
+        return json(req, { ok: true, account: result.account, token: result.token, warnings: result.warnings })
+      }
+      case 'ad_account_save': {
+        await require(client, 'finance', 'manage')
+        const saved = input.id ? await platformAdSecrets(admin, input.id) : {}
+        const creds = { access_token: input.access_token ?? saved.access_token, app_secret: input.app_secret ?? saved.app_secret }
+        if (!creds.access_token) throw new HttpError(422, 'Paste the access token', 'VALIDATION')
+        const before = input.id ? (await rpc<PlatformAdAccount[]>(admin, 'platform_ad_accounts_for_sync', { p_id: input.id }))[0] : null
+        if (input.id && !before) throw new HttpError(404, 'Ad account not found', 'NOT_FOUND')
+        // An active account must connect; a paused one may be saved as it is.
+        const result = input.is_active
+          ? await checkAdAccount(creds, input.app_id, input.ad_account_id)
+          : await checkAdAccount(creds, input.app_id, input.ad_account_id).catch(() => null)
+        const row = await rpc<PlatformAdAccount & { status: string }>(admin, 'platform_ad_account_save', {
+          p: {
+            id: input.id ?? null, name: input.name, app_id: input.app_id ?? null, ad_account_id: input.ad_account_id,
+            usd_rate: input.usd_rate, is_active: input.is_active,
+            meta: result
+              ? { name: result.account.name, currency: result.account.currency, timezone: result.account.timezone, token_hint: tokenHint(creds.access_token),
+                  has_app_secret: !!creds.app_secret, token_expires_at: result.token?.expiresAt ?? null, status: 'OK', error: null }
+              : { token_hint: tokenHint(creds.access_token), has_app_secret: !!creds.app_secret, status: 'FAILED', error: 'Not checked with Meta (paused)' },
+          },
+          p_actor: user.id,
+        })
+        if (input.access_token || input.app_secret) {
+          try {
+            await rpc(admin, 'platform_secret_store', { p_key: platformAdSecretKey(row.id), p_value: creds, p_hint: tokenHint(creds.access_token), p_actor: user.id })
+          } catch (error) {
+            // Never leave an account active without its credentials.
+            if (!input.id) await rpc(admin, 'platform_ad_account_disconnect', { p_id: row.id, p_actor: user.id })
+            throw error
+          }
+        }
+        // New account, new token or another ad account: bring in the last 30 days, not only what the next run picks up.
+        const fresh = !before || !!input.access_token || before.ad_account_id !== row.ad_account_id || !before.is_active
+        const sync = row.is_active && fresh ? await syncPlatformAdSpend(admin, row, creds, spendWindow(30, row.timezone ?? 'Asia/Dhaka')) : null
+        return json(req, { ok: true, account: row, warnings: result?.warnings ?? [], sync })
+      }
+      case 'ad_account_disconnect': {
+        await require(client, 'finance', 'manage')
+        await rpc(admin, 'platform_secret_clear', { p_key: platformAdSecretKey(input.id), p_actor: user.id })
+        return json(req, { ok: true, account: await rpc(admin, 'platform_ad_account_disconnect', { p_id: input.id, p_actor: user.id }) })
+      }
+      case 'ad_account_sync': {
+        await require(client, 'finance', 'manage')
+        let range: { since: string; until: string } | undefined
+        if (input.since || input.until) {
+          const since = input.since ?? input.until!
+          const until = input.until ?? input.since!
+          const days = (Date.parse(until) - Date.parse(since)) / 86_400_000 + 1
+          if (days < 1) throw new HttpError(422, 'The start date is after the end date', 'VALIDATION')
+          if (days > 90) throw new HttpError(422, 'Pick at most 90 days at a time', 'VALIDATION')
+          if (until > spendWindow(1).until) throw new HttpError(422, 'The range cannot end after today', 'VALIDATION')
+          range = { since, until }
+        }
+        const results = await syncPlatformAdAccounts(admin, { id: input.id, days: input.days, range })
+        if (!results.length) throw new HttpError(422, 'Connect a Meta ad account first', 'NOT_CONNECTED')
+        const failed = results.filter((r) => !r.ok)
+        if (input.id && failed.length) throw new HttpError(502, failed[0].error ?? 'The ad spend sync failed', failed[0].status ?? 'FAILED')
+        return json(req, { ok: failed.length === 0, accounts: results, amount: results.reduce((s, r) => s + (r.amount ?? 0), 0) })
       }
       case 'health': {
         await require(client, 'health', 'view')

@@ -262,3 +262,15 @@ export async function fetchInsights(graph: MetaGraph, accountId: string, since: 
   }, 200)
   return rows.filter((r) => r.ad_id).map(mapInsight)
 }
+
+/** The whole ad account's spend per day (in the account's currency) for one window. */
+export async function fetchDailySpend(graph: MetaGraph, accountId: string, since: string, until: string): Promise<Array<{ date: string; spend: number }>> {
+  const rows = await graph.all<Record<string, unknown>>(`${normalizeAccountId(accountId)}/insights`, {
+    level: 'account',
+    time_increment: '1',
+    time_range: JSON.stringify({ since, until }),
+    fields: 'spend,date_start',
+    limit: '100',
+  }, 20)
+  return rows.filter((r) => typeof r.date_start === 'string').map((r) => ({ date: String(r.date_start), spend: Number(r.spend ?? 0) || 0 }))
+}
