@@ -13,7 +13,7 @@ export interface InboxChannel {
 export interface InboxOverview {
   channels: InboxChannel[]
   counts: { open: number; follow_up: number; done: number; unread: number; awaiting: number; mine: number; unassigned: number; starred: number }
-  comments: { awaiting: number; unread: number }
+  comments?: { awaiting: number; unread: number }
   labels: string[]
 }
 export interface ConversationRow {

@@ -48,7 +48,7 @@ export default function InboxPage() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <MessagingTabs unread={overview.data!.counts.unread} comments={overview.data!.comments.awaiting} />
+        <MessagingTabs unread={overview.data!.counts.unread} comments={overview.data!.comments?.awaiting} />
         <div className="flex items-center gap-2">
           {channels.map((c) => (
             <span key={c.id} className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs', c.status === 'FAILED' && 'border-destructive/50 text-destructive')} title={c.status_error ?? undefined}>

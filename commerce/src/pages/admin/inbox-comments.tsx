@@ -126,7 +126,7 @@ export default function InboxCommentsPage() {
 
   return (
     <div className="space-y-3">
-      <MessagingTabs unread={inbox.data?.counts.unread} comments={inbox.data?.comments.awaiting} />
+      <MessagingTabs unread={inbox.data?.counts.unread} comments={inbox.data?.comments?.awaiting} />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h1 className="text-lg font-semibold">Comments</h1>

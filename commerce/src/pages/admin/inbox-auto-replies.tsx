@@ -58,7 +58,7 @@ export default function InboxAutoRepliesPage() {
 
   return (
     <div className="space-y-4">
-      <MessagingTabs unread={inbox.data?.counts.unread} comments={inbox.data?.comments.awaiting} />
+      <MessagingTabs unread={inbox.data?.counts.unread} comments={inbox.data?.comments?.awaiting} />
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="flex items-center gap-2 text-lg font-semibold"><Zap className="size-5" /> Auto Replies</h1>
         <div className="ml-auto flex flex-wrap items-center gap-2">
