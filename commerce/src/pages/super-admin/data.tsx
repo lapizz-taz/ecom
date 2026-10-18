@@ -23,7 +23,7 @@ import { toast } from '@/lib/toast'
 import type { MerchantRef } from '@/services/platform'
 import {
   backupStatus, cancelDeletionRequest, createDeletionRequest, type DataOverview, dataOverview, decideDeletionRequest, type DeletionRequest,
-  type DeletionStatus, executeDeletionRequest, exportMerchantData, recordRestoreTest, runRetention,
+  type DeletionStatus, deleteMerchantForRequest, executeDeletionRequest, exportMerchantData, recordRestoreTest, runRetention,
 } from '@/services/platform-data'
 
 const M = ({ m }: { m: MerchantRef | null }) => (m ? <Link className="hover:underline" to={`/super-admin/merchants/${m.id}`}>#{m.number} {m.name}</Link> : <span className="text-muted-foreground">Platform</span>)
@@ -36,6 +36,8 @@ const TABLE_LABEL: Record<string, string> = {
   invoices: 'Platform invoices', platform_payments: 'Platform payments', credit_ledger: 'Credit ledger entries', audit_logs: 'Audit log entries',
 }
 const ERASED = 'Customers’ names, phone numbers, emails, addresses and notes (customers, orders, saved addresses, leads, carts, abandoned checkouts, contact messages, coupon uses, payments, SMS log, fraud checks, call records) and raw payloads from stores, couriers and gateways.'
+const DELETES = 'The business and all its data: orders, customers, products and stock, couriers, stores and every connection with its keys, staff, roles, settings, HR, phone system set-up and logs. Logins that belong only to this business are removed, here and from sign-in.'
+const DELETE_KEEPS = 'Money records for the accounts — plan, invoices and payments, credits, order fees, metered usage, phone charges — and every audit log, under "Deleted merchant #N" with no contact details.'
 const KEPT = 'Order amounts, items, statuses and dates, district and city, invoices, platform payments, credit and PBX ledgers, and both audit logs — needed for accounting. Staff logins are switched off (not deleted).'
 
 function Backups() {
@@ -149,10 +151,26 @@ function DeletionRequests({ d }: { d: DataOverview }) {
     onSuccess: () => { toast.success('Recorded — it now needs someone else to approve it'); setCreating(false); setPicked(null); setReason(''); void refresh() } })
   const erase = useMutation({ meta: { silent: true }, mutationFn: () => executeDeletionRequest(erasing!.id, typed),
     onSuccess: () => { toast.success('Personal data erased'); setErasing(null); setTyped(''); void refresh() } })
+  const [deleting, setDeleting] = useState<DeletionRequest | null>(null)
+  const [exported, setExported] = useState<string | null>(null)
+  const exportNow = useMutation({ meta: { silent: true },
+    mutationFn: (r: DeletionRequest) => exportMerchantData(r.merchant.id, `Copy kept before deleting the merchant (request #${r.number})`),
+    onSuccess: (x, r) => {
+      const blob = new Blob([JSON.stringify({ exported_at: x.exported_at, export_id: x.export_id, rows: x.rows, ...x.data }, null, 2)], { type: 'application/json' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `merchant-${r.merchant.number}-before-delete-${x.exported_at.slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      setExported(r.id)
+      toast.success('Export downloaded')
+    } })
+  const remove = useMutation({ meta: { silent: true }, mutationFn: () => deleteMerchantForRequest(deleting!.id, typed),
+    onSuccess: () => { toast.success('Merchant deleted'); setDeleting(null); setTyped(''); setExported(null); void refresh() } })
   return (
     <div className="space-y-3">
       <Card className="gap-1 px-4 py-3 text-xs text-muted-foreground">
-        <p><strong className="text-foreground">How it works.</strong> The owner asks (from Plan & Billing) or staff record a request. Someone other than the requester approves it after checking it is genuine. After a waiting period, with the account closed, a third step — by someone other than the approver — erases the data after typing the merchant's name.</p>
+        <p><strong className="text-foreground">How it works.</strong> The owner asks (from Plan & Billing) or staff record a request. Someone other than the requester approves it after checking it is genuine. After the {d.retention.policy.deletion_cooling_days ?? 14}-day waiting period, someone other than the approver either <strong className="text-foreground">erases the personal data</strong> (the account must be closed; the business stays) or <strong className="text-foreground">deletes the whole merchant</strong> (with a full export taken in the last 24 hours), after typing the merchant's name.</p>
         <p><strong className="text-foreground">Erased:</strong> {ERASED}</p>
         <p><strong className="text-foreground">Kept:</strong> {KEPT}</p>
       </Card>
@@ -175,8 +193,9 @@ function DeletionRequests({ d }: { d: DataOverview }) {
                     {r.status === 'REQUESTED' && d.can.approve && <>
                       <Button size="sm" variant="outline" onClick={() => setDeciding({ r, approve: true })}>Approve</Button>
                       <Button size="sm" variant="ghost" onClick={() => setDeciding({ r, approve: false })}>Reject</Button></>}
-                    {r.status === 'APPROVED' && d.can.manage && (
-                      <Button size="sm" variant="destructive" disabled={!r.ready} title={r.ready ? undefined : 'The waiting period is not over'} onClick={() => setErasing(r)}><Trash2 /> Erase</Button>)}
+                    {r.status === 'APPROVED' && d.can.manage && <>
+                      <Button size="sm" variant="outline" disabled={!r.ready} title={r.ready ? 'Erase customers\' personal data; the business stays' : 'The waiting period is not over'} onClick={() => setErasing(r)}>Erase data</Button>
+                      <Button size="sm" variant="destructive" disabled={!r.ready} title={r.ready ? 'Delete the whole merchant' : `The waiting period ends ${formatDateTime(r.erase_after)}`} onClick={() => { setTyped(''); setDeleting(r) }}><Trash2 /> Delete merchant</Button></>}
                     {(r.status === 'REQUESTED' || r.status === 'APPROVED') && d.can.manage && <Button size="sm" variant="ghost" onClick={() => setCancelling(r)}>Cancel</Button>}
                   </div>
                 </TableCell>
@@ -214,6 +233,23 @@ function DeletionRequests({ d }: { d: DataOverview }) {
           </div>
           <Field label={`Type the merchant's name: ${erasing.merchant.name}`} required><Input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" /></Field>
           {erase.error && <p className="text-sm text-red-500" role="alert">{(erase.error as Error).message}</p>}
+        </FormDialog>
+      )}
+      {deleting && (
+        <FormDialog open onOpenChange={(o) => { if (!o) { setDeleting(null); setTyped('') } }} title={`Delete ${deleting.merchant.name}?`} destructive
+          submitLabel="Delete merchant permanently" busy={remove.isPending} disabled={typed.trim().toLowerCase() !== deleting.merchant.name.trim().toLowerCase()}
+          onSubmit={() => remove.mutate()} description={`Request #${deleting.number}: ${deleting.reason}. This cannot be undone.`}>
+          <div className="space-y-2 rounded-md border border-red-500/30 bg-red-500/5 p-3 text-xs">
+            <p><strong>Deleted:</strong> {DELETES}</p><p><strong>Kept:</strong> {DELETE_KEEPS}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-xs">
+            <span className="mr-auto">{exported === deleting.id ? 'Export downloaded — keep it safe.' : 'A full export from the last 24 hours is needed first (it downloads as a file).'}</span>
+            <Button type="button" size="sm" variant="outline" disabled={exportNow.isPending} onClick={() => exportNow.mutate(deleting)}>
+              {exportNow.isPending ? 'Exporting…' : exported === deleting.id ? 'Download again' : 'Download export'}</Button>
+          </div>
+          {exportNow.error && <p className="text-sm text-red-500" role="alert">{(exportNow.error as Error).message}</p>}
+          <Field label={`Type the merchant's name: ${deleting.merchant.name}`} required><Input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" /></Field>
+          {remove.error && <p className="text-sm text-red-500" role="alert">{(remove.error as Error).message}</p>}
         </FormDialog>
       )}
     </div>

@@ -85,6 +85,9 @@ export const decideDeletionRequest = (id: string, approve: boolean, note: string
   platformRpc<DeletionRequest>('platform_deletion_request_decide', { p_id: id, p_approve: approve, p_note: note })
 export const cancelDeletionRequest = (id: string, reason: string) => platformRpc<DeletionRequest>('platform_deletion_request_cancel', { p_id: id, p_reason: reason })
 export const executeDeletionRequest = (id: string, confirm: string) => platformRpc<DeletionRequest>('platform_deletion_request_execute', { p_id: id, p_confirm: confirm })
+/** After the waiting period: deletes the whole merchant (money records and audit trails stay). Needs a full export from the last 24 hours. */
+export const deleteMerchantForRequest = (id: string, confirm: string) =>
+  platformRpc<DeletionRequest>('platform_deletion_request_delete_merchant', { p_id: id, p_confirm: confirm })
 export const recordRestoreTest = (p: Record<string, unknown>) => platformRpc<RestoreTest>('platform_restore_test_record', { p })
 
 // --------------------------------------------------------- global settings
