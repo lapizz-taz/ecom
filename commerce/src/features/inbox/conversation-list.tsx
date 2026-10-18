@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClock, ArrowDownUp, BellRing, Check, CircleCheck, Inbox, ListChecks, MessageCircle, MessagesSquare, Search, SlidersHorizontal, Star, UserRound } from 'lucide-react'
+import { AlarmClock, ArrowDownUp, BellRing, Check, CircleCheck, Inbox, ListChecks, MessagesSquare, Search, ShoppingBag, SlidersHorizontal, Star, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { BulkBar } from '@/components/common/bulk-bar'
 import { Spinner } from '@/components/common/states'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -112,10 +111,10 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, number or message" className="h-8 pl-8 text-sm" aria-label="Search conversations" />
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
           {quick.map((x) => (
             <button key={x.key} type="button" onClick={() => set({ [x.key]: !filters[x.key] })}
-              className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]', filters[x.key] ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}>
+              className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap', filters[x.key] ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}>
               {x.dot && <span className={cn('size-1.5 rounded-full', x.dot)} />}{x.label}
               {x.key === 'awaiting' && overview && overview.counts.awaiting > 0 && <span className="tabular-nums opacity-70">{overview.counts.awaiting}</span>}
             </button>
@@ -130,7 +129,7 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
           ))}
         </div>
         {platforms.length > 1 && (
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
             <Chip on={!filters.platform} onClick={() => set({ platform: '' })}>All</Chip>
             {platforms.map((p) => <Chip key={p} on={filters.platform === p} onClick={() => set({ platform: filters.platform === p ? '' : p })}>{PLATFORM[p].short}</Chip>)}
           </div>
@@ -169,20 +168,17 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
                       </span>
                       {c.unread_count > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">{c.unread_count}</span>}
                     </span>
-                    <span className="mt-1.5 flex flex-wrap items-center gap-1">
-                      {c.kind === 'COMMENT'
-                        ? <Badge variant="neutral" className="gap-1 px-1.5 py-0 text-[10px]"><MessagesSquare className="size-3" /> Comment</Badge>
-                        : <Badge variant="neutral" className="gap-1 px-1.5 py-0 text-[10px]"><MessageCircle className="size-3" /> {PLATFORM[c.platform].label}</Badge>}
-                      {c.assigned_name
-                        ? <Badge variant="neutral" className="gap-1 px-1.5 py-0 text-[10px]"><UserRound className="size-3" /> {c.assigned_name.split(' ')[0]}</Badge>
-                        : <span className="text-[10px] text-muted-foreground">Unassigned</span>}
-                      {c.labels.slice(0, 2).map((l) => <Badge key={l} variant="violet" className="px-1.5 py-0 text-[10px]">{l}</Badge>)}
-                      {c.customer_id && <Badge variant="info" className="gap-1 px-1.5 py-0 text-[10px]"><UserRound className="size-2.5" /> Customer</Badge>}
-                      {c.has_order && <Badge variant="success" className="px-1.5 py-0 text-[10px]">Order</Badge>}
-                      {c.auto_follow_up_at && <AlarmClock className="size-3 text-violet-500" aria-label="Auto follow-up scheduled" />}
-                      {c.remind_at && <BellRing className="size-3 text-amber-500" aria-label="Reminder" />}
-                      {c.awaiting_since && c.status !== 'DONE' && <Waiting since={c.awaiting_since} className="ml-auto text-[10px]" />}
-                    </span>
+                    {(c.kind === 'COMMENT' || c.assigned_name || c.labels.length > 0 || c.has_order || c.auto_follow_up_at || c.remind_at || (c.awaiting_since && c.status !== 'DONE')) && (
+                      <span className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        {c.kind === 'COMMENT' && <span className="inline-flex items-center gap-0.5"><MessagesSquare className="size-3" /> Comment</span>}
+                        {c.has_order && <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400"><ShoppingBag className="size-3" /> Order</span>}
+                        {c.labels.slice(0, 2).map((l) => <span key={l} className="truncate rounded bg-violet-500/10 px-1 text-violet-700 dark:text-violet-300">{l}</span>)}
+                        {c.assigned_name && <span className="inline-flex shrink-0 items-center gap-0.5"><UserRound className="size-3" /> {c.assigned_name.split(' ')[0]}</span>}
+                        {c.auto_follow_up_at && <AlarmClock className="size-3 shrink-0 text-violet-500" aria-label="Auto follow-up scheduled" />}
+                        {c.remind_at && <BellRing className="size-3 shrink-0 text-amber-500" aria-label="Reminder" />}
+                        {c.awaiting_since && c.status !== 'DONE' && <Waiting since={c.awaiting_since} className="ml-auto shrink-0 text-[10px]" />}
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>

@@ -128,60 +128,49 @@ export default function InboxCommentsPage() {
     <div className="space-y-3">
       <MessagingTabs unread={inbox.data?.counts.unread} comments={inbox.data?.comments?.awaiting} />
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">Comments</h1>
-        <p className="text-sm text-muted-foreground tabular-nums">
-          <b className="text-amber-500">{formatNumber(counts.awaiting)}</b> awaiting reply · <b className="text-foreground">{formatNumber(counts.unread)}</b> unread · <b className="text-foreground">{formatNumber(counts.matching)}</b> matching
+        <span className="hidden size-1.5 animate-pulse rounded-full bg-emerald-500 sm:inline-block" title="Live: checked every 15 seconds" />
+        <p className="truncate text-xs text-muted-foreground tabular-nums">
+          <b className="text-amber-500">{formatNumber(counts.awaiting)}</b> waiting · {formatNumber(counts.unread)} unread
         </p>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" /> Live · checked every 15s
-        </span>
-        <Button size="sm" variant="ghost" className="ml-auto gap-1.5" onClick={refresh}><RefreshCw className={cn(overview.isFetching && 'animate-spin')} /> Refresh</Button>
+        <div className="ml-auto flex items-center gap-1">
+          <StatusLink to="/admin/inbox/auto-replies" on={autoOn} label="Auto Reply" icon={<Zap />} />
+          <StatusLink to="/admin/inbox/auto-replies?tab=moderation" on={modOn} label="Moderation" icon={<ShieldCheck />} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="More"><MoreHorizontal /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!items.some((i) => i.unread_count > 0) || bulk.isPending}
+                onClick={() => bulk.mutate({ ids: items.filter((i) => i.unread_count > 0).map((i) => i.id), patch: { read: true } })}><Check /> Mark these read</DropdownMenuItem>
+              <DropdownMenuItem onClick={refresh}><RefreshCw /> Refresh</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
-          {([['', 'All channels'], ['FACEBOOK', 'Facebook'], ['INSTAGRAM', 'Instagram']] as const).map(([v, l]) => (
-            <button key={v} type="button" onClick={() => update({ platform: v, post: '', c: '' }, { resetPage: false })}
-              className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground', s.platform === v && 'bg-background text-foreground shadow-xs')}>
-              {v && <PlatformIcon platform={v} className="size-3.5" />} {l}
-            </button>
-          ))}
-        </div>
-        <div className="relative min-w-48 flex-1 sm:max-w-72">
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-80">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search comments or people…" className="h-8 pl-8 text-sm" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search comments or people" className="h-8 pl-8 text-sm" />
         </div>
-        <Link to="/admin/inbox/auto-replies" className={cn('inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs', autoOn ? 'border-emerald-500/40 text-emerald-600' : 'text-muted-foreground')}>
-          <Zap className="size-3.5" /> Auto Reply: {autoOn ? 'On' : 'Off'}
-        </Link>
-        <Link to="/admin/inbox/auto-replies?tab=moderation" className={cn('inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs', modOn ? 'border-emerald-500/40 text-emerald-600' : 'text-muted-foreground')}>
-          <ShieldCheck className="size-3.5" /> Moderation: {modOn ? 'On' : 'Off'}
-        </Link>
-        <Button size="sm" variant="outline" className="gap-1.5" disabled={!items.some((i) => i.unread_count > 0) || bulk.isPending}
-          onClick={() => bulk.mutate({ ids: items.filter((i) => i.unread_count > 0).map((i) => i.id), patch: { read: true } })}>
-          <Check /> Mark matching read
-        </Button>
+        <Segmented value={s.platform} onChange={(v) => update({ platform: v, post: '', c: '' }, { resetPage: false })}
+          options={[['', 'All'], ['FACEBOOK', <PlatformIcon key="f" platform="FACEBOOK" className="size-3.5" />], ['INSTAGRAM', <PlatformIcon key="i" platform="INSTAGRAM" className="size-3.5" />]]} />
+        <Segmented className="ml-auto" value={s.view} onChange={(v) => update({ view: v, c: '' }, { resetPage: false })}
+          options={[['post', 'Posts'], ['comments', 'All']]} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="-mx-1 flex items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none]">
         {STATES.map((t) => (
           <button key={t.value} type="button" onClick={() => update({ state: t.value, post: '', c: '' }, { resetPage: false })}
-            className={cn('rounded-full px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground',
-              s.state === t.value ? 'bg-primary text-primary-foreground hover:text-primary-foreground' : 'bg-muted')}>
+            className={cn('shrink-0 rounded-full px-2.5 py-0.5 text-xs whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground',
+              s.state === t.value && 'bg-foreground text-background hover:text-background')}>
             {t.label}
           </button>
         ))}
         {activeFilters && (
-          <button type="button" className="ml-1 text-xs font-medium underline-offset-2 hover:underline"
-            onClick={() => { setQ(''); update({ state: 'all', platform: '', post: '', c: '' }, { resetPage: false }) }}>Clear filters</button>
+          <button type="button" className="ml-1 shrink-0 text-xs whitespace-nowrap text-muted-foreground underline-offset-2 hover:underline"
+            onClick={() => { setQ(''); update({ state: 'all', platform: '', post: '', c: '' }, { resetPage: false }) }}>Clear</button>
         )}
-        <div className="ml-auto inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
-          {([['post', 'By post'], ['comments', 'By comments']] as const).map(([v, l]) => (
-            <button key={v} type="button" onClick={() => update({ view: v, c: '' }, { resetPage: false })}
-              className={cn('rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground', s.view === v && 'bg-background text-foreground shadow-xs')}>{l}</button>
-          ))}
-        </div>
       </div>
 
       {progress && (
@@ -202,7 +191,7 @@ export default function InboxCommentsPage() {
         </div>
       )}
 
-      <div className="grid h-[calc(100dvh-15rem)] min-h-[520px] gap-3 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+      <div className="grid h-[calc(100dvh-12.5rem)] min-h-[480px] gap-3 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
         {/* Posts */}
         <aside className={cn('flex min-h-0 flex-col rounded-xl border bg-card', s.view === 'post' && s.post && 'hidden lg:flex')}>
           <div className="flex items-center justify-between border-b px-3 py-2.5">
@@ -296,6 +285,30 @@ export default function InboxCommentsPage() {
   )
 }
 
+/** Small on/off link to an automation setting: icon with a green dot when on. */
+function StatusLink({ to, on, label, icon }: { to: string; on: boolean; label: string; icon: React.ReactNode }) {
+  return (
+    <Link to={to} title={`${label}: ${on ? 'on' : 'off'}`} aria-label={`${label}: ${on ? 'on' : 'off'}`}
+      className="relative inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-4">
+      {icon}
+      <span className={cn('absolute top-1.5 right-1.5 size-1.5 rounded-full', on ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+    </Link>
+  )
+}
+
+function Segmented<T extends string>({ value, onChange, options, className }: {
+  value: T; onChange: (v: T) => void; options: ReadonlyArray<readonly [T, React.ReactNode]>; className?: string
+}) {
+  return (
+    <div className={cn('inline-flex shrink-0 gap-0.5 rounded-lg bg-muted p-0.5', className)}>
+      {options.map(([v, l]) => (
+        <button key={v} type="button" onClick={() => onChange(v)}
+          className={cn('inline-flex h-7 min-w-7 items-center justify-center rounded-md px-2 text-xs font-medium text-muted-foreground', value === v && 'bg-background text-foreground shadow-xs')}>{l}</button>
+      ))}
+    </div>
+  )
+}
+
 function Empty({ text }: { text: string }) {
   return <div className="flex flex-col items-center gap-2 px-6 py-14 text-center text-sm text-muted-foreground"><MessageCircle className="size-6" />{text}</div>
 }
@@ -335,26 +348,27 @@ function PostHeader({ p, canManage }: { p: CommentPost; canManage: boolean }) {
     onError: (e) => toast.error(toUserMessage(e)),
   })
   return (
-    <div className="m-3 flex flex-col gap-3 rounded-xl border bg-muted/20 p-3 sm:flex-row">
-      <PostThumb src={p.image_url} className="h-40 w-full sm:h-44 sm:w-36" />
+    <div className="m-3 flex gap-3 rounded-xl border bg-muted/20 p-3">
+      <PostThumb src={p.image_url} className="size-16 sm:h-40 sm:w-32" />
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-start gap-2">
           <PlatformIcon platform={p.platform} className="mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">{p.channel_name}</p>
-            <p className="text-[11px] text-muted-foreground">{p.posted_at ? `Posted ${formatDate(p.posted_at)}` : p.is_ad ? 'Ad' : 'Post'}{p.media_type ? ` · ${p.media_type.toLowerCase().replace(/_/g, ' ')}` : ''}</p>
+            <p className="truncate text-sm font-semibold">{p.channel_name}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{p.posted_at ? `Posted ${formatDate(p.posted_at)}` : p.is_ad ? 'Ad' : 'Post'}{p.media_type ? ` · ${p.media_type.toLowerCase().replace(/_/g, ' ')}` : ''}</p>
           </div>
-          <div className="flex flex-col items-end gap-1 text-xs">
+          <div className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground [&_svg]:size-3.5">
             {canManage && p.post_id && (
-              <Link to={`/admin/inbox/auto-replies?new=1&post=${encodeURIComponent(p.post_id)}&channel=${p.channel_id}`} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-primary">
-                <Zap className="size-3" /> Auto Reply for this post
+              <Link to={`/admin/inbox/auto-replies?new=1&post=${encodeURIComponent(p.post_id)}&channel=${p.channel_id}`} title="Auto Reply for this post" aria-label="Auto Reply for this post"
+                className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-primary hover:bg-muted">
+                <Zap /> <span className="hidden sm:inline">Auto Reply</span>
               </Link>
             )}
-            {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">View on Meta <ExternalLink className="size-3" /></a>}
-            {p.post_id && <button type="button" onClick={() => reload.mutate()} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><RefreshCw className={cn('size-3', reload.isPending && 'animate-spin')} /> Refresh post</button>}
+            {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" title="View on Meta" aria-label="View on Meta" className="inline-flex size-7 items-center justify-center rounded-full hover:bg-muted hover:text-foreground"><ExternalLink /></a>}
+            {p.post_id && <button type="button" onClick={() => reload.mutate()} title="Refresh post" aria-label="Refresh post" className="inline-flex size-7 items-center justify-center rounded-full hover:bg-muted hover:text-foreground"><RefreshCw className={cn(reload.isPending && 'animate-spin')} /></button>}
           </div>
         </div>
-        <p className="line-clamp-6 text-sm whitespace-pre-wrap">{p.caption || <span className="text-muted-foreground">The post text appears once Meta shares it.</span>}</p>
+        <p className="line-clamp-3 text-sm whitespace-pre-wrap sm:line-clamp-6">{p.caption || <span className="text-muted-foreground">The post text appears once Meta shares it.</span>}</p>
         <p className="flex flex-wrap gap-3 border-t pt-2 text-xs text-muted-foreground tabular-nums">
           {p.likes != null && <span>♡ {formatNumber(p.likes)}</span>}
           {p.shares != null && <span>↗ {formatNumber(p.shares)}</span>}
@@ -393,18 +407,20 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
             <span>{shortAgo(i.comment.created_at)}</span>
             <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('public'))}>Reply</button>
-            <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}>Private message</button>
+            <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}><span className="sm:hidden">Private</span><span className="hidden sm:inline">Private message</span></button>
             {i.platform === 'FACEBOOK' && (
-              <button type="button" className={cn('font-medium hover:text-foreground', i.comment.liked && 'text-primary')} onClick={stop(() => onAction(i.comment.liked ? 'unlike' : 'like'))}>
+              <button type="button" className={cn('hidden font-medium hover:text-foreground sm:inline', i.comment.liked && 'text-primary')} onClick={stop(() => onAction(i.comment.liked ? 'unlike' : 'like'))}>
                 {i.comment.liked ? 'Liked' : 'Like'}
               </button>
             )}
-            <button type="button" className={cn('font-medium hover:text-foreground', i.no_reply_needed && 'text-foreground')} onClick={stop(() => onNoReply(!i.no_reply_needed))}>
+            <button type="button" className={cn('hidden font-medium hover:text-foreground sm:inline', i.no_reply_needed && 'text-foreground')} onClick={stop(() => onNoReply(!i.no_reply_needed))}>
               {i.no_reply_needed ? 'Needs a reply' : 'No reply needed'}
             </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild><button type="button" onClick={(e) => e.stopPropagation()} aria-label="More"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
               <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+                {i.platform === 'FACEBOOK' && <DropdownMenuItem className="sm:hidden" onClick={() => onAction(i.comment.liked ? 'unlike' : 'like')}><Heart /> {i.comment.liked ? 'Remove like' : 'Like'}</DropdownMenuItem>}
+                <DropdownMenuItem className="sm:hidden" onClick={() => onNoReply(!i.no_reply_needed)}><CircleSlash /> {i.no_reply_needed ? 'Needs a reply' : 'No reply needed'}</DropdownMenuItem>
                 {i.comment.hidden ? <DropdownMenuItem onClick={() => onAction('unhide')}><Eye /> Show again</DropdownMenuItem>
                   : <DropdownMenuItem onClick={() => onAction('hide')}><EyeOff /> Hide on {i.platform === 'FACEBOOK' ? 'Facebook' : 'Instagram'}</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => onReply('both')}><Lock /> Reply in public + private</DropdownMenuItem>

@@ -17,7 +17,7 @@ const FOLLOW_UP_TEXT = 'Hi! Just checking in. Would you like to place the order?
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
-/** Above the message box: order status / invoice / follow-up, the 24-hour timer, and Order · Tags · Customer · Task. */
+/** One row above the message box: order status, invoice, follow-up, then order draft, tags, customer, task, and the 24-hour timer. */
 export function ChatActions({ data, onInsert, onOrderDraft, onTogglePanel }: {
   data: InboxThread
   onInsert: (text: string) => void
@@ -35,47 +35,54 @@ export function ChatActions({ data, onInsert, onOrderDraft, onTogglePanel }: {
   const write = useMutation({ mutationFn: (kind: 'STATUS' | 'INVOICE') => orderMessage(order!.id, kind), onSuccess: onInsert, onError })
   const cancelFollowUp = useMutation({ mutationFn: () => setFollowUp(c.id, null), onSuccess: () => { toast.success('Follow-up cancelled'); refresh() }, onError })
   const win = windowLeft(c.last_customer_message_at)
-  const chip = 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-muted disabled:opacity-50'
+  const chip = 'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium whitespace-nowrap transition-colors hover:bg-muted disabled:opacity-40'
+  const icon = 'inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-3.5'
 
   return (
-    <div className="space-y-1.5 border-t bg-background px-3 pt-2">
-      {c.kind === 'MESSAGE' && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('STATUS')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
-            {write.isPending && write.variables === 'STATUS' ? <Loader2 className="size-3.5 animate-spin" /> : <PackageCheck className="size-3.5" />} Send order status
-          </button>
-          <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('INVOICE')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
-            {write.isPending && write.variables === 'INVOICE' ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />} Send invoice
-          </button>
-          <FollowUpPopover id={c.id} minutesLeft={win.minutes} onDone={refresh} disabled={!win.open} />
-          <span className={cn('ml-auto inline-flex items-center gap-1 text-[11px] tabular-nums', win.open ? (win.minutes < 120 ? 'text-amber-600' : 'text-muted-foreground') : 'text-red-500')}
+    <div className="border-t bg-background px-2 pt-2 sm:px-3">
+      <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
+        {c.kind === 'MESSAGE' && (
+          <>
+            <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('STATUS')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
+              {write.isPending && write.variables === 'STATUS' ? <Loader2 className="size-3.5 animate-spin" /> : <PackageCheck className="size-3.5" />} Status
+            </button>
+            <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('INVOICE')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
+              {write.isPending && write.variables === 'INVOICE' ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />} Invoice
+            </button>
+            <FollowUpPopover id={c.id} minutesLeft={win.minutes} onDone={refresh} disabled={!win.open} className={chip} />
+            <span className="mx-0.5 h-4 w-px shrink-0 bg-border" />
+          </>
+        )}
+        <button type="button" className={icon} onClick={onOrderDraft} title="Order draft" aria-label="Order draft"><ShoppingBag /></button>
+        <TagsPopover labels={c.labels} id={c.id} onDone={refresh} className={icon} />
+        <button type="button" className={cn(icon, 'xl:hidden')} onClick={onTogglePanel} title="Customer" aria-label="Customer"><UserRound /></button>
+        <TaskPopover id={c.id} current={c.remind_at} onDone={refresh} className={icon} />
+        {c.kind === 'MESSAGE' && (
+          <span className={cn('ml-auto inline-flex shrink-0 items-center gap-1 pl-2 text-[11px] whitespace-nowrap tabular-nums',
+            win.open ? (win.minutes < 120 ? 'text-amber-600' : 'text-muted-foreground') : 'text-red-500')}
             title="Meta allows normal replies for 24 hours after the customer's last message">
             <Clock className="size-3" /> {win.label}
           </span>
+        )}
+      </div>
+      {(c.auto_follow_up_at || c.remind_at) && (
+        <div className="mt-1 flex flex-wrap gap-x-3 text-[11px]">
+          {c.auto_follow_up_at && (
+            <span className="inline-flex items-center gap-1 text-violet-600 dark:text-violet-400">
+              <AlarmClock className="size-3" /> Follow-up {clock(c.auto_follow_up_at)}
+              <button type="button" className="underline-offset-2 hover:underline" onClick={() => cancelFollowUp.mutate()} aria-label="Cancel follow-up"><X className="size-3" /></button>
+            </span>
+          )}
+          {c.remind_at && (
+            <span className="inline-flex items-center gap-1 text-amber-600"><BellRing className="size-3" /> {new Date(c.remind_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}{c.remind_note ? ` · ${c.remind_note}` : ''}</span>
+          )}
         </div>
       )}
-      {c.auto_follow_up_at && (
-        <p className="flex items-center gap-1.5 text-[11px] text-violet-600 dark:text-violet-400">
-          <AlarmClock className="size-3.5" /> Auto follow-up at {clock(c.auto_follow_up_at)}{c.follow_up_by_name ? ` · set by ${c.follow_up_by_name}` : ''}
-          <button type="button" className="font-medium underline-offset-2 hover:underline" onClick={() => cancelFollowUp.mutate()}>Cancel</button>
-        </p>
-      )}
-      {c.remind_at && (
-        <p className="flex items-center gap-1.5 text-[11px] text-amber-600">
-          <BellRing className="size-3.5" /> Reminder {new Date(c.remind_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}{c.remind_note ? `: ${c.remind_note}` : ''}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium">
-        <button type="button" className="inline-flex items-center gap-1 text-emerald-600 hover:underline" onClick={onOrderDraft}><ShoppingBag className="size-3.5" /> Order</button>
-        <TagsPopover labels={c.labels} id={c.id} onDone={refresh} />
-        <button type="button" className="inline-flex items-center gap-1 text-sky-600 hover:underline" onClick={onTogglePanel}><UserRound className="size-3.5" /> Customer</button>
-        <TaskPopover id={c.id} current={c.remind_at} onDone={refresh} />
-      </div>
     </div>
   )
 }
 
-function FollowUpPopover({ id, minutesLeft, onDone, disabled }: { id: string; minutesLeft: number; onDone: () => void; disabled: boolean }) {
+function FollowUpPopover({ id, minutesLeft, onDone, disabled, className }: { id: string; minutesLeft: number; onDone: () => void; disabled: boolean; className: string }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState(FOLLOW_UP_TEXT)
   const options = FOLLOW_UP_DELAYS.filter(([m]) => m < minutesLeft - 5)
@@ -88,9 +95,8 @@ function FollowUpPopover({ id, minutesLeft, onDone, disabled }: { id: string; mi
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" disabled={disabled} className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
-          title={disabled ? 'The 24-hour window is closed' : undefined}>
-          <AlarmClock className="size-3.5" /> Follow up on this chat
+        <button type="button" disabled={disabled} className={className} title={disabled ? 'The 24-hour window is closed' : 'Send a follow-up by itself if they do not answer'}>
+          <AlarmClock className="size-3.5" /> Follow up
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 space-y-3" align="start">
@@ -110,14 +116,14 @@ function FollowUpPopover({ id, minutesLeft, onDone, disabled }: { id: string; mi
   )
 }
 
-function TagsPopover({ id, labels, onDone }: { id: string; labels: string[]; onDone: () => void }) {
+function TagsPopover({ id, labels, onDone, className }: { id: string; labels: string[]; onDone: () => void; className: string }) {
   const [value, setValue] = useState('')
   const save = useMutation({ mutationFn: (next: string[]) => inboxUpdate(id, { labels: next }), onSuccess: onDone, onError: (e) => toast.error(toUserMessage(e)) })
   const toggle = (l: string) => save.mutate(labels.includes(l) ? labels.filter((x) => x !== l) : [...labels, l])
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className="inline-flex items-center gap-1 text-violet-600 hover:underline"><Tag className="size-3.5" /> Tags{labels.length ? ` (${labels.length})` : ''}</button>
+        <button type="button" className={cn(className, labels.length > 0 && 'text-violet-600')} title="Tags" aria-label="Tags"><Tag /></button>
       </PopoverTrigger>
       <PopoverContent className="w-72 space-y-2" align="start">
         <div className="flex flex-wrap gap-1">
@@ -137,7 +143,7 @@ function TagsPopover({ id, labels, onDone }: { id: string; labels: string[]; onD
   )
 }
 
-function TaskPopover({ id, current, onDone }: { id: string; current: string | null; onDone: () => void }) {
+function TaskPopover({ id, current, onDone, className }: { id: string; current: string | null; onDone: () => void; className: string }) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState('')
   const save = useMutation({
@@ -150,7 +156,7 @@ function TaskPopover({ id, current, onDone }: { id: string; current: string | nu
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" className="inline-flex items-center gap-1 text-amber-600 hover:underline"><BellRing className="size-3.5" /> Task</button>
+        <button type="button" className={cn(className, current && 'text-amber-600')} title="Remind the team" aria-label="Task"><BellRing /></button>
       </PopoverTrigger>
       <PopoverContent className="w-72 space-y-2" align="start">
         <p className="text-sm font-medium">Remind the team</p>

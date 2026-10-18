@@ -49,7 +49,7 @@ export default function InboxPage() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <MessagingTabs unread={overview.data!.counts.unread} comments={overview.data!.comments?.awaiting} />
-        <div className="flex items-center gap-2">
+        <div className="hidden items-center gap-2 md:flex">
           {channels.map((c) => (
             <span key={c.id} className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs', c.status === 'FAILED' && 'border-destructive/50 text-destructive')} title={c.status_error ?? undefined}>
               <PlatformIcon platform={c.platform} className="size-3.5" /> {c.name}
@@ -70,11 +70,11 @@ export default function InboxPage() {
           {can('inbox.manage') && <Button asChild><Link to="/admin/inbox/channels" className="gap-1.5"><PlugZap /> Connect a channel</Link></Button>}
         </div>
       ) : (
-        <div className="grid h-[calc(100dvh-10.5rem)] min-h-[520px] overflow-hidden rounded-xl border bg-card lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_auto]">
+        <div className="grid h-[calc(100dvh-8.5rem)] min-h-[480px] overflow-hidden rounded-xl border bg-card lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_auto]">
           <aside className={cn('min-h-0 border-r', state.c && 'hidden lg:block')}>
             <ConversationList overview={overview.data} selected={state.c || null} onSelect={open} filters={filters} onFilters={setFilters} />
           </aside>
-          <section className={cn('min-h-0', !state.c && 'hidden lg:block')}>
+          <section className={cn('min-w-0 min-h-0', !state.c && 'hidden lg:block')}>
             {state.c ? (
               <Thread id={state.c} onBack={() => update({ c: '' }, { resetPage: false })} draft={draft} onDraft={clearDraft}
                 onInsert={sendDraft} onOrderDraft={() => setOrderDraft(true)}
