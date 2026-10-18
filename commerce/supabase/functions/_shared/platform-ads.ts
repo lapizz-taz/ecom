@@ -4,11 +4,12 @@
 // which lands in the books as one Ads expense per account and day.
 //   check   open the ad account with the token (and appsecret_proof), then ask
 //           Meta about the token itself when the App ID and secret are known
-//   sync    the account's spend per day for a window, then record how it went
+//   sync    the account's spend per day for a window, then campaigns, ad sets,
+//           ads and each ad's daily numbers (for the ads report), then record how it went
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { HttpError } from './http.ts'
 import {
-  ACCOUNT_STATUS, type AdAccount, dateWindows, debugToken, fetchDailySpend, getAdAccount, MetaApiError, MetaGraph, type TokenInfo,
+  ACCOUNT_STATUS, type AdAccount, dateWindows, debugToken, fetchAdResults, fetchDailySpend, fetchStructure, getAdAccount, MetaApiError, MetaGraph, type TokenInfo,
 } from './meta/graph.ts'
 import { logEvent } from './monitoring.ts'
 import { rpc } from './supabase.ts'
@@ -102,6 +103,12 @@ export async function syncPlatformAdSpend(
       totals.days += r.days
       totals.amount += Number(r.amount ?? 0)
       totals.foreign_amount += Number(r.foreign_amount ?? 0)
+    }
+    // The ads report: structure once, then each ad's days.
+    const structure = await fetchStructure(graph, account.ad_account_id)
+    for (const [i, w] of dateWindows(since, until, 7).entries()) {
+      const insights = await fetchAdResults(graph, account.ad_account_id, w.since, w.until)
+      await rpc(admin, 'platform_meta_apply_sync', { p_id: account.id, p: { since: w.since, until: w.until, insights, ...(i === 0 ? structure : {}) } })
     }
     await rpc(admin, 'platform_ad_account_record_sync', { p_id: account.id, p_status: 'OK', p_error: null, p_since: since, p_until: until })
     return { id: account.id, name: account.name, ok: true, since, until, ...totals, foreign_amount: totals.foreign_amount || null }

@@ -18,7 +18,16 @@ function fakeAdmin(answers: Record<string, unknown> = {}) {
 
 describe('Fullfilio ad spend', () => {
   it('asks Meta for the whole account per day and records each window', async () => {
-    const fetchFn = vi.fn().mockResolvedValue(reply({ data: [{ spend: '10.50', date_start: '2026-10-01' }, { spend: '0', date_start: '2026-10-02' }] }))
+    const fetchFn = vi.fn(async (url: string) => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/campaigns')) return reply({ data: [{ id: 'c1', name: 'Store owners' }] })
+      if (u.pathname.endsWith('/adsets') || u.pathname.endsWith('/ads')) return reply({ data: [] })
+      if (u.searchParams.get('level') === 'ad') {
+        return reply({ data: [{ ad_id: 'a1', adset_id: 's1', campaign_id: 'c1', spend: '10.50', impressions: '900', clicks: '30', inline_link_clicks: '20', date_start: '2026-10-01',
+          actions: [{ action_type: 'lead', value: '3' }, { action_type: 'onsite_conversion.lead_grouped', value: '3' }, { action_type: 'onsite_conversion.messaging_conversation_started_7d', value: '2' }] }] })
+      }
+      return reply({ data: [{ spend: '10.50', date_start: '2026-10-01' }, { spend: '0', date_start: '2026-10-02' }] })
+    })
     const { admin, calls } = fakeAdmin({ platform_ad_spend_apply: { days: 1, amount: 1281, foreign_amount: 10.5 } })
     const r = await syncPlatformAdSpend(admin, account, { access_token: 'EAA'.padEnd(30, 'x') }, { since: '2026-10-01', until: '2026-10-02' }, fetchFn)
     expect(r).toMatchObject({ ok: true, days: 1, amount: 1281, foreign_amount: 10.5 })
@@ -31,7 +40,13 @@ describe('Fullfilio ad spend', () => {
       p_id: account.id, p_since: '2026-10-01', p_until: '2026-10-02',
       p_rows: [{ date: '2026-10-01', spend: 10.5 }, { date: '2026-10-02', spend: 0 }],
     }])
-    expect(calls[1]).toEqual(['platform_ad_account_record_sync', { p_id: account.id, p_status: 'OK', p_error: null, p_since: '2026-10-01', p_until: '2026-10-02' }])
+    // The ads report: structure and each ad's day, leads counted once.
+    expect(calls[1][0]).toBe('platform_meta_apply_sync')
+    const report = calls[1][1].p as { campaigns: unknown[]; insights: Array<Record<string, unknown>> }
+    expect(report.campaigns).toEqual([{ id: 'c1', name: 'Store owners' }])
+    expect(report.insights).toEqual([{ ad_id: 'a1', adset_id: 's1', campaign_id: 'c1', date: '2026-10-01', spend: 10.5, impressions: 900, clicks: 30,
+      link_clicks: 20, leads: 3, registrations: 0, messages: 2, purchases: 0 }])
+    expect(calls[2]).toEqual(['platform_ad_account_record_sync', { p_id: account.id, p_status: 'OK', p_error: null, p_since: '2026-10-01', p_until: '2026-10-02' }])
   })
 
   it('records an expired token as TOKEN_INVALID without throwing', async () => {

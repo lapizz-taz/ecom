@@ -4,7 +4,8 @@
 // team records everything else by hand.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, CheckCircle2, CircleAlert, Link2, Megaphone, Pencil, Plus, RefreshCw, Search, Settings2, Store, Trash2, TrendingDown, TrendingUp, Unplug, Wallet,
+  BarChart3, CheckCircle2, ChevronRight, CircleAlert, Copy, Link2, Megaphone, Pencil, Plus, RefreshCw, Search, Settings2, Store, Target, Trash2, TrendingDown,
+  TrendingUp, Unplug, Users, Wallet,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -19,7 +20,7 @@ import { CardsSkeleton, EmptyState, ErrorState } from '@/components/common/state
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DatePicker } from '@/components/ui/date-picker'
+import { DatePicker, DateRangePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -32,16 +33,17 @@ import { formatDate, formatDateTime, formatMoney, formatNumber, toNumber } from 
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import {
-  type AdAccountInput, deleteEntry, disconnectAdAccount, type EntryInput, type EntrySource, type FinanceType, platformAdAccounts, type PlatformAdAccount,
+  type AdAccountInput, type AdsLevel, adsLeads, adsReport, type AdsRow, deleteEntry, disconnectAdAccount, type EntryInput, type EntrySource, type FinanceType, platformAdAccounts, type PlatformAdAccount,
   platformCategories, type PlatformCategory, platformEntries, type PlatformEntry, type PlatformLedger, platformLedger, platformOverview, saveAdAccount,
-  saveCategory, saveEntry, syncAdAccounts, testAdAccount,
+  type LeadSource, saveCategory, saveEntry, syncAdAccounts, testAdAccount,
 } from '@/services/platform-finance'
 
-type Tab = 'overview' | 'expense' | 'income' | 'ads' | 'categories'
+type Tab = 'overview' | 'expense' | 'income' | 'report' | 'ads' | 'categories'
 const TABS: Array<{ key: Tab; label: string; icon: typeof Wallet }> = [
   { key: 'overview', label: 'Overview', icon: BarChart3 },
   { key: 'expense', label: 'Expenses', icon: TrendingDown },
   { key: 'income', label: 'Income', icon: TrendingUp },
+  { key: 'report', label: 'Ads report', icon: Target },
   { key: 'ads', label: 'Ad accounts', icon: Megaphone },
   { key: 'categories', label: 'Categories', icon: Settings2 },
 ]
@@ -92,6 +94,7 @@ export default function PlatformFinancePage() {
         <LedgerTab type={tab === 'income' ? 'INCOME' : 'EXPENSE'} from={range.from} to={range.to} state={state} update={update}
           onEdit={(entry) => setDialog({ type: entry.type, entry })} />
       )}
+      {tab === 'report' && <AdsReportTab from={range.from} to={range.to} />}
       {tab === 'ads' && <AdAccountsTab />}
       {tab === 'categories' && <CategoriesTab />}
 
@@ -172,7 +175,7 @@ function OverviewTab({ from, to, onTab }: { from: string; to: string; onTab: (t:
   )
 }
 
-function Kpi({ label, value, hint, tone, icon: Icon, onClick }: { label: string; value: React.ReactNode; hint: string; tone?: string; icon: typeof Wallet; onClick?: () => void }) {
+function Kpi({ label, value, hint, tone, icon: Icon, onClick }: { label: string; value: React.ReactNode; hint: React.ReactNode; tone?: string; icon: typeof Wallet; onClick?: () => void }) {
   const body = (
     <>
       <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"><Icon className="size-3.5" />{label}</p>
@@ -455,6 +458,233 @@ function EntryDialog({ type, entry, onClose }: { type: FinanceType; entry?: Plat
         <Field label="Note" htmlFor="pf-note" className="sm:col-span-2"><Input id="pf-note" value={form.notes} maxLength={300} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
       </div>
     </FormDialog>
+  )
+}
+
+// ------------------------------------------------------------------ ads report
+const SOURCE: Record<LeadSource, string> = {
+  META_ADS: 'Meta ads', GOOGLE: 'Google', TIKTOK: 'TikTok', OTHER_CAMPAIGN: 'Other campaign', FACEBOOK_ORGANIC: 'Facebook (organic)',
+  REFERRAL: 'Other website', DIRECT: 'Direct', UNKNOWN: 'Not tracked',
+}
+const KIND: Record<string, string> = { WHATSAPP_SIGNUP: 'WhatsApp sign-up', SELF_SIGNUP: 'Signed up', CONTACT: 'Contact form' }
+const LEVEL_NEXT: Record<AdsLevel, AdsLevel | null> = { campaign: 'adset', adset: 'ad', ad: null }
+const LEVEL_LABEL: Record<AdsLevel, string> = { campaign: 'Campaign', adset: 'Ad set', ad: 'Ad' }
+const TRACKING = 'utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}'
+const pct = (v: number | null) => (v == null ? '—' : `${toNumber(v).toFixed(2)}%`)
+const money = (v: number | null) => (v == null ? '—' : formatMoney(v))
+const dhaka = (offset = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(new Date(Date.now() - offset * 86_400_000))
+
+/** Lead quality against the period's average cost per lead. */
+function verdict(r: AdsRow, avgCpl: number | null): { label: string; tone: string } | null {
+  if (toNumber(r.cost) <= 0) return null
+  if (r.paying > 0 && r.roas != null && toNumber(r.roas) >= 1) return { label: 'Paying back', tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
+  if (r.leads === 0) return toNumber(r.cost) >= (avgCpl ?? Infinity) ? { label: 'No leads', tone: 'bg-red-500/15 text-red-700 dark:text-red-300' } : { label: 'Too early', tone: 'bg-muted text-muted-foreground' }
+  if (avgCpl == null || r.cpl == null) return null
+  const ratio = toNumber(r.cpl) / avgCpl
+  if (ratio <= 0.8) return { label: 'Good leads', tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
+  if (ratio <= 1.25) return { label: 'Average', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' }
+  return { label: 'Costly leads', tone: 'bg-red-500/15 text-red-700 dark:text-red-300' }
+}
+
+function AdsReportTab({ from, to }: { from: string; to: string }) {
+  const queryClient = useQueryClient()
+  const [path, setPath] = useState<Array<{ level: AdsLevel; id: string; name: string }>>([])
+  const level: AdsLevel = path.length === 0 ? 'campaign' : path.length === 1 ? 'adset' : 'ad'
+  const parent = path.at(-1)?.id ?? null
+  const [leadFilter, setLeadFilter] = useState<{ source: LeadSource | null; campaign: { id: string; name: string } | null }>({ source: 'META_ADS', campaign: null })
+  const [custom, setCustom] = useState({ from: dhaka(13), to: dhaka() })
+  const [showCustom, setShowCustom] = useState(false)
+  const report = useQuery({ queryKey: ['platform-finance', 'ads-report', from, to, level, parent], queryFn: () => adsReport(from, to, level, parent), placeholderData: keepPreviousData })
+  const leads = useQuery({ queryKey: ['platform-finance', 'ads-leads', from, to, leadFilter.source, leadFilter.campaign?.id],
+    queryFn: () => adsLeads(from, to, leadFilter.source, leadFilter.campaign?.id), placeholderData: keepPreviousData })
+  const sync = useMutation({
+    mutationFn: (range: { since: string; until: string }) => syncAdAccounts(range),
+    onSuccess: (r) => {
+      const failed = r.accounts.filter((a) => !a.ok)
+      if (failed.length) toast.error(`${failed[0].name}: ${failed[0].error}`)
+      else toast.success(`Synced: ${formatMoney(r.amount)} of ad spend`)
+      void queryClient.invalidateQueries({ queryKey: ['platform-finance'] })
+    },
+    onError: fail,
+  })
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(TRACKING); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { toast.error('Copy did not work; select the text instead') }
+  }
+
+  if (report.error) return <ErrorState error={report.error} onRetry={() => report.refetch()} />
+  const R = report.data
+  if (!R) return <CardsSkeleton count={4} />
+  const t = R.totals
+  const cpl = R.leads.meta > 0 ? toNumber(t.cost) / R.leads.meta : null
+  const metaResults = toNumber(t.meta_leads) + toNumber(t.registrations) + toNumber(t.messages)
+  const avgCpl = (() => {
+    const withLeads = R.rows.filter((r) => r.leads > 0)
+    const leadsSum = withLeads.reduce((s, r) => s + r.leads, 0)
+    return leadsSum > 0 ? withLeads.reduce((s, r) => s + toNumber(r.cost), 0) / leadsSum : null
+  })()
+  const quick: Array<{ label: string; range: { since: string; until: string } }> = [
+    { label: 'Today', range: { since: dhaka(), until: dhaka() } },
+    { label: 'Yesterday', range: { since: dhaka(1), until: dhaka(1) } },
+    { label: 'Last 7 days', range: { since: dhaka(6), until: dhaka() } },
+    { label: 'Last 30 days', range: { since: dhaka(29), until: dhaka() } },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <Card className="gap-0 py-0">
+        <CardContent className="flex flex-wrap items-center gap-2 py-3">
+          <span className="mr-1 text-sm font-medium">Sync from Meta</span>
+          {quick.map((q) => (
+            <Button key={q.label} size="sm" variant="outline" disabled={sync.isPending} onClick={() => sync.mutate(q.range)}>{q.label}</Button>
+          ))}
+          <Button size="sm" variant="outline" disabled={sync.isPending} onClick={() => setShowCustom(!showCustom)}><RefreshCw className={cn(sync.isPending && 'animate-spin')} /> Custom range</Button>
+          {showCustom && (
+            <span className="flex flex-wrap items-center gap-2">
+              <DateRangePicker value={custom} onChange={(r) => setCustom({ from: r.from, to: r.to })} max={dhaka()} />
+              <Button size="sm" disabled={sync.isPending || !custom.from || !custom.to} onClick={() => sync.mutate({ since: custom.from, until: custom.to })}>Sync range</Button>
+            </span>
+          )}
+          <span className="ml-auto text-xs text-muted-foreground">Synced every 3 hours by itself · up to 90 days at a time</span>
+        </CardContent>
+      </Card>
+
+      <section className="grid grid-cols-2 gap-2 lg:grid-cols-5 [&>*]:min-w-0">
+        <Kpi label="Meta spend" value={<Money value={t.cost} />} hint={`${usd(t.spend, R.currency ?? 'USD')} · ${formatNumber(t.impressions)} impressions`} icon={Megaphone} />
+        <Kpi label="Link clicks" value={formatNumber(t.link_clicks)} hint={`CTR ${pct(toNumber(t.impressions) > 0 ? (100 * toNumber(t.link_clicks)) / toNumber(t.impressions) : null)} · CPC ${money(toNumber(t.link_clicks) > 0 ? toNumber(t.cost) / toNumber(t.link_clicks) : null)}`} icon={Target} />
+        <Kpi label="Leads from ads" value={formatNumber(R.leads.meta)} hint={`${money(cpl)} per lead · Meta counts ${formatNumber(metaResults)}`} icon={Users} />
+        <Kpi label="Paying stores" value={formatNumber(R.leads.meta_paying)} hint={R.leads.meta_paying > 0 ? `${formatMoney(toNumber(t.cost) / R.leads.meta_paying)} each` : 'from these ads'} icon={Store} tone="text-emerald-600" />
+        <Kpi label="ROAS" value={toNumber(t.cost) > 0 ? `${(toNumber(R.leads.meta_revenue) / toNumber(t.cost)).toFixed(2)}×` : '—'} hint={<>on <Money value={R.leads.meta_revenue} /> paid</>} icon={TrendingUp} />
+      </section>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-muted-foreground">All leads in this period ({R.leads.total}):</span>
+        {(Object.entries(R.leads.by_source) as Array<[LeadSource, number]>).sort((a, b) => b[1] - a[1]).map(([src, n]) => (
+          <button key={src} type="button" onClick={() => setLeadFilter({ source: src, campaign: null })}
+            className={cn('press rounded-full border px-2.5 py-0.5', leadFilter.source === src && !leadFilter.campaign ? 'border-foreground bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}>
+            {SOURCE[src] ?? src} · {n}
+          </button>
+        ))}
+        {R.leads.meta_unmatched > 0 && <span className="text-amber-600">{R.leads.meta_unmatched} from Meta could not be matched to a campaign — add the tracking link below</span>}
+      </div>
+
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardHeader className="flex flex-wrap items-center gap-1 border-b py-3 text-sm">
+          <button type="button" className={cn('font-medium', path.length && 'text-muted-foreground hover:text-foreground')} onClick={() => setPath([])}>All campaigns</button>
+          {path.map((p, i) => (
+            <span key={p.id} className="flex min-w-0 items-center gap-1">
+              <ChevronRight className="size-3.5 text-muted-foreground" />
+              <button type="button" className={cn('truncate', i < path.length - 1 ? 'text-muted-foreground hover:text-foreground' : 'font-medium')} onClick={() => setPath(path.slice(0, i + 1))}>{p.name}</button>
+            </span>
+          ))}
+        </CardHeader>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] tracking-wide text-muted-foreground uppercase">
+                <th className="px-4 py-2.5 text-left font-medium">{LEVEL_LABEL[level]}</th>
+                <th className="px-3 py-2.5 text-right font-medium">Spend</th>
+                <th className="px-3 py-2.5 text-right font-medium">Link clicks</th>
+                <th className="px-3 py-2.5 text-right font-medium">CPC / CPM</th>
+                <th className="px-3 py-2.5 text-right font-medium">Meta results</th>
+                <th className="px-3 py-2.5 text-right font-medium">Our leads</th>
+                <th className="px-3 py-2.5 text-right font-medium">Cost / lead</th>
+                <th className="px-3 py-2.5 text-right font-medium">Paying</th>
+                <th className="px-3 py-2.5 text-right font-medium">Paid</th>
+                <th className="px-3 py-2.5 text-right font-medium">ROAS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {R.rows.length === 0 && <tr><td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">Nothing in this period. Connect an ad account or sync a longer range.</td></tr>}
+              {R.rows.map((r) => {
+                const v = verdict(r, avgCpl)
+                const next = LEVEL_NEXT[level]
+                return (
+                  <tr key={r.id} className="border-t align-top">
+                    <td className="max-w-80 px-4 py-2.5">
+                      <div className="flex items-start gap-2">
+                        {r.thumbnail_url && <img src={r.thumbnail_url} alt="" className="size-9 shrink-0 rounded-md object-cover" />}
+                        <div className="min-w-0">
+                          <button type="button" disabled={!next} onClick={() => next && setPath([...path, { level, id: r.id, name: r.name }])}
+                            className={cn('block max-w-full truncate text-left font-medium', next && 'hover:underline')} title={r.name}>{r.name}{next && <ChevronRight className="ml-0.5 inline size-3.5 text-muted-foreground" />}</button>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                            {r.effective_status && <span className={cn('rounded px-1.5 text-[10px] font-medium', r.effective_status === 'ACTIVE' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground')}>{r.effective_status.toLowerCase().replace(/_/g, ' ')}</span>}
+                            {r.daily_budget ? <span className="text-[11px] text-muted-foreground">{usd(r.daily_budget, R.currency ?? 'USD')}/day</span> : null}
+                            {v && <span className={cn('rounded px-1.5 text-[10px] font-semibold', v.tone)}>{v.label}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums"><div className="font-medium">{formatMoney(r.cost)}</div><div className="text-[11px] text-muted-foreground">{usd(r.spend, R.currency ?? 'USD')}</div></td>
+                    <td className="px-3 py-2.5 text-right tabular-nums"><div>{formatNumber(r.link_clicks)}</div><div className="text-[11px] text-muted-foreground">CTR {pct(r.ctr)}</div></td>
+                    <td className="px-3 py-2.5 text-right tabular-nums"><div>{money(r.cpc)}</div><div className="text-[11px] text-muted-foreground">{money(r.cpm)} CPM</div></td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-xs">
+                      <div>{formatNumber(r.meta_leads)} leads</div>
+                      {(r.registrations > 0 || r.messages > 0) && <div className="text-muted-foreground">{r.registrations > 0 ? `${r.registrations} reg. ` : ''}{r.messages > 0 ? `${r.messages} msgs` : ''}</div>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {r.leads > 0 && level === 'campaign'
+                        ? <button type="button" className="font-semibold underline-offset-2 hover:underline" onClick={() => setLeadFilter({ source: 'META_ADS', campaign: { id: r.id, name: r.name } })}>{r.leads}</button>
+                        : <span className={cn(r.leads > 0 && 'font-semibold')}>{r.leads}</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{money(r.cpl)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums"><div className={cn(r.paying > 0 && 'font-semibold text-emerald-600')}>{r.paying}</div>{r.cost_per_paying != null && <div className="text-[11px] text-muted-foreground">{formatMoney(r.cost_per_paying)} each</div>}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(r.revenue)}</td>
+                    <td className={cn('px-3 py-2.5 text-right font-medium tabular-nums', r.roas != null && toNumber(r.roas) >= 1 ? 'text-emerald-600' : '')}>{r.roas == null ? '—' : `${toNumber(r.roas).toFixed(2)}×`}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-wrap items-center gap-2 border-b py-3">
+          <CardTitle className="mr-auto text-sm">
+            Leads {leadFilter.campaign ? <>from <span className="font-semibold">{leadFilter.campaign.name}</span></> : leadFilter.source ? `· ${SOURCE[leadFilter.source]}` : '· every source'}
+            {leads.data && <span className="ml-1 font-normal text-muted-foreground">{leads.data.length}</span>}
+          </CardTitle>
+          {(leadFilter.campaign || leadFilter.source) && <Button size="sm" variant="ghost" onClick={() => setLeadFilter({ source: null, campaign: null })}>Show every source</Button>}
+        </CardHeader>
+        {leads.error ? <ErrorState error={leads.error} onRetry={() => leads.refetch()} /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-[11px] tracking-wide text-muted-foreground uppercase">
+                <th className="px-4 py-2 text-left font-medium">When</th><th className="px-3 py-2 text-left font-medium">Who</th><th className="px-3 py-2 text-left font-medium">How</th>
+                <th className="px-3 py-2 text-left font-medium">Came from</th><th className="px-3 py-2 text-right font-medium">Paid</th>
+              </tr></thead>
+              <tbody>
+                {(leads.data ?? []).length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No leads here in this period.</td></tr>}
+                {(leads.data ?? []).map((l) => (
+                  <tr key={`${l.kind}:${l.ref}`} className="border-t align-top">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(l.created_at)}</td>
+                    <td className="max-w-56 px-3 py-2"><div className="truncate font-medium">{l.business ?? l.merchant ?? l.name ?? '—'}</div><div className="truncate text-xs text-muted-foreground">{[l.name, l.phone, l.email].filter(Boolean).join(' · ')}</div></td>
+                    <td className="px-3 py-2 text-xs"><div>{KIND[l.kind] ?? l.kind}</div><div className="text-muted-foreground">{l.status.toLowerCase()}</div></td>
+                    <td className="max-w-72 px-3 py-2 text-xs">
+                      <div className="font-medium">{SOURCE[l.source] ?? l.source}</div>
+                      {(l.campaign || l.utm_campaign) && <div className="truncate text-muted-foreground" title={[l.campaign ?? l.utm_campaign, l.adset, l.ad].filter(Boolean).join(' › ')}>{[l.campaign ?? l.utm_campaign, l.adset, l.ad].filter(Boolean).join(' › ')}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{l.paying ? <span className="font-semibold text-emerald-600">{formatMoney(l.revenue)}</span> : <span className="text-muted-foreground">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Tracking link for Fullfilio's ads</CardTitle>
+          <CardDescription>In Ads Manager, open each ad → Tracking → URL parameters, and paste this. Then every sign-up and sales message from that ad is counted on its campaign, ad set and ad here.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-start gap-2">
+          <code className="min-w-0 flex-1 rounded-lg bg-muted px-3 py-2 text-xs break-all select-all">{TRACKING}</code>
+          <Button size="sm" variant="outline" onClick={copy}>{copied ? <CheckCircle2 /> : <Copy />} {copied ? 'Copied' : 'Copy'}</Button>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

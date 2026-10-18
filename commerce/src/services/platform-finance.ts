@@ -77,3 +77,35 @@ export const saveAdAccount = (input: AdAccountInput) =>
 export const disconnectAdAccount = (id: string) => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'ad_account_disconnect', id })
 export const syncAdAccounts = (input: { id?: string; days?: number; since?: string; until?: string } = {}) =>
   invokeFunction<{ ok: boolean; accounts: SpendSync[]; amount: number }>('platform-admin', { action: 'ad_account_sync', ...input })
+
+// --- Ads report: which campaigns bring leads that pay ---------------------------------
+export type AdsLevel = 'campaign' | 'adset' | 'ad'
+export type LeadSource = 'META_ADS' | 'GOOGLE' | 'TIKTOK' | 'OTHER_CAMPAIGN' | 'FACEBOOK_ORGANIC' | 'REFERRAL' | 'DIRECT' | 'UNKNOWN'
+export interface AdsRow {
+  id: string; name: string; status: string | null; effective_status: string | null; parent: string | null; thumbnail_url: string | null
+  objective: string | null; daily_budget: number | null
+  cost: number; spend: number; impressions: number; clicks: number; link_clicks: number
+  meta_leads: number; registrations: number; messages: number
+  leads: number; paying: number; revenue: number
+  cpl: number | null; cost_per_paying: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null
+}
+export interface AdsReport {
+  rows: AdsRow[]
+  totals: { cost: number; spend: number; impressions: number; clicks: number; link_clicks: number; meta_leads: number; registrations: number; messages: number }
+  leads: {
+    total: number; meta: number; meta_paying: number; meta_revenue: number; meta_unmatched: number; paying: number; revenue: number
+    by_source: Partial<Record<LeadSource, number>>; by_kind: Record<string, number>
+  }
+  currency: string | null
+}
+export interface AdsLead {
+  kind: 'WHATSAPP_SIGNUP' | 'SELF_SIGNUP' | 'CONTACT'; ref: string; created_at: string; name: string | null; business: string | null
+  phone: string | null; email: string | null; status: string; merchant_id: string | null; merchant: string | null; source: LeadSource
+  campaign_id: string | null; campaign: string | null; adset: string | null; ad: string | null; utm_campaign: string | null; landing: string | null
+  paying: boolean; revenue: number
+}
+
+export const adsReport = (from: string, to: string, level: AdsLevel = 'campaign', parent?: string | null) =>
+  platformRpc<AdsReport>('platform_ads_report', { p_from: from, p_to: to, p_level: level, p_parent: parent ?? null })
+export const adsLeads = (from: string, to: string, source?: LeadSource | null, campaign?: string | null) =>
+  platformRpc<AdsLead[]>('platform_ads_leads', { p_from: from, p_to: to, p_source: source ?? null, p_campaign: campaign ?? null, p_limit: 200 })

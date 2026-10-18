@@ -2,6 +2,7 @@ import { Menu, Moon, Sun, UserPlus, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation } from 'react-router'
 import { Wordmark } from '@/components/brand/logo'
+import { captureNavigation } from '@/lib/attribution'
 
 // The frame every page of the Fullfilio website shares: header, footer and
 // the page background. Section links point at the home page ("/#…") so they
@@ -37,8 +38,15 @@ function ThemeToggle() {
 }
 
 /** The page root: website colours for the chosen version. */
+/** Remembers how the visitor arrived (ad, tagged link, referral) so a later sign-up can say which campaign brought it. */
+export function useTrackVisit() {
+  const location = useLocation()
+  useEffect(() => { captureNavigation(location) }, [location.pathname, location.search])
+}
+
 export function SiteRoot({ children }: { children: ReactNode }) {
   const theme = useSiteTheme()
+  useTrackVisit()
   useEffect(() => {
     // The browser chrome (overscroll, mobile address bar) follows the page.
     const prev = document.body.style.backgroundColor
