@@ -1,5 +1,5 @@
 import {
-  Activity, Banknote, BarChart3, CreditCard, Database, LayoutDashboard, LifeBuoy, type LucideIcon, Megaphone, MessageSquare, PhoneCall, Plug, ScrollText,
+  Activity, Banknote, BarChart3, CreditCard, Database, Landmark, LayoutDashboard, LifeBuoy, type LucideIcon, Megaphone, MessageSquare, PhoneCall, Plug, ScrollText,
   Radio, Receipt, Settings2, ShieldCheck, Siren, Store, ToggleRight, Truck, UsersRound, Wallet, Workflow,
 } from 'lucide-react'
 
@@ -19,6 +19,7 @@ export const PLATFORM_NAV: PlatformNavItem[] = [
   { module: 'subscriptions', label: 'Subscriptions & Plans', to: '/super-admin/subscriptions', icon: CreditCard },
   { module: 'subscriptions', label: 'Billing & Payments', to: '/super-admin/billing', icon: Receipt },
   { module: 'subscriptions', label: 'Fullfilio Payments', to: '/super-admin/subscriptions?tab=payments', icon: Banknote },
+  { module: 'finance', label: 'Income & Expenses', to: '/super-admin/finance', icon: Landmark },
   { module: 'credits', label: 'Credits & Wallets', to: '/super-admin/credits', icon: Wallet },
   { module: 'sms', label: 'SMS Management', to: '/super-admin/sms', icon: MessageSquare },
   { module: 'bd_courier', label: 'BD Courier Integration', to: '/super-admin/bd-courier', icon: Truck },
