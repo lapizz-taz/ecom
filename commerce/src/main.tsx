@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client'
 import App from '@/App'
 import { hasRememberedSite, isPreviewFrame, resolveSite, type SiteInfo } from '@/lib/merchant'
 import { initMonitoring, reportError } from '@/lib/monitoring'
+import { restorePageTitle } from '@/lib/page-title'
 import { supabase } from '@/lib/supabase'
 import './index.css'
 
+restorePageTitle()
 void initMonitoring()
 
 // What this address shows: the Fullfilio website, a store, or a missing store.

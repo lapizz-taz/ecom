@@ -1,5 +1,5 @@
 {
-  "migrations": 150,
-  "last": "20261121000300_domain_readd_primary.sql",
-  "sha256": "c70d2255cb9b66face530f0dbace68aa7f0a9bac517642eecc679a69dc9addec"
+  "migrations": 151,
+  "last": "20261121000400_removed_domain_missing.sql",
+  "sha256": "dce97f67d771ff0eb2543a0bea646481915fcfb9103bc16528b2f7b029e01788"
 }
