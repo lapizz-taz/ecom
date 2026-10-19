@@ -67,7 +67,7 @@ const START = new Date('2026-10-19T10:00:00Z')
 interface Row {
   domain: string; merchant_id: string; status: string; records: Array<{ type: string; name: string; value: string }>
   detail: string | null; diagnostics: { issues?: Array<{ code: string; severity: string; title?: string; detail?: string }>; [k: string]: unknown } | null
-  is_primary: boolean; created_at: string; checked_at: string | null; verify_code: string | null; verified_at: string | null
+  is_primary: boolean; created_at: string; checked_at: string | null; verify_code: string | null; verified_at: string | null; removed_at?: string | null
 }
 const db = { rows: new Map<string, Row>(), seq: 0 }
 const now = () => new Date().toISOString()
@@ -96,7 +96,8 @@ async function dbRpc(client: Client, fn: string, rawArgs: Record<string, unknown
         if (db.rows.get(d)?.status === 'REMOVED' && db.rows.get(d)!.merchant_id !== mid) db.rows.delete(d)
         if (!db.rows.has(d)) db.rows.set(d, newRow(d, mid!, 'PENDING'))
         const r = db.rows.get(d)!
-        if (r.merchant_id === mid && r.status === 'REMOVED') Object.assign(r, { status: 'PENDING', is_primary: false, verified_at: null })
+        if (r.merchant_id === mid && r.status === 'REMOVED') Object.assign(r, { status: 'PENDING', is_primary: false, removed_at: null,
+          verified_at: r.removed_at && Date.parse(r.removed_at) > Date.now() - 7 * 86_400_000 ? r.verified_at : null })
         if (!(r.merchant_id === mid && live(r))) raise('DUPLICATE: That domain is already connected to another store')
       } else {
         const r = db.rows.get(d)
@@ -127,7 +128,8 @@ async function dbRpc(client: Client, fn: string, rawArgs: Record<string, unknown
       if (p.records != null) r.records = p.records as Row['records']
       if ('detail' in p) r.detail = (p.detail as string | null) ?? null
       if ('diagnostics' in p) r.diagnostics = (p.diagnostics as Row['diagnostics']) ?? null
-      r.verified_at = r.status === 'REMOVED' ? null : p.verified === true ? (r.verified_at ?? now()) : r.verified_at
+      r.removed_at = r.status === 'REMOVED' ? (r.removed_at ?? now()) : null
+      r.verified_at = r.status === 'REMOVED' ? r.verified_at : p.verified === true ? (r.verified_at ?? now()) : r.verified_at
       r.checked_at = now()
       return { ...r }
     }

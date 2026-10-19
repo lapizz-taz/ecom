@@ -81,7 +81,7 @@ interface Row {
   detail: string | null; diagnostics: { issues?: Array<{ code: string; severity: string; title?: string; detail?: string }>; [k: string]: unknown } | null
   is_primary: boolean; created_at: string; checked_at: string | null
   /** The ownership code (_fullfilio TXT) and when it was found. */
-  verify_code: string | null; verified_at: string | null
+  verify_code: string | null; verified_at: string | null; removed_at?: string | null
 }
 const db = {
   rows: new Map<string, Row>(),
@@ -122,7 +122,8 @@ async function dbRpc(client: Client, fn: string, rawArgs: Record<string, unknown
         if (db.rows.get(d)?.status === 'REMOVED' && db.rows.get(d)!.merchant_id !== mid) db.rows.delete(d)
         if (!db.rows.has(d)) db.rows.set(d, newRow(d, mid!, 'PENDING')) // insert … on conflict (domain) do nothing
         const r = db.rows.get(d)!
-        if (r.merchant_id === mid && r.status === 'REMOVED') Object.assign(r, { status: 'PENDING', is_primary: false, verified_at: null })
+        if (r.merchant_id === mid && r.status === 'REMOVED') Object.assign(r, { status: 'PENDING', is_primary: false, removed_at: null,
+          verified_at: r.removed_at && Date.parse(r.removed_at) > Date.now() - 7 * 86_400_000 ? r.verified_at : null })
         if (!(r.merchant_id === mid && live(r))) raise('DUPLICATE: That domain is already connected to another store')
       } else {
         const r = db.rows.get(d)
@@ -154,7 +155,8 @@ async function dbRpc(client: Client, fn: string, rawArgs: Record<string, unknown
       if (p.records != null) r.records = p.records as Row['records']
       if ('detail' in p) r.detail = (p.detail as string | null) ?? null
       if ('diagnostics' in p) r.diagnostics = (p.diagnostics as Row['diagnostics']) ?? null
-      r.verified_at = r.status === 'REMOVED' ? null : p.verified === true ? (r.verified_at ?? now()) : r.verified_at
+      r.removed_at = r.status === 'REMOVED' ? (r.removed_at ?? now()) : null
+      r.verified_at = r.status === 'REMOVED' ? r.verified_at : p.verified === true ? (r.verified_at ?? now()) : r.verified_at
       r.checked_at = now()
       if (r.status === 'REMOVED' && !mine().some((x) => x.is_primary && live(x))) {
         const next = mine().filter(live).sort((a, b) => Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE') || a.created_at.localeCompare(b.created_at))[0]
@@ -1025,13 +1027,26 @@ describe('ownership (TXT _fullfilio with the store\'s code)', () => {
     expect((await post({ action: 'check', domain: 'shop.example.com' })).body.domain?.status).toBe('ACTIVE')
   })
 
-  it('removing a domain clears the proof: added again, it proves ownership again', async () => {
+  it('removed and added back within 7 days: still proven, live again on the next check', async () => {
     world.zone['shop.com'] = { A: [IP] }
     await addAndCheck('shop.com')
     expect(db.rows.get('shop.com')!.verified_at).not.toBeNull()
     await post({ action: 'remove', domain: 'shop.com' })
-    expect(db.rows.get('shop.com')!.verified_at).toBeNull()
+    expect(db.rows.get('shop.com')).toMatchObject({ status: 'REMOVED' })
+    // No TXT record at all (proven before the TXT rule): a remove and re-add must not take it offline.
     world.unproven.add('shop.com')
-    expect((await post({ action: 'add', domain: 'shop.com' })).body.domain?.status).toBe('VERIFYING')
+    await post({ action: 'add', domain: 'shop.com' })
+    expect((await post({ action: 'check', domain: 'shop.com' })).body.domain?.status).toBe('ACTIVE')
+  })
+
+  it('removed more than 7 days ago: added back, it proves ownership again', async () => {
+    world.zone['shop.com'] = { A: [IP] }
+    await addAndCheck('shop.com')
+    await post({ action: 'remove', domain: 'shop.com' })
+    db.rows.get('shop.com')!.removed_at = ago(8 * 24 * 60)
+    world.unproven.add('shop.com')
+    await post({ action: 'add', domain: 'shop.com' })
+    expect(db.rows.get('shop.com')!.verified_at).toBeNull()
+    expect((await post({ action: 'check', domain: 'shop.com' })).body.domain?.status).toBe('VERIFYING')
   })
 })
