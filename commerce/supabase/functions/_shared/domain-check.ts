@@ -135,10 +135,12 @@ export function hostLabel(domain: string): string {
 
 const TYPE_CODE: Record<RecordType, number> = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 }
 interface DohAnswer { name: string; type: number; data: string }
+/** The answers, and the nameserver addresses Google says they came from ("Response from …"). */
+type DohAnswers = DohAnswer[] & { from?: string[] }
 type Fetch = typeof fetch
 
 /** One DNS-over-HTTPS JSON query; null when the resolver could not be reached. */
-export async function doh(fetcher: Fetch, base: string, name: string, type: RecordType, subnet?: string): Promise<DohAnswer[] | null> {
+export async function doh(fetcher: Fetch, base: string, name: string, type: RecordType, subnet?: string): Promise<DohAnswers | null> {
   const url = new URL(base)
   url.searchParams.set('name', name)
   url.searchParams.set('type', type)
@@ -146,9 +148,12 @@ export async function doh(fetcher: Fetch, base: string, name: string, type: Reco
   try {
     const res = await fetcher(url, { headers: { accept: 'application/dns-json' }, signal: AbortSignal.timeout(6_000) })
     if (!res.ok) return null
-    const body = await res.json() as { Status?: number; Answer?: DohAnswer[] }
+    const body = await res.json() as { Status?: number; Answer?: DohAnswer[]; Comment?: unknown }
     if (body.Status !== 0 && body.Status !== 3) return null
-    return (body.Answer ?? []).map((a) => ({ ...a, data: String(a.data).replace(/^"|"$/g, '').replace(/\.$/, '') }))
+    const answers: DohAnswers = (body.Answer ?? []).map((a) => ({ ...a, data: String(a.data).replace(/^"|"$/g, '').replace(/\.$/, '') }))
+    const from = [body.Comment].flat().join(' ').match(/Response from (.*)/)?.[1]
+    if (from) answers.from = from.split(/[\s,]+/).map((ip) => ip.replace(/\.$/, '').toLowerCase()).filter((ip) => /^[\d.]+$|:/.test(ip))
+    return answers
   } catch {
     return null
   }
@@ -163,23 +168,27 @@ export const RESOLVERS = [
 const only = (answers: DohAnswer[] | null, type: RecordType) => (answers ?? []).filter((a) => a.type === TYPE_CODE[type]).map((a) => a.data)
 
 /**
- * The nameservers the registry has for the domain (RDAP): who really answers its DNS, even while
- * DNS servers still remember the old ones. Null when the registry does not say (some country
- * domains have no RDAP).
+ * What the registry has for the domain (RDAP): its nameservers, who really answers its DNS even
+ * while DNS servers still remember the old ones, and when the domain last changed there. Null
+ * when the registry does not say (some country domains have no RDAP).
  */
-export async function registryNameservers(domain: string, fetcher: Fetch = fetch): Promise<string[] | null> {
+export async function registryRecord(domain: string, fetcher: Fetch = fetch): Promise<{ nameservers: string[]; changed_at: string | null } | null> {
   try {
     const res = await fetcher(`https://rdap.org/domain/${encodeURIComponent(apexOf(domain))}`, {
       headers: { accept: 'application/rdap+json, application/json' }, signal: AbortSignal.timeout(6_000),
     })
     if (!res.ok) return null
-    const body = await res.json() as { nameservers?: Array<{ ldhName?: unknown }> }
+    const body = await res.json() as { nameservers?: Array<{ ldhName?: unknown }>; events?: Array<{ eventAction?: unknown; eventDate?: unknown }> }
     const ns = [...new Set((Array.isArray(body?.nameservers) ? body.nameservers : []).map((n) => nsName(String(n?.ldhName ?? ''))).filter(Boolean))].sort()
-    return ns.length ? ns : null
+    const changed = (Array.isArray(body?.events) ? body.events : []).find((e) => e?.eventAction === 'last changed')?.eventDate
+    return ns.length ? { nameservers: ns, changed_at: typeof changed === 'string' && !Number.isNaN(Date.parse(changed)) ? changed : null } : null
   } catch {
     return null
   }
 }
+
+/** How long after a change at the registry resolvers may still hold the old DNS company's records. */
+const SWITCH_WINDOW_MS = 72 * 3600_000
 
 /**
  * Which DNS really answers for the domain, and which public resolver already uses it. Right after
@@ -195,12 +204,18 @@ export interface DnsView {
   resolver: string
   /** No resolver is on the new nameservers yet: the records they answer are the old DNS company's. */
   stale: boolean
+  /**
+   * The addresses of the registry's nameservers, while the domain changed there recently: an
+   * answer Google got from another nameserver is the old DNS company's, from its cache.
+   */
+  servers: string[]
 }
 
-export async function dnsView(domain: string, fetcher: Fetch = fetch): Promise<DnsView> {
+export async function dnsView(domain: string, fetcher: Fetch = fetch, now: Date = new Date()): Promise<DnsView> {
   const apex = apexOf(domain)
   const asked = RESOLVERS.slice(0, 2)
-  const [registry, ...answers] = await Promise.all([registryNameservers(apex, fetcher), ...asked.map((r) => doh(fetcher, r.url, apex, 'NS'))])
+  const [record, ...answers] = await Promise.all([registryRecord(apex, fetcher), ...asked.map((r) => doh(fetcher, r.url, apex, 'NS'))])
+  const registry = record?.nameservers ?? null
   const seen = answers.map((ans) => [...new Set(only(ans, 'NS').map(nsName))])
   const registryOwners = new Set((registry ?? []).map(nsOwner))
   // Still on nameservers the registry no longer lists: another company's, or another Cloudflare
@@ -210,13 +225,24 @@ export async function dnsView(domain: string, fetcher: Fetch = fetch): Promise<D
     && (ns.some((n) => !registryOwners.has(nsOwner(n))) || ns.every(isCloudflareNs)))
   const current = seen.findIndex((ns, i) => ns.length > 0 && !behind[i])
   const old = [...new Set(seen.filter((_, i) => behind[i]).flat())].sort()
+  // Just changed (or still switching): where the registry's nameservers are, to tell their answers from cached old ones.
+  const recent = old.length > 0 || (!!record?.changed_at && now.getTime() - Date.parse(record.changed_at) < SWITCH_WINDOW_MS)
+  const servers = registry && recent
+    ? (await Promise.all(registry.flatMap((n) => (['A', 'AAAA'] as const).map((t) => doh(fetcher, RESOLVERS[0].url, n, t)))))
+      .flatMap((ans, i) => only(ans, i % 2 ? 'AAAA' : 'A').map((ip) => ip.toLowerCase()))
+    : []
   return {
     nameservers: registry ?? [...new Set(seen.flat())].sort(),
     old,
     resolver: asked[Math.max(current, 0)].url,
     stale: old.length > 0 && current === -1,
+    servers,
   }
 }
+
+/** Google got this answer from a nameserver the registry no longer lists: the old DNS company's, from its cache. */
+const cachedFromOld = (answers: DohAnswers | null, view: DnsView) =>
+  view.servers.length > 0 && !!answers?.from?.length && !answers.from.some((ip) => view.servers.includes(ip))
 
 /** A record row read while resolvers still answer from the old DNS company. */
 const fromOldDns = (r: FoundRecord, view: DnsView): FoundRecord =>
@@ -250,7 +276,9 @@ function answersPoint(kind: 'apex' | 'subdomain', answers: DohAnswer[] | null, t
 export async function inspectWww(domain: string, target: HostingTarget, fetcher: Fetch = fetch, view?: DnsView): Promise<{ records: FoundRecord[]; issue: DomainIssue | null } | null> {
   if (target.provider !== 'proxy' || !target.a || domainKind(domain) !== 'apex') return null
   const www = `www.${domain}`
-  const answers = await doh(fetcher, view?.resolver ?? RESOLVERS[0].url, www, 'A')
+  let answers = await doh(fetcher, view?.resolver ?? RESOLVERS[0].url, www, 'A')
+  // Google's cache still holds the old DNS company's answer: ask Cloudflare's resolver instead.
+  if (view && cachedFromOld(answers, view)) answers = await doh(fetcher, RESOLVERS[1].url, www, 'A')
   if (answers === null) return null
   const ips = only(answers, 'A')
   const cname = only(answers, 'CNAME')
@@ -284,7 +312,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const kind = domainKind(domain)
   const ask = (resolver: string) => Promise.all((['A', 'AAAA', 'CNAME'] as const).map((t) => doh(fetcher, resolver, domain, t)))
   const [view, first, caa, apexCaa, targetA, targetAaaa] = await Promise.all([
-    opts.view ?? dnsView(domain, fetcher),
+    opts.view ?? dnsView(domain, fetcher, opts.now),
     ask(opts.view?.resolver ?? RESOLVERS[0].url),
     doh(fetcher, RESOLVERS[0].url, domain, 'CAA'),
     domain === apexOf(domain) ? Promise.resolve(null) : doh(fetcher, RESOLVERS[0].url, apexOf(domain), 'CAA'),
@@ -293,7 +321,8 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     onCloudflare ? doh(fetcher, RESOLVERS[0].url, target.cname, 'AAAA') : Promise.resolve(null),
   ])
   // Google still remembers the old DNS company: read the records from a resolver that has the new one.
-  const [a, aaaa, cname] = opts.view || view.resolver === RESOLVERS[0].url ? first : await ask(view.resolver)
+  let [a, aaaa, cname] = opts.view || view.resolver === RESOLVERS[0].url ? first : await ask(view.resolver)
+  if ([a, aaaa, cname].some((x) => cachedFromOld(x, view))) [a, aaaa, cname] = await ask(RESOLVERS[1].url)
   const ourA = new Set(only(targetA, 'A'))
   const ourAaaa = new Set(only(targetAaaa, 'AAAA'))
   const isOurs = (ip: string) => ourA.has(ip) || ourAaaa.has(ip)
@@ -406,9 +435,9 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     for (let i = 0; view.stale && i < records.length; i++) records[i] = fromOldDns(records[i], view)
     issues.push(view.stale
       ? { code: 'NS_SWITCHING', severity: 'error', title: `Your DNS moved to ${now} — add the records there`,
-        detail: `${apexOf(domain)} now uses ${now} (${nameservers.join(', ')}), but DNS servers still answer from your old DNS (${before}) for up to 48 hours, so the records seen here are the old ones, not ${now}'s. Add the records below at ${now}: that is where your DNS is now. We keep checking by ourselves and see them once DNS servers catch up.` }
+        detail: `${apexOf(domain)} now uses ${now} (${nameservers.join(', ')}), but DNS servers still answer from your old DNS (${before}) for up to 48 hours, so the records seen here are the old ones, not ${now}'s. Add the records below at ${now}: that is where your DNS is now. We keep checking by ourselves and see them once DNS servers catch up. Setting the same records at ${before} too lets those visitors reach the store meanwhile.` }
       : { code: 'NS_SWITCHING', severity: 'warning', title: `Your DNS just moved to ${now}`,
-        detail: `Some DNS servers still answer from your old DNS (${before}) for up to 48 hours, so some visitors may get the old records until then. The records shown here are ${now}'s, the ones that count now.` })
+        detail: `Some DNS servers still answer from your old DNS (${before}) for up to 48 hours, so some visitors may get the old records until then. The records shown here are ${now}'s, the ones that count now. Setting the same records at ${before} too lets those visitors reach the store meanwhile.` })
   }
   // A root domain connects only when its DNS is on Cloudflare (a CNAME at @, which Cloudflare
   // flattens). Elsewhere it never verifies: Hostinger and others cannot hold a CNAME at @.

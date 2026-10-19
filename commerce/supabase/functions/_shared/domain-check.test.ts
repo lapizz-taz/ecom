@@ -411,6 +411,48 @@ describe('right after moving the DNS to another company', () => {
     expect(unknown.issues.map((i) => i.code)).not.toContain('NS_SWITCHING')
   })
 
+  it('an answer Google still has cached from the old DNS is asked again at Cloudflare\'s resolver', async () => {
+    const hostingerIps = ['172.64.53.200', '172.64.52.46']
+    /** Google already has Hostinger's nameservers, but some of its answers come from the old Cloudflare nameserver's cache. */
+    function partlyCached(changedAt: string) {
+      return (async (input: string | URL) => {
+        const url = new URL(String(input))
+        if (url.hostname === 'rdap.org') return Response.json({ nameservers: hostinger.map((n) => ({ ldhName: n })), events: [{ eventAction: 'last changed', eventDate: changedAt }] })
+        if (url.pathname === '/') return new Response('ok', { headers: { 'x-fullfilio': 'store' } })
+        const name = url.searchParams.get('name')!
+        const type = url.searchParams.get('type')
+        const google = url.hostname === 'dns.google'
+        const json = (Answer: Array<{ name: string; type: number; data: string }>, from: string) =>
+          Response.json({ Status: 0, Answer, ...(google ? { Comment: `Response from ${from}.` } : {}) })
+        if (type === 'NS') return json(hostinger.map((d) => ({ name, type: 2, data: `${d}.` })), hostingerIps[0])
+        if (hostinger.includes(name) && type === 'A') return json([{ name, type: 1, data: hostingerIps[hostinger.indexOf(name)] }], '162.159.25.42')
+        if (name === 'www.shop.com' && type === 'A') {
+          return google
+            ? json([{ name, type: 5, data: 'stores.fullfilio.example.' }, { name: 'stores.fullfilio.example', type: 1, data: '104.21.50.1' }], '172.64.35.149, 108.162.192.1')
+            : json([{ name, type: 5, data: 'shop.com.' }, { name: 'shop.com', type: 1, data: '198.51.100.20' }], '')
+        }
+        if (name === 'shop.com' && type === 'A') return json([{ name, type: 1, data: google ? '203.0.113.99' : '198.51.100.20' }], '172.64.35.149')
+        return json([], hostingerIps[1])
+      }) as typeof fetch
+    }
+    const now = new Date('2026-10-20T00:00:00Z')
+    const fetcher = partlyCached('2026-10-19T18:06:45.0Z')
+    const view = await dnsView('shop.com', fetcher, now)
+    expect(view).toMatchObject({ old: [], stale: false, servers: hostingerIps })
+    const d = await diagnose('shop.com', { target, fetcher, view })
+    expect(d.records).toEqual([{ type: 'A', name: '@', value: '198.51.100.20', ok: true, note: undefined }])
+    expect(d.pointed).toBe(true)
+    expect(d.issues.map((i) => i.code)).toEqual(['PROPAGATING'])
+    expect(await inspectWww('shop.com', target, fetcher, view)).toMatchObject({ issue: null, records: [{ type: 'CNAME', value: 'shop.com', ok: true }] })
+
+    // Long after the last change at the registry, Google's answer stands.
+    const settled = partlyCached('2025-01-01T00:00:00Z')
+    const later = await dnsView('shop.com', settled, now)
+    expect(later.servers).toEqual([])
+    expect((await diagnose('shop.com', { target, fetcher: settled, view: later })).records[0]).toMatchObject({ value: '203.0.113.99', ok: false })
+    expect((await inspectWww('shop.com', target, settled, later))!.records[0]).toMatchObject({ value: 'stores.fullfilio.example', ok: false })
+  })
+
   it('a move between two Cloudflare accounts counts as a move', async () => {
     const view = await dnsView('shop.com', moving(oldZone, oldZone, ['lola.ns.cloudflare.com', 'max.ns.cloudflare.com']))
     expect(view).toMatchObject({ old: cloudflareNs, stale: true, nameservers: ['lola.ns.cloudflare.com', 'max.ns.cloudflare.com'] })
