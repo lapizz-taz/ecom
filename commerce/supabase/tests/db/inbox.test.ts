@@ -191,3 +191,20 @@ describe('inbox: one Meta app for every store', () => {
       await expectError(db, `select public.inbox_channel_remove($1, null)`, [fb], /NOT_FOUND/)
     }))
 })
+
+describe('inbox: menu badges', () => {
+  it('counts unread messages and unread comments apart, and nothing without inbox access', () =>
+    inTx(async (db) => {
+      const ch = await channel(db, 'INSTAGRAM', '178414777')
+      await ingest(db, { channel_id: ch, kind: 'COMMENT', thread_key: 'c-1', message: { external_id: 'c1', body: 'price?' } })
+      await ingest(db, { channel_id: ch, kind: 'COMMENT', thread_key: 'c-2', message: { external_id: 'c2', body: 'size?' } })
+      const dm = await ingest(db, { channel_id: ch, thread_key: 'igsid-5', message: { external_id: 'd1', body: 'hello' } })
+      const staff = await createStaff(db, 'ADMIN')
+      await asUser(db, staff)
+      expect(await value(db, `select public.inbox_unread_counts()`)).toEqual({ messages: 1, comments: 2 })
+      await db.query(`select public.inbox_update($1, '{"status":"DONE"}')`, [dm.conversation_id])
+      expect(await value(db, `select public.inbox_unread_counts()`)).toEqual({ messages: 0, comments: 2 })
+      await asAnon(db)
+      await expectError(db, `select public.inbox_unread_counts()`, [], /permission denied/)
+    }))
+})

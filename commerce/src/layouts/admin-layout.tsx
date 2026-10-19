@@ -57,7 +57,7 @@ function useNavCounts(enabled: boolean, canFraud: boolean, canInbox: boolean): N
   const queue = useQuery({ queryKey: ['orders', 'queue-counts'], queryFn: queueCounts, enabled, staleTime: 30_000, refetchInterval: 120_000 })
   const status = useQuery({ queryKey: ['orders', 'status-counts'], queryFn: statusCounts, enabled: enabled && canFraud, staleTime: 30_000, refetchInterval: 120_000 })
   const inbox = useQuery({ queryKey: ['inbox-unread'], queryFn: inboxUnread, enabled: canInbox, staleTime: 20_000, refetchInterval: 30_000 })
-  return { queue: queue.data, status: status.data, inbox: inbox.data || undefined }
+  return { queue: queue.data, status: status.data, inbox: inbox.data }
 }
 
 function isTyping(target: EventTarget | null): boolean {
