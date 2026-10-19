@@ -73,16 +73,16 @@ describe('sign-up by WhatsApp', () => {
       await asSystem(db, null)
       expect(await value<number>(db, `select (select count(*) from auth.users)::int + (select count(*) from public.merchants)::int`)).toBe(before)
 
-      // The same mobile again soon after updates its request instead of adding one.
+      // The same mobile again is a new request; the first one is never overwritten.
       await asAnon(db)
       const again = await value<Record<string, any>>(db, `select public.public_signup_request($1)`, [request({ business_name: 'Nadia Crafts BD' })])
-      expect(again.id).toBe(r.id)
+      expect(again.id).not.toBe(r.id)
       await asSystem(db, null)
-      expect(await value(db, `select count(*)::int from public.signup_requests`)).toBe(1)
-      expect(await value(db, `select business_name from public.signup_requests`)).toBe('Nadia Crafts BD')
+      expect(await value(db, `select count(*)::int from public.signup_requests`)).toBe(2)
+      expect(await value(db, `select business_name from public.signup_requests where id = $1`, [r.id])).toBe('Nadia Crafts')
 
       // Platform staff were told.
-      expect(await value(db, `select count(*)::int from public.platform_notifications where user_id = $1 and kind = 'signup.request'`, [staff])).toBe(1)
+      expect(await value(db, `select count(*)::int from public.platform_notifications where user_id = $1 and kind = 'signup.request'`, [staff])).toBe(2)
     }))
 
   it('checks the details and refuses when WhatsApp sign-up is off', () =>

@@ -38,9 +38,40 @@ export function json(req: Request, body: unknown, status = 200, extra: Record<st
   })
 }
 
+// Reads the body as bytes, refusing more than maxBytes without buffering the rest
+// (a declared Content-Length is checked first; the stream is counted as it arrives).
+export async function readBytes(req: Request, maxBytes = 64 * 1024): Promise<Uint8Array> {
+  const declared = Number(req.headers.get('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > maxBytes) throw new HttpError(413, 'Request is too large', 'PAYLOAD_TOO_LARGE')
+  if (!req.body) return new Uint8Array(0)
+  const reader = req.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {})
+      throw new HttpError(413, 'Request is too large', 'PAYLOAD_TOO_LARGE')
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(size)
+  let at = 0
+  for (const c of chunks) {
+    out.set(c, at)
+    at += c.byteLength
+  }
+  return out
+}
+
+export async function readText(req: Request, maxBytes = 64 * 1024): Promise<string> {
+  return new TextDecoder().decode(await readBytes(req, maxBytes))
+}
+
 export async function readJson<T = unknown>(req: Request, maxBytes = 64 * 1024): Promise<T> {
-  const text = await req.text()
-  if (text.length > maxBytes) throw new HttpError(413, 'Request is too large', 'PAYLOAD_TOO_LARGE')
+  const text = await readText(req, maxBytes)
   if (!text) return {} as T
   try {
     return JSON.parse(text) as T
@@ -118,9 +149,18 @@ export function clientIp(req: Request): string {
 // Best-effort, per-instance rate limiting for public endpoints. Edge instances
 // are short-lived, so this deters bursts; it is not a global quota.
 const buckets = new Map<string, { count: number; resetAt: number }>()
+const MAX_BUCKETS = 10_000
 
 export function rateLimit(key: string, limit: number, windowMs = 60_000): void {
   const now = Date.now()
+  // Keep memory bounded on long-lived instances: drop expired buckets, then the oldest.
+  if (buckets.size >= MAX_BUCKETS) {
+    for (const [k, b] of buckets) if (b.resetAt < now) buckets.delete(k)
+    for (const k of buckets.keys()) {
+      if (buckets.size < MAX_BUCKETS) break
+      buckets.delete(k)
+    }
+  }
   const bucket = buckets.get(key)
   if (!bucket || bucket.resetAt < now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs })

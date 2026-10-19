@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotificationsInBackground } from './dispatch.ts'
 import { logEvent } from './monitoring.ts'
+import { readBytes, readText } from './http.ts'
 import type { PaymentProvider, VerifiedPayment } from './payments/types.ts'
 import { merchantOf, rpc } from './supabase.ts'
 
@@ -59,16 +60,21 @@ export async function recordVerifiedPayment(
   return { status: result.status, orderNumber }
 }
 
+// Gateway callbacks are small; anything bigger is refused before it is buffered.
+const MAX_CALLBACK_BYTES = 64 * 1024
+
 export async function formOrQuery(req: Request): Promise<Record<string, string>> {
   const url = new URL(req.url)
   const params: Record<string, string> = Object.fromEntries(url.searchParams.entries())
   if (req.method === 'POST') {
     const type = req.headers.get('content-type') ?? ''
     if (type.includes('application/x-www-form-urlencoded') || type.includes('multipart/form-data')) {
-      const form = await req.formData()
+      const bytes = await readBytes(req, MAX_CALLBACK_BYTES)
+      const form = await new Response(bytes.buffer as ArrayBuffer, { headers: { 'content-type': type } }).formData().catch(() => new FormData())
       for (const [key, value] of form.entries()) if (typeof value === 'string') params[key] = value
     } else if (type.includes('application/json')) {
-      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+      const text = await readText(req, MAX_CALLBACK_BYTES)
+      const body = (() => { try { return JSON.parse(text || '{}') } catch { return {} } })() as Record<string, unknown>
       for (const [key, value] of Object.entries(body)) if (value !== null && value !== undefined) params[key] = String(value)
     }
   }
