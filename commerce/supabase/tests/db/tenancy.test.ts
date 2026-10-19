@@ -53,8 +53,9 @@ describe('tenancy: structure', () => {
       // reads the platform's public plans and applies the paid plan from the gateway callback; the root-domain
       // proxy asks whether a web address belongs to any store before it gets a certificate; payments to the platform
       // (gateway confirmations, their check log, expiry and refunds) work on the payment's own store and read the
-      // platform's prices and gateway switches; the website keeps how a visitor arrived with their own sign-up.
-      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(120)
+      // platform's prices and gateway switches; the website keeps how a visitor arrived with their own sign-up;
+      // adding a custom domain checks the platform's reserved names and whether another store holds its www/apex twin.
+      expect(await value(db, `select count(*)::int from public.tenancy_exempt_functions where name !~ '^_?platform_'`)).toBeLessThan(125)
     }))
 
   it('turns existing data into Merchant #1', () =>

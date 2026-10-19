@@ -26,7 +26,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { isCronRequest } from '../_shared/cron.ts'
-import { handle, HttpError, json, readJson } from '../_shared/http.ts'
+import { handle, HttpError, json, readJson, readText } from '../_shared/http.ts'
 import { attachmentType, commentAction, type CommentOp, fetchPost, hint, InboxGraph, type OutgoingFile, type PostDetails, sendMessage } from '../_shared/inbox/meta.ts'
 import {
   exchangeCode, type GrantedNumber, type GrantedPage, grantedNumbers, grantedPages, loginUrl, META_INBOX_APP_KEY,
@@ -193,8 +193,7 @@ async function webhook(req: Request): Promise<Response> {
     throw new HttpError(403, 'Verify token does not match', 'FORBIDDEN')
   }
 
-  const raw = await req.text()
-  if (raw.length > 1024 * 1024) throw new HttpError(413, 'Too large', 'PAYLOAD_TOO_LARGE')
+  const raw = await readText(req, 1024 * 1024)
   if (!app.app_secret || !(await validSignature(raw, req.headers.get('x-hub-signature-256'), app.app_secret))) {
     // Meta signs with the app secret saved in Super Admin: a mismatch means the two differ.
     void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'inbox', message: 'Meta webhook refused: the signature does not match the saved App Secret',

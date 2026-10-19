@@ -231,6 +231,12 @@ function StatusTick({ status }: { status: InboxMessage['status'] }) {
   return <Check className="size-3.5" aria-label="Sent" />
 }
 
+// Only types the browser shows passively may open in a tab; anything else (HTML,
+// SVG, scripts) is kept as a plain download so a customer's file cannot run here.
+const PASSIVE_MIME = /^(image\/(jpeg|png|webp|gif)|audio\/[\w.+-]+|video\/[\w.+-]+|application\/pdf)$/i
+const safeMime = (mime: string | undefined) => (mime && PASSIVE_MIME.test(mime.split(';')[0].trim()) ? mime.split(';')[0].trim() : 'application/octet-stream')
+const safeHref = (url: string) => (/^(https:|blob:)/i.test(url) ? url : undefined)
+
 /** WhatsApp files are fetched through the store's token when shown. */
 function useMediaUrl(a: Attachment, channelId: string) {
   const q = useQuery({
@@ -238,14 +244,16 @@ function useMediaUrl(a: Attachment, channelId: string) {
     queryFn: async () => {
       const r = await whatsappMedia(channelId, a.media_id!)
       const bytes = Uint8Array.from(atob(r.data), (ch) => ch.charCodeAt(0))
-      return URL.createObjectURL(new Blob([bytes], { type: r.mime }))
+      return URL.createObjectURL(new Blob([bytes], { type: safeMime(r.mime) }))
     },
   })
   return { url: a.url ?? q.data, loading: q.isLoading && !!a.media_id && !a.url, error: q.error }
 }
 
 function AttachmentView({ a, channelId, out }: { a: Attachment; channelId: string; out: boolean }) {
-  const { url, loading, error } = useMediaUrl(a, channelId)
+  const media = useMediaUrl(a, channelId)
+  const { loading, error } = media
+  const url = media.url ? safeHref(media.url) : undefined
   if (a.type === 'location') {
     return <a href={`https://maps.google.com/?q=${a.lat},${a.lng}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline"><MapPin className="size-3.5" /> Location</a>
   }
@@ -259,7 +267,7 @@ function AttachmentView({ a, channelId, out }: { a: Attachment; channelId: strin
   if (a.type === 'audio') return <audio src={url} controls className="h-9 w-56 max-w-full" preload="none" />
   if (a.type === 'video') return <video src={url} controls className="max-h-64 rounded-lg" preload="metadata" />
   return (
-    <a href={url} target="_blank" rel="noreferrer" className={cn('flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs underline-offset-2 hover:underline', out ? 'bg-primary-foreground/10' : 'bg-background/60')}>
+    <a href={url} download={a.name ?? 'file'} target="_blank" rel="noreferrer" className={cn('flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs underline-offset-2 hover:underline', out ? 'bg-primary-foreground/10' : 'bg-background/60')}>
       <FileText className="size-4 shrink-0" /> <span className="truncate">{a.name ?? 'File'}</span>
     </a>
   )
