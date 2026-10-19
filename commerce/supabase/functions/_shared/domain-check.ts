@@ -291,7 +291,9 @@ const fromOldDns = (r: FoundRecord, view: DnsView): FoundRecord =>
 function matchers(target: HostingTarget) {
   if (target.provider === 'vercel') return { cname: isVercelCname, a: isVercelA }
   const cname = (host: string) => host.toLowerCase().replace(/\.$/, '') === target.cname
-  if (target.provider === 'proxy') return { cname, a: (ip: string) => ip === target.a || (!!target.aaaa && ip === target.aaaa) }
+  // On our proxy only its address counts: a CNAME to the Cloudflare target never reaches it
+  // (no custom hostname is made for a name on the proxy). A chain that ends at the address does.
+  if (target.provider === 'proxy') return { cname: (_host: string) => false, a: (ip: string) => ip === target.a || (!!target.aaaa && ip === target.aaaa) }
   return { cname, a: (_ip: string) => false }
 }
 
@@ -326,7 +328,8 @@ export async function inspectWww(domain: string, target: HostingTarget, fetcher:
   const toRoot = cname[0]?.toLowerCase() === domain.toLowerCase()
   const reaches = ips.length > 0 && ips.every((ip) => ip === target.a)
   const ok = toRoot || reaches
-  const orange = ips.length > 0 && ips.every(isCloudflare) && !!view?.nameservers.length && view.nameservers.every(isCloudflareNs)
+  // Its own A record proxied by Cloudflare (a CNAME to a name on Cloudflare also answers with Cloudflare's addresses).
+  const orange = !cname.length && ips.length > 0 && ips.every(isCloudflare) && !!view?.nameservers.length && view.nameservers.every(isCloudflareNs)
   const fix = orange ? 'Cloudflare proxy (orange cloud): set www to "DNS only"' : `Should be A ${target.a}`
   const records: FoundRecord[] = cname.length
     ? cname.slice(0, 1).map((v) => ({ type: 'CNAME', name: 'www', value: v, ok, note: ok ? (reaches ? `Leads to the store through ${v}` : 'Follows @: fixed once the A record for @ is') : `${fix} (or a CNAME to ${domain})` }))
@@ -439,18 +442,25 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   // DNS they do not count (Cloudflare verifies through the CNAME there), so none are asked for.
   // (Our own ownership record, _fullfilio.<domain>, is asked for on any DNS.)
   const expected = (opts.expect ?? []).filter((e) => !(onCloudflare && onCloudflareDns) || e.name.startsWith('_fullfilio.'))
+  const txtValues = (ans: DohAnswers | null) => only(ans, 'TXT').map((v) => v.replace(/"/g, '').trim())
   const txtAnswers = await Promise.all(expected.map((e) => doh(fetcher, view.resolver, e.name, 'TXT')))
+  // Typed with the full name at a DNS company that adds the domain itself (_fullfilio.shop.com.shop.com).
+  const doubled = await Promise.all(expected.map((e, i) => txtValues(txtAnswers[i]).some((v) => v.includes(e.value)) || !e.name.startsWith('_fullfilio.')
+    ? Promise.resolve(null) : doh(fetcher, view.resolver, `${e.name}.${apexOf(domain)}`, 'TXT')))
   const missingTxt: ExpectedRecord[] = []
   const staleTxt: string[] = []
+  const typoTxt: string[] = []
   expected.forEach((e, i) => {
-    const values = only(txtAnswers[i], 'TXT').map((v) => v.replace(/"/g, '').trim())
+    const values = txtValues(txtAnswers[i])
     const found = values.some((v) => v.includes(e.value))
-    // A record at this name with another value: left over from before the domain was added again.
+    const typo = !found && txtValues(doubled[i]).some((v) => v.includes(e.value)) ? `${e.name}.${apexOf(domain)}` : null
+    // A record at this name with another value: an old code, or one typed wrong.
     const stale = found ? [] : values.filter((v) => v.length > 0)
     if (!found) missingTxt.push(e)
+    if (typo) typoTxt.push(typo)
     staleTxt.push(...stale)
     records.push({ type: 'TXT', name: e.name === domain ? name : e.name.replace(new RegExp(`\\.${apexOf(domain).replace(/\./g, '\\.')}$`), ''), value: e.value, ok: found,
-      note: found ? 'Found' : stale.length ? `Has an old value (${stale[0]}) — change it to this one` : 'Not found yet — add it at your domain provider' })
+      note: found ? 'Found' : typo ? `Found at ${typo}: enter only the name shown here` : stale.length ? `Has another value (${stale[0]}) — change it to this one` : 'Not found yet — add it at your domain provider' })
   })
 
   // Records only the old DNS company still answers with do not count: they go away with its cache.
@@ -515,10 +525,14 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
         : `The old address is no longer in your records but some DNS servers still remember it. It clears by itself within a few hours.${dnsHost.mixed ? '' : ' If it keeps coming back after that, check your nameservers.'}` })
   }
   if (missingTxt.length) {
+    // The record names as the panel shows them (relative to the root: _fullfilio, _fullfilio.blog).
+    const txtNames = missingTxt.map((t) => (t.name === domain ? name : t.name.replace(new RegExp(`\\.${apexOf(domain).replace(/\./g, '\\.')}$`), ''))).join(', ')
     issues.push(staleTxt.length ? { code: 'TXT_MISSING', severity: 'error', title: 'Verification record has an old value',
-      detail: `The TXT record ${missingTxt.map((t) => t.name.split('.')[0]).join(', ')} still holds ${staleTxt[0]}. The domain was added again, which gives a new code: edit the record and paste the value shown below.` }
+      detail: `The TXT record ${txtNames} holds ${staleTxt[0]}, not the value shown below. Edit the record and paste the value shown below.` }
+      : typoTxt.length ? { code: 'TXT_MISSING', severity: 'error', title: 'Verification record has the wrong name',
+      detail: `It was found at ${typoTxt.join(', ')}: your DNS company adds ${apexOf(domain)} to the name by itself. Edit the record and enter only ${txtNames} as its name.` }
       : { code: 'TXT_MISSING', severity: 'error', title: 'Verification record missing',
-      detail: `Add the TXT record ${missingTxt.map((t) => (t.name === domain ? name : t.name.replace(new RegExp(`\\.${apexOf(domain).replace(/\./g, '\\.')}$`), ''))).join(', ')} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it.` })
+      detail: `Add the TXT record ${txtNames} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it. A record added just now can take up to an hour to be seen.` })
   }
   // Nothing answered at all: say so instead of claiming the records are missing.
   const reached = [a, aaaa, cname].some((x) => x !== null)
@@ -532,7 +546,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     issues.push({ code: 'CHECK_FAILED', severity: 'error', title: 'Could not check DNS right now', detail: 'The DNS resolvers did not answer. Try again in a minute.' })
   } else if (!aValues.length && !cnameValues.length) {
     issues.push({ code: 'NO_RECORDS', severity: 'error', title: 'No DNS records found',
-      detail: kind === 'apex' && target.a ? `Add an A record for @ pointing to ${target.a} at your domain provider.`
+      detail: target.a && (kind === 'apex' || target.provider === 'proxy') ? `Add an A record for ${name} pointing to ${target.a} at your domain provider.`
         : kind === 'apex' ? `Add a CNAME (or ALIAS / ANAME) record for @ pointing to ${target.cname}. If your domain provider cannot, use www.${domain} instead.`
         : `Add a CNAME record for ${name} pointing to ${target.cname} at your domain provider.` })
   } else if (orangeCloud) {
@@ -540,7 +554,9 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       detail: `In Cloudflare → ${apexOf(domain)} → DNS → Records, edit the ${name} record: it must be ${target.a ? `an A record to ${target.a} (not a CNAME or ALIAS)` : `a CNAME to ${target.cname}`} with Proxy status "DNS only" (grey cloud). It is proxied (orange) now, so your own Cloudflare answers instead of the store and the HTTPS certificate cannot be issued. It connects by itself within about 10 minutes of the change.` })
   } else if (!pointedByDns) {
     issues.push({ code: 'WRONG_TARGET', severity: 'error', title: 'DNS records point somewhere else',
-      detail: kind === 'apex' && target.a ? `Change the A record for @ to ${target.a} and delete any other A records for @.`
+      detail: target.a && (kind === 'apex' || target.provider === 'proxy')
+        ? (cnameValues.length ? `Delete the CNAME record for ${name} and add an A record for ${name} pointing to ${target.a}.`
+          : `Change the A record for ${name} to ${target.a} and delete any other A records for ${name}.`)
         : kind === 'apex' ? `Point @ at ${target.cname} with a CNAME (or ALIAS / ANAME) record and delete the A and AAAA records for @.`
         : aValues.length && !cnameValues.length ? `Delete the A record for ${name} and add a CNAME record for ${name} pointing to ${target.cname}.`
         : `Change the CNAME record for ${name} to ${target.cname}.` })
@@ -552,12 +568,13 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
         ? 'The store opens through it, but the proxy can delay certificate renewals and cache pages. In Cloudflare, set the record to "DNS only" (grey cloud).'
         : 'The proxy is not passing visitors to the store. In Cloudflare, set the record to "DNS only" (grey cloud).' })
   }
-  const strayA = aValues.filter((v) => !m.a(v) && !(proxied && isCloudflare(v)))
+  const strayA = aValues.filter((v) => !m.a(v) && !isOurs(v) && !(proxied && isCloudflare(v)))
   if (own && strayA.length && (aValues.some(m.a) || (onCloudflare && servedByUs))) {
     issues.push({ code: 'EXTRA_A', severity: 'error', title: 'Extra A records',
       detail: `Some visitors will reach ${strayA.join(', ')} instead of the store. Delete those A records.` })
   }
-  const strayAaaa = own ? aaaaValues.filter((v) => !isCloudflare(v) && !m.a(v)) : []
+  // A Cloudflare address next to records that are not proxied is a leftover too.
+  const strayAaaa = own ? aaaaValues.filter((v) => !m.a(v) && !isOurs(v) && !(proxied && isCloudflare(v))) : []
   if (strayAaaa.length) {
     issues.push({ code: 'AAAA', severity: target.provider === 'proxy' ? 'error' : 'warning', title: 'IPv6 (AAAA) records found',
       detail: `${target.aaaa ? `Change the AAAA record for ${name} to ${target.aaaa}` : `Delete the AAAA record for ${name} (${strayAaaa.join(', ')})`} at ${dnsHost.provider ?? 'your domain provider'}. Visitors on IPv6 reach another server, and the HTTPS certificate cannot be issued or renewed while it is there (it is checked over IPv6 first).` })
@@ -570,7 +587,8 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       detail: onCloudflare ? 'Add CAA records allowing letsencrypt.org and pki.goog, or the store cannot get an HTTPS certificate.'
         : 'Add a CAA record allowing letsencrypt.org, or the store cannot get an HTTPS certificate.' })
   }
-  if (pointedByDns && !tls.ok && !issues.some((i) => i.code === 'CAA' || i.code === 'AAAA')) {
+  // Not while the ownership record is missing: the proxy gets no certificate until it is found.
+  if (pointedByDns && !tls.ok && !issues.some((i) => i.code === 'CAA' || i.code === 'AAAA') && !missingTxt.some((t) => t.name.startsWith('_fullfilio.'))) {
     issues.push({ code: 'TLS_PENDING', severity: 'info', title: 'Certificate on the way', detail: 'DNS is correct. The HTTPS certificate is usually ready within a few minutes.' })
   }
   if (target.provider === 'proxy' && pointedByDns && tls.ok && tls.served_by_store === false) {

@@ -8,6 +8,7 @@
 //   /rest/v1/…, /auth/v1/…   the Cloudflare database (when DATABASE_BACKEND=cloudflare; see db/gateway.ts)
 //
 // Everything else is the site itself (Workers Static Assets, single-page app).
+import { apexOf } from '../supabase/functions/_shared/domain-check.ts'
 import type { CopyEnv } from './copy.ts'
 import { database, type DbEnv } from './db/gateway.ts'
 import { filesApi, serveFile, type FilesEnv } from './files.ts'
@@ -52,7 +53,7 @@ export function fromRootProxy(req: Request, secret: string | undefined): Request
   const ip = req.headers.get('x-fullfilio-client-ip') ?? ''
   const url = new URL(req.url)
   // Never the platform's own names (its root and every subdomain): the proxy is only for store domains.
-  const platform = url.hostname.split('.').slice(-2).join('.')
+  const platform = apexOf(url.hostname)
   const trusted = !!secret && secret.length >= 16 && sameSecret(given, secret)
     && /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,}|xn--[a-z0-9-]{2,59})$/.test(host) && host !== platform && !host.endsWith(`.${platform}`)
   if (trusted) url.host = host

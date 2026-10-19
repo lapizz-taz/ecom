@@ -170,7 +170,8 @@ function RecordsTable({ rows }: { rows: RecordRow[] }) {
 function Issues({ diag, active }: { diag: DomainDiagnosis; active: boolean }) {
   const list = diag.issues.filter((i) => i.severity !== 'info')
   if (!list.length) return null
-  const blocking = list.some((i) => i.severity === 'error')
+  // Our DNS check not answering is no fault of the domain.
+  const blocking = list.some((i) => i.severity === 'error' && i.code !== 'CHECK_FAILED')
   // Said from where the domain really stands: live or not, and whether anything blocks it.
   const heading = blocking ? (active ? 'Your store opens on this domain, but fix the following:' : 'Fix the following to connect your domain:')
     : active ? 'Your domain is connected, but we recommend you review the following:'
@@ -247,17 +248,17 @@ export function CloudflareSteps({ domain, target = 'stores.fullfilio.com' }: { d
 }
 
 /** Who runs the domain's DNS, and where to make the change there. */
-function DnsHost({ diag, rootA, sub, hideTip }: { diag: DomainDiagnosis; rootA?: boolean; sub?: string; hideTip?: boolean }) {
+function DnsHost({ diag, aName, sub, hideTip }: { diag: DomainDiagnosis; aName?: string; sub?: string; hideTip?: boolean }) {
   const host = diag.dns_host
   if (!host || !host.nameservers.length) return null
   const known = host.provider ? PROVIDER_STEPS[host.provider] : undefined
   const grey = host.provider === 'Cloudflare' ? ' Set it to DNS only (grey cloud).' : ''
-  // A subdomain is one CNAME, and the tips about the root (@) do not apply to it. A root
-  // domain on our proxy is a plain A record, which every DNS company takes.
-  const steps = known && diag.kind === 'subdomain' && sub
+  // A domain on our proxy (the root, or its www) is a plain A record, which every DNS company
+  // takes; another subdomain is one CNAME. The tips about a CNAME at the root do not apply to either.
+  const steps = known && aName
+    ? { where: known.where, tip: `For ${aName} use an A record with the address below; delete any ALIAS, CNAME or other A/AAAA record for ${aName} first.${grey}` }
+    : known && diag.kind === 'subdomain' && sub
     ? { where: known.where, tip: `Add a CNAME record named ${sub} with the value below; delete any other A, AAAA or CNAME record named ${sub} first.${grey}` }
-    : known && rootA
-    ? { where: known.where, tip: `For @ use an A record with the address below; delete any ALIAS, CNAME or other A/AAAA record for @ first.${grey}` }
     : known
   return (
     <div className="space-y-1 rounded-lg border p-2.5 text-xs">
@@ -303,7 +304,10 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const sub = d.records.find((r) => r.type === 'CNAME')?.name
   // HTTPS: DNS already right means the certificate is only waiting to be issued.
   const tlsState = !diag ? 'wait' : diag.tls.ok ? (diag.tls.served_by_store === false ? 'bad' : 'ok') : diag.pointed ? 'wait' : 'bad'
+  // Not proven the store's yet: no certificate until the ownership TXT record is found.
+  const waitingTxt = !active && d.records.some((r) => r.type === 'TXT' && r.name.startsWith('_fullfilio'))
   const tlsTitle = !diag ? 'HTTPS not checked yet'
+    : !diag.tls.ok && waitingTxt ? 'HTTPS starts once the TXT record below is found'
     : !diag.tls.ok && diag.pointed ? 'DNS is right — the HTTPS certificate is being issued (usually a few minutes)' : diag.tls.detail
 
   // min-w-0: inside the popup's grid, a wide table scrolls in its own box instead of widening the popup past the screen.
@@ -342,7 +346,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
                 try { await onUseWww() } finally { setSwitching(false) }
               }}>{switching && <Spinner />} Or use www.{d.domain} instead</Button>
             )}
-            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} rootA={d.records.some((r) => r.type === 'A' && r.name === '@')} sub={sub} hideTip={needsCloudflare} />}
+            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} aName={d.records.find((r) => r.type === 'A')?.name} sub={sub} hideTip={needsCloudflare} />}
             {diag && diag.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Records found</p>

@@ -227,7 +227,7 @@ const world = {
 
 function answers(name: string, type: RecordType, depth = 0): Array<{ name: string; type: number; data: string }> {
   // The ownership record: _fullfilio.<domain> = fullfilio-verify=<code> (code-<domain> in this model).
-  if (type === 'TXT' && name.startsWith('_fullfilio.') && !world.unproven.has(name.slice('_fullfilio.'.length))) {
+  if (type === 'TXT' && name.startsWith('_fullfilio.') && db.rows.has(name.slice('_fullfilio.'.length)) && !world.unproven.has(name.slice('_fullfilio.'.length))) {
     return [{ name, type: CODE.TXT, data: `"fullfilio-verify=code-${name.slice('_fullfilio.'.length)}"` }]
   }
   const rec = world.zone[name] ?? {}
@@ -357,6 +357,11 @@ async function post(payload: unknown, staff: string | null = 'm-a', headers: Rec
   return { status: res.status, body: await res.json() as Body }
 }
 const cron = () => post({ action: 'recheck_all' }, null, { 'x-cron-secret': 'cron-secret-for-tests' })
+/** Add, then Check: the first add never looks the ownership TXT up (the merchant has not seen the code yet). */
+async function addAndCheck(domain: string, staff = 'm-a') {
+  await post({ action: 'add', domain }, staff)
+  return post({ action: 'check', domain }, staff)
+}
 async function ask(domain: string | null) {
   const res = await handler(new Request(domain === null ? SITE : `${SITE}?domain=${encodeURIComponent(domain)}`))
   return { status: res.status, text: await res.text(), cache: res.headers.get('cache-control') }
@@ -404,17 +409,17 @@ describe('root domain on the proxy (ROOT_DOMAIN_IP set)', () => {
     expect(cfCalls()).toEqual([])
     const row = db.rows.get('shop.com')!
     expect(row.status).toBe('VERIFYING')
-    expect(recordsOf(row)).toEqual([['A', '@', IP], ['A', 'www', IP]])
+    expect(recordsOf(row)).toEqual([['A', '@', IP], ['A', 'www', IP], ['TXT', '_fullfilio', 'fullfilio-verify=code-shop.com']])
     expect(issueCodes(row)).toContain('NO_RECORDS')
   })
 
-  it('goes ACTIVE once A @ points at the proxy and the store answers over HTTPS (add and check, no Cloudflare)', async () => {
+  it('goes ACTIVE once A @ points at the proxy, the TXT is there and the store answers over HTTPS (no Cloudflare)', async () => {
     world.zone['shop.com'] = { A: [IP] }
     world.zone['www.shop.com'] = { A: [IP] }
     const added = await post({ action: 'add', domain: 'shop.com' })
-    expect(added.body.domain).toMatchObject({ domain: 'shop.com', status: 'ACTIVE', detail: 'Live — the store opens on this domain with HTTPS', is_primary: true })
+    expect(added.body.domain).toMatchObject({ domain: 'shop.com', status: 'VERIFYING', detail: 'Waiting for the TXT record below (it proves the domain is yours)', is_primary: true })
     const checked = await post({ action: 'check', domain: 'shop.com' })
-    expect(checked.body.domain?.status).toBe('ACTIVE')
+    expect(checked.body.domain).toMatchObject({ status: 'ACTIVE', detail: 'Live — the store opens on this domain with HTTPS' })
     expect(issueCodes(db.rows.get('shop.com'))).toEqual([])
     expect(cfCalls()).toEqual([])
   })
@@ -422,7 +427,7 @@ describe('root domain on the proxy (ROOT_DOMAIN_IP set)', () => {
   it('with the A record right but no certificate yet, it waits for the first visit', async () => {
     world.zone['shop.com'] = { A: [IP] }
     world.https['shop.com'] = 'cert'
-    await post({ action: 'add', domain: 'shop.com' })
+    await addAndCheck('shop.com')
     const row = db.rows.get('shop.com')!
     expect(row.status).toBe('VERIFYING')
     expect(row.detail).toBe('DNS is right — the HTTPS certificate is issued on the first visit (usually under a minute)')
@@ -440,12 +445,12 @@ describe('root domain on the proxy (ROOT_DOMAIN_IP set)', () => {
   it('ROOT_DOMAIN_IPV6 adds AAAA records for @ and www', async () => {
     H.env.ROOT_DOMAIN_IPV6 = '2001:db8::70'
     await post({ action: 'add', domain: 'shop.com' })
-    expect(recordsOf(db.rows.get('shop.com'))).toEqual([['A', '@', IP], ['AAAA', '@', '2001:db8::70'], ['A', 'www', IP], ['AAAA', 'www', '2001:db8::70']])
+    expect(recordsOf(db.rows.get('shop.com'))).toEqual([['A', '@', IP], ['AAAA', '@', '2001:db8::70'], ['A', 'www', IP], ['AAAA', 'www', '2001:db8::70'], ['TXT', '_fullfilio', 'fullfilio-verify=code-shop.com']])
   })
 
   it('a missing www record is a warning on the root, never holding it back', async () => {
     world.zone['shop.com'] = { A: [IP] }
-    await post({ action: 'add', domain: 'shop.com' })
+    await addAndCheck('shop.com')
     const row = db.rows.get('shop.com')!
     expect(row.status).toBe('ACTIVE')
     expect(row.diagnostics?.issues).toEqual([expect.objectContaining({ code: 'WWW_SETUP', severity: 'warning' })])
@@ -454,7 +459,7 @@ describe('root domain on the proxy (ROOT_DOMAIN_IP set)', () => {
   it('shop.com.bd is a root on the proxy too (no Cloudflare, A @ and A www)', async () => {
     await post({ action: 'add', domain: 'shop.com.bd' })
     expect(cfCalls()).toEqual([])
-    expect(recordsOf(db.rows.get('shop.com.bd'))).toEqual([['A', '@', IP], ['A', 'www', IP]])
+    expect(recordsOf(db.rows.get('shop.com.bd'))).toEqual([['A', '@', IP], ['A', 'www', IP], ['TXT', '_fullfilio', 'fullfilio-verify=code-shop.com.bd']])
   })
 
   it('removing a proxied root does not depend on Cloudflare being reachable', async () => {
@@ -476,8 +481,10 @@ describe('root domain on the proxy (ROOT_DOMAIN_IP set)', () => {
 describe('without ROOT_DOMAIN_IP (Cloudflare only, the old path)', () => {
   beforeEach(() => { delete H.env.ROOT_DOMAIN_IP })
 
-  it('a root is attached as a custom hostname and asks for a CNAME at @ (Cloudflare DNS needed)', async () => {
-    const res = await post({ action: 'add', domain: 'shop.com' })
+  it('a root is attached as a custom hostname once proven and asks for a CNAME at @ (Cloudflare DNS needed)', async () => {
+    expect((await post({ action: 'add', domain: 'shop.com' })).status).toBe(200)
+    expect(cfPosts()).toEqual([])
+    const res = await post({ action: 'check', domain: 'shop.com' })
     expect(res.status).toBe(200)
     expect(cfPosts().map((c) => c.body?.hostname)).toEqual(['shop.com'])
     const row = db.rows.get('shop.com')!
@@ -494,9 +501,9 @@ describe('without ROOT_DOMAIN_IP (Cloudflare only, the old path)', () => {
 })
 
 describe('subdomain on Cloudflare for SaaS', () => {
-  it('adding creates the custom hostname and lists the ownership and certificate TXT records', async () => {
+  it('once proven, the custom hostname is created and its ownership and certificate TXT records are listed', async () => {
     world.cf.sslTxt = true
-    const res = await post({ action: 'add', domain: 'shop.example.com' })
+    const res = await addAndCheck('shop.example.com')
     expect(res.status).toBe(200)
     expect(cfPosts()[0].body).toEqual({ hostname: 'shop.example.com', ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } })
     const row = db.rows.get('shop.example.com')!
@@ -515,11 +522,12 @@ describe('subdomain on Cloudflare for SaaS', () => {
     expect(world.cf.hosts.size).toBe(1)
   })
 
-  it('Cloudflare refusing (403) answers a clear 422 and is logged', async () => {
+  it('Cloudflare refusing (403) answers a clear error and is logged', async () => {
+    expect((await post({ action: 'add', domain: 'shop.example.com' })).status).toBe(200)
     world.cf.mode = '403'
-    const res = await post({ action: 'add', domain: 'shop.example.com' })
-    expect(res.status).toBe(422)
-    expect(res.body.error).toMatchObject({ code: 'DOMAIN_REJECTED', message: 'Cloudflare would not add the domain: Authentication error' })
+    const res = await post({ action: 'check', domain: 'shop.example.com' })
+    expect(res.status).toBe(502)
+    expect(res.body.error).toMatchObject({ code: 'UPSTREAM_ERROR', message: 'Cloudflare answered: Authentication error' })
     expect(H.logs).toContainEqual(expect.objectContaining({ level: 'WARN', message: expect.stringContaining('shop.example.com') }))
   })
 
@@ -846,17 +854,19 @@ describe('concurrency', () => {
   it('two staff adding the same subdomain at once: one hostname, one row, both answered', async () => {
     const [a, b] = await Promise.all([post({ action: 'add', domain: 'sub.shop.com' }), post({ action: 'add', domain: 'sub.shop.com' })])
     expect([a.status, b.status]).toEqual([200, 200])
+    await Promise.all([post({ action: 'check', domain: 'sub.shop.com' }), post({ action: 'check', domain: 'sub.shop.com' })])
     expect(world.cf.hosts.size).toBe(1)
     expect([...db.rows.keys()]).toEqual(['sub.shop.com'])
   })
 
-  it('a check while the add is still waiting on Cloudflare attaches the hostname once', async () => {
+  it('a check while another check is still waiting on Cloudflare attaches the hostname once', async () => {
+    await post({ action: 'add', domain: 'sub.shop.com' })
     let arrived!: () => void
     const postArrived = new Promise<void>((r) => { arrived = r })
     let release!: () => void
     world.cf.gatePost = new Promise<void>((r) => { release = r })
     world.cf.onPost = () => { world.cf.onPost = null; arrived() }
-    const adding = post({ action: 'add', domain: 'sub.shop.com' })
+    const adding = post({ action: 'check', domain: 'sub.shop.com' })
     await postArrived
     const checked = await post({ action: 'check', domain: 'sub.shop.com' })
     release()
@@ -978,7 +988,8 @@ describe('ownership (TXT _fullfilio with the store\'s code)', () => {
     world.zone['shop.com'] = { A: [IP] }
     world.zone['www.shop.com'] = { A: [IP] }
     world.unproven.add('shop.com')
-    const added = await post({ action: 'add', domain: 'shop.com' })
+    await post({ action: 'add', domain: 'shop.com' })
+    const added = await post({ action: 'check', domain: 'shop.com' })
     expect(added.body.domain).toMatchObject({ status: 'VERIFYING', detail: 'Verification record missing' })
     expect(recordsOf(db.rows.get('shop.com'))).toContainEqual(['TXT', '_fullfilio', 'fullfilio-verify=code-shop.com'])
     expect(issueCodes(db.rows.get('shop.com'))).toContain('TXT_MISSING')
@@ -1016,7 +1027,7 @@ describe('ownership (TXT _fullfilio with the store\'s code)', () => {
 
   it('removing a domain clears the proof: added again, it proves ownership again', async () => {
     world.zone['shop.com'] = { A: [IP] }
-    await post({ action: 'add', domain: 'shop.com' })
+    await addAndCheck('shop.com')
     expect(db.rows.get('shop.com')!.verified_at).not.toBeNull()
     await post({ action: 'remove', domain: 'shop.com' })
     expect(db.rows.get('shop.com')!.verified_at).toBeNull()

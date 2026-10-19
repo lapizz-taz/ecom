@@ -151,7 +151,7 @@ function DomainsTab() {
             <li>Add your domain here.</li>
             {rootIp
               ? <li>Add the DNS records shown, at any DNS company. <b className="text-foreground">shop.com</b>: an <b className="text-foreground">A</b> record for <b className="text-foreground">@</b> and one for <b className="text-foreground">www</b>. A subdomain (<b className="text-foreground">shop.example.com</b>): a <b className="text-foreground">CNAME</b>. Plus one <b className="text-foreground">TXT</b> record that proves the domain is yours (only until it is live).</li>
-              : <li>Add the DNS record shown. <b className="text-foreground">www.shop.com</b>: a <b className="text-foreground">CNAME</b>, at any DNS company. <b className="text-foreground">shop.com</b>: only on <b className="text-foreground">Cloudflare</b> DNS (a CNAME at @), not on Hostinger.</li>}
+              : <li>Add the DNS records shown. <b className="text-foreground">www.shop.com</b>: a <b className="text-foreground">CNAME</b>, at any DNS company. <b className="text-foreground">shop.com</b>: only on <b className="text-foreground">Cloudflare</b> DNS (a CNAME at @), not on Hostinger. Plus one <b className="text-foreground">TXT</b> record that proves the domain is yours (only until it is live).</li>}
             <li>Open the domain and click <b className="text-foreground">Check again</b>. You see each record, every region and HTTPS. DNS changes can take minutes to a few hours.</li>
             <li>On Cloudflare, set the record to <b className="text-foreground">DNS only</b> (grey cloud).</li>
             <li>The first domain is the <b className="text-foreground">primary</b>; the others redirect to it.</li>
@@ -187,7 +187,7 @@ function DomainsTab() {
     </Dialog>
     <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
       description={`The store stops opening on this domain. Your default address keeps working.${domains.find((d) => d.domain === removing)?.records.some((r) => r.type === 'TXT')
-        ? ' If you add it again later, it gets a new verification code and you must update the TXT record at your domain provider.' : ''} Waiting? No need to remove it: it keeps checking by itself.`} confirmLabel="Remove" destructive
+        ? ' If you add it again later, keep its TXT record: it proves the domain is yours again.' : ''} Waiting? No need to remove it: it keeps checking by itself.`} confirmLabel="Remove" destructive
       onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); close(); refresh() }} />
     </>
   )
