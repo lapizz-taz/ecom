@@ -4574,6 +4574,7 @@ CREATE TABLE store_domains (
   diagnostics TEXT CHECK (diagnostics IS NULL OR json_valid(diagnostics)),
   verify_code TEXT,
   verified_at TEXT CHECK (verified_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', verified_at) = verified_at),
+  removed_at TEXT CHECK (removed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', removed_at) = removed_at),
   PRIMARY KEY (id),
   CONSTRAINT store_domains_status_check CHECK (status IN ('PENDING', 'VERIFYING', 'ACTIVE', 'ERROR', 'MANUAL', 'REMOVED')),
   CONSTRAINT store_domains_created_by_fkey FOREIGN KEY (created_by) REFERENCES profiles (id),

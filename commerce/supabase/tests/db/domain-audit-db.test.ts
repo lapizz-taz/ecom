@@ -808,7 +808,7 @@ describe('ownership (the _fullfilio TXT record)', () => {
       expect(await known(db, 'zz-claim.test')).toBe(true)
     }))
 
-  it('every claim has its own code; removing clears the proof and a re-add keeps the code', () =>
+  it('every claim has its own code; a removed domain serves nobody but added back within 7 days stays proven', () =>
     inTx(async (db) => {
       await platform(db)
       const a = await store(db)
@@ -821,13 +821,44 @@ describe('ownership (the _fullfilio TXT record)', () => {
       expect(codes[0].verify_code).not.toBe(codes[1].verify_code)
       await save(db, a, 'zz-one.test', 'ACTIVE')
       await remove(db, a, 'zz-one.test')
+      expect(await known(db, 'zz-one.test')).toBe(false)
+      expect(await resolve(db, 'zz-one.test')).toEqual({ kind: 'missing' })
       await asSystem(db, null)
-      expect((await db.query(`select verified_at from public.store_domains where domain = 'zz-one.test'`)).rows[0].verified_at).toBeNull()
+      const removed = (await db.query(`select verified_at, removed_at from public.store_domains where domain = 'zz-one.test'`)).rows[0]
+      expect(removed.verified_at).not.toBeNull()
+      expect(removed.removed_at).not.toBeNull()
+      // Back the same day: still proven, same code, the store opens there again at once.
       await guard(db, a, 'zz-one.test', 'add')
       await asSystem(db, null)
-      expect((await db.query(`select verify_code, verified_at from public.store_domains where domain = 'zz-one.test'`)).rows[0])
-        .toEqual({ verify_code: codes[0].verify_code, verified_at: null })
+      expect((await db.query(`select verify_code, verified_at is not null as proven, removed_at from public.store_domains where domain = 'zz-one.test'`)).rows[0])
+        .toEqual({ verify_code: codes[0].verify_code, proven: true, removed_at: null })
+      expect(await known(db, 'zz-one.test')).toBe(true)
+      // Removed 8 days ago: proves ownership again.
+      await remove(db, a, 'zz-one.test')
+      await asSystem(db, null)
+      await db.query(`update public.store_domains set removed_at = now() - interval '8 days' where domain = 'zz-one.test'`)
+      await guard(db, a, 'zz-one.test', 'add')
+      await asSystem(db, null)
+      expect((await db.query(`select verify_code, verified_at, removed_at from public.store_domains where domain = 'zz-one.test'`)).rows[0])
+        .toEqual({ verify_code: codes[0].verify_code, verified_at: null, removed_at: null })
       expect(await known(db, 'zz-one.test')).toBe(false)
+    }))
+
+  it('a removed proven domain taken by another store loses its proof for good', () =>
+    inTx(async (db) => {
+      await platform(db)
+      const a = await store(db)
+      const b = await store(db)
+      await add(db, a, 'zz-gone.test', 'ACTIVE')
+      await remove(db, a, 'zz-gone.test')
+      await guard(db, b, 'zz-gone.test', 'add')
+      await asSystem(db, null)
+      expect((await db.query(`select merchant_id, verified_at from public.store_domains where domain = 'zz-gone.test'`)).rows)
+        .toEqual([{ merchant_id: b.m, verified_at: null }])
+      expect(await known(db, 'zz-gone.test')).toBe(false)
+      expect(await resolve(db, 'zz-gone.test')).toEqual({ kind: 'missing' })
+      await as(db, a)
+      await expectError(db, `select public.store_domain_guard('zz-gone.test', 'add')`, [], /DUPLICATE/)
     }))
 
   it('a proven twin opens the store even while the other name is still being proven', () =>

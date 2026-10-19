@@ -186,8 +186,10 @@ function DomainsTab() {
       </DialogContent>
     </Dialog>
     <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
-      description={`The store stops opening on this domain. Your default address keeps working.${domains.find((d) => d.domain === removing)?.records.some((r) => r.type === 'TXT')
-        ? ' If you add it again later, keep its TXT record: it proves the domain is yours again.' : ''} Waiting? No need to remove it: it keeps checking by itself.`} confirmLabel="Remove" destructive
+      description={`The store stops opening on this domain. Your default address keeps working.${domains.find((d) => d.domain === removing)?.verified_at
+        ? ' Added back within 7 days, it reconnects without proving it again; after that it needs its TXT record.'
+        : domains.find((d) => d.domain === removing)?.records.some((r) => r.type === 'TXT')
+          ? ' If you add it again later, keep its TXT record: it proves the domain is yours again.' : ''} Waiting? No need to remove it: it keeps checking by itself.`} confirmLabel="Remove" destructive
       onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); close(); refresh() }} />
     </>
   )
