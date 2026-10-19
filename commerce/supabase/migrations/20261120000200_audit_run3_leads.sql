@@ -26,6 +26,9 @@ begin
   if position(p_marker in v_old) > 0 then
     return; -- already patched
   end if;
+  -- Pasted into an editor on Windows the text arrives with CRLF line ends: compare without them.
+  p_from := replace(p_from, E'\r', '');
+  p_to := replace(p_to, E'\r', '');
   v_hits := (length(v_old) - length(replace(v_old, p_from, ''))) / length(p_from);
   if v_hits <> 1 then
     raise exception 'audit run 3 leads: % has changed (% matches for "%")', p_fn, v_hits, left(p_from, 60);
@@ -46,6 +49,8 @@ begin
     return; -- already patched
   end if;
   v_new := v_old;
+  -- Pasted into an editor on Windows the text arrives with CRLF line ends: compare without them.
+  p_pairs := array(select replace(x, E'\r', '') from unnest(p_pairs) with ordinality u(x, o) order by o);
   for i in 1 .. array_length(p_pairs, 1) by 2 loop
     v_hits := (length(v_old) - length(replace(v_old, p_pairs[i], ''))) / length(p_pairs[i]);
     if v_hits <> 1 then
