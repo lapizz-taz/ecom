@@ -3,10 +3,10 @@
 // level shows only rows the caller may see; results are assembled here.
 import { decode, type SqlValue } from '../codec.ts'
 import type { Context } from '../context.ts'
-import { DbError } from '../errors.ts'
+import { DbError, permissionDenied } from '../errors.ts'
 import { quoteId } from '../ident.ts'
 import { columnsOf, table, view, type ColumnMeta } from '../meta.ts'
-import { requireGrant, secure } from '../policy.ts'
+import { readableColumns, requireGrant, secure } from '../policy.ts'
 import type { Row, Sql } from '../sql.ts'
 import type { Level, ParsedQuery, SelectItem } from './parse.ts'
 import { resolve, type Relationship } from './relations.ts'
@@ -28,18 +28,20 @@ interface Plan {
 
 const emptyLevel: Level = { filters: [], order: [] }
 
-function sourceOf(name: string): Source {
+function sourceOf(name: string, ctx: Context): Source {
   const columns = columnsOf(name)
   if (!columns) throw new DbError('42P01', `relation "public.${name}" does not exist`)
-  return { name, alias: quoteId(name), columns }
+  return { name, alias: quoteId(name), columns, readable: readableColumns(name, ctx) }
 }
 
-function plan(name: string, items: SelectItem[], levels: Map<string, Level>, path: string): Plan {
-  const source = sourceOf(name)
+function plan(name: string, items: SelectItem[], levels: Map<string, Level>, path: string, ctx: Context): Plan {
+  const source = sourceOf(name, ctx)
   const outs: Out[] = []
   const embeds: Plan['embeds'] = []
   for (const item of items) {
     if (item.kind === 'star') {
+      // As in Postgres: * needs every column, so a role limited to some of them is refused.
+      if (source.readable) permissionDenied(`table ${name}`)
       for (const [c, meta] of Object.entries(source.columns)) outs.push({ key: c, sql: `${source.alias}.${quoteId(c)}`, col: meta })
     } else if (item.kind === 'column') {
       const f = fieldSql(source, item.name, item.json)
@@ -52,7 +54,7 @@ function plan(name: string, items: SelectItem[], levels: Map<string, Level>, pat
       const childPath = path ? `${path}.${item.alias ?? item.relation}` : item.alias ?? item.relation
       const level = levels.get(childPath) ?? levels.get(path ? `${path}.${item.relation}` : item.relation) ?? emptyLevel
       const childLevels = levels
-      embeds.push({ item, rel, path: childPath, plan: { ...plan(rel.target, item.select, childLevels, childPath), level }, keyCols: rel.parentColumns })
+      embeds.push({ item, rel, path: childPath, plan: { ...plan(rel.target, item.select, childLevels, childPath, ctx), level }, keyCols: rel.parentColumns })
       if (item.spread && !rel.toOne) throw new DbError('PGRST119', `A spread operation on '${item.relation}' is only possible on a to-one relationship`)
     }
   }
@@ -174,7 +176,7 @@ function runLevel(env: ReadEnv, p: Plan, scope: Scope | null, page: boolean): Ar
 
 export function read(env: ReadEnv, name: string, q: ParsedQuery, opts: { count?: boolean; rows?: boolean } = {}): { rows: Array<Record<string, unknown>>; total: number | null } {
   if (!table(name) && !view(name)) throw new DbError('42P01', `relation "public.${name}" does not exist`)
-  const p = plan(name, q.select, q.levels, '')
+  const p = plan(name, q.select, q.levels, '', env.ctx)
   const rows = opts.rows === false ? [] : runLevel(env, p, null, true).map((r) => r.obj)
   let total: number | null = null
   if (opts.count) {
@@ -193,7 +195,7 @@ export function read(env: ReadEnv, name: string, q: ParsedQuery, opts: { count?:
 export function readByKeys(env: ReadEnv, name: string, q: ParsedQuery, keys: SqlValue[][]): Array<Record<string, unknown>> {
   if (!keys.length) return []
   const pk = table(name)!.pk
-  const p = plan(name, q.select, q.levels, '')
+  const p = plan(name, q.select, q.levels, '', env.ctx)
   const rows = runLevel(env, { ...p, level: emptyLevel }, { columns: pk, keys }, false)
   if (rows.length < new Set(keys.map((k) => JSON.stringify(k))).size) {
     throw new DbError('42501', `new row violates row-level security policy for table "${name}"`)

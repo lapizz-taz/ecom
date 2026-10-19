@@ -240,6 +240,9 @@ const CONTEXT = {
   '_support_read_only': () => '{{support_read_only}}',
   'current_role_code': () => '{{role_code}}',
   'is_system_context': () => '{{is_system}}',
+  // public._can_read_catalog(): any of these permissions (kept in step with the migrations).
+  '_can_read_catalog': () => ['products.view', 'inventory.view', 'orders.create', 'purchases.view', 'production.view', 'finance.view', 'marketing.view']
+    .map((p) => `{{perm:${p}}}`).join(' OR ').replace(/^(.*)$/, '($1)'),
   'has_permission': (args) => {
     if (args.length !== 1 || args[0].t !== 'str') throw new Untranslatable('has_permission with a non-literal code')
     if (!/^[a-z_]+\.[a-z_]+$/.test(args[0].v)) throw new Untranslatable(`odd permission code ${args[0].v}`)

@@ -246,20 +246,18 @@ describe('advance payment enforcement', () => {
 })
 
 describe('storefront lookups before the order is placed', () => {
-  it('are limited per visitor and per store', () =>
+  it('are limited per visitor and per store, counting each lookup as it is allowed', () =>
     inTx(async (db) => {
       await setSetting(db, 'fraud', { checkout_lookups: { per_visitor: 2, per_hour: 3 } })
       const ip = '203.0.113.9'
-      const hash = await value<string>(db, `select encode(sha256(convert_to($1, 'UTF8')), 'hex')`, [ip])
       await asService(db)
+      // Every yes takes a slot at once, so lookups still running are counted too.
       expect(await value(db, `select public.checkout_lookup_allowed($1)`, [ip])).toBe(true)
-      for (const phone of ['01712000030', '01712000031']) await check(db, phone, { context: { origin: 'checkout', ip_hash: hash } })
-      await asService(db)
+      expect(await value(db, `select public.checkout_lookup_allowed($1)`, [ip])).toBe(true)
       expect(await value(db, `select public.checkout_lookup_allowed($1)`, [ip])).toBe(false)
       expect(await value(db, `select public.checkout_lookup_allowed('198.51.100.1')`)).toBe(true)
-      await check(db, '01712000032', { context: { origin: 'checkout', ip_hash: 'other' } })
-      await asService(db)
       expect(await value(db, `select public.checkout_lookup_allowed('198.51.100.1')`)).toBe(false)
+      expect(await value(db, `select count(*)::int from public.checkout_lookup_slots`)).toBe(3)
       // Only trusted server code may ask.
       const staff = await createStaff(db, 'ADMIN')
       await asUser(db, staff)

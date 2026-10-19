@@ -89,13 +89,28 @@ export function condition(name: string, ctx: Context, cmd: Exclude<Command, 'ALL
   return parts.join(' AND ')
 }
 
-/** Table privileges (GRANT) for the API roles; definer code and the service role have all. */
+/**
+ * Table privileges (GRANT) for the API roles; definer code and the service role have all.
+ * A role with SELECT on some columns only passes for 'select'; the reader then limits the
+ * columns it touches to readableColumns().
+ */
 export function requireGrant(name: string, ctx: Context, privilege: 'select' | 'insert' | 'update' | 'delete', role: DbRole = roleOf(ctx)): void {
   // the role the statement runs as (SET ROLE, SECURITY DEFINER), not only who signed in
   if (role !== 'anon' && role !== 'authenticated') return
   const grants = table(name)?.grants ?? view(name)?.grants
   if (!grants) permissionDenied(`table ${name}`)
-  if (!(grants![role as 'anon' | 'authenticated'] ?? []).includes(privilege)) permissionDenied(`table ${name}`)
+  if ((grants![role as 'anon' | 'authenticated'] ?? []).includes(privilege)) return
+  if (privilege === 'select' && table(name)?.columnGrants?.[role as 'anon' | 'authenticated']?.select) return
+  permissionDenied(`table ${name}`)
+}
+
+/** The columns the caller may read, or null when it may read them all (table-wide SELECT, definer code). */
+export function readableColumns(name: string, ctx: Context, role: DbRole = roleOf(ctx)): Set<string> | null {
+  if (role !== 'anon' && role !== 'authenticated') return null
+  const t = table(name)
+  if (!t || (t.grants[role] ?? []).includes('select')) return null
+  const cols = t.columnGrants?.[role]?.select
+  return cols ? new Set(cols) : null
 }
 
 let viewCompiler: ((name: string, ctx: Context, role: DbRole) => string | undefined) | null = null

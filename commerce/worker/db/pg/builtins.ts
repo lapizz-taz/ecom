@@ -90,9 +90,62 @@ const POSIX: Record<string, string> = {
 // patterns are short; cap the length so a crafted one can't be a CPU DoS.
 const MAX_REGEX_PATTERN = 1000
 
+/**
+ * True when the pattern repeats a group that can itself match in more than one way:
+ * a group with an inner unbounded quantifier, repeated without bound (or more than
+ * ten times), like (\d+)+ or (.*a){20}; or an alternation repeated without bound,
+ * like (a|a)*. JavaScript's backtracking engine can take exponential time on those,
+ * and here that would stall the one engine every store shares.
+ */
+export function nestedQuantifier(pattern: string): boolean {
+  const stack: Array<{ inner: boolean; alt: boolean }> = []
+  let inClass = false
+  const quantAt = (i: number): { unbounded: boolean; max: number } | null => {
+    const c = pattern[i]
+    if (c === '*' || c === '+') return { unbounded: true, max: Infinity }
+    if (c === '?') return { unbounded: false, max: 1 }
+    if (c === '{') {
+      const m = /^\{(\d*)(,?)(\d*)\}/.exec(pattern.slice(i))
+      if (!m) return null
+      if (m[2] && !m[3]) return { unbounded: true, max: Infinity }
+      return { unbounded: false, max: Number(m[3] || m[1] || 0) }
+    }
+    return null
+  }
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]
+    if (c === '\\') { i++; continue }
+    if (inClass) { if (c === ']') inClass = false; continue }
+    if (c === '[') { inClass = true; continue }
+    if (c === '(') { stack.push({ inner: false, alt: false }); continue }
+    if (c === '|' && stack.length) { stack[stack.length - 1].alt = true; continue }
+    if (c === ')') {
+      const g = stack.pop()
+      if (!g) continue
+      const q = quantAt(i + 1)
+      if (q && g.inner && (q.unbounded || q.max > 10)) return true
+      if (q && g.alt && q.unbounded) return true
+      // The group's own quantifier counts as an inner one for the groups around it.
+      if (stack.length && (g.inner || (q && q.unbounded))) stack[stack.length - 1].inner = true
+      continue
+    }
+    const q = quantAt(i)
+    if (q?.unbounded && stack.length) stack[stack.length - 1].inner = true
+  }
+  return false
+}
+
+// Patterns written in the schema's own code (string literals the engine has evaluated) are
+// ours and may nest; a pattern that arrives as data (a store's phone pattern, a variable) may not.
+const schemaLiterals = new Set<string>()
+export function noteLiteral(s: string): void {
+  if (s.length <= MAX_REGEX_PATTERN && schemaLiterals.size < 50_000) schemaLiterals.add(s)
+}
+
 /** A Postgres (ARE) regular expression as a JavaScript one. */
 export function pgRegex(pattern: string, flags = ''): RegExp {
   if (pattern.length > MAX_REGEX_PATTERN) return err('2201B', `invalid regular expression: pattern too long (max ${MAX_REGEX_PATTERN})`)
+  if (!schemaLiterals.has(pattern) && nestedQuantifier(pattern)) return err('2201B', 'invalid regular expression: nested repetition (like (a+)+) is not allowed')
   let p = pattern
   let f = flags.replace(/[^gi]/g, '')
   const embedded = /^\(\?([a-z]+)\)/.exec(p)

@@ -5,7 +5,7 @@ import { DbError } from '../errors.ts'
 import { nextval } from '../writer.ts'
 import type { CallExpr, Expr, Select } from './ast.ts'
 import { decodeSql } from './bridge.ts'
-import { aggregates, builtins, jsonConcat, jsonContains, jsonDelete, jsonGet, jsonGetText, jsonHasKey, jsonPath, likeRegex, msOf, fromMs, pgRegex, windowFunctions } from './builtins.ts'
+import { aggregates, builtins, jsonConcat, jsonContains, jsonDelete, jsonGet, jsonGetText, jsonHasKey, jsonPath, likeRegex, msOf, fromMs, noteLiteral, pgRegex, windowFunctions } from './builtins.ts'
 import { SERVER_SETTINGS } from './catalog.ts'
 import { runSql } from './run.ts'
 import { FLOAT, NotSupported, type Engine, type Typed, type Vars } from './runtime.ts'
@@ -61,6 +61,7 @@ export class Evaluator {
         if (e.v === null) return NULLT
         if (typeof e.v === 'boolean') return BOOL(e.v)
         if (typeof e.v === 'number') return e.type === 'int' ? T('int', e.v) : { t: 'numeric', v: e.v, s: e.s }
+        noteLiteral(e.v)
         return T('unknown', e.v)
       case 'value':
         return { t: e.type, v: e.v, s: e.s }

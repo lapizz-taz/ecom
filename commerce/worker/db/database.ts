@@ -9,24 +9,16 @@ import * as live from './realtime.ts'
 import type { SocketState } from './realtime.ts'
 import { authSecret, type TokenEnv, verifyAccessToken } from './tokens.ts'
 import { Context, type Identity } from './context.ts'
+import { type Caller, identityFor, sessionEnded } from './identity.ts'
 import { migrate } from './migrate.ts'
 import { errorResponse, handleRest, type RestRequest, type RestResponse } from './rest/index.ts'
 import { durableSql, type Sql } from './sql.ts'
 import { authAdmin, type AuthAdminRequest } from './users.ts'
 
-/** What the Worker knows about the caller after checking the token. */
-export interface Caller {
-  role: Identity['role']
-  /** Account id of a verified access token of a session opened here (worker/db/auth.ts). */
-  userId?: string | null
-  /** Clerk user id (user_…) of a verified Clerk session token. */
-  clerkUserId?: string | null
-  sessionId?: string | null
-  email?: string | null
-  merchantHeader?: string | null
-  userAgent?: string | null
-  ip?: string | null
-}
+export type { Caller }
+
+const MAX_SOCKETS = 5000
+const MAX_SOCKETS_PER_IP = 20
 
 export class Database extends DurableObject {
   protected readonly sql: Sql
@@ -46,33 +38,7 @@ export class Database extends DurableObject {
 
   /** The account linked to a Clerk user (blocked accounts get none). */
   private identity(caller: Caller): Identity {
-    let uid: string | null = null
-    if (caller.role === 'authenticated' && (caller.userId || caller.clerkUserId)) {
-      const u = caller.userId
-        ? this.sql.all('SELECT id, banned_until FROM users WHERE id = ?', [caller.userId])[0]
-        : this.sql.all('SELECT id, banned_until FROM users WHERE clerk_user_id = ?', [caller.clerkUserId!])[0]
-      if (u && !(u.banned_until && String(u.banned_until) > new Date().toISOString())) uid = String(u.id)
-    }
-    if (uid && caller.sessionId) this.recordSession(caller.sessionId, uid)
-    return {
-      role: caller.role,
-      uid,
-      sessionId: caller.sessionId ?? null,
-      email: caller.email ?? null,
-      merchantHeader: caller.merchantHeader ?? null,
-      userAgent: caller.userAgent ?? null,
-      ip: caller.ip ?? null,
-    }
-  }
-
-  /**
-   * auth.sessions: a session is recorded the first time it is seen (its start is what staff
-   * session limits measure). One that was signed out stays out: it is not recorded again, so
-   * platform checks keep refusing it, as Supabase does after a sign-out.
-   */
-  private recordSession(id: string, uid: string): void {
-    if (this.sql.all('SELECT 1 FROM sessions WHERE id = ? UNION ALL SELECT 1 FROM _ended_sessions WHERE id = ? LIMIT 1', [id, id]).length) return
-    this.sql.run('INSERT OR IGNORE INTO sessions (id, user_id) VALUES (?, ?)', [id, uid])
+    return identityFor(this.sql, caller)
   }
 
   async rest(req: RestRequest, caller: Caller): Promise<RestResponse> {
@@ -128,9 +94,14 @@ export class Database extends DurableObject {
     if (!url.pathname.endsWith('/realtime/v1/websocket') || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
       return new Response('Not found', { status: 404 })
     }
+    // Bounded: a few sockets per visitor and a ceiling for the whole database, so nobody can
+    // hold open enough connections to crowd out everyone else.
+    const ip = (request.headers.get('cf-connecting-ip') ?? '').slice(0, 64) || 'unknown'
+    if (this.ctx.getWebSockets().length >= MAX_SOCKETS) return new Response('Too many live connections', { status: 503 })
+    if (this.ctx.getWebSockets(`ip:${ip}`).length >= MAX_SOCKETS_PER_IP) return new Response('Too many live connections', { status: 429 })
     const pair = new WebSocketPair()
     const [client, server] = Object.values(pair)
-    this.ctx.acceptWebSocket(server)
+    this.ctx.acceptWebSocket(server, [`ip:${ip}`])
     const state: SocketState = { vsn: url.searchParams.get('vsn') ?? '1.0.0', uid: null, sid: null, exp: 0, subs: [], next: 0 }
     server.serializeAttachment(state)
     return new Response(null, { status: 101, webSocket: client })
@@ -153,6 +124,7 @@ export class Database extends DurableObject {
     if (!claims || claims === 'expired') return null
     const u = this.sql.all('SELECT banned_until FROM users WHERE id = ?', [claims.sub])[0]
     if (!u || (u.banned_until && String(u.banned_until) > new Date().toISOString())) return null
+    if (claims.session_id && sessionEnded(this.sql, claims.session_id)) return null
     return { uid: claims.sub, sid: claims.session_id, exp: claims.exp }
   }
 

@@ -269,3 +269,49 @@ describe('WhatsApp sign-up requests', () => {
       await expectError(db, `select public.public_signup_request($1)`, [request()], /RATE_LIMITED/)
     }))
 })
+
+describe('open leads (run 3)', () => {
+  it('the ad beacon learns only this store\'s addresses and its active products\' prices', () =>
+    inTx(async (db) => {
+      await asSystem(db, null)
+      await db.query(`update public.platform_settings set value = $1 where key = 'store_domains'`, [JSON.stringify({ root_domain: 'stores.test', main_site: 'marketing' })])
+      await db.query(`update public.merchants set slug = 'nadia' where id = $1`, [MERCHANT_1])
+      await db.query(`insert into public.store_domains (merchant_id, domain, status) values ($1, 'nadia.shop', 'ACTIVE'), ($1, 'pending.shop', 'PENDING')`, [MERCHANT_1])
+      const p = await createProduct(db, { price: 625, stock: 3 })
+      await asService(db)
+      const scope = await value<{ hosts: string[]; prices: Record<string, number> }>(db, `select public.ad_track_scope($1::uuid[])`, [[p.productId, randomUUID()]])
+      expect(scope.hosts.sort()).toEqual(['nadia.shop', 'nadia.stores.test'])
+      expect(Object.keys(scope.prices)).toEqual([p.productId])
+      expect(Number(scope.prices[p.productId])).toBe(625)
+      await asUser(db, await createStaff(db, 'OWNER'))
+      await expectError(db, `select public.ad_track_scope('{}')`, [], /permission denied/)
+    }))
+
+  it('sign-up by WhatsApp: a few requests per network address an hour', () =>
+    inTx(async (db) => {
+      const staff = await createPlatformStaff(db, 'SUPER_ADMIN')
+      await asUser(db, staff, 'staff@platform.example', null)
+      await value(db, `select public.platform_onboarding_save($1)`, [JSON.stringify({ method: 'online_payment', whatsapp_number: '+880 1811-000000', reminder_days: [3] })])
+      await value(db, `select public.platform_setting_save('signup', $1, 'open WhatsApp sign-up')`, [JSON.stringify({ enabled: true, whatsapp: { enabled: true } })])
+      await asAnon(db, null)
+      const from = (ip: string) => db.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'cf-connecting-ip': ip })])
+      await from('203.0.113.50')
+      for (let i = 0; i < 5; i++) {
+        await db.query(`select public.public_signup_request($1)`, [JSON.stringify({ business_name: `Shop ${i}`, full_name: 'Some One', phone: `0171200010${i}` })])
+      }
+      await expectError(db, `select public.public_signup_request($1)`, [JSON.stringify({ business_name: 'Shop X', full_name: 'Some One', phone: '01712000199' })], /from this network/)
+      await from('198.51.100.60')
+      await db.query(`select public.public_signup_request($1)`, [JSON.stringify({ business_name: 'Real Shop', full_name: 'Real Person', phone: '01812000100' })])
+    }))
+
+  it("refuses a store phone pattern with nested repetition", () =>
+    inTx(async (db) => {
+      await asSystem(db, MERCHANT_1)
+      const save = (pattern: string) => db.query(`insert into public.settings (key, value) values ('store', jsonb_build_object('phone_pattern', $1::text))
+        on conflict (merchant_id, key) do update set value = public.settings.value || excluded.value`, [pattern])
+      await expectError(db, `insert into public.settings (key, value) values ('store', jsonb_build_object('phone_pattern', '^(\\d|\\d)*x$'))
+        on conflict (merchant_id, key) do update set value = public.settings.value || excluded.value`, [], /nested repetition/)
+      await save('^(\\+?88)?01[3-9]\\d{8}$')
+      expect(await value(db, `select public.setting_text('store', array['phone_pattern'], '')`)).toBe('^(\\+?88)?01[3-9]\\d{8}$')
+    }))
+})

@@ -1,5 +1,7 @@
 import type { FraudCheckInput, FraudProvider, FraudProviderResult, OutcomeCounts } from './types.ts'
 
+import { guardedFetch } from '../net.ts'
+
 type FetchFn = typeof fetch
 
 /**
@@ -59,7 +61,7 @@ function toNumber(value: unknown): number | undefined {
 export class HttpCourierHistoryProvider implements FraudProvider {
   readonly name = 'http'
 
-  constructor(private readonly config: HttpProviderConfig, private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly config: HttpProviderConfig, private readonly fetchFn: FetchFn = guardedFetch) {}
 
   async checkCustomer(input: FraudCheckInput): Promise<FraudProviderResult> {
     const { config } = this
