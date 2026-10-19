@@ -222,6 +222,12 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const servedByUs = tls.served_by_store === true
   // A root ALIAS / CNAME flattening answers with our target's own addresses.
   const flattened = onCloudflare && aValues.length > 0 && aValues.every(isOurs)
+  // Nameservers: who answers DNS for the domain.
+  const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
+  const onCloudflareDns = nameservers.length > 0 && nameservers.every((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
+  // The domain's own Cloudflare zone proxies the name (orange cloud): visitors reach that zone,
+  // not the store, and the certificate cannot be issued. Public DNS shows only the proxy's addresses.
+  const orangeCloud = onCloudflare && onCloudflareDns && cnameValues.length === 0 && proxied && !servedByUs && !flattened
   const records: FoundRecord[] = []
   for (const v of cnameValues) {
     const ok = m.cname(v)
@@ -235,6 +241,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     const old = oldOf(v)
     const note = old ? `Still points to ${old} — delete this record`
       : target.provider === 'proxy' ? (ok ? undefined : wrong)
+      : orangeCloud ? 'Your Cloudflare proxy (orange cloud) answers here, not the store'
       : onCloudflare
       ? (ok ? 'Points to Fullfilio (ALIAS / flattening)' : isCloudflare(v) ? 'Another Cloudflare site answers here, not the store' : wrong)
       : (ok ? (isCloudflare(v) ? 'Cloudflare proxy' : undefined) : isCloudflare(v) ? 'Cloudflare proxy (not reaching the store)' : wrong)
@@ -242,11 +249,9 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   }
   for (const v of own ? aaaaValues : []) {
     const ok = isOurs(v) || m.a(v) || (isCloudflare(v) && servedByUs)
-    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : 'Cloudflare proxy') : 'Remove: the store has no IPv6 address' })
+    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : 'Cloudflare proxy')
+      : orangeCloud ? 'Your Cloudflare proxy (orange cloud) answers here, not the store' : 'Remove: the store has no IPv6 address' })
   }
-  // Nameservers: who answers DNS for the domain.
-  const nameservers = [...new Set([...only(nsGoogle, 'NS'), ...only(nsCloudflare, 'NS')].map((n) => n.toLowerCase()))].sort()
-  const onCloudflareDns = nameservers.length > 0 && nameservers.every((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
   // Records the hosting asked for (ownership / certificate): are they there yet? On Cloudflare
   // DNS they do not count (Cloudflare verifies through the CNAME there), so none are asked for.
   const expected = onCloudflare && onCloudflareDns ? [] : opts.expect ?? []
@@ -327,6 +332,9 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       detail: kind === 'apex' && target.a ? `Add an A record for @ pointing to ${target.a} at your domain provider.`
         : kind === 'apex' ? `Add a CNAME (or ALIAS / ANAME) record for @ pointing to ${target.cname}. If your domain provider cannot, use www.${domain} instead.`
         : `Add a CNAME record for ${name} pointing to ${target.cname} at your domain provider.` })
+  } else if (orangeCloud) {
+    issues.push({ code: 'ORANGE_CLOUD', severity: 'error', title: 'Turn off the orange cloud in Cloudflare',
+      detail: `In Cloudflare → ${apexOf(domain)} → DNS → Records, edit the ${name} record: it must be a CNAME to ${target.cname} with Proxy status "DNS only" (grey cloud). It is proxied (orange) now, so your own Cloudflare answers instead of the store and the HTTPS certificate cannot be issued. It connects by itself within about 10 minutes of the change.` })
   } else if (!pointedByDns) {
     issues.push({ code: 'WRONG_TARGET', severity: 'error', title: 'DNS records point somewhere else',
       detail: kind === 'apex' && target.a ? `Change the A record for @ to ${target.a} and delete any other A records for @.`
