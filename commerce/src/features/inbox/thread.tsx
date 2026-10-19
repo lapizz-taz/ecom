@@ -83,7 +83,7 @@ export function Thread({ id, onBack, onTogglePanel, draft, onDraft, onInsert, on
   const hasMore = older.length ? true : thread.data!.has_more
   const outsideWindow = c.kind === 'MESSAGE' && c.last_customer_message_at
     && Date.now() - Date.parse(c.last_customer_message_at) > 24 * 3600_000
-  const disabled = c.channel_status === 'DISCONNECTED' ? 'This channel is disconnected. Connect it again under Inbox → Channels to reply.' : null
+  const disabled = c.channel_status === 'DISCONNECTED' ? 'This channel is disconnected. Connect it again under Messaging → Channels to reply.' : null
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">

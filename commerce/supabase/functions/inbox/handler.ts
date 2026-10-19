@@ -451,7 +451,7 @@ export default (
         if (!appReady(app)) throw new HttpError(422, 'Connecting with Facebook is not switched on yet.', 'NOT_CONFIGURED')
         const state = await readState(appSecret, input.state)
         if (!state || state.m !== staff.merchantId || state.u !== staff.user.id) {
-          throw new HttpError(400, 'This Facebook sign-in has expired or was started by someone else. Start again from Inbox → Channels.', 'OAUTH_STATE')
+          throw new HttpError(400, 'This Facebook sign-in has expired or was started by someone else. Start again from Messaging → Channels.', 'OAUTH_STATE')
         }
         let token: string
         try {
@@ -586,9 +586,9 @@ export default (
         if (!m?.external_id) throw new HttpError(404, 'Comment not found', 'NOT_FOUND')
         const ctx = await rpc<SendContext>(admin, 'inbox_send_context', { p_conversation: m.conversation_id })
         if (ctx.kind !== 'COMMENT' || ctx.channel.platform === 'WHATSAPP') throw new HttpError(422, 'Only comments can be liked, hidden or deleted', 'VALIDATION')
-        if (ctx.channel.status === 'DISCONNECTED') throw new HttpError(422, 'This channel is disconnected. Connect it again under Inbox → Channels.', 'NOT_CONNECTED')
+        if (ctx.channel.status === 'DISCONNECTED') throw new HttpError(422, 'This channel is disconnected. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
         const t = (await secret<{ access_token?: string }>(admin, channelKey(ctx.channel.id))).access_token
-        if (!t) throw new HttpError(422, 'This channel has no access token. Connect it again under Inbox → Channels.', 'NOT_CONNECTED')
+        if (!t) throw new HttpError(422, 'This channel has no access token. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
         try {
           await commentAction(new InboxGraph(t, appSecret), ctx.channel.platform, m.external_id, input.op)
         } catch (e) {
@@ -619,9 +619,9 @@ export default (
         const privateText = input.private_text?.trim()
         if (!input.text?.trim() && !input.file && !input.image_url && !privateText) throw new HttpError(422, 'Write a message or attach something', 'VALIDATION')
         const ctx = await rpc<SendContext>(admin, 'inbox_send_context', { p_conversation: input.conversation_id })
-        if (ctx.channel.status === 'DISCONNECTED') throw new HttpError(422, 'This channel is disconnected. Connect it again under Inbox → Channels.', 'NOT_CONNECTED')
+        if (ctx.channel.status === 'DISCONNECTED') throw new HttpError(422, 'This channel is disconnected. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
         const t = (await secret<{ access_token?: string }>(admin, channelKey(ctx.channel.id))).access_token
-        if (!t) throw new HttpError(422, 'This channel has no access token. Connect it again under Inbox → Channels.', 'NOT_CONNECTED')
+        if (!t) throw new HttpError(422, 'This channel has no access token. Connect it again under Messaging → Channels.', 'NOT_CONNECTED')
 
         // WhatsApp answers a message by its id; comments answer the comment itself.
         let replyExternal: string | undefined

@@ -29,7 +29,7 @@ const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
           'We use this access to show the store’s messages and comments in its Fullfilio inbox, to send the replies its staff write, and to show the customer’s name and picture next to the conversation.',
           'Access tokens are stored encrypted and are never shown to anyone, including the store’s own staff.',
           'We do not use Meta data for advertising, do not sell it, and do not share it with anyone other than the store that owns the conversation.',
-          'A store can disconnect an account at any time under Inbox → Channels, or remove Fullfilio from its Facebook settings (Settings → Business integrations).',
+          'A store can disconnect an account at any time under Messaging → Channels, or remove Fullfilio from its Facebook settings (Settings → Business integrations).',
         ],
       ] },
       { heading: 'How we use information', body: [[
@@ -76,7 +76,7 @@ const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
         'Find Fullfilio and choose Remove.',
         'Fullfilio can no longer read or send messages for your Pages, Instagram accounts or WhatsApp numbers. Their access tokens stop working right away.',
       ]] },
-      { heading: 'Disconnect inside Fullfilio', body: ['Store owners can go to Inbox → Channels and choose Disconnect on any connected account. Its access token is deleted immediately.'] },
+      { heading: 'Disconnect inside Fullfilio', body: ['Store owners can go to Messaging → Channels and choose Disconnect on any connected account. Its access token is deleted immediately.'] },
       { heading: 'Delete messages and other data', body: [[
         'Send a deletion request through the contact form at fullfilio.com/contact, from the e-mail address on your Fullfilio account, saying which store and which data (for example: all Facebook and Instagram messages, or the whole account).',
         'We confirm the request and delete the data within 30 days. Records the law requires us to keep (such as invoices) are kept only for as long as required.',

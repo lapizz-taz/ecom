@@ -107,10 +107,10 @@ export const NAV: NavSection[] = [
         ],
       },
       {
-        label: 'Inbox', to: '/admin/inbox', icon: <Inbox />, permission: 'inbox.view',
+        label: 'Messaging', to: '/admin/inbox', icon: <Inbox />, permission: 'inbox.view',
         badge: (c) => c.inbox,
         children: [
-          { label: 'Chats', to: '/admin/inbox', badge: (c) => c.inbox },
+          { label: 'Inbox', to: '/admin/inbox', badge: (c) => c.inbox },
           { label: 'Comments', to: '/admin/inbox/comments' },
           { label: 'Auto Replies', to: '/admin/inbox/auto-replies' },
           { label: 'Channels', to: '/admin/inbox/channels' },

@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Messaging inbox: Facebook Messenger, Instagram DMs, WhatsApp, and Facebook /
--- Instagram post and ad comments in one inbox (Inbox → Inbox).
+-- Instagram post and ad comments in one inbox (Messaging → Inbox).
 --
 --   inbox_channels       a connected Facebook Page, Instagram account or WhatsApp
 --                        number (its access token lives in Vault: inbox.channel.<id>)
