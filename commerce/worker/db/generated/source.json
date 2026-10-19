@@ -1,5 +1,5 @@
 {
-  "migrations": 153,
-  "last": "20261121000600_domain_ownership.sql",
-  "sha256": "fc1b81c5e3a60261de33da3dde361a6f532d72b8774c353444fe07809bf1871d"
+  "migrations": 154,
+  "last": "20261121000700_domain_unproven_claims.sql",
+  "sha256": "3d169bebd2d46989719615d3492e23f9f7f0c134123121781b03821218569241"
 }

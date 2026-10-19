@@ -40,17 +40,24 @@ import { adminClient, forEachMerchant, requireStaff, rpc } from '../_shared/supa
 interface DnsRecord { type: 'A' | 'AAAA' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
 /** verified: the ownership record was found (saved as the domain's verified_at). */
 interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null; diagnostics?: Diagnosis; verified?: boolean }
-/** What the store's row says about ownership: its code, and whether it was proven already. */
-interface Ownership { code: string | null; verified: boolean }
+/**
+ * What the store's rows say about ownership: the code, whether the name (or its www/root twin,
+ * which serves the same store) was proven already, and whether it has never been checked: then
+ * the record is not looked up yet, as DNS servers would remember "not found" for up to an hour
+ * before the merchant has even seen the code.
+ */
+interface Ownership { code: string | null; verified: boolean; fresh: boolean }
 
 /** A host name: labels of letters, digits and hyphens; the last one letters (or an xn-- IDN). */
 const NAME = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,}|xn--[a-z0-9-]{2,59})$/
 // What people paste: https://Shop.com/path, SHOP.COM., shop.com:443, münchen.de (punycode).
+// An e-mail address (me@gmail.com) is not a domain of the store's, nor is anything unparseable.
 const domain = z.string().trim().toLowerCase().transform((d) => {
   try {
-    return new URL(/^[a-z][a-z0-9+.-]*:\/\//.test(d) ? d : `https://${d}`).hostname.replace(/\.$/, '')
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//.test(d) ? d : `https://${d}`)
+    return u.username || u.password ? '' : u.hostname.replace(/\.$/, '')
   } catch {
-    return d
+    return ''
   }
 }).pipe(z.string().max(253, 'That domain is too long').regex(NAME, 'Enter a domain like shop.com or www.shop.com'))
 const actions = z.discriminatedUnion('action', [
@@ -116,23 +123,39 @@ async function ownershipFound(d: string, code: string): Promise<boolean> {
  */
 async function prove(d: string, own: Ownership, persist: () => Promise<unknown>): Promise<boolean> {
   if (own.verified) return true
-  if (!own.code || !(await ownershipFound(d, own.code))) return false
+  if (own.fresh || !own.code || !(await ownershipFound(d, own.code))) return false
   await persist()
   return true
 }
 
-/** The ownership side of a store_domains row. */
-const ownershipOf = (row: { verify_code?: string | null; verified_at?: string | null } | undefined): Ownership =>
-  ({ code: row?.verify_code ?? null, verified: !!row?.verified_at })
+type OwnRow = { domain: string; verify_code?: string | null; verified_at?: string | null; checked_at?: string | null }
+const twinOf = (d: string) => (d.startsWith('www.') ? d.slice(4) : `www.${d}`)
+/** The ownership side of a domain, from the store's own rows (its twin is the same store's, if listed). */
+const ownershipOf = (rows: OwnRow[] | null | undefined, d: string): Ownership => {
+  const row = rows?.find((x) => x.domain === d)
+  const twin = rows?.find((x) => x.domain === twinOf(d))
+  return { code: row?.verify_code ?? null, verified: !!row?.verified_at || !!twin?.verified_at, fresh: !!row && !row.checked_at }
+}
+/** The record to add and the record to look for, until the domain is proven. */
+const ownershipAsk = (d: string, own: Ownership, proven: boolean) => ({
+  records: proven || !own.code ? [] : [ownershipRecord(d, own.code)],
+  expect: proven || own.fresh || !own.code ? [] : [ownershipExpect(d, own.code)],
+})
+/** Not proven: the certificate is not issued yet, so never say it is on its way. */
+const withoutCertPromise = (diagnostics: Diagnosis, proven: boolean): Diagnosis =>
+  proven ? diagnostics : { ...diagnostics, issues: diagnostics.issues.filter((i) => i.code !== 'TLS_PENDING') }
+const WAITING_TXT = 'Waiting for the TXT record below (it proves the domain is yours)'
 
 /** Without the hosting API: the diagnosis alone decides whether the domain is live. */
-async function manual(d: string, note: string): Promise<Omit<Saved, 'domain'>> {
+async function manual(d: string, note: string, own: Ownership, persist: () => Promise<unknown>): Promise<Omit<Saved, 'domain'>> {
   const target = env('CUSTOM_DOMAIN_TARGET') ? cloudflareTarget(env('CUSTOM_DOMAIN_TARGET')!) : hostingTarget()
-  const diagnostics = await diagnose(d, { target })
-  const live = diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true
-  // The platform owner attaches these by hand, which is the ownership check here.
-  return { status: live ? 'ACTIVE' : 'MANUAL', records: baseRecords(d, target), diagnostics, verified: live,
-    detail: live ? 'Live — the store opens on this domain with HTTPS' : note }
+  const proven = await prove(d, own, persist)
+  const ask = ownershipAsk(d, own, proven)
+  const diagnostics = withoutCertPromise(await diagnose(d, { target, expect: ask.expect }), proven)
+  // Every page of the site carries the store header, so answering alone proves nothing: the TXT does.
+  const live = proven && diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true
+  return { status: live ? 'ACTIVE' : 'MANUAL', records: [...baseRecords(d, target), ...ask.records], diagnostics, verified: proven,
+    detail: live ? 'Live — the store opens on this domain with HTTPS' : proven ? note : WAITING_TXT }
 }
 
 function vercel() {
@@ -194,14 +217,15 @@ async function inspectRoot(target: HostingTarget, d: string, own: Ownership, per
   const proven = await prove(d, own, persist)
   // Asked once for both: which nameservers really answer, and which resolver already has them.
   const view = await dnsView(d)
-  const expect = own.verified || !own.code ? [] : [ownershipExpect(d, own.code)]
-  const [diagnostics, www] = await Promise.all([diagnose(d, { target, view, expect }), inspectWww(d, target, fetch, view)])
+  const ask = ownershipAsk(d, own, proven)
+  const [checked, www] = await Promise.all([diagnose(d, { target, view, expect: ask.expect }), inspectWww(d, target, fetch, view)])
+  const diagnostics = withoutCertPromise(checked, proven)
   // www.<root> is listed next to @, but never holds the root back: it only asks for its record.
   if (www) {
     diagnostics.records.push(...www.records)
     if (www.issue) diagnostics.issues.push(www.issue)
   }
-  const records = [...baseRecords(d, target), ...(proven || !own.code ? [] : [ownershipRecord(d, own.code)])]
+  const records = [...baseRecords(d, target), ...ask.records]
   // A DNS checker that did not answer says nothing about the domain: the store answering is enough.
   const dnsOk = diagnostics.pointed || diagnostics.issues.some((i) => i.code === 'CHECK_FAILED')
   if (proven && dnsOk && diagnostics.tls.ok && diagnostics.tls.served_by_store === true) {
@@ -211,6 +235,7 @@ async function inspectRoot(target: HostingTarget, d: string, own: Ownership, per
   return {
     status: 'VERIFYING', records, diagnostics, verified: proven,
     detail: blocking ? blocking.title
+      : !proven ? WAITING_TXT
       : !diagnostics.pointed ? 'Waiting for the A record below (changes can take up to a few hours)'
       : 'DNS is right — the HTTPS certificate is issued on the first visit (usually under a minute)',
   }
@@ -235,7 +260,11 @@ const SSL = { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } }
 
 async function findHostname(cf: Cloudflare, d: string): Promise<CustomHostname | null> {
   const found = await cf.call<CustomHostname[]>('GET', `/custom_hostnames?hostname=${encodeURIComponent(d)}`)
-  if (!found.ok) throw new HttpError(502, `Cloudflare answered: ${found.error ?? found.status}`, 'UPSTREAM_ERROR')
+  if (!found.ok) {
+    // Usually the API token (CF_SAAS_API_TOKEN) or zone is wrong: shown in System Health.
+    void logEvent({ level: 'WARN', category: 'FUNCTION', source: 'domains', message: `Could not look up ${d} on Cloudflare: ${found.error ?? found.status}` })
+    throw new HttpError(502, `Cloudflare answered: ${found.error ?? found.status}`, 'UPSTREAM_ERROR')
+  }
   return (found.data ?? []).find((h) => h.hostname === d) ?? null
 }
 
@@ -246,15 +275,22 @@ const relative = (name: string, d: string) => name.replace(new RegExp(`\\.?${ape
 async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean, own: Ownership, persist: () => Promise<unknown>): Promise<Omit<Saved, 'domain'>> {
   const target = cloudflareTarget(cf.target)
   const proven = await prove(d, own, persist)
-  const mine: DnsRecord[] = proven || !own.code ? [] : [ownershipRecord(d, own.code)]
+  const ask = ownershipAsk(d, own, proven)
+  const mine = ask.records
   let host = await findHostname(cf, d)
-  // Added before the hosting was connected (or removed there): attach it now instead of asking to add it again.
-  if (!host && recheck) {
+  // Attached to the hosting (a custom hostname, with its certificate) only once proven the store's.
+  if (!host && proven) {
     await addCloudflare(cf, d)
     host = await findHostname(cf, d)
   }
-  // A fresh diagnosis too, so the popup does not show the last check's rows under this status.
-  if (!host) return { status: 'ERROR', records: [...baseRecords(d, target), ...mine], diagnostics: await diagnose(d, { target }), verified: proven, detail: 'Not attached to the hosting yet — press Check again' }
+  if (!host) {
+    // A fresh diagnosis too, so the popup does not show the last check's rows under this status.
+    const diagnostics = withoutCertPromise(await diagnose(d, { target, expect: ask.expect }), proven)
+    const blocking = diagnostics.issues.find((i) => i.severity === 'error')
+    return proven
+      ? { status: 'ERROR', records: baseRecords(d, target), diagnostics, verified: true, detail: 'Not attached to the hosting yet — press Check again' }
+      : { status: 'VERIFYING', records: [...baseRecords(d, target), ...mine], diagnostics, verified: false, detail: blocking ? blocking.title : WAITING_TXT }
+  }
   if (recheck && (host.status !== 'active' || host.ssl?.status !== 'active')) {
     // Asks Cloudflare to validate again now instead of on its own schedule.
     const again = await cf.call<CustomHostname>('PATCH', `/custom_hostnames/${host.id}`, { ssl: SSL })
@@ -272,7 +308,7 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean, ow
       expect.push({ type: 'TXT', name: r.txt_name, value: r.txt_value })
     }
   }
-  if (!proven && own.code) expect.push(ownershipExpect(d, own.code))
+  expect.push(...ask.expect)
   const diagnostics: Diagnosis = {
     ...(await diagnose(d, { target, expect })),
     hosting: { status: host.status, ssl_status: host.ssl?.status ?? null, error: host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message ?? null },
@@ -331,7 +367,10 @@ type VercelDomain = { name: string; verified: boolean; verification?: Array<{ ty
 type VercelConfig = { misconfigured: boolean; configuredBy?: string | null }
 
 /** Asks Vercel where the domain stands and turns it into records + a status. */
-async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string): Promise<Omit<Saved, 'domain'>> {
+async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string, own: Ownership, persist: () => Promise<unknown>): Promise<Omit<Saved, 'domain'>> {
+  // Vercel's own verification only says no other Vercel account holds the name: the store's TXT proves it is this store's.
+  const proven = await prove(d, own, persist)
+  const ask = ownershipAsk(d, own, proven)
   const info = await v.call<VercelDomain>('GET', `/v9/projects/${v.project}/domains/${d}`)
   if (!info.ok) return { status: 'ERROR', records: baseRecords(d, VERCEL_TARGET), detail: info.data.error?.message ?? `Vercel answered ${info.status}` }
   let verified = info.data.verified
@@ -345,11 +384,11 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string): Pr
   }))
   const config = await v.call<VercelConfig>('GET', `/v6/domains/${d}/config`)
   const pointed = config.ok && !config.data.misconfigured
-  const records = [...baseRecords(d, VERCEL_TARGET), ...ownership]
-  const diagnostics = await diagnose(d, { vercelPointed: config.ok ? pointed : null })
-  // Vercel verifies ownership itself (the records above) before it serves the domain.
-  if (verified && pointed) return { status: 'ACTIVE', records, diagnostics, verified: true, detail: 'Live — the store opens on this domain with HTTPS' }
-  return { status: 'VERIFYING', records, diagnostics, detail: !pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'Waiting for the ownership record below' }
+  const records = [...baseRecords(d, VERCEL_TARGET), ...ownership, ...ask.records]
+  const diagnostics = withoutCertPromise(await diagnose(d, { vercelPointed: config.ok ? pointed : null, expect: ask.expect }), proven)
+  if (proven && verified && pointed) return { status: 'ACTIVE', records, diagnostics, verified: true, detail: 'Live — the store opens on this domain with HTTPS' }
+  return { status: 'VERIFYING', records, diagnostics, verified: proven,
+    detail: !proven ? WAITING_TXT : !pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'Waiting for the ownership record below' }
 }
 
 /** Waiting domains are checked every 10 minutes for 3 days after the last change, then hourly. */
@@ -378,17 +417,22 @@ const markVerified = (admin: Admin, d: string) => rpc(admin, 'store_domain_save'
 async function recheckAll() {
   const cf = cloudflare()
   if (!cf) return { checked: 0, live: 0, skipped: 'no hosting API' }
-  // Every store's due domains in one queue, oldest check first: one store with many waiting
-  // domains cannot take every slot of every run.
-  const due: Array<{ admin: Admin; d: Listed }> = []
+  // One queue for every store: domains still waiting come before the daily check of live ones,
+  // and the stores take turns (each store's oldest check first), so one store with many
+  // domains, real or made up, cannot hold another store's domain back.
+  const waitingFirst = (x: Listed) => Number(x.status === 'ACTIVE')
+  const due: Array<{ admin: Admin; d: Listed; own: Ownership; turn: number }> = []
   const run = await forEachMerchant('domains', async (admin) => {
-    for (const d of (await rpc<Listed[]>(admin, 'store_domains_list')) ?? []) if (dueForRecheck(d)) due.push({ admin, d })
+    const rows = (await rpc<Listed[]>(admin, 'store_domains_list')) ?? []
+    rows.filter((d) => dueForRecheck(d))
+      .sort((a, b) => waitingFirst(a) - waitingFirst(b) || (a.checked_at ?? '').localeCompare(b.checked_at ?? ''))
+      .forEach((d, turn) => due.push({ admin, d, own: ownershipOf(rows, d.domain), turn }))
   })
-  due.sort((a, b) => (a.d.checked_at ?? '').localeCompare(b.d.checked_at ?? ''))
+  due.sort((a, b) => waitingFirst(a.d) - waitingFirst(b.d) || a.turn - b.turn || (a.d.checked_at ?? '').localeCompare(b.d.checked_at ?? ''))
   let live = 0
-  for (const { admin, d } of due.slice(0, RECHECK_LIMIT)) {
+  for (const { admin, d, own } of due.slice(0, RECHECK_LIMIT)) {
     try {
-      const result = await inspectAny(cf, d.domain, true, ownershipOf(d), () => markVerified(admin, d.domain))
+      const result = await inspectAny(cf, d.domain, true, own, () => markVerified(admin, d.domain))
       const saved = await rpc<Saved | null>(admin, 'store_domain_save', { p_domain: d.domain, p: result, p_actor: null })
       // Removed while it was being checked: it stays removed, and detached at Cloudflare again.
       if (!saved) {
@@ -430,24 +474,25 @@ export default (
     // add/check/remove/primary a domain their own store does not hold. Runs
     // under the staff user's merchant (RLS-scoped), so it can only pass for
     // domains this merchant owns (or, for 'add', claims when still free).
+    const cf = cloudflare()
+    // The platform's own names are refused before the guard, which would already hold the name.
+    if (cf && input.action === 'add' && platformDomain(cf, input.domain)) throw new HttpError(422, 'That is the platform\'s own domain', 'DOMAIN_REJECTED')
     if (input.action !== 'list') {
       await rpc(staff.client, 'store_domain_guard', { p_domain: input.domain, p_action: input.action })
     }
-    const cf = cloudflare()
     const v = cf ? null : vercel()
     const save = (d: string, p: Omit<Saved, 'domain'>) => rpc<Saved>(admin, 'store_domain_save', { p_domain: d, p, p_actor: staff.user.id })
+    // The store's own rows (the guard made this one): the ownership code, and whether it is proven.
+    const own = async (d: string) => ownershipOf(await rpc<Listed[]>(admin, 'store_domains_list'), d)
+    const persist = (d: string) => () => markVerified(admin, d)
 
     if (cf) {
-      // The store's own row (made by the guard): its ownership code, and whether it is proven.
-      const own = async (d: string) => ownershipOf((await rpc<Listed[]>(admin, 'store_domains_list'))?.find((x) => x.domain === d))
-      const persist = (d: string) => () => markVerified(admin, d)
       switch (input.action) {
         case 'list':
           // root_ip: main domains connect with an A record to our proxy, at any DNS company.
           return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: true, hosting: 'cloudflare', root_ip: rootProxy(cf)?.a ?? null })
         case 'add':
-          if (platformDomain(cf, input.domain)) throw new HttpError(422, 'That is the platform\'s own domain', 'DOMAIN_REJECTED')
-          if (!viaProxy(cf, input.domain)) await addCloudflare(cf, input.domain)
+          // Attached to the hosting at Cloudflare only once proven (inspectCloudflare).
           return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, false, await own(input.domain), persist(input.domain))), automatic: true })
         case 'check':
           return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, true, await own(input.domain), persist(input.domain))), automatic: true })
@@ -468,7 +513,8 @@ export default (
       case 'add': {
         if (!v) {
           return json(req, { domain: await save(input.domain, await manual(input.domain,
-            'Saved. Add the DNS record below at your domain registrar; the platform owner then adds the domain to the hosting project.')), automatic: false })
+            'Saved. Add the DNS record below at your domain registrar; the platform owner then adds the domain to the hosting project.',
+            await own(input.domain), persist(input.domain))), automatic: false })
         }
         const added = await v.call<VercelDomain>('POST', `/v10/projects/${v.project}/domains`, { name: input.domain })
         if (!added.ok && added.data.error?.code !== 'domain_already_in_use_by_project' && added.status !== 409) {
@@ -476,11 +522,11 @@ export default (
           void logEvent({ level: 'WARN', category: 'FUNCTION', source: 'domains', message: `Could not add ${input.domain}: ${message}` })
           throw new HttpError(422, `Vercel would not add the domain: ${message}`, 'DOMAIN_REJECTED')
         }
-        return json(req, { domain: await save(input.domain, await inspect(v, input.domain)), automatic: true })
+        return json(req, { domain: await save(input.domain, await inspect(v, input.domain, await own(input.domain), persist(input.domain))), automatic: true })
       }
       case 'check':
-        if (!v) return json(req, { domain: await save(input.domain, await manual(input.domain, 'Add the DNS record below; the platform owner then connects the domain to the hosting.')), automatic: false })
-        return json(req, { domain: await save(input.domain, await inspect(v, input.domain)), automatic: true })
+        if (!v) return json(req, { domain: await save(input.domain, await manual(input.domain, 'Add the DNS record below; the platform owner then connects the domain to the hosting.', await own(input.domain), persist(input.domain))), automatic: false })
+        return json(req, { domain: await save(input.domain, await inspect(v, input.domain, await own(input.domain), persist(input.domain))), automatic: true })
       case 'remove': {
         if (v) {
           const r = await v.call<VercelDomain>('DELETE', `/v9/projects/${v.project}/domains/${input.domain}`)

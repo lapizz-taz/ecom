@@ -434,7 +434,7 @@ describe('subdomains on the Cloudflare target', () => {
     expect(ok.records[1]).toEqual({ type: 'TXT', name: '_cf-custom-hostname.shop', value: '5f1c-old', ok: true, note: 'Found' })
     expect(ok.issues).toEqual([])
     const stale = await sub('shop.sub-txt.com', { zone }, txt('shop.sub-txt.com', '9a2e-new'))
-    expect(stale.records[1]).toMatchObject({ ok: false, note: 'Has an old value (5f1c-old) — change it to this one' })
+    expect(stale.records[1]).toMatchObject({ ok: false, note: 'Has another value (5f1c-old) — change it to this one' })
     expect(stale.issues[0]).toMatchObject({ code: 'TXT_MISSING', title: 'Verification record has an old value' })
   })
 

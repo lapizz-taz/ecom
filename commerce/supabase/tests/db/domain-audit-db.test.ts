@@ -168,7 +168,8 @@ describe('two stores, one domain', () => {
       expect(await resolve(db, 'apex-gone.test')).toMatchObject({ kind: 'store', merchant_id: B.m, redirect_to: 'www.apex-gone.test' })
       await as(db, A)
       await expectError(db, `select public.store_domain_guard('apex-gone.test', 'add')`, [], /DUPLICATE/)
-      expect(await row(db, 'apex-gone.test')).toMatchObject({ merchant_id: A.m, status: 'REMOVED', is_primary: false })
+      // A's removed row was freed when B took the twin: it serves nobody and holds nothing back.
+      expect(await row(db, 'apex-gone.test')).toBeNull()
     }))
 
   it('A removed its apex but kept www: B still cannot take the apex (A\'s twin protects it)', () =>
