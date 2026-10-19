@@ -1,5 +1,5 @@
 {
-  "migrations": 151,
-  "last": "20261121000400_removed_domain_missing.sql",
-  "sha256": "dce97f67d771ff0eb2543a0bea646481915fcfb9103bc16528b2f7b029e01788"
+  "migrations": 153,
+  "last": "20261121000600_domain_ownership.sql",
+  "sha256": "fc1b81c5e3a60261de33da3dde361a6f532d72b8774c353444fe07809bf1871d"
 }

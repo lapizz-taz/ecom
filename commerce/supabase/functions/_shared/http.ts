@@ -95,6 +95,7 @@ const DB_CODES: Record<string, number> = {
   FEATURE_OFF: 403,
   LIMIT_REACHED: 402,
   ACCOUNT_RESTRICTED: 403,
+  DOMAIN_REJECTED: 422,
 }
 
 export function fromDbError(error: { message?: string; code?: string; details?: string } | null | undefined): HttpError {

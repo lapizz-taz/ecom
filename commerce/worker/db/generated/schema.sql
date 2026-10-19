@@ -4572,6 +4572,8 @@ CREATE TABLE store_domains (
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
   is_primary INTEGER DEFAULT 0 NOT NULL CHECK (is_primary IN (0, 1)),
   diagnostics TEXT CHECK (diagnostics IS NULL OR json_valid(diagnostics)),
+  verify_code TEXT,
+  verified_at TEXT CHECK (verified_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', verified_at) = verified_at),
   PRIMARY KEY (id),
   CONSTRAINT store_domains_status_check CHECK (status IN ('PENDING', 'VERIFYING', 'ACTIVE', 'ERROR', 'MANUAL', 'REMOVED')),
   CONSTRAINT store_domains_created_by_fkey FOREIGN KEY (created_by) REFERENCES profiles (id),

@@ -31,7 +31,9 @@ https:// {
 		}
 		# ...and say which domain the visitor opened, and from which IP. The Worker only
 		# believes these with the shared secret (ROOT_PROXY_SECRET).
-		header_up X-Fullfilio-Host {host}
+		# The name the certificate was issued for (the TLS server name), not the Host header, which
+		# a client can set to anything.
+		header_up X-Fullfilio-Host {http.request.tls.server_name}
 		header_up X-Fullfilio-Client-IP {remote_host}
 		header_up X-Fullfilio-Proxy {$PROXY_SECRET}
 		header_up -X-Forwarded-For

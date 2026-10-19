@@ -46,7 +46,7 @@ export default function WebsitePage() {
 
 function DomainsTab() {
   const { can } = useAuth()
-  const { isOff } = useMerchantFeatures()
+  const { isOff, state: featureState } = useMerchantFeatures()
   const qc = useQueryClient()
   const [state, update] = useUrlState({ tab: 'domain', domain: '' })
   const [value, setValue] = useState('')
@@ -89,7 +89,11 @@ function DomainsTab() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Connect a domain</CardTitle>
-              <CardDescription>Custom domains are coming soon. Your store stays on its default address until then{domains.length ? '; domains already connected keep working' : ''}.</CardDescription>
+              <CardDescription>
+                {featureState('custom_domains') === 'NOT_IN_PLAN' ? 'Custom domains are not in your plan; a plan that includes them lets you connect your own address'
+                  : featureState('custom_domains') === 'DISABLED_FOR_MERCHANT' ? 'Custom domains are turned off for your store'
+                  : 'Custom domains are coming soon'}. Your store stays on its default address{domains.length ? '; domains already connected keep working' : ''}.
+              </CardDescription>
             </CardHeader>
           </Card>
         )}
@@ -110,10 +114,11 @@ function DomainsTab() {
                   <p className="mt-0.5 text-muted-foreground">
                     Hostinger, Namecheap, GoDaddy, Cloudflare and others. For <b className="text-foreground">shop.com</b> add two A records,{' '}
                     <b className="text-foreground">@</b> and <b className="text-foreground">www</b>, both pointing to <b className="font-mono text-foreground">{rootIp}</b>;
-                    www.shop.com then opens the store too. The exact records and their status show here once the domain is added.
+                    www.shop.com then opens the store too. A <b className="text-foreground">TXT</b> record with your store&apos;s code proves the domain is yours.
+                    The exact records and their status show here once the domain is added.
                   </p>
                 </div>
-              ) : list.data && (
+              ) : list.data?.hosting === 'cloudflare' && (
                 <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
                   <p className="font-medium">Main domain (shop.com) works only with Cloudflare DNS</p>
                   <p className="mt-0.5 text-muted-foreground">
@@ -145,7 +150,7 @@ function DomainsTab() {
           <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
             <li>Add your domain here.</li>
             {rootIp
-              ? <li>Add the DNS records shown, at any DNS company. <b className="text-foreground">shop.com</b>: an <b className="text-foreground">A</b> record for <b className="text-foreground">@</b> and one for <b className="text-foreground">www</b>. A subdomain (<b className="text-foreground">shop.example.com</b>): a <b className="text-foreground">CNAME</b>.</li>
+              ? <li>Add the DNS records shown, at any DNS company. <b className="text-foreground">shop.com</b>: an <b className="text-foreground">A</b> record for <b className="text-foreground">@</b> and one for <b className="text-foreground">www</b>. A subdomain (<b className="text-foreground">shop.example.com</b>): a <b className="text-foreground">CNAME</b>. Plus one <b className="text-foreground">TXT</b> record that proves the domain is yours (only until it is live).</li>
               : <li>Add the DNS record shown. <b className="text-foreground">www.shop.com</b>: a <b className="text-foreground">CNAME</b>, at any DNS company. <b className="text-foreground">shop.com</b>: only on <b className="text-foreground">Cloudflare</b> DNS (a CNAME at @), not on Hostinger.</li>}
             <li>Open the domain and click <b className="text-foreground">Check again</b>. You see each record, every region and HTTPS. DNS changes can take minutes to a few hours.</li>
             <li>On Cloudflare, set the record to <b className="text-foreground">DNS only</b> (grey cloud).</li>
@@ -181,7 +186,8 @@ function DomainsTab() {
       </DialogContent>
     </Dialog>
     <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
-      description="The store stops opening on this domain. Your default address keeps working. If you add it again later, it gets a new verification code and you must update the TXT record at your domain provider. Waiting? No need to remove it: it keeps checking by itself." confirmLabel="Remove" destructive
+      description={`The store stops opening on this domain. Your default address keeps working.${domains.find((d) => d.domain === removing)?.records.some((r) => r.type === 'TXT')
+        ? ' If you add it again later, it gets a new verification code and you must update the TXT record at your domain provider.' : ''} Waiting? No need to remove it: it keeps checking by itself.`} confirmLabel="Remove" destructive
       onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); close(); refresh() }} />
     </>
   )

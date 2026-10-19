@@ -17,8 +17,10 @@ export type Tone = 'live' | 'warn' | 'pending' | 'error'
 /** One word for where a domain stands, from its status and last diagnosis. */
 function domainTone(d: StoreDomain): Tone {
   const diag = d.diagnostics
-  if (d.status === 'ERROR' || diag?.issues.some((i) => i.severity === 'error')) return d.status === 'ACTIVE' ? 'warn' : 'error'
-  if (d.status === 'ACTIVE') return diag?.issues.some((i) => i.severity === 'warning') ? 'warn' : 'live'
+  // Our DNS check not answering says nothing about the domain itself.
+  const errors = diag?.issues.filter((i) => i.severity === 'error' && i.code !== 'CHECK_FAILED') ?? []
+  if (d.status === 'ERROR' || errors.length) return d.status === 'ACTIVE' ? 'warn' : 'error'
+  if (d.status === 'ACTIVE') return diag?.issues.some((i) => i.severity === 'warning' || i.code === 'CHECK_FAILED') ? 'warn' : 'live'
   return 'pending'
 }
 
@@ -115,7 +117,7 @@ function Section({ icon, title, sub, badge, children, defaultOpen = true }: { ic
 function RecordsTable({ rows }: { rows: Array<{ type: string; name: string; value: string; ok?: boolean; note?: string; why?: string }> }) {
   return (
     <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full min-w-[400px] text-xs">
+      <table className="w-full min-w-[260px] text-xs">
         <thead><tr className="bg-muted/40 text-left text-[11px] text-muted-foreground"><th className="px-3 py-1.5 font-medium">Type</th><th className="px-3 py-1.5 font-medium">Name</th><th className="px-3 py-1.5 font-medium">Value</th><th className="w-10" /></tr></thead>
         <tbody>
           {rows.map((r, i) => (
@@ -132,7 +134,7 @@ function RecordsTable({ rows }: { rows: Array<{ type: string; name: string; valu
               </td>
               <td className="px-2 py-2 text-right">
                 {r.ok === undefined
-                  ? <Button size="icon-sm" variant="ghost" aria-label="Copy value" onClick={() => copy(r.value)}><Copy /></Button>
+                  ? <Button size="icon-sm" variant="ghost" aria-label={`Copy the ${r.type} value for ${r.name}`} onClick={() => copy(r.value)}><Copy /></Button>
                   : r.ok ? <Check className="ml-auto size-3.5 text-blue-600" aria-label="Correct" /> : <X className="ml-auto size-3.5 text-red-600" aria-label="Wrong" />}
               </td>
             </tr>
@@ -143,12 +145,17 @@ function RecordsTable({ rows }: { rows: Array<{ type: string; name: string; valu
   )
 }
 
-function Issues({ diag }: { diag: DomainDiagnosis }) {
+function Issues({ diag, active }: { diag: DomainDiagnosis; active: boolean }) {
   const list = diag.issues.filter((i) => i.severity !== 'info')
   if (!list.length) return null
+  const blocking = list.some((i) => i.severity === 'error')
+  // Said from where the domain really stands: live or not, and whether anything blocks it.
+  const heading = blocking ? (active ? 'Your store opens on this domain, but fix the following:' : 'Fix the following to connect your domain:')
+    : active ? 'Your domain is connected, but we recommend you review the following:'
+    : diag.pointed ? 'Also review the following:' : 'Fix the following to connect your domain:'
   return (
-    <div className={cn('rounded-lg p-2.5 text-xs leading-relaxed', list.some((i) => i.severity === 'error') ? 'bg-red-50 text-red-900 dark:bg-red-500/15 dark:text-white' : 'bg-muted/70')}>
-      <p>{diag.pointed ? 'Your domain is connected, but we recommend you review the following:' : 'Fix the following to connect your domain:'}</p>
+    <div className={cn('rounded-lg p-2.5 text-xs leading-relaxed', blocking ? 'bg-red-50 text-red-900 dark:bg-red-500/15 dark:text-white' : 'bg-muted/70')}>
+      <p>{heading}</p>
       <ul className="mt-1.5 list-disc space-y-1 pl-5">
         {list.map((i) => <li key={i.code}><span className="font-medium">{i.title}.</span> {i.detail}</li>)}
       </ul>
@@ -218,13 +225,17 @@ export function CloudflareSteps({ domain, target = 'stores.fullfilio.com' }: { d
 }
 
 /** Who runs the domain's DNS, and where to make the change there. */
-function DnsHost({ diag, rootA, hideTip }: { diag: DomainDiagnosis; rootA?: boolean; hideTip?: boolean }) {
+function DnsHost({ diag, rootA, sub, hideTip }: { diag: DomainDiagnosis; rootA?: boolean; sub?: string; hideTip?: boolean }) {
   const host = diag.dns_host
   if (!host || !host.nameservers.length) return null
   const known = host.provider ? PROVIDER_STEPS[host.provider] : undefined
-  // A root domain on our proxy is a plain A record, which every DNS company takes.
-  const steps = known && rootA
-    ? { where: known.where, tip: 'For @ use an A record with the address below; delete any ALIAS, CNAME or other A/AAAA record for @ first.' }
+  const grey = host.provider === 'Cloudflare' ? ' Set it to DNS only (grey cloud).' : ''
+  // A subdomain is one CNAME, and the tips about the root (@) do not apply to it. A root
+  // domain on our proxy is a plain A record, which every DNS company takes.
+  const steps = known && diag.kind === 'subdomain' && sub
+    ? { where: known.where, tip: `Add a CNAME record named ${sub} with the value below; delete any other A, AAAA or CNAME record named ${sub} first.${grey}` }
+    : known && rootA
+    ? { where: known.where, tip: `For @ use an A record with the address below; delete any ALIAS, CNAME or other A/AAAA record for @ first.${grey}` }
     : known
   return (
     <div className="space-y-1 rounded-lg border p-2.5 text-xs">
@@ -264,7 +275,14 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const useWww = needsCloudflare && canEdit && onUseWww
   const okRegions = diag?.regions.filter((r) => r.ok).length ?? 0
   const notes = diag?.issues.filter((i) => i.severity === 'info') ?? []
-  const pointing = diag ? (diag.pointed ? (diag.issues.some((i) => i.severity !== 'info') ? 'warn' : 'ok') : 'bad') : 'wait'
+  const active = d.status === 'ACTIVE'
+  const unchecked = !!diag && !diag.pointed && diag.issues.some((i) => i.code === 'CHECK_FAILED')
+  const pointing = !diag || unchecked ? 'wait' : diag.pointed || active ? (diag.pointed && !diag.issues.some((i) => i.severity !== 'info') ? 'ok' : 'warn') : 'bad'
+  const sub = d.records.find((r) => r.type === 'CNAME')?.name
+  // HTTPS: DNS already right means the certificate is only waiting to be issued.
+  const tlsState = !diag ? 'wait' : diag.tls.ok ? (diag.tls.served_by_store === false ? 'bad' : 'ok') : diag.pointed ? 'wait' : 'bad'
+  const tlsTitle = !diag ? 'HTTPS not checked yet'
+    : !diag.tls.ok && diag.pointed ? 'DNS is right — the HTTPS certificate is being issued (usually a few minutes)' : diag.tls.detail
 
   return (
     <div className={cn(inDialog ? 'space-y-3.5' : 'space-y-6')}>
@@ -286,8 +304,9 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
         <StatusHero tone={tone} regions={d.diagnostics?.regions ?? null} pointed={d.diagnostics?.pointed} />
         <div className="divide-y">
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
-            title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio' : 'DNS records are not pointing to Fullfilio yet'}>
-            {diag && <Issues diag={diag} />}
+            title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio'
+              : unchecked ? 'DNS could not be checked right now' : active ? 'Your store opens here, but the DNS records need attention' : 'DNS records are not pointing to Fullfilio yet'}>
+            {diag && <Issues diag={diag} active={active} />}
             {needsCloudflare && (
               <div className="space-y-1.5 rounded-lg border p-2.5">
                 <p className="text-xs font-medium">Connect {d.domain} to Cloudflare</p>
@@ -300,7 +319,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
                 try { await onUseWww() } finally { setSwitching(false) }
               }}>{switching && <Spinner />} Or use www.{d.domain} instead</Button>
             )}
-            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} rootA={d.records.some((r) => r.type === 'A' && r.name === '@')} hideTip={needsCloudflare} />}
+            {diag && d.status !== 'ACTIVE' && <DnsHost diag={diag} rootA={d.records.some((r) => r.type === 'A' && r.name === '@')} sub={sub} hideTip={needsCloudflare} />}
             {diag && diag.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Records found</p>
@@ -332,8 +351,8 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
               </>
             )}
           </Section>
-          <Section icon={<StatusIcon state={!diag ? 'wait' : diag.tls.ok && diag.tls.served_by_store !== false ? 'ok' : diag.pointed ? 'wait' : 'bad'} />}
-            title={diag?.tls.detail ?? 'HTTPS not checked yet'}
+          <Section icon={<StatusIcon state={tlsState} />}
+            title={tlsTitle}
             sub={diag?.hosting && d.status !== 'ACTIVE' ? hostingText(diag.hosting) : undefined} />
           {notes.map((n) => (
             <Section key={n.code} icon={<Info className="size-4 text-muted-foreground" />} title={n.title} sub={n.detail} />
@@ -368,7 +387,9 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
               <p className="text-[13px] font-medium">Type</p>
               <p className="truncate text-[11px] text-muted-foreground">{d.is_primary ? 'Primary domain' : `Redirects to ${primary ?? 'the primary domain'}`}</p>
             </div>
-            {canEdit && !d.is_primary && <Button size="sm" variant="secondary" onClick={() => setTypeOpen(true)}>Change</Button>}
+            {canEdit && !d.is_primary && (active
+              ? <Button size="sm" variant="secondary" onClick={() => setTypeOpen(true)}>Change</Button>
+              : <span className="text-[11px] text-muted-foreground">Can be primary once connected</span>)}
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground">Visitors on any other connected domain are sent to the primary domain once it is live.</p>

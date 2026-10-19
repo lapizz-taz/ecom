@@ -67,6 +67,10 @@ describe('custom domains: platform-owned names', () => {
       // The same store may add both.
       await asUser(db, ownerB, 'b@example.com', MERCHANT_1)
       await db.query(`select public.store_domain_guard('www.shop.test', 'add')`)
+      // Not proven yet (no ownership TXT found): no store opens there.
+      expect(await resolve(db, 'www.shop.test')).toEqual({ kind: 'missing' })
+      await asSystem(db, null)
+      await db.query(`update public.store_domains set verified_at = now() where domain = 'www.shop.test'`)
       expect(await resolve(db, 'www.shop.test')).toMatchObject({ kind: 'store', merchant_id: MERCHANT_1 })
     }))
 })

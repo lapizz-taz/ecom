@@ -63,6 +63,7 @@ const isCloudflareNs = (ns: string) => /\.ns\.cloudflare\.com$/.test(nsName(ns))
 const OLD_HOSTS: Array<[RegExp, string]> = [
   [/^23\.227\.38\.\d+$/, 'Shopify'], [/^2\.57\.91\.\d+$/, 'Hostinger (website or parking page)'],
   [/^185\.230\.63\.\d+$/, 'Wix'], [/^198\.185\.159\.\d+$|^198\.49\.23\.\d+$/, 'Squarespace'], [/^76\.76\.21\.\d+$/, 'Vercel'],
+  [/^(34\.102\.136\.180|15\.197\.142\.173|3\.33\.152\.147)$/, 'GoDaddy (parking or forwarding)'],
 ]
 export const oldHostOf = (ip: string) => OLD_HOSTS.find(([re]) => re.test(ip))?.[1] ?? null
 
@@ -115,28 +116,27 @@ export function isCloudflare(ip: string): boolean {
 export const isVercelA = (ip: string) => VERCEL_A.some((r) => r.test(ip))
 export const isVercelCname = (host: string) => VERCEL_CNAME.some((r) => r.test(host))
 
+// Country second levels a store domain sits under (shop.com.bd, shop.co.uk, shop.ne.jp); a short list, not the whole public suffix list.
+const SLD = /^(com|net|org|co|gov|edu|ac|me|ltd|plc|ne|or|go|mil)$/
+const bare = (d: string) => d.toLowerCase().replace(/\.$/, '')
 export function domainKind(domain: string): 'apex' | 'subdomain' {
-  // Two-label names, and three-label names under a two-letter country second level (shop.com.bd), are apex.
-  const parts = domain.split('.')
-  if (parts.length === 2) return 'apex'
-  if (parts.length === 3 && /^(com|net|org|co|gov|edu|ac)$/.test(parts[1]) && parts[2].length === 2) return 'apex'
-  return 'subdomain'
+  return bare(domain) === apexOf(domain) ? 'apex' : 'subdomain'
 }
 export function apexOf(domain: string): string {
-  const parts = domain.split('.')
-  const cc = parts.length >= 3 && /^(com|net|org|co|gov|edu|ac)$/.test(parts[parts.length - 2]) && parts[parts.length - 1].length === 2
+  const parts = bare(domain).split('.')
+  const cc = parts.length >= 3 && SLD.test(parts[parts.length - 2]) && parts[parts.length - 1].length === 2
   return parts.slice(cc ? -3 : -2).join('.')
 }
 /** The record name as a registrar shows it ("@" for the apex, "www" for www.shop.com). */
 export function hostLabel(domain: string): string {
   const apex = apexOf(domain)
-  return domain === apex ? '@' : domain.slice(0, -(apex.length + 1))
+  return bare(domain) === apex ? '@' : bare(domain).slice(0, -(apex.length + 1))
 }
 
 const TYPE_CODE: Record<RecordType, number> = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 }
 interface DohAnswer { name: string; type: number; data: string }
 /** The answers, and the nameserver addresses Google says they came from ("Response from …"). */
-type DohAnswers = DohAnswer[] & { from?: string[] }
+type DohAnswers = DohAnswer[] & { from?: string[]; servfail?: boolean; nxdomain?: boolean }
 type Fetch = typeof fetch
 
 /** One DNS-over-HTTPS JSON query; null when the resolver could not be reached. */
@@ -149,9 +149,11 @@ export async function doh(fetcher: Fetch, base: string, name: string, type: Reco
     const res = await fetcher(url, { headers: { accept: 'application/dns-json' }, signal: AbortSignal.timeout(6_000) })
     if (!res.ok) return null
     const body = await res.json() as { Status?: number; Answer?: DohAnswer[]; Comment?: unknown }
+    if (body.Status === 2) return Object.assign([] as DohAnswer[], { servfail: true })
     if (body.Status !== 0 && body.Status !== 3) return null
     const answers: DohAnswers = (body.Answer ?? []).map((a) => ({ ...a, data: String(a.data).replace(/^"|"$/g, '').replace(/\.$/, '') }))
     const from = [body.Comment].flat().join(' ').match(/Response from (.*)/)?.[1]
+    if (body.Status === 3) answers.nxdomain = true
     if (from) answers.from = from.split(/[\s,]+/).map((ip) => ip.replace(/\.$/, '').toLowerCase()).filter((ip) => /^[\d.]+$|:/.test(ip))
     return answers
   } catch {
@@ -263,6 +265,8 @@ function answersPoint(kind: 'apex' | 'subdomain', answers: DohAnswer[] | null, t
   const cnames = only(answers, 'CNAME')
   const as = only(answers, 'A')
   if (cnames.some(m.cname)) return true
+  // On our proxy, any chain that ends at its address does (www CNAME to the root).
+  if (target.provider === 'proxy' && as.length > 0 && as.every(m.a)) return true
   // A subdomain may also use A records (some providers cannot set a CNAME).
   return as.length > 0 && as.every(m.a) && (kind === 'apex' || cnames.length === 0)
 }
@@ -279,13 +283,16 @@ export async function inspectWww(domain: string, target: HostingTarget, fetcher:
   let answers = await doh(fetcher, view?.resolver ?? RESOLVERS[0].url, www, 'A')
   // Google's cache still holds the old DNS company's answer: ask Cloudflare's resolver instead.
   if (view && cachedFromOld(answers, view)) answers = await doh(fetcher, RESOLVERS[1].url, www, 'A')
-  if (answers === null) return null
+  if (answers === null || answers.servfail) return null
   const ips = only(answers, 'A')
   const cname = only(answers, 'CNAME')
-  const ok = ips.length > 0 && ips.every((ip) => ip === target.a)
-  const fix = `Should be A ${target.a}`
+  const toRoot = cname[0]?.toLowerCase() === domain.toLowerCase()
+  const reaches = ips.length > 0 && ips.every((ip) => ip === target.a)
+  const ok = toRoot || reaches
+  const orange = ips.length > 0 && ips.every(isCloudflare) && !!view?.nameservers.length && view.nameservers.every(isCloudflareNs)
+  const fix = orange ? 'Cloudflare proxy (orange cloud): set www to "DNS only"' : `Should be A ${target.a}`
   const records: FoundRecord[] = cname.length
-    ? cname.slice(0, 1).map((v) => ({ type: 'CNAME', name: 'www', value: v, ok, note: ok ? `Leads to the store through ${v}` : `${fix} (or a CNAME to ${domain})` }))
+    ? cname.slice(0, 1).map((v) => ({ type: 'CNAME', name: 'www', value: v, ok, note: ok ? (reaches ? `Leads to the store through ${v}` : 'Follows @: fixed once the A record for @ is') : `${fix} (or a CNAME to ${domain})` }))
     : ips.length
       ? ips.map((v) => ({ type: 'A', name: 'www', value: v, ok: v === target.a, note: v === target.a ? undefined : fix }))
       : [{ type: 'A', name: 'www', value: '—', ok: false, note: `Not found yet — add an A record for www pointing to ${target.a}` }]
@@ -297,7 +304,9 @@ export async function inspectWww(domain: string, target: HostingTarget, fetcher:
     records,
     issue: {
       code: 'WWW_SETUP', severity: 'warning', title: `${www} is not set up yet`,
-      detail: now
+      detail: orange ? `In Cloudflare → ${domain} → DNS → Records, set the www record (A ${target.a}, or a CNAME to ${domain}) to Proxy status "DNS only" (grey cloud).`
+        : !cname.length && ips.includes(target.a) ? `Delete the A record for www pointing to ${ips.filter((ip) => ip !== target.a).join(', ')}: visitors who type ${www} sometimes reach it instead of the store.`
+        : now
         ? `${www} has ${now}. Replace it with an A record for www pointing to ${target.a}, so visitors who type www reach the store (they are sent on to ${domain}).`
         : `Add an A record for www pointing to ${target.a}, so visitors who type ${www} reach the store (they are sent on to ${domain}).`,
     },
@@ -332,7 +341,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const cnameValues = only(cname, 'CNAME').concat(only(a, 'CNAME')).filter((v, i, all) => all.indexOf(v) === i)
   const aValues = only(a, 'A')
   const aaaaValues = only(aaaa, 'AAAA')
-  const proxied = aValues.some(isCloudflare) || aaaaValues.some(isCloudflare)
+  const proxied = aValues.length ? aValues.every(isCloudflare) : aaaaValues.some(isCloudflare)
 
   // HTTPS: does the domain open over TLS, and is it our hosting answering?
   // Skip the probe when the domain resolves to a private/internal address: a
@@ -361,34 +370,38 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const onCloudflareDns = nameservers.length > 0 && nameservers.every(isCloudflareNs)
   // The domain's own Cloudflare zone proxies the name (orange cloud): visitors reach that zone,
   // not the store, and the certificate cannot be issued. Public DNS shows only the proxy's addresses.
-  const orangeCloud = onCloudflare && onCloudflareDns && cnameValues.length === 0 && proxied && !servedByUs && !flattened
+  const orangeCloud = (onCloudflare || target.provider === 'proxy') && onCloudflareDns && cnameValues.length === 0 && proxied && !servedByUs && !flattened
   const records: FoundRecord[] = []
+  // On our proxy a CNAME is fine when its chain ends at the proxy's address (www → the root).
+  const chainToProxy = target.provider === 'proxy' && aValues.length > 0 && aValues.every(m.a)
   for (const v of cnameValues) {
-    const ok = m.cname(v)
-    records.push({ type: 'CNAME', name, value: v, ok, note: ok ? undefined : `Should be ${target.cname}` })
+    const ok = m.cname(v) || chainToProxy
+    records.push({ type: 'CNAME', name, value: v, ok,
+      note: ok ? (chainToProxy && !m.cname(v) ? `Leads to the store through ${v}` : undefined) : `Should be ${target.a ? `an A record to ${target.a}` : target.cname}` })
   }
   // With a CNAME, the A/AAAA answers belong to its target, not to this name.
   const own = cnameValues.length === 0
   for (const v of own ? aValues : []) {
-    const ok = m.a(v) || isOurs(v) || (isCloudflare(v) && servedByUs)
+    const ok = m.a(v) || isOurs(v) || (proxied && servedByUs)
     const wrong = target.a ? `Should be ${target.a}` : `Use a CNAME (or ALIAS) to ${target.cname} instead`
     const old = oldOf(v)
-    const note = old ? `Still points to ${old} — ${target.a ? `change it to ${target.a}` : 'delete this record'}`
-      : target.provider === 'proxy' ? (ok ? undefined : wrong)
+    const note = old ? `Still points to ${old} — ${target.a && !aValues.some(m.a) ? `change it to ${target.a}` : 'delete this record'}`
       : orangeCloud ? 'Your Cloudflare proxy (orange cloud) answers here, not the store'
+      : target.provider === 'proxy' ? (ok ? undefined : wrong)
       : onCloudflare
       ? (ok ? 'Points to Fullfilio (ALIAS / flattening)' : isCloudflare(v) ? 'Another Cloudflare site answers here, not the store' : wrong)
       : (ok ? (isCloudflare(v) ? 'Cloudflare proxy' : undefined) : isCloudflare(v) ? 'Cloudflare proxy (not reaching the store)' : wrong)
     records.push({ type: 'A', name, value: v, ok, note })
   }
   for (const v of own ? aaaaValues : []) {
-    const ok = isOurs(v) || m.a(v) || (isCloudflare(v) && servedByUs)
-    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : 'Cloudflare proxy')
-      : orangeCloud ? 'Your Cloudflare proxy (orange cloud) answers here, not the store' : 'Remove: the store has no IPv6 address' })
+    const ok = isOurs(v) || m.a(v) || (proxied && isCloudflare(v) && servedByUs)
+    records.push({ type: 'AAAA', name, value: v, ok, note: ok ? (onCloudflare ? 'Points to Fullfilio (ALIAS / flattening)' : isCloudflare(v) ? 'Cloudflare proxy' : undefined)
+      : orangeCloud ? 'Your Cloudflare proxy (orange cloud) answers here, not the store' : target.aaaa ? `Should be ${target.aaaa}` : 'Remove: the store has no IPv6 address' })
   }
   // Records the hosting asked for (ownership / certificate): are they there yet? On Cloudflare
   // DNS they do not count (Cloudflare verifies through the CNAME there), so none are asked for.
-  const expected = onCloudflare && onCloudflareDns ? [] : opts.expect ?? []
+  // (Our own ownership record, _fullfilio.<domain>, is asked for on any DNS.)
+  const expected = (opts.expect ?? []).filter((e) => !(onCloudflare && onCloudflareDns) || e.name.startsWith('_fullfilio.'))
   const txtAnswers = await Promise.all(expected.map((e) => doh(fetcher, view.resolver, e.name, 'TXT')))
   const missingTxt: ExpectedRecord[] = []
   const staleTxt: string[] = []
@@ -449,7 +462,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     const cf = nameservers.filter((n) => /\.ns\.cloudflare\.com\.?$/.test(n))
     const others = nameservers.filter((n) => !cf.includes(n))
     issues.push({ code: 'NS_MIXED', severity: 'error', title: 'Your domain uses nameservers from two companies',
-      detail: cf.length && others.length
+      detail: cf.length && others.length && kind === 'apex' && onCloudflare
         ? `Keep only the Cloudflare nameservers (${cf.join(', ')}). At the company where you bought the domain, open Nameservers and delete ${others.join(', ')}. Until then visitors randomly get the old DNS, so the store comes and goes. Changes take up to an hour.`
         : `It lists ${nameservers.join(', ')}. Visitors randomly get the records of one or the other, so the old site keeps coming back. At the company where you bought the domain, set the nameservers to only one company (the one where you edit DNS), then wait an hour.` })
   }
@@ -459,20 +472,26 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   const oldSeen = [...new Set(seen.map(oldOf).filter((x): x is string => !!x))]
   if (oldSeen.length) {
     const inRecords = aValues.some((v) => oldOf(v))
-    issues.push({ code: 'OLD_HOST', severity: inRecords ? 'error' : 'warning', title: `Some visitors still reach ${oldSeen.join(' and ')}`,
+    issues.push({ code: 'OLD_HOST', severity: inRecords ? 'error' : 'warning', title: inRecords && aValues.every((v) => oldOf(v)) ? `Your domain still points to ${oldSeen.join(' and ')}` : `Some visitors still reach ${oldSeen.join(' and ')}`,
       detail: inRecords
-        ? `Your DNS still has an A record for ${name} pointing to ${oldSeen.join(' / ')}. ${target.a ? `Change it to ${target.a}` : 'Delete it'} at ${dnsHost.provider ?? 'your domain provider'}.`
+        ? `Your DNS still has an A record for ${name} pointing to ${oldSeen.join(' / ')}. ${target.a && !aValues.some(m.a) ? `Change it to ${target.a}` : 'Delete it'} at ${dnsHost.provider ?? 'your domain provider'}.`
         : `The old address is no longer in your records but some DNS servers still remember it. It clears by itself within a few hours.${dnsHost.mixed ? '' : ' If it keeps coming back after that, check your nameservers.'}` })
   }
   if (missingTxt.length) {
     issues.push(staleTxt.length ? { code: 'TXT_MISSING', severity: 'error', title: 'Verification record has an old value',
       detail: `The TXT record ${missingTxt.map((t) => t.name.split('.')[0]).join(', ')} still holds ${staleTxt[0]}. The domain was added again, which gives a new code: edit the record and paste the value shown below.` }
       : { code: 'TXT_MISSING', severity: 'error', title: 'Verification record missing',
-      detail: `Add the TXT record ${missingTxt.map((t) => t.name.split('.')[0]).join(', ')} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it.` })
+      detail: `Add the TXT record ${missingTxt.map((t) => (t.name === domain ? name : t.name.replace(new RegExp(`\\.${apexOf(domain).replace(/\./g, '\\.')}$`), ''))).join(', ')} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it.` })
   }
   // Nothing answered at all: say so instead of claiming the records are missing.
   const reached = [a, aaaa, cname].some((x) => x !== null)
-  if (!reached) {
+  if ([a, aaaa, cname].every((x) => x?.servfail)) {
+    issues.push({ code: 'DNS_BROKEN', severity: 'error', title: 'DNS servers cannot read your domain',
+      detail: `DNS servers answer "server failure" for ${domain}, so visitors cannot open it. Usually DNSSEC is still on where you bought the domain after the nameservers changed: turn DNSSEC off there (or delete its DS record), then wait an hour.` })
+  } else if (kind === 'apex' && [a, aaaa, cname].every((x) => x?.nxdomain)) {
+    issues.push({ code: 'NO_DOMAIN', severity: 'error', title: `${domain} does not exist in DNS`,
+      detail: 'Check the spelling, that the domain is registered and paid (not expired or on hold), and that it has nameservers where you bought it.' })
+  } else if (!reached) {
     issues.push({ code: 'CHECK_FAILED', severity: 'error', title: 'Could not check DNS right now', detail: 'The DNS resolvers did not answer. Try again in a minute.' })
   } else if (!aValues.length && !cnameValues.length) {
     issues.push({ code: 'NO_RECORDS', severity: 'error', title: 'No DNS records found',
@@ -481,30 +500,32 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
         : `Add a CNAME record for ${name} pointing to ${target.cname} at your domain provider.` })
   } else if (orangeCloud) {
     issues.push({ code: 'ORANGE_CLOUD', severity: 'error', title: 'Turn off the orange cloud in Cloudflare',
-      detail: `In Cloudflare → ${apexOf(domain)} → DNS → Records, edit the ${name} record: it must be a CNAME to ${target.cname} with Proxy status "DNS only" (grey cloud). It is proxied (orange) now, so your own Cloudflare answers instead of the store and the HTTPS certificate cannot be issued. It connects by itself within about 10 minutes of the change.` })
+      detail: `In Cloudflare → ${apexOf(domain)} → DNS → Records, edit the ${name} record: it must be ${target.a ? `an A record to ${target.a} (not a CNAME or ALIAS)` : `a CNAME to ${target.cname}`} with Proxy status "DNS only" (grey cloud). It is proxied (orange) now, so your own Cloudflare answers instead of the store and the HTTPS certificate cannot be issued. It connects by itself within about 10 minutes of the change.` })
   } else if (!pointedByDns) {
     issues.push({ code: 'WRONG_TARGET', severity: 'error', title: 'DNS records point somewhere else',
       detail: kind === 'apex' && target.a ? `Change the A record for @ to ${target.a} and delete any other A records for @.`
         : kind === 'apex' ? `Point @ at ${target.cname} with a CNAME (or ALIAS / ANAME) record and delete the A and AAAA records for @.`
+        : aValues.length && !cnameValues.length ? `Delete the A record for ${name} and add a CNAME record for ${name} pointing to ${target.cname}.`
         : `Change the CNAME record for ${name} to ${target.cname}.` })
   }
   // On Cloudflare a customer's own Cloudflare proxy in front of us works as is.
-  if (proxied && !onCloudflare) {
+  if (proxied && !onCloudflare && !orangeCloud) {
     issues.push({ code: 'CLOUDFLARE_PROXY', severity: servedByUs ? 'warning' : 'error', title: 'Your domain has a Cloudflare proxy',
       detail: servedByUs
         ? 'The store opens through it, but the proxy can delay certificate renewals and cache pages. In Cloudflare, set the record to "DNS only" (grey cloud).'
         : 'The proxy is not passing visitors to the store. In Cloudflare, set the record to "DNS only" (grey cloud).' })
   }
-  const strayA = aValues.filter((v) => !m.a(v) && !isCloudflare(v))
+  const strayA = aValues.filter((v) => !m.a(v) && !(proxied && isCloudflare(v)))
   if (own && strayA.length && (aValues.some(m.a) || (onCloudflare && servedByUs))) {
     issues.push({ code: 'EXTRA_A', severity: 'error', title: 'Extra A records',
       detail: `Some visitors will reach ${strayA.join(', ')} instead of the store. Delete those A records.` })
   }
-  if (own && aaaaValues.some((v) => !isCloudflare(v) && !m.a(v))) {
-    issues.push({ code: 'AAAA', severity: 'warning', title: 'IPv6 (AAAA) records found',
-      detail: 'Visitors on IPv6 may reach another server. Delete the AAAA records for this name.' })
+  const strayAaaa = own ? aaaaValues.filter((v) => !isCloudflare(v) && !m.a(v)) : []
+  if (strayAaaa.length) {
+    issues.push({ code: 'AAAA', severity: target.provider === 'proxy' ? 'error' : 'warning', title: 'IPv6 (AAAA) records found',
+      detail: `${target.aaaa ? `Change the AAAA record for ${name} to ${target.aaaa}` : `Delete the AAAA record for ${name} (${strayAaaa.join(', ')})`} at ${dnsHost.provider ?? 'your domain provider'}. Visitors on IPv6 reach another server, and the HTTPS certificate cannot be issued or renewed while it is there (it is checked over IPv6 first).` })
   }
-  const caaValues = only(caa, 'CAA').concat(only(apexCaa, 'CAA'))
+  const caaValues = only(caa, 'CAA').concat(only(apexCaa, 'CAA')).filter((v) => /^\d+\s+issue\s/i.test(v))
   // Cloudflare issues the certificate through Let's Encrypt or Google Trust Services.
   const allowedCa = onCloudflare ? /letsencrypt\.org|pki\.goog/i : /letsencrypt\.org/i
   if (caaValues.length && !caaValues.some((v) => allowedCa.test(v))) {
@@ -512,13 +533,18 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       detail: onCloudflare ? 'Add CAA records allowing letsencrypt.org and pki.goog, or the store cannot get an HTTPS certificate.'
         : 'Add a CAA record allowing letsencrypt.org, or the store cannot get an HTTPS certificate.' })
   }
-  if (pointedByDns && !tls.ok) {
+  if (pointedByDns && !tls.ok && !issues.some((i) => i.code === 'CAA' || i.code === 'AAAA')) {
     issues.push({ code: 'TLS_PENDING', severity: 'info', title: 'Certificate on the way', detail: 'DNS is correct. The HTTPS certificate is usually ready within a few minutes.' })
   }
+  if (target.provider === 'proxy' && pointedByDns && tls.ok && tls.served_by_store === false) {
+    issues.push({ code: 'NOT_STORE', severity: 'error', title: 'Another server answers on HTTPS',
+      detail: `DNS points at the store, but https://${domain} was answered by another server. Delete any other A or AAAA record for ${name}; if there is none this clears by itself (we keep checking).` })
+  }
   const okRegions = regions.filter((r) => r.ok).length
-  if (pointedByDns && okRegions < regions.length) {
+  const lagging = resolvers.filter((r, i) => !r.ok && resolverAnswers[i] !== null)
+  if (pointedByDns && (okRegions < regions.length || lagging.length)) {
     issues.push({ code: 'PROPAGATING', severity: 'info', title: 'Still spreading around the world',
-      detail: `${okRegions} of ${regions.length} regions see the new records. DNS changes can take up to 48 hours to reach everyone.` })
+      detail: `${okRegions} of ${regions.length} regions${lagging.length ? ` (not yet: ${lagging.map((r) => r.name).join(', ')} DNS)` : ''} see the new records. DNS changes can take up to 48 hours to reach everyone.` })
   }
   // Only the old DNS company's records were seen: what they say no longer counts.
   if (view.stale) issues = issues.filter((i) => ['NS_SWITCHING', 'NEEDS_CLOUDFLARE', 'NS_MIXED', 'CHECK_FAILED', 'CAA'].includes(i.code))
@@ -527,7 +553,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
     checked_at: (opts.now ?? new Date()).toISOString(),
     kind,
     pointed,
-    live_everywhere: okRegions === regions.length && resolvers.every((r) => r.ok),
+    live_everywhere: okRegions === regions.length && !lagging.length,
     records,
     regions,
     resolvers,
