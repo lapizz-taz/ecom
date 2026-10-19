@@ -346,7 +346,8 @@ export default (
     if (cf) {
       switch (input.action) {
         case 'list':
-          return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: true })
+          // root_ip: main domains connect with an A record to our proxy, at any DNS company.
+          return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: true, root_ip: rootProxy(cf)?.a ?? null })
         case 'add':
           if (!viaProxy(cf, input.domain)) await addCloudflare(cf, input.domain)
           return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, false)), automatic: true })

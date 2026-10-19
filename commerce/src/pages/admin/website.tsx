@@ -56,6 +56,8 @@ function DomainsTab() {
     // A domain still waiting is re-checked on the server every 10 minutes: show it going live without a reload.
     refetchInterval: (q) => (q.state.data?.domains.some((d) => d.status !== 'ACTIVE' && d.status !== 'MANUAL') ? 60_000 : false),
   })
+  // Set when main domains connect through Fullfilio's own server (an A record, at any DNS company).
+  const rootIp = list.data?.root_ip ?? null
   const refresh = () => void qc.invalidateQueries({ queryKey: ['store-domains'] })
   const add = useMutation({
     mutationFn: () => addDomain(value),
@@ -102,17 +104,28 @@ function DomainsTab() {
                 <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="shop.com or www.shop.com" className="sm:flex-1" autoCapitalize="none" spellCheck={false} />
                 <Button type="submit" disabled={!value.trim() || add.isPending}>{add.isPending ? <Spinner /> : <Plus />} Add domain</Button>
               </form>
-              <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
-                <p className="font-medium">Main domain (shop.com) works only with Cloudflare DNS</p>
-                <p className="mt-0.5 text-muted-foreground">
-                  On Hostinger and other DNS companies the main domain cannot connect. Connect your domain to Cloudflare first (free, the domain stays where you bought it),
-                  or use <b className="text-foreground">www.shop.com</b>, which works everywhere.
-                </p>
-                <details className="mt-1.5">
-                  <summary className="cursor-pointer font-medium">How to connect your domain to Cloudflare</summary>
-                  <div className="mt-1.5"><CloudflareSteps /></div>
-                </details>
-              </div>
+              {rootIp ? (
+                <div className="mt-3 rounded-lg border p-2.5 text-xs">
+                  <p className="font-medium">Works with any DNS company</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Hostinger, Namecheap, GoDaddy, Cloudflare and others. For <b className="text-foreground">shop.com</b> add two A records,{' '}
+                    <b className="text-foreground">@</b> and <b className="text-foreground">www</b>, both pointing to <b className="font-mono text-foreground">{rootIp}</b>;
+                    www.shop.com then opens the store too. The exact records and their status show here once the domain is added.
+                  </p>
+                </div>
+              ) : list.data && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
+                  <p className="font-medium">Main domain (shop.com) works only with Cloudflare DNS</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    On Hostinger and other DNS companies the main domain cannot connect. Connect your domain to Cloudflare first (free, the domain stays where you bought it),
+                    or use <b className="text-foreground">www.shop.com</b>, which works everywhere.
+                  </p>
+                  <details className="mt-1.5">
+                    <summary className="cursor-pointer font-medium">How to connect your domain to Cloudflare</summary>
+                    <div className="mt-1.5"><CloudflareSteps /></div>
+                  </details>
+                </div>
+              )}
               {!list.data?.automatic && (
                 <p className="mt-3 flex items-start gap-2 rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
                   <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -131,7 +144,9 @@ function DomainsTab() {
         <CardContent>
           <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
             <li>Add your domain here.</li>
-            <li>Add the DNS record shown. <b className="text-foreground">www.shop.com</b>: a <b className="text-foreground">CNAME</b>, at any DNS company. <b className="text-foreground">shop.com</b>: only on <b className="text-foreground">Cloudflare</b> DNS (a CNAME at @), not on Hostinger.</li>
+            {rootIp
+              ? <li>Add the DNS records shown, at any DNS company. <b className="text-foreground">shop.com</b>: an <b className="text-foreground">A</b> record for <b className="text-foreground">@</b> and one for <b className="text-foreground">www</b>. A subdomain (<b className="text-foreground">shop.example.com</b>): a <b className="text-foreground">CNAME</b>.</li>
+              : <li>Add the DNS record shown. <b className="text-foreground">www.shop.com</b>: a <b className="text-foreground">CNAME</b>, at any DNS company. <b className="text-foreground">shop.com</b>: only on <b className="text-foreground">Cloudflare</b> DNS (a CNAME at @), not on Hostinger.</li>}
             <li>Open the domain and click <b className="text-foreground">Check again</b>. You see each record, every region and HTTPS. DNS changes can take minutes to a few hours.</li>
             <li>On Cloudflare, set the record to <b className="text-foreground">DNS only</b> (grey cloud).</li>
             <li>The first domain is the <b className="text-foreground">primary</b>; the others redirect to it.</li>
