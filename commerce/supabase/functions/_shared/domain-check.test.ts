@@ -286,4 +286,29 @@ describe('root domain on Cloudflare DNS', () => {
     expect(d.records.some((r) => r.type === 'TXT')).toBe(false)
     expect(d.issues).toEqual([])
   })
+
+  it('a proxied (orange) record in the domain\'s own Cloudflare says to turn the cloud grey, not to delete A records', async () => {
+    const target = cloudflareTarget('stores.fullfilio.example')
+    const zone: Zone = {
+      'stores.fullfilio.example': { A: ['104.21.50.1', '172.67.1.2'] },
+      // The domain's own zone answers with its proxy addresses, IPv6 included.
+      'shop.com': { A: ['172.67.205.49', '104.21.66.146'], AAAA: ['2606:4700:3031::6815:4292'], NS: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'] },
+    }
+    const dns = fakeFetch(zone)
+    const fetcher = (async (input: string | URL, init?: RequestInit) => new URL(String(input)).pathname === '/'
+      ? new Response('', { status: 522, headers: { server: 'cloudflare' } }) : dns(input, init)) as typeof fetch
+    const d = await diagnose('shop.com', { target, fetcher })
+    expect(d.pointed).toBe(false)
+    expect(d.issues.map((i) => i.code)).toEqual(['ORANGE_CLOUD'])
+    expect(d.issues[0].detail).toContain('DNS only')
+    expect(d.issues[0].detail).toContain('stores.fullfilio.example')
+    expect(d.records.every((r) => r.note === 'Your Cloudflare proxy (orange cloud) answers here, not the store')).toBe(true)
+
+    // The same answers while the store opens through the proxy are fine (Cloudflare to Cloudflare).
+    const through = (async (input: string | URL, init?: RequestInit) => new URL(String(input)).pathname === '/'
+      ? new Response('ok', { headers: { 'x-fullfilio': 'store' } }) : dns(input, init)) as typeof fetch
+    const ok = await diagnose('shop.com', { target, fetcher: through })
+    expect(ok.issues.map((i) => i.code)).not.toContain('ORANGE_CLOUD')
+    expect(ok.pointed).toBe(true)
+  })
 })
