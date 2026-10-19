@@ -18,6 +18,7 @@ import { captureNavigation } from '@/lib/attribution'
 import { getAdTracking, getCategories, trackEvent } from '@/services/storefront'
 import { adEvent, startAdPixels } from '@/features/storefront/ad-pixels'
 import { useCartSync } from '@/features/cart/use-cart-sync'
+import { setPageTitle } from '@/lib/page-title'
 
 function useCategories() {
   return useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
@@ -57,7 +58,7 @@ export default function StorefrontLayout() {
   }, [location.pathname, location.search])
 
   useEffect(() => {
-    if (config?.store.name) document.title = config.store.name
+    if (config?.store.name) setPageTitle('store', config.store.name)
   }, [config?.store.name])
 
   useEffect(() => {

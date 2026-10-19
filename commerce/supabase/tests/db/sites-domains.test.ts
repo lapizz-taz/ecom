@@ -140,8 +140,12 @@ describe('custom domains', () => {
       expect(await value(db, `select public.storefront_resolve('www.shop.example.com')`)).toMatchObject({ kind: 'store', redirect_to: 'shop.example.com' })
       expect(await value(db, `select public.storefront_resolve('shop.example.com')`)).toMatchObject({ redirect_to: null })
 
-      // Removed: the twin is unknown again.
+      // Removed: the twin is unknown again, and both show "store not available", not the platform's site.
       await db.query(`select public.store_domain_save('shop.example.com', '{"status":"REMOVED","records":[]}', $1)`, [owner])
       expect(await known('www.shop.example.com')).toBe(false)
+      expect(await value(db, `select public.storefront_resolve('shop.example.com')`)).toEqual({ kind: 'missing' })
+      expect(await value(db, `select public.storefront_resolve('www.shop.example.com')`)).toEqual({ kind: 'missing' })
+      // An address no store ever had is unchanged.
+      expect(await value(db, `select public.storefront_resolve('never-connected.example.com')`)).not.toEqual({ kind: 'missing' })
     }))
 })

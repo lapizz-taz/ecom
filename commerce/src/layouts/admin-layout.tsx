@@ -41,6 +41,7 @@ import { isPlatformStaff } from '@/services/users'
 import { useStoreAddress } from '@/hooks/use-store-address'
 import { useNoAutoKeyboard } from '@/hooks/use-no-auto-keyboard'
 import { unlockSuperAdmin } from '@/lib/super-admin-gate'
+import { setPageTitle } from '@/lib/page-title'
 
 const COLLAPSED_KEY = 'admin-sidebar-collapsed'
 
@@ -252,8 +253,9 @@ export default function AdminLayout() {
   useShortcuts({ search: () => setDialog('search'), toggleMenu: toggleCollapsed, help: () => setDialog('help') }, can)
   useNoAutoKeyboard()
 
+  // Until the store name loads, the title remembered from the last visit stays (no "Store" flash).
   useEffect(() => {
-    document.title = `${config?.store.name ?? 'Store'} · Fullfilio`
+    if (config?.store.name) setPageTitle('admin', `${config.store.name} · Fullfilio`)
   }, [config?.store.name])
 
   if (loading || accessLoading || (!access && platformMember.isLoading)) return <BrandLoader label="Loading your workspace…" />
