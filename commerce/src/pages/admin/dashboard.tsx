@@ -221,9 +221,9 @@ export default function DashboardPage() {
           {can('orders.view') && <StatusTiles />}
         </div>
         <Link to="/admin/help" aria-label="Get help from the Fullfilio team"
-          className="hidden overflow-hidden rounded-xl border transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm xl:block">
+          className="relative hidden w-56 overflow-hidden rounded-xl border transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm xl:block">
           <img src="/media/support-team.webp" alt="Our team, on your side: real people from the Fullfilio team help you set up, connect your couriers and fix any issue."
-            width={640} height={640} className="size-52 object-cover" />
+            width={640} height={640} className="absolute inset-0 size-full object-cover" />
         </Link>
       </div>
 
