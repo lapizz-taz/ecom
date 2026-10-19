@@ -24,7 +24,7 @@
 // Without either the domain is saved as MANUAL with the DNS records to add, and
 // the platform owner attaches it by hand.
 import { z } from 'zod'
-import { apexOf, cloudflareTarget, diagnose, proxyTarget, VERCEL_TARGET, inspectWww, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsView, proxyTarget, VERCEL_TARGET, inspectWww, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -125,7 +125,9 @@ const viaProxy = (cf: Cloudflare, d: string) => (d === apexOf(d) ? rootProxy(cf)
 
 /** A root domain on the proxy: live once its A record leads to the proxy and the store answers over HTTPS. */
 async function inspectRoot(target: HostingTarget, d: string): Promise<Omit<Saved, 'domain'>> {
-  const [diagnostics, www] = await Promise.all([diagnose(d, { target }), inspectWww(d, target)])
+  // Asked once for both: which nameservers really answer, and which resolver already has them.
+  const view = await dnsView(d)
+  const [diagnostics, www] = await Promise.all([diagnose(d, { target, view }), inspectWww(d, target, fetch, view)])
   // www.<root> is listed next to @, but never holds the root back: it only asks for its record.
   if (www) {
     diagnostics.records.push(...www.records)

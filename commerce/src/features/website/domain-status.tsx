@@ -233,6 +233,11 @@ function DnsHost({ diag, rootA, hideTip }: { diag: DomainDiagnosis; rootA?: bool
           : <>DNS for this domain is managed at <b>{host.provider ?? host.nameservers[0]}</b></>}
       </p>
       <p className="font-mono text-[10.5px] break-all text-muted-foreground">Nameservers: {host.nameservers.join(', ')}</p>
+      {host.moving_from && (
+        <p className="text-amber-700 dark:text-amber-400">
+          Just moved here from {host.moving_from.provider ?? host.moving_from.nameservers.join(', ')}: some DNS servers still use the old DNS for up to 48 hours. Only the records at {host.provider ?? 'the nameservers above'} count now.
+        </p>
+      )}
       {host.mixed
         ? <p className="text-muted-foreground">Where you bought the domain, open Nameservers and keep only one company&apos;s nameservers (the ones where you add the records below).</p>
         : steps && !hideTip && <p className="text-muted-foreground">Add the records at: {steps.where}.{steps.tip ? ` ${steps.tip}` : ''}</p>}

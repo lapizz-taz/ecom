@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apexOf, cloudflareTarget, diagnose, dnsHostOf, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS, inspectWww } from './domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsHostOf, dnsView, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS, inspectWww } from './domain-check.ts'
 
 type Zone = Record<string, Partial<Record<'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS' | 'TXT', string[]>>>
 const CODE = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 } as const
@@ -342,5 +342,77 @@ describe('root domain on Cloudflare DNS', () => {
     const ok = await diagnose('shop.com', { target, fetcher: through })
     expect(ok.issues.map((i) => i.code)).not.toContain('ORANGE_CLOUD')
     expect(ok.pointed).toBe(true)
+  })
+})
+
+describe('right after moving the DNS to another company', () => {
+  const target = proxyTarget('198.51.100.20', 'stores.fullfilio.example')
+  const hostinger = ['cosmos.dns-parking.com', 'nova.dns-parking.com']
+  const cloudflareNs = ['adrian.ns.cloudflare.com', 'hassan.ns.cloudflare.com']
+  // The old Cloudflare zone had the right record; Hostinger still has its parking page.
+  const oldZone: Zone = { 'shop.com': { A: ['198.51.100.20'], NS: cloudflareNs }, 'www.shop.com': { CNAME: ['stores.fullfilio.example'] } }
+  const newZone: Zone = { 'shop.com': { A: ['2.57.91.91'], NS: hostinger }, 'www.shop.com': { CNAME: ['shop.com'] } }
+  /** The registry (RDAP) has `registry`; Google's and Cloudflare's resolvers answer from the zones given. */
+  function moving(google: Zone, cloudflare: Zone, registry: string[] | null = hostinger) {
+    const g = fakeFetch(google)
+    const c = fakeFetch(cloudflare)
+    return (async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(String(input))
+      if (url.hostname === 'rdap.org') {
+        return registry ? Response.json({ nameservers: registry.map((n) => ({ ldhName: n.toUpperCase() })) }) : new Response('', { status: 404 })
+      }
+      if (url.pathname === '/') return new Response('ok', { headers: { 'x-fullfilio': 'store' } })
+      return (url.hostname === 'cloudflare-dns.com' ? c : g)(input, init)
+    }) as typeof fetch
+  }
+
+  it('while only the old DNS answers: says where the DNS is now and does not count the old records', async () => {
+    const fetcher = moving(oldZone, oldZone)
+    const d = await diagnose('shop.com', { target, fetcher })
+    expect(d.pointed).toBe(false)
+    expect(d.dns_host).toEqual({ provider: 'Hostinger', nameservers: hostinger, mixed: false, moving_from: { provider: 'Cloudflare', nameservers: cloudflareNs } })
+    expect(d.issues.map((i) => [i.code, i.severity])).toEqual([['NS_SWITCHING', 'error']])
+    expect(d.issues[0].title).toBe('Your DNS moved to Hostinger — add the records there')
+    expect(d.issues[0].detail).toContain('Add the records below at Hostinger')
+    expect(d.records).toEqual([{ type: 'A', name: '@', value: '198.51.100.20', ok: false, note: 'From your old DNS (Cloudflare), which no longer counts' }])
+
+    const view = await dnsView('shop.com', fetcher)
+    expect(view).toMatchObject({ stale: true, old: cloudflareNs })
+    expect(await inspectWww('shop.com', target, fetcher, view)).toEqual({ issue: null, records: [
+      expect.objectContaining({ type: 'CNAME', value: 'stores.fullfilio.example', ok: false, note: 'From your old DNS (Cloudflare), which no longer counts' }),
+    ] })
+  })
+
+  it('reads the records from a resolver already on the new DNS, and says what to change there', async () => {
+    const fetcher = moving(oldZone, newZone)
+    const d = await diagnose('shop.com', { target, fetcher })
+    expect(d.pointed).toBe(false)
+    expect(d.records).toEqual([{ type: 'A', name: '@', value: '2.57.91.91', ok: false, note: 'Still points to Hostinger (website or parking page) — change it to 198.51.100.20' }])
+    expect(d.issues.map((i) => [i.code, i.severity])).toEqual([['NS_SWITCHING', 'warning'], ['OLD_HOST', 'error'], ['WRONG_TARGET', 'error']])
+    expect(d.issues[1].detail).toBe('Your DNS still has an A record for @ pointing to Hostinger (website or parking page). Change it to 198.51.100.20 at Hostinger.')
+    const www = await inspectWww('shop.com', target, fetcher, await dnsView('shop.com', fetcher))
+    expect(www!.records[0]).toMatchObject({ type: 'CNAME', value: 'shop.com' })
+
+    // Fixed at Hostinger: live, with only a note that some visitors still get the old DNS for a while.
+    const fixed = await diagnose('shop.com', { target, fetcher: moving(oldZone, { 'shop.com': { A: ['198.51.100.20'], NS: hostinger } }) })
+    expect(fixed.pointed).toBe(true)
+    expect(fixed.issues.map((i) => [i.code, i.severity])).toEqual([['NS_SWITCHING', 'warning']])
+  })
+
+  it('changes nothing when the registry and the resolvers agree, or the registry does not say', async () => {
+    const settled = await diagnose('shop.com', { target, fetcher: moving(newZone, newZone) })
+    expect(settled.dns_host).toEqual({ provider: 'Hostinger', nameservers: hostinger, mixed: false })
+    expect(settled.issues.map((i) => i.code)).not.toContain('NS_SWITCHING')
+    // Same company under other names: the zone lists its own nameservers, not a switch.
+    expect((await dnsView('shop.com', moving(newZone, newZone, ['ns1.dns-parking.com', 'ns2.dns-parking.com'])))).toMatchObject({ old: [], stale: false })
+    // No registry answer (some country domains): the resolvers' nameservers, as before.
+    const unknown = await diagnose('shop.com', { target, fetcher: moving(oldZone, newZone, null) })
+    expect(unknown.dns_host).toMatchObject({ mixed: true, nameservers: [...cloudflareNs, ...hostinger].sort() })
+    expect(unknown.issues.map((i) => i.code)).not.toContain('NS_SWITCHING')
+  })
+
+  it('a move between two Cloudflare accounts counts as a move', async () => {
+    const view = await dnsView('shop.com', moving(oldZone, oldZone, ['lola.ns.cloudflare.com', 'max.ns.cloudflare.com']))
+    expect(view).toMatchObject({ old: cloudflareNs, stale: true, nameservers: ['lola.ns.cloudflare.com', 'max.ns.cloudflare.com'] })
   })
 })

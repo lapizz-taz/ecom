@@ -17,8 +17,11 @@ export interface DomainDiagnosis {
   resolvers: Array<{ name: string; ok: boolean; answers: string[] }>
   tls: { ok: boolean; detail: string; served_by_store: boolean | null; status: number | null }
   issues: Array<{ code: string; severity: 'error' | 'warning' | 'info'; title: string; detail: string }>
-  /** Who answers DNS for the domain (from its nameservers); mixed = two companies at once. */
-  dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean }
+  /**
+   * Who answers DNS for the domain (its nameservers at the registry); mixed = two companies at once;
+   * moving_from = the nameservers DNS servers still remember right after a switch.
+   */
+  dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean; moving_from?: { provider: string | null; nameservers: string[] } }
   hosting?: { status: string; ssl_status: string | null; error: string | null }
 }
 export interface StoreDomain {
