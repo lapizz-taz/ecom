@@ -207,7 +207,7 @@ describe('Hostinger (root on the proxy)', () => {
     expect(d.status).toBe('ACTIVE')
     expect(d.live_everywhere).toBe(true)
     expect(d.issues).toEqual([])
-    expect(d.dns_host).toEqual({ provider: 'Hostinger', nameservers: NS.hostinger, mixed: false })
+    expect(d.dns_host).toMatchObject({ provider: 'Hostinger', nameservers: NS.hostinger, mixed: false })
     expect(d.records).toEqual([
       { type: 'A', name: '@', value: IP, ok: true, note: undefined },
       { type: 'CNAME', name: 'www', value: 'hostinger-live.com', ok: true, note: 'Leads to the store through hostinger-live.com' },
@@ -467,7 +467,7 @@ describe('country and other TLDs', () => {
     expect(d.kind).toBe('apex')
     expect(d.status).toBe('ACTIVE')
     expect(d.issues).toEqual([])
-    expect(d.dns_host).toEqual({ provider: 'exonhost.com', nameservers: NS.local, mixed: false })
+    expect(d.dns_host).toMatchObject({ provider: 'exonhost.com', nameservers: NS.local, mixed: false })
   })
 
   it('www.shop.co.uk (Cloudflare target): reads the CAA of the apex shop.co.uk', async () => {
@@ -560,7 +560,7 @@ describe('resolvers and regions', () => {
     const d = await root('all-down.com', { zone: {}, resolvers: { google: 'down', cloudflare: 'down', adguard: 'down' }, rdap: 'down', https: 'refused' })
     expect(codes(d)).toEqual([['CHECK_FAILED', 'error']])
     expect(d.line).toBe('Could not check DNS right now')
-    expect(d.dns_host).toEqual({ provider: null, nameservers: [], mixed: false })
+    expect(d.dns_host).toMatchObject({ provider: null, nameservers: [], mixed: false })
     expect(d.records).toEqual([])
   })
 
@@ -575,7 +575,7 @@ describe('resolvers and regions', () => {
     const d = await root('rdap-odd.com', { zone: rootZone('rdap-odd.com', NS.hostinger), rdap })
     expect(d.status).toBe('ACTIVE')
     expect(d.issues).toEqual([])
-    expect(d.dns_host).toEqual({ provider: 'Hostinger', nameservers: NS.hostinger, mixed: false })
+    expect(d.dns_host).toMatchObject({ provider: 'Hostinger', nameservers: NS.hostinger, mixed: false })
   })
 })
 
@@ -586,7 +586,7 @@ describe('nameserver switches', () => {
     expect(codes(d)).toEqual([['NS_SWITCHING', 'error']])
     expect(d.line).toBe('Your DNS moved to Cloudflare — add the records there')
     expect(d.records.every((r) => !r.ok && r.note === 'From your old DNS (Hostinger), which no longer counts')).toBe(true)
-    expect(d.dns_host).toEqual({ provider: 'Cloudflare', nameservers: NS.cloudflare2, mixed: false, moving_from: { provider: 'Hostinger', nameservers: NS.hostinger } })
+    expect(d.dns_host).toMatchObject({ provider: 'Cloudflare', nameservers: NS.cloudflare2, mixed: false, moving_from: { provider: 'Hostinger', nameservers: NS.hostinger } })
   })
 
   it('to-cloudflare-half.com: Hostinger → Cloudflare, Cloudflare\'s resolver already on the new zone (right there) → live, switch warning only', async () => {

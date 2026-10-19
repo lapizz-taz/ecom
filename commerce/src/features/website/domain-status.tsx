@@ -114,34 +114,56 @@ function Section({ icon, title, sub, badge, children, defaultOpen = true }: { ic
   )
 }
 
-function RecordsTable({ rows }: { rows: Array<{ type: string; name: string; value: string; ok?: boolean; note?: string; why?: string }> }) {
+type RecordRow = { type: string; name: string; value: string; ok?: boolean; note?: string; why?: string }
+
+/** ✓ / ✗ for a record found, a copy button for a record to add. */
+function RecordMark({ r }: { r: RecordRow }) {
+  if (r.ok === undefined) return <Button size="icon-sm" variant="ghost" aria-label={`Copy the ${r.type} value for ${r.name}`} onClick={() => copy(r.value)}><Copy /></Button>
+  return r.ok ? <Check className="ml-auto size-3.5 text-blue-600" aria-label="Correct" /> : <X className="ml-auto size-3.5 text-red-600" aria-label="Wrong" />
+}
+const RecordNote = ({ r }: { r: RecordRow }) =>
+  r.note || r.why ? <span className={cn('block text-[10.5px]', r.ok === false ? 'text-red-600' : 'text-muted-foreground')}>{r.note ?? r.why}</span> : null
+/** A name to add can be copied too (a TXT name such as _fullfilio is easy to mistype). */
+const RecordName = ({ r }: { r: RecordRow }) =>
+  r.ok === undefined && r.name !== '@'
+    ? <button type="button" className="break-all text-left hover:underline" title="Copy name" onClick={() => copy(r.name)}>{r.name}</button>
+    : <>{r.name}</>
+
+/** DNS records: a table from tablet width up; on a phone each record is a card, so long values stay readable. */
+function RecordsTable({ rows }: { rows: RecordRow[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full min-w-[260px] text-xs">
-        <thead><tr className="bg-muted/40 text-left text-[11px] text-muted-foreground"><th className="px-3 py-1.5 font-medium">Type</th><th className="px-3 py-1.5 font-medium">Name</th><th className="px-3 py-1.5 font-medium">Value</th><th className="w-10" /></tr></thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-t align-top">
-              <td className="px-3 py-2 font-mono text-[11px]">{r.type}</td>
-              <td className="px-3 py-2 font-mono text-[11px]">
-                {r.ok === undefined && r.name !== '@'
-                  ? <button type="button" className="break-all text-left hover:underline" title="Copy name" onClick={() => copy(r.name)}>{r.name}</button>
-                  : r.name}
-              </td>
-              <td className="px-3 py-2">
-                <span className="font-mono text-[11px] break-all">{r.value}</span>
-                {(r.note || r.why) && <span className={cn('block text-[10.5px]', r.ok === false ? 'text-red-600' : 'text-muted-foreground')}>{r.note ?? r.why}</span>}
-              </td>
-              <td className="px-2 py-2 text-right">
-                {r.ok === undefined
-                  ? <Button size="icon-sm" variant="ghost" aria-label={`Copy the ${r.type} value for ${r.name}`} onClick={() => copy(r.value)}><Copy /></Button>
-                  : r.ok ? <Check className="ml-auto size-3.5 text-blue-600" aria-label="Correct" /> : <X className="ml-auto size-3.5 text-red-600" aria-label="Wrong" />}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <ul className="divide-y rounded-lg border sm:hidden">
+        {rows.map((r, i) => (
+          <li key={i} className="flex items-start gap-2 px-3 py-2 text-xs">
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <p className="font-mono text-[11px] text-muted-foreground"><span className="font-medium text-foreground">{r.type}</span> · <RecordName r={r} /></p>
+              <p className="font-mono text-[11px] break-all">{r.value}</p>
+              <RecordNote r={r} />
+            </div>
+            <RecordMark r={r} />
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto rounded-lg border sm:block">
+        <table className="w-full text-xs">
+          <thead><tr className="bg-muted/40 text-left text-[11px] text-muted-foreground"><th className="px-3 py-1.5 font-medium">Type</th><th className="px-3 py-1.5 font-medium">Name</th><th className="px-3 py-1.5 font-medium">Value</th><th className="w-10" /></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-t align-top">
+                <td className="px-3 py-2 font-mono text-[11px]">{r.type}</td>
+                <td className="px-3 py-2 font-mono text-[11px]"><RecordName r={r} /></td>
+                <td className="px-3 py-2">
+                  <span className="font-mono text-[11px] break-all">{r.value}</span>
+                  <RecordNote r={r} />
+                </td>
+                <td className="px-2 py-2 text-right"><RecordMark r={r} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -154,7 +176,7 @@ function Issues({ diag, active }: { diag: DomainDiagnosis; active: boolean }) {
     : active ? 'Your domain is connected, but we recommend you review the following:'
     : diag.pointed ? 'Also review the following:' : 'Fix the following to connect your domain:'
   return (
-    <div className={cn('rounded-lg p-2.5 text-xs leading-relaxed', blocking ? 'bg-red-50 text-red-900 dark:bg-red-500/15 dark:text-white' : 'bg-muted/70')}>
+    <div className={cn('rounded-lg p-2.5 text-xs leading-relaxed [overflow-wrap:anywhere]', blocking ? 'bg-red-50 text-red-900 dark:bg-red-500/15 dark:text-white' : 'bg-muted/70')}>
       <p>{heading}</p>
       <ul className="mt-1.5 list-disc space-y-1 pl-5">
         {list.map((i) => <li key={i.code}><span className="font-medium">{i.title}.</span> {i.detail}</li>)}
@@ -284,8 +306,9 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const tlsTitle = !diag ? 'HTTPS not checked yet'
     : !diag.tls.ok && diag.pointed ? 'DNS is right — the HTTPS certificate is being issued (usually a few minutes)' : diag.tls.detail
 
+  // min-w-0: inside the popup's grid, a wide table scrolls in its own box instead of widening the popup past the screen.
   return (
-    <div className={cn(inDialog ? 'space-y-3.5' : 'space-y-6')}>
+    <div className={cn('min-w-0', inDialog ? 'space-y-3.5' : 'space-y-6')}>
       {!inDialog && <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2"><ChevronRight className="rotate-180" /> Domains</Button>
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
