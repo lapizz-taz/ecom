@@ -24,7 +24,7 @@
 // Without either the domain is saved as MANUAL with the DNS records to add, and
 // the platform owner attaches it by hand.
 import { z } from 'zod'
-import { apexOf, cloudflareTarget, diagnose, proxyTarget, VERCEL_TARGET, wwwIssue, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, proxyTarget, VERCEL_TARGET, inspectWww, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -125,9 +125,12 @@ const viaProxy = (cf: Cloudflare, d: string) => (d === apexOf(d) ? rootProxy(cf)
 
 /** A root domain on the proxy: live once its A record leads to the proxy and the store answers over HTTPS. */
 async function inspectRoot(target: HostingTarget, d: string): Promise<Omit<Saved, 'domain'>> {
-  const [diagnostics, www] = await Promise.all([diagnose(d, { target }), wwwIssue(d, target)])
-  // www.<root> is optional: it never holds the root back, it only asks for its record.
-  if (www) diagnostics.issues.push(www)
+  const [diagnostics, www] = await Promise.all([diagnose(d, { target }), inspectWww(d, target)])
+  // www.<root> is listed next to @, but never holds the root back: it only asks for its record.
+  if (www) {
+    diagnostics.records.push(...www.records)
+    if (www.issue) diagnostics.issues.push(www.issue)
+  }
   const records = baseRecords(d, target)
   if (diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true) {
     return { status: 'ACTIVE', records, diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
