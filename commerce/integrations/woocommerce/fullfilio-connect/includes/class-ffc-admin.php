@@ -172,6 +172,10 @@ class FFC_Admin {
 		// phpcs:enable
 		FFC_Tracking::save( $in );
 		FFC_Log::info( 'Ad tracking settings saved' );
+		if ( 'route' === $test ) {
+			$r = FFC_Tracking::route_check();
+			self::back( 'Saved. ' . $r['message'], $r['ok'] ? 'success' : ( ! empty( $r['hint'] ) ? 'warning' : 'error' ), 'tracking' );
+		}
 		if ( in_array( $test, array( 'meta', 'tiktok', 'google' ), true ) ) {
 			$r = FFC_Tracking::test( $test );
 			self::back( 'Saved. ' . $r['message'], $r['ok'] ? 'success' : ( ! empty( $r['hint'] ) ? 'warning' : 'error' ), 'tracking' );
@@ -187,7 +191,7 @@ class FFC_Admin {
 		'stock'    => array( 'Stock', 'stock', 'Who keeps the stock count, what is running low and what came back.' ),
 		'protect'  => array( 'Checkout protection', 'shield', 'Stop wrong numbers, bots and fake orders before they are placed.' ),
 		'advance'  => array( 'Advance payment', 'wallet', 'Ask riskier customers for part of the payment online before the order is placed.' ),
-		'tracking' => array( 'Ad tracking', 'target', 'Meta, TikTok and Google — browser and server, de-duplicated, counted when the order really counts.' ),
+		'tracking' => array( 'Ad tracking', 'target', 'Meta, TikTok and Google — browser and your own domain\'s server, de-duplicated, counted when the order really counts.' ),
 		'connect'  => array( 'Connection', 'plug', 'How this store is connected to %s and what it shares.' ),
 		'logs'     => array( 'Logs & help', 'help', 'Checks, the delivery queue and the debug log.' ),
 	);
@@ -420,6 +424,7 @@ class FFC_Admin {
 .ffc-opt{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:14px 0;border-top:1px solid #f0f1f4}.ffc-opt:first-child{border-top:0;padding-top:0}
 .ffc-opt b{display:block;font-size:13.5px;font-weight:600;margin-bottom:2px}.ffc-opt p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.55;max-width:720px}.ffc-opt .ffc-row{margin-top:10px}
 .ffc-section{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px}
+.ffc-flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}.ffc-flow span{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#fff;line-height:1.3}.ffc-flow span b{display:block;font-weight:600}.ffc-flow span small{color:var(--muted);font-size:11.5px}.ffc-flow i{flex:0 0 28px;height:2px;background:var(--brand);position:relative}.ffc-flow i:after{content:"";position:absolute;right:-1px;top:-4px;border:5px solid transparent;border-left:6px solid var(--brand);border-right:0}
 .ffc-mq{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:center}@media(max-width:900px){.ffc-mq{grid-template-columns:minmax(0,1fr)}}
 .ffc-mq-n{font-size:40px;font-weight:600;line-height:1;letter-spacing:-.02em}.ffc-mq-n small{font-size:16px;color:var(--muted);font-weight:400}
 .ffc-meter{height:6px;border-radius:99px;background:#e9eaee;overflow:hidden;margin:12px 0 6px}.ffc-meter i{display:block;height:100%;background:var(--brand);border-radius:99px}
@@ -792,6 +797,31 @@ CSS;
 			return '<button type="submit" class="ffc-btn" name="ffc_test" value="' . esc_attr( $platform ) . '">' . self::icon( 'refresh' ) . 'Save &amp; test connection</button>';
 		};
 
+		// First-party route: Browser → this store's own domain → Meta / TikTok.
+		$fp   = FFC_Tracking::first_party_summary( 24 );
+		$fpon = FFC_Tracking::any_on() && FFC_Tracking::server_on( $s );
+		$live = $fp['last'] && $fp['last'] > time() - DAY_IN_SECONDS;
+		$chip = ! $fpon ? '<span class="ffc-badge ffc-amber">Off</span>' : ( $live ? '<span class="ffc-badge ffc-green">' . self::icon( 'check' ) . 'Working</span>' : '<span class="ffc-badge ffc-blue">Waiting for the first visit</span>' );
+		$to   = array_filter( array( $s['meta']['on'] && $s['meta']['token'] ? 'Meta' : '', $s['tiktok']['on'] && $s['tiktok']['token'] ? 'TikTok' : '' ) );
+		self::card_open( 'First-party tracking — your own domain', 'send', $chip );
+		echo '<div class="ffc-flow"><span><b>Browser</b><small>the shopper</small></span><i></i><span><b>' . esc_html( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ) . '</b><small>your hosting server</small></span><i></i><span><b>' . esc_html( $to ? implode( ' · ', $to ) : 'Meta · TikTok' ) . '</b><small>ad platform</small></span></div>';
+		if ( ! $fpon ) {
+			echo '<p class="ffc-muted" style="margin:14px 0 0">Turn on Meta (or TikTok) below with its access token and keep "Server events" on. Every event then reaches the ad platform from your own server — even when an ad blocker or iOS stops the pixel — at no extra cost.</p>';
+		} else {
+			$tile = static function ( $label, $value, $sub = '' ) {
+				return '<div class="ffc-stat"><div><small>' . esc_html( $label ) . '</small><b>' . esc_html( $value ) . '</b>' . ( $sub ? '<small style="margin:4px 0 0">' . esc_html( $sub ) . '</small>' : '' ) . '</div></div>';
+			};
+			echo '<div class="ffc-stats" style="margin:16px 0 10px">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- tiles are escaped.
+				. $tile( 'Events on your domain · 24h', number_format_i18n( $fp['r'] ) )
+				. $tile( 'Browser pixel alone', null === $fp['pixel_pct'] ? '—' : $fp['pixel_pct'] . '%', $fp['b'] ? sprintf( 1 === $fp['b'] ? 'blocked for %s event' : 'blocked for %s events', number_format_i18n( $fp['b'] ) ) : 'not blocked yet' )
+				. $tile( 'Delivered by your server', null === $fp['coverage_pct'] ? '—' : $fp['coverage_pct'] . '%', $fp['f'] ? sprintf( '%s refused — see the platform card', number_format_i18n( $fp['f'] ) ) : 'event coverage' )
+				. $tile( 'Last event', $fp['last'] ? sprintf( '%s ago', human_time_diff( $fp['last'] ) ) : 'none yet' )
+				. '</div>';
+			echo '<p class="ffc-hint" style="margin:0">Route <code>' . esc_html( FFC_Tracking::endpoint() ) . '</code> — a path only this store uses, so ad blockers have no rule for it. The visitor\'s ids (_fbp, _fbc) are renewed by your server, so Safari keeps them. Browser and server send each event with one event id, and each id only once, so nothing is counted twice.</p>'
+				. '<p style="margin:12px 0 0"><button type="submit" form="ffc-tracking-form" class="ffc-btn" name="ffc_test" value="route">' . self::icon( 'refresh' ) . 'Check the route</button></p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		}
+		self::card_close();
+
 		// Match quality (our estimate from the keys actually sent).
 		$mq     = FFC_Tracking::match_summary();
 		$labels = array(
@@ -809,7 +839,7 @@ CSS;
 		echo '</div><p class="ffc-hint" style="margin:12px 0 0">Every purchase carries all of these when the store has them, hashed. Meta shows its own Event Match Quality in Events Manager → your pixel → Overview; email is the biggest gap for most cash-on-delivery stores — an optional email field at checkout lifts the score above 8.</p></div></div>';
 		self::card_close();
 
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		echo '<form id="ffc-tracking-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( 'ffc_tracking_save' );
 		echo '<input type="hidden" name="action" value="ffc_tracking_save"><div class="ffc-mods">';
 
@@ -859,7 +889,7 @@ CSS;
 			. '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '<p class="ffc-section">Browser and server</p>'
 			. $opt( 'browser_events', $s['browser_events'], 'Browser pixel events', 'PageView, ViewContent, AddToCart and InitiateCheckout from the shopper\'s browser.' )
-			. $opt( 'server_events', $s['server_events'], 'Server events (Conversions API / Events API)', 'The same events from your server with the same event id — ad blockers and iOS lose nothing and nothing is counted twice. Works with page caching.' )
+			. $opt( 'server_events', $s['server_events'], 'Server events through your own domain (Conversions API / Events API)', 'The browser sends each event to this store\'s own domain and your server passes it on with the same event id — ad blockers and iOS lose nothing and nothing is counted twice. No extra server or service. Works with page caching.' )
 			. $opt( 'advanced_matching', $s['advanced_matching'], 'Advanced matching in the browser', 'Hashed email, phone, name and address for signed-in customers and on the buyer\'s own thank-you page, plus a first-party visitor id on every page.' )
 			. $opt( 'browser_purchase', $s['browser_purchase'], 'Also fire Purchase in the browser on the thank-you page', 'For "On call confirmation" and "On delivery" only — it counts the order before it is confirmed. "When the order is placed" always fires it (de-duplicated).' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '<p style="margin:18px 0 0"><button class="ffc-btn primary" type="submit">' . self::icon( 'check' ) . 'Save ad tracking</button></p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped

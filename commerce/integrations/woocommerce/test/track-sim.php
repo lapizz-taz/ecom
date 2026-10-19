@@ -25,6 +25,8 @@ function get_option( $k, $d = false ) { return array_key_exists( $k, $GLOBALS['O
 function update_option( $k, $v, $a = true ) { $GLOBALS['OPTIONS'][ $k ] = $v; return true; }
 function is_wp_error( $x ) { return $x instanceof WP_Error; }
 function add_query_arg( $args, $url ) { return $url . ( strpos( $url, '?' ) === false ? '?' : '&' ) . http_build_query( $args ); }
+function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
+function wp_rand( $a, $b ) { return random_int( $a, $b ); }
 function wp_remote_post( $url, $args ) {
 	$GLOBALS['SENT'][] = array( 'url' => $url, 'headers' => isset( $args['headers'] ) ? $args['headers'] : array(), 'body' => json_decode( $args['body'], true ) );
 	return array( 'code' => 200, 'body' => json_encode( array( 'events_received' => 1, 'code' => 0 ) ) );
@@ -205,6 +207,52 @@ check( 'match summary averages the purchases', null !== FFC_Tracking::match_summ
 
 echo "\nScenario 10 — phone formats normalise to the same 8801… digits\n";
 check( '01712-345678 / +880 1712 345678 / 1712345678 / 008801712345678', count( array_unique( array_map( array( 'FFC_Tracking', 'phone_digits' ), array( '01712-345678', '+880 1712 345678', '1712345678', '008801712345678' ) ) ) ) === 1 );
+
+echo "\nScenario 11 — first-party route: only POSTs to this site's own path\n";
+check( 'POST /k7f3q2m9/ and /k7f3q2m9 match', FFC_Tracking::route_matches( 'POST', '/k7f3q2m9/', array(), 'k7f3q2m9', '' ) && FFC_Tracking::route_matches( 'post', '/k7f3q2m9?x=1', array(), 'k7f3q2m9', '' ) );
+check( 'GET, other paths and a deeper path do not', ! FFC_Tracking::route_matches( 'GET', '/k7f3q2m9/', array(), 'k7f3q2m9', '' ) && ! FFC_Tracking::route_matches( 'POST', '/shop/', array(), 'k7f3q2m9', '' ) && ! FFC_Tracking::route_matches( 'POST', '/k7f3q2m9/more/', array(), 'k7f3q2m9', '' ) );
+check( 'WordPress in /store: /store/k7f3q2m9/ matches, /k7f3q2m9/ does not', FFC_Tracking::route_matches( 'POST', '/store/k7f3q2m9/', array(), 'k7f3q2m9', '/store' ) && ! FFC_Tracking::route_matches( 'POST', '/k7f3q2m9/', array(), 'k7f3q2m9', '/store' ) );
+check( 'plain permalinks: /?k7f3q2m9=1 matches', FFC_Tracking::route_matches( 'POST', '/?k7f3q2m9=1', array( 'k7f3q2m9' => '1' ), 'k7f3q2m9', '' ) );
+check( 'no route before one exists', ! FFC_Tracking::route_matches( 'POST', '/', array(), '', '' ) );
+
+echo "\nScenario 12 — the visitor's ids renewed by the store's server\n";
+$cfg  = FFC_Tracking::defaults();
+$cfg['meta'] = array( 'on' => true, 'pixel' => '111', 'token' => 'T', 'test' => '' );
+$cfg['tiktok'] = array( 'on' => true, 'pixel' => 'C1', 'token' => 'T', 'test' => '' );
+$plan = function ( $cookies, $url, $cd = 'example.com.bd' ) use ( $cfg ) {
+	$out = array();
+	foreach ( FFC_Tracking::cookie_plan( $cookies, $url, 'www.example.com.bd', $cd, $cfg, 1760000000 ) as $c ) { $out[ $c['name'] ] = $c; }
+	return $out;
+};
+$p = $plan( array( '_fbp' => 'fb.1.1700000000000.123456789', 'ffc_vid' => 'abcdefghijkl1234', '_ttp' => 'TTP_abc123xyz' ), 'https://www.example.com.bd/p/' );
+check( 'existing _fbp, visitor id and _ttp renewed as they are', 'fb.1.1700000000000.123456789' === $p['_fbp']['value'] && 180 === $p['_fbp']['days'] && 'abcdefghijkl1234' === $p['ffc_vid']['value'] && 395 === $p['ffc_vid']['days'] && 'TTP_abc123xyz' === $p['_ttp']['value'] );
+check( 'on the domain the pixel uses (example.com.bd)', 'example.com.bd' === $p['_fbp']['domain'] );
+check( 'no fbclid and no _fbc: no _fbc', ! isset( $p['_fbc'] ) );
+$p = $plan( array(), 'https://www.example.com.bd/?fbclid=IwAR_new-click01' );
+check( 'missing _fbp made in Meta\'s format', (bool) preg_match( '/^fb\.1\.1760000000000\.\d{10}$/', $p['_fbp']['value'] ) );
+check( 'fbclid in the address: _fbc = fb.1.<ms>.<fbclid>', 'fb.1.1760000000000.IwAR_new-click01' === $p['_fbc']['value'] && 90 === $p['_fbc']['days'] );
+$p = $plan( array( '_fbc' => 'fb.1.1700000000000.IwAR_new-click01' ), 'https://www.example.com.bd/?fbclid=IwAR_new-click01' );
+check( 'the same click again keeps its first time', 'fb.1.1700000000000.IwAR_new-click01' === $p['_fbc']['value'] );
+$p = $plan( array( '_fbc' => 'fb.1.1700000000000.IwAR_old-click01' ), 'https://www.example.com.bd/?fbclid=IwAR_new-click02' );
+check( 'a new click replaces the old one', 'fb.1.1760000000000.IwAR_new-click02' === $p['_fbc']['value'] );
+$p = $plan( array( '_fbp' => 'fb.1.1;Domain=evil', 'ffc_vid' => '<script>', '_fbc' => 'x' ), 'https://www.example.com.bd/' );
+check( 'tampered cookies are not echoed back', 0 === strpos( $p['_fbp']['value'], 'fb.1.1760000000000.' ) && ! isset( $p['ffc_vid'] ) && ! isset( $p['_fbc'] ) );
+check( 'a cookie domain from another site is refused (host-only instead)', '' === $plan( array(), 'https://www.example.com.bd/', 'evil.com' )['_fbp']['domain'] && '' === $plan( array(), 'https://www.example.com.bd/', 'bd' )['_fbp']['domain'] && '' === $plan( array(), 'https://www.example.com.bd/', 'ample.com.bd' )['_fbp']['domain'] );
+$off = $cfg; $off['meta']['on'] = false; $off['tiktok']['on'] = false;
+check( 'pixels off: only the visitor id', array( 'ffc_vid' ) === array_column( FFC_Tracking::cookie_plan( array( 'ffc_vid' => 'abcdefghijkl1234', '_fbp' => 'fb.1.1700000000000.1' ), 'https://www.example.com.bd/', 'www.example.com.bd', '', $off, 1760000000 ), 'name' ) );
+
+echo "\nScenario 13 — coverage: what the pixel missed and the server delivered (last 24h)\n";
+unset( $GLOBALS['OPTIONS'][ FFC_Tracking::STATS_OPT ] );
+$now = 1760000000;
+foreach ( array( '1', '1', '1', '0', '0', '' ) as $i => $pxs ) { FFC_Tracking::stats_add( '202610091200', $pxs, true, 5 !== $i, $now ); }
+$minute_n = $GLOBALS['OPTIONS'][ FFC_Tracking::STATS_OPT ]['n'];
+FFC_Tracking::stats_add( '202610081200', '0', true, true, $now - 30 * 3600 ); // older than 24h
+$sum = FFC_Tracking::first_party_summary( 24, $now );
+check( '6 events, 5 with a known pixel state, 2 blocked', 6 === $sum['r'] && 5 === $sum['k'] && 2 === $sum['b'] );
+check( 'pixel alone 60%, server 83.3% (1 refused)', 60.0 === $sum['pixel_pct'] && 83.3 === $sum['coverage_pct'] && 1 === $sum['f'] );
+check( 'minute counter for the rate limit (6 this minute, back to 1 in a new minute)', 6 === $minute_n && 1 === $GLOBALS['OPTIONS'][ FFC_Tracking::STATS_OPT ]['n'] );
+for ( $h = 0; $h < 60; $h++ ) { FFC_Tracking::stats_add( 'm', '1', true, true, $now + $h * 3600 ); }
+check( 'keeps 48 hours', 48 === count( $GLOBALS['OPTIONS'][ FFC_Tracking::STATS_OPT ]['h'] ) );
 
 echo "\n$ok passed, $fail failed\n";
 exit( $fail ? 1 : 0 );
