@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apexOf, cloudflareTarget, diagnose, dnsHostOf, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS } from './domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsHostOf, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS, wwwIssue } from './domain-check.ts'
 
 type Zone = Record<string, Partial<Record<'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS' | 'TXT', string[]>>>
 const CODE = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 } as const
@@ -268,6 +268,35 @@ describe('root domain through our proxy (any DNS company)', () => {
     expect(d.pointed).toBe(false)
     expect(d.records[0]).toMatchObject({ ok: false, note: 'Should be 198.51.100.20' })
     expect(d.issues.find((i) => i.code === 'WRONG_TARGET')?.detail).toContain('198.51.100.20')
+  })
+})
+
+describe('www next to a root domain on the proxy', () => {
+  const target = proxyTarget('203.0.113.7', 'stores.fullfilio.example')
+
+  it('is fine with an A record (or a CNAME to the root) leading to the proxy', async () => {
+    expect(await wwwIssue('shop.com', target, fakeFetch({ 'www.shop.com': { A: ['203.0.113.7'] } }))).toBeNull()
+    // A CNAME to the root answers with the root's address.
+    const viaRoot = (async (input: string | URL) => {
+      const name = new URL(String(input)).searchParams.get('name')
+      const answer = name === 'www.shop.com' ? [{ name, type: 5, data: 'shop.com.' }, { name: 'shop.com', type: 1, data: '203.0.113.7' }] : []
+      return new Response(JSON.stringify({ Status: 0, Answer: answer }))
+    }) as typeof fetch
+    expect(await wwwIssue('shop.com', target, viaRoot)).toBeNull()
+  })
+
+  it('asks for the www record when it is missing or leads elsewhere, as a warning only', async () => {
+    const none = await wwwIssue('shop.com', target, fakeFetch({}))
+    expect(none).toMatchObject({ code: 'WWW_SETUP', severity: 'warning' })
+    expect(none!.detail).toContain('A record for www pointing to 203.0.113.7')
+    const old = await wwwIssue('shop.com', target, fakeFetch({ 'www.shop.com': { CNAME: ['stores.fullfilio.example'] } }))
+    expect(old!.detail).toContain('a CNAME to stores.fullfilio.example')
+  })
+
+  it('says nothing for subdomains, other hosting, or when DNS does not answer', async () => {
+    expect(await wwwIssue('www.shop.com', target, fakeFetch({}))).toBeNull()
+    expect(await wwwIssue('shop.com', cloudflareTarget('stores.fullfilio.example'), fakeFetch({}))).toBeNull()
+    expect(await wwwIssue('shop.com', target, (async () => { throw new Error('offline') }) as typeof fetch)).toBeNull()
   })
 })
 

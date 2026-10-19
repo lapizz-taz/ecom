@@ -302,7 +302,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
                 <RecordsTable rows={diag.records} />
               </div>
             )}
-            {(d.status !== 'ACTIVE' || !diag?.pointed) && d.records.length > 0 && (
+            {(d.status !== 'ACTIVE' || !diag?.pointed || diag.issues.some((i) => i.code === 'WWW_SETUP')) && d.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Add at your domain provider</p>
                 <RecordsTable rows={d.records} />

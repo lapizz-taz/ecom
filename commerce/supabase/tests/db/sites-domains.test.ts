@@ -116,4 +116,32 @@ describe('custom domains', () => {
       await asUser(db, owner)
       expect(await value(db, `select public.store_domains_list()`)).toEqual([expect.objectContaining({ domain: 'shop.example.com', is_primary: true })])
     }))
+
+  it('the www twin of a connected domain gets a certificate and opens the store on the connected one', () =>
+    inTx(async (db) => {
+      const owner = await createStaff(db, 'OWNER')
+      await asService(db)
+      await db.query(`select public.store_domain_save('shop.example.com', '{"status":"VERIFYING"}', $1)`, [owner])
+      await db.query(`select public.store_domain_save('www.two.example.com', '{"status":"VERIFYING"}', $1)`, [owner])
+      const known = (d: string) => value<boolean>(db, `select public.store_domain_known($1)`, [d])
+      expect(await known('www.shop.example.com')).toBe(true)
+      expect(await known(' WWW.Shop.Example.com')).toBe(true)
+      expect(await known('two.example.com')).toBe(true)
+      expect(await known('mail.shop.example.com')).toBe(false)
+      expect(await known('www.other.example.com')).toBe(false)
+
+      // Not live yet: the twin shows the store and stays put.
+      expect(await value(db, `select public.storefront_resolve('www.shop.example.com')`)).toMatchObject({ kind: 'store', redirect_to: null })
+      // Live, with no primary domain chosen: the twin moves on to the connected domain.
+      await db.query(`select public.store_domain_save('shop.example.com', '{"status":"ACTIVE"}')`)
+      await asSystem(db, null)
+      await db.query(`update public.store_domains set is_primary = false`)
+      await asService(db)
+      expect(await value(db, `select public.storefront_resolve('www.shop.example.com')`)).toMatchObject({ kind: 'store', redirect_to: 'shop.example.com' })
+      expect(await value(db, `select public.storefront_resolve('shop.example.com')`)).toMatchObject({ redirect_to: null })
+
+      // Removed: the twin is unknown again.
+      await db.query(`select public.store_domain_save('shop.example.com', '{"status":"REMOVED","records":[]}', $1)`, [owner])
+      expect(await known('www.shop.example.com')).toBe(false)
+    }))
 })

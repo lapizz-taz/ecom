@@ -171,6 +171,28 @@ function answersPoint(kind: 'apex' | 'subdomain', answers: DohAnswer[] | null, t
   return as.length > 0 && as.every(m.a) && (kind === 'apex' || cnames.length === 0)
 }
 
+/**
+ * www.<root> on the root-domain proxy: it opens the store too (visitors move on to the root)
+ * once it leads to the proxy, by an A record or a CNAME to the root. Null when it does, or
+ * when DNS could not be asked (no warning on a guess).
+ */
+export async function wwwIssue(domain: string, target: HostingTarget, fetcher: Fetch = fetch): Promise<DomainIssue | null> {
+  if (target.provider !== 'proxy' || !target.a || domainKind(domain) !== 'apex') return null
+  const www = `www.${domain}`
+  const answers = await doh(fetcher, RESOLVERS[0].url, www, 'A')
+  if (answers === null) return null
+  const ips = only(answers, 'A')
+  if (ips.length > 0 && ips.every((ip) => ip === target.a)) return null
+  const cname = only(answers, 'CNAME').map((c) => c.replace(/\.$/, ''))
+  const now = cname.length ? `a CNAME to ${cname[0]}` : ips.length ? `an A record to ${ips.join(', ')}` : null
+  return {
+    code: 'WWW_SETUP', severity: 'warning', title: `${www} is not set up yet`,
+    detail: now
+      ? `${www} has ${now}. Replace it with an A record for www pointing to ${target.a}, so visitors who type www reach the store (they are sent on to ${domain}).`
+      : `Add an A record for www pointing to ${target.a}, so visitors who type ${www} reach the store (they are sent on to ${domain}).`,
+  }
+}
+
 export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Date; vercelPointed?: boolean | null; target?: HostingTarget; expect?: ExpectedRecord[] } = {}): Promise<Diagnosis> {
   const fetcher = opts.fetcher ?? fetch
   const target = opts.target ?? VERCEL_TARGET
