@@ -158,7 +158,7 @@ export default function DashboardPage() {
   const { can, user, access } = useAuth()
   const { data: config } = useStoreConfig()
   const [params, setParams] = useSearchParams()
-  const [range, setRange] = useState<DateRange>(() => rangeFor('30d'))
+  const [range, setRange] = useState<DateRange>(() => rangeFor('today'))
   const [editing, setEditing] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const queryClient = useQueryClient()
