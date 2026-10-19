@@ -92,7 +92,7 @@ export const inboxNoteDelete = (id: string) => rpc<void>('inbox_note_delete', { 
 export const savedReplies = () => rpc<Array<{ id: string; title: string; body: string }>>('inbox_saved_replies')
 export const saveSavedReply = (r: { id?: string; title: string; body: string }) => rpc<string>('inbox_saved_reply_save', { p: r })
 export const deleteSavedReply = (id: string) => rpc<void>('inbox_saved_reply_delete', { p_id: id })
-export const inboxUnread = () => rpc<number>('inbox_unread_count')
+export const inboxUnread = () => rpc<{ messages: number; comments: number }>('inbox_unread_counts')
 export const inboxBulk = (ids: string[], patch: Partial<{ status: ConversationStatus; read: boolean; no_reply_needed: boolean; assigned_to: string | null; add_label: string }>) =>
   rpc<number>('inbox_bulk', { p_ids: ids, p: patch })
 /** An automatic message if the customer does not answer; null minutes cancels it. */

@@ -9,9 +9,11 @@ import type { QueueCounts } from '@/types/domain'
 export interface NavCounts {
   queue?: QueueCounts
   status?: Record<string, number>
-  /** Open conversations with unread messages. */
-  inbox?: number
+  /** Open conversations with unread messages (direct messages and comments apart). */
+  inbox?: { messages: number; comments: number }
 }
+
+const some = (n: number | undefined) => n || undefined
 
 export interface NavChild {
   label: string
@@ -108,10 +110,10 @@ export const NAV: NavSection[] = [
       },
       {
         label: 'Messaging', to: '/admin/inbox', icon: <Inbox />, permission: 'inbox.view',
-        badge: (c) => c.inbox,
+        badge: (c) => some(c.inbox && c.inbox.messages + c.inbox.comments),
         children: [
-          { label: 'Inbox', to: '/admin/inbox', badge: (c) => c.inbox },
-          { label: 'Comments', to: '/admin/inbox/comments' },
+          { label: 'Inbox', to: '/admin/inbox', badge: (c) => some(c.inbox?.messages) },
+          { label: 'Comments', to: '/admin/inbox/comments', badge: (c) => some(c.inbox?.comments) },
           { label: 'Auto Replies', to: '/admin/inbox/auto-replies' },
           { label: 'Channels', to: '/admin/inbox/channels' },
         ],
