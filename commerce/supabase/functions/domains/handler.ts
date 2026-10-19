@@ -11,6 +11,11 @@
 // Every add/check also runs a full diagnosis (DNS records found, each region,
 // HTTPS, issues such as a stray proxy), saved with the domain.
 //
+// Ownership: a new domain proves it is the store's with a TXT record (_fullfilio.<domain>)
+// holding a code only that store sees. Until then it gets no certificate and does not open
+// the store (store_domain_known / storefront_resolve), so a store cannot take a domain it
+// does not own, even when the real owner points it at Fullfilio.
+//
 // Hosting, in this order:
 //  - Cloudflare for SaaS (the site on a Cloudflare Worker): CF_SAAS_API_TOKEN (zone
 //    permission "SSL and Certificates: Edit"), CF_ZONE_ID and CUSTOM_DOMAIN_TARGET
@@ -24,7 +29,7 @@
 // Without either the domain is saved as MANUAL with the DNS records to add, and
 // the platform owner attaches it by hand.
 import { z } from 'zod'
-import { apexOf, cloudflareTarget, diagnose, dnsView, proxyTarget, VERCEL_TARGET, inspectWww, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsView, doh, proxyTarget, RESOLVERS, VERCEL_TARGET, inspectWww, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
@@ -33,10 +38,21 @@ import { parse } from '../_shared/schemas.ts'
 import { adminClient, forEachMerchant, requireStaff, rpc } from '../_shared/supabase.ts'
 
 interface DnsRecord { type: 'A' | 'AAAA' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
-interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null; diagnostics?: Diagnosis }
+/** verified: the ownership record was found (saved as the domain's verified_at). */
+interface Saved { domain: string; status: string; records: DnsRecord[]; detail: string | null; diagnostics?: Diagnosis; verified?: boolean }
+/** What the store's row says about ownership: its code, and whether it was proven already. */
+interface Ownership { code: string | null; verified: boolean }
 
-const domain = z.string().trim().toLowerCase().transform((d) => d.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
-  .pipe(z.string().regex(/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/, 'Enter a domain like shop.com or www.shop.com'))
+/** A host name: labels of letters, digits and hyphens; the last one letters (or an xn-- IDN). */
+const NAME = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,}|xn--[a-z0-9-]{2,59})$/
+// What people paste: https://Shop.com/path, SHOP.COM., shop.com:443, münchen.de (punycode).
+const domain = z.string().trim().toLowerCase().transform((d) => {
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//.test(d) ? d : `https://${d}`).hostname.replace(/\.$/, '')
+  } catch {
+    return d
+  }
+}).pipe(z.string().max(253, 'That domain is too long').regex(NAME, 'Enter a domain like shop.com or www.shop.com'))
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('list') }),
   z.object({ action: z.literal('add'), domain }),
@@ -51,6 +67,13 @@ const actions = z.discriminatedUnion('action', [
  */
 export function baseRecords(d: string, target: HostingTarget = VERCEL_TARGET): DnsRecord[] {
   const apex = apexOf(d)
+  // www.<root> on our proxy: the same A record the root asks for.
+  if (d === `www.${apex}` && target.provider === 'proxy' && target.a) {
+    return [
+      { type: 'A', name: 'www', value: target.a, why: 'Points www at the store (delete any other A, AAAA or CNAME record for www)' },
+      ...(target.aaaa ? [{ type: 'AAAA' as const, name: 'www', value: target.aaaa, why: 'The same for IPv6 visitors' }] : []),
+    ]
+  }
   if (d !== apex) return [{ type: 'CNAME', name: d.slice(0, -(apex.length + 1)), value: target.cname, why: 'Points this subdomain at the store' }]
   if (target.provider === 'proxy' && target.a) {
     return [
@@ -71,12 +94,44 @@ function hostingTarget(): HostingTarget {
   return cf ? cloudflareTarget(cf.target) : VERCEL_TARGET
 }
 
+// --- Ownership (a TXT record with the store's code) ------------------------------------
+
+/** The record a domain asks for until it is proven: _fullfilio.<domain> = fullfilio-verify=<code>. */
+export function ownershipRecord(d: string, code: string): DnsRecord {
+  const apex = apexOf(d)
+  return { type: 'TXT', name: d === apex ? '_fullfilio' : `_fullfilio.${d.slice(0, -(apex.length + 1))}`, value: `fullfilio-verify=${code}`,
+    why: 'Proves the domain is yours (only needed until the domain is live)' }
+}
+const ownershipExpect = (d: string, code: string): ExpectedRecord => ({ type: 'TXT', name: `_fullfilio.${d}`, value: `fullfilio-verify=${code}` })
+
+/** Asked at Google and at Cloudflare: one of them may still remember the record as missing. */
+async function ownershipFound(d: string, code: string): Promise<boolean> {
+  const answers = await Promise.all(RESOLVERS.slice(0, 2).map((r) => doh(fetch, r.url, `_fullfilio.${d}`, 'TXT')))
+  return answers.some((ans) => (ans ?? []).some((a) => a.type === 16 && a.data.replace(/"/g, '').includes(`fullfilio-verify=${code}`)))
+}
+
+/**
+ * Whether the domain is proven the store's. Found now, it is saved at once (persist), so the
+ * certificate can already be issued during this same check.
+ */
+async function prove(d: string, own: Ownership, persist: () => Promise<unknown>): Promise<boolean> {
+  if (own.verified) return true
+  if (!own.code || !(await ownershipFound(d, own.code))) return false
+  await persist()
+  return true
+}
+
+/** The ownership side of a store_domains row. */
+const ownershipOf = (row: { verify_code?: string | null; verified_at?: string | null } | undefined): Ownership =>
+  ({ code: row?.verify_code ?? null, verified: !!row?.verified_at })
+
 /** Without the hosting API: the diagnosis alone decides whether the domain is live. */
 async function manual(d: string, note: string): Promise<Omit<Saved, 'domain'>> {
   const target = env('CUSTOM_DOMAIN_TARGET') ? cloudflareTarget(env('CUSTOM_DOMAIN_TARGET')!) : hostingTarget()
   const diagnostics = await diagnose(d, { target })
   const live = diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true
-  return { status: live ? 'ACTIVE' : 'MANUAL', records: baseRecords(d, target), diagnostics,
+  // The platform owner attaches these by hand, which is the ownership check here.
+  return { status: live ? 'ACTIVE' : 'MANUAL', records: baseRecords(d, target), diagnostics, verified: live,
     detail: live ? 'Live — the store opens on this domain with HTTPS' : note }
 }
 
@@ -101,12 +156,14 @@ function cloudflare() {
   // Trimmed: a pasted secret often ends with a space or line break, which breaks the API path.
   const token = env('CF_SAAS_API_TOKEN')?.trim()
   const zone = env('CF_ZONE_ID')?.trim()
-  const target = env('CUSTOM_DOMAIN_TARGET')?.trim()
+  const target = env('CUSTOM_DOMAIN_TARGET')?.trim().toLowerCase().replace(/\.$/, '')
   if (!token || !zone || !target) return null
   const call = async <T>(method: string, path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: T; error: string | null; code: number | null }> => {
     const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zone)}${path}`, {
       method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20_000),
+    }).catch(() => {
+      throw new HttpError(502, 'Could not reach Cloudflare. Please try again in a minute.', 'UPSTREAM_ERROR')
     })
     const out = await res.json().catch(() => ({})) as { success?: boolean; result?: T; errors?: Array<{ code?: number; message?: string }> }
     return { ok: res.ok && out.success !== false, status: res.status, data: out.result as T, error: out.errors?.[0]?.message ?? null, code: out.errors?.[0]?.code ?? null }
@@ -120,26 +177,39 @@ function rootProxy(cf: Cloudflare) {
   const ip = env('ROOT_DOMAIN_IP')?.trim()
   return ip ? proxyTarget(ip, cf.target, env('ROOT_DOMAIN_IPV6')) : null
 }
-/** Root domains go through the proxy; subdomains stay on Cloudflare for SaaS. */
-const viaProxy = (cf: Cloudflare, d: string) => (d === apexOf(d) ? rootProxy(cf) : null)
+/**
+ * Root domains (and their www) go through the proxy; other subdomains stay on Cloudflare for
+ * SaaS. www.<root> is the twin of the root, so it asks for the same A record the root lists.
+ */
+const viaProxy = (cf: Cloudflare, d: string) => (d === apexOf(d) || d === `www.${apexOf(d)}` ? rootProxy(cf) : null)
 
-/** A root domain on the proxy: live once its A record leads to the proxy and the store answers over HTTPS. */
-async function inspectRoot(target: HostingTarget, d: string): Promise<Omit<Saved, 'domain'>> {
+/** The platform's own names (its root and every subdomain) are never a store's domain. */
+const platformDomain = (cf: Cloudflare, d: string) => d === apexOf(cf.target) || d.endsWith(`.${apexOf(cf.target)}`)
+
+/**
+ * A domain on the proxy: live once it is proven the store's, its A record leads to the proxy
+ * and the store answers over HTTPS.
+ */
+async function inspectRoot(target: HostingTarget, d: string, own: Ownership, persist: () => Promise<unknown>): Promise<Omit<Saved, 'domain'>> {
+  const proven = await prove(d, own, persist)
   // Asked once for both: which nameservers really answer, and which resolver already has them.
   const view = await dnsView(d)
-  const [diagnostics, www] = await Promise.all([diagnose(d, { target, view }), inspectWww(d, target, fetch, view)])
+  const expect = own.verified || !own.code ? [] : [ownershipExpect(d, own.code)]
+  const [diagnostics, www] = await Promise.all([diagnose(d, { target, view, expect }), inspectWww(d, target, fetch, view)])
   // www.<root> is listed next to @, but never holds the root back: it only asks for its record.
   if (www) {
     diagnostics.records.push(...www.records)
     if (www.issue) diagnostics.issues.push(www.issue)
   }
-  const records = baseRecords(d, target)
-  if (diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true) {
-    return { status: 'ACTIVE', records, diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
+  const records = [...baseRecords(d, target), ...(proven || !own.code ? [] : [ownershipRecord(d, own.code)])]
+  // A DNS checker that did not answer says nothing about the domain: the store answering is enough.
+  const dnsOk = diagnostics.pointed || diagnostics.issues.some((i) => i.code === 'CHECK_FAILED')
+  if (proven && dnsOk && diagnostics.tls.ok && diagnostics.tls.served_by_store === true) {
+    return { status: 'ACTIVE', records, diagnostics, verified: true, detail: 'Live — the store opens on this domain with HTTPS' }
   }
   const blocking = diagnostics.issues.find((i) => i.severity === 'error')
   return {
-    status: 'VERIFYING', records, diagnostics,
+    status: 'VERIFYING', records, diagnostics, verified: proven,
     detail: blocking ? blocking.title
       : !diagnostics.pointed ? 'Waiting for the A record below (changes can take up to a few hours)'
       : 'DNS is right — the HTTPS certificate is issued on the first visit (usually under a minute)',
@@ -147,9 +217,9 @@ async function inspectRoot(target: HostingTarget, d: string): Promise<Omit<Saved
 }
 
 /** Checks a domain on whichever hosting it belongs to. */
-const inspectAny = (cf: Cloudflare, d: string, recheck: boolean) => {
+const inspectAny = (cf: Cloudflare, d: string, recheck: boolean, own: Ownership, persist: () => Promise<unknown>) => {
   const root = viaProxy(cf, d)
-  return root ? inspectRoot(root, d) : inspectCloudflare(cf, d, recheck)
+  return root ? inspectRoot(root, d, own, persist) : inspectCloudflare(cf, d, recheck, own, persist)
 }
 
 interface CustomHostname {
@@ -173,15 +243,18 @@ async function findHostname(cf: Cloudflare, d: string): Promise<CustomHostname |
 const relative = (name: string, d: string) => name.replace(new RegExp(`\\.?${apexOf(d).replace(/\./g, '\\.')}$`), '') || '@'
 
 /** Asks Cloudflare where the hostname stands and turns it into records + a status. */
-async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): Promise<Omit<Saved, 'domain'>> {
+async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean, own: Ownership, persist: () => Promise<unknown>): Promise<Omit<Saved, 'domain'>> {
   const target = cloudflareTarget(cf.target)
+  const proven = await prove(d, own, persist)
+  const mine: DnsRecord[] = proven || !own.code ? [] : [ownershipRecord(d, own.code)]
   let host = await findHostname(cf, d)
   // Added before the hosting was connected (or removed there): attach it now instead of asking to add it again.
   if (!host && recheck) {
     await addCloudflare(cf, d)
     host = await findHostname(cf, d)
   }
-  if (!host) return { status: 'ERROR', records: baseRecords(d, target), detail: 'Not attached to the hosting yet — press Check again' }
+  // A fresh diagnosis too, so the popup does not show the last check's rows under this status.
+  if (!host) return { status: 'ERROR', records: [...baseRecords(d, target), ...mine], diagnostics: await diagnose(d, { target }), verified: proven, detail: 'Not attached to the hosting yet — press Check again' }
   if (recheck && (host.status !== 'active' || host.ssl?.status !== 'active')) {
     // Asks Cloudflare to validate again now instead of on its own schedule.
     const again = await cf.call<CustomHostname>('PATCH', `/custom_hostnames/${host.id}`, { ssl: SSL })
@@ -199,6 +272,7 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
       expect.push({ type: 'TXT', name: r.txt_name, value: r.txt_value })
     }
   }
+  if (!proven && own.code) expect.push(ownershipExpect(d, own.code))
   const diagnostics: Diagnosis = {
     ...(await diagnose(d, { target, expect })),
     hosting: { status: host.status, ssl_status: host.ssl?.status ?? null, error: host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message ?? null },
@@ -208,21 +282,21 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
   // Live only when visitors really reach the store: the hosting can confirm the domain while
   // the DNS is still switching over (for example right after changing nameservers).
   const reachesStore = diagnostics.tls.served_by_store === true || (diagnostics.pointed && !diagnostics.issues.some((i) => i.severity === 'error'))
-  if (host.status === 'active' && host.ssl?.status === 'active' && reachesStore) {
-    return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
+  if (proven && host.status === 'active' && host.ssl?.status === 'active' && reachesStore) {
+    return { status: 'ACTIVE', records: baseRecords(d, target), diagnostics, verified: true, detail: 'Live — the store opens on this domain with HTTPS' }
   }
   if (host.status === 'active' && host.ssl?.status === 'active') {
     const blocking = diagnostics.issues.find((i) => i.severity === 'error')
-    return { status: 'VERIFYING', records: baseRecords(d, target), diagnostics,
-      detail: `Confirmed and HTTPS ready — waiting for your DNS to point here${blocking ? `: ${blocking.title}` : ''}` }
+    return { status: 'VERIFYING', records: [...baseRecords(d, target), ...mine], diagnostics, verified: proven,
+      detail: blocking ? `Confirmed and HTTPS ready — ${blocking.title}` : 'Confirmed and HTTPS ready — waiting for your DNS to point here' }
   }
-  // On Cloudflare DNS the TXT records do not count (the CNAME verifies the domain): do not ask for them.
+  // On Cloudflare DNS Cloudflare's own TXT records do not count (the CNAME verifies the domain): do not ask for them.
   const cloudflareDns = diagnostics.dns_host?.provider === 'Cloudflare' && !diagnostics.dns_host.mixed
   if (cloudflareDns) extra.splice(0, extra.length)
   const problem = host.verification_errors?.[0] ?? host.ssl?.validation_errors?.[0]?.message
   const blocking = diagnostics.issues.find((i) => i.severity === 'error')
   return {
-    status: 'VERIFYING', records: [...baseRecords(d, target), ...extra], diagnostics,
+    status: 'VERIFYING', records: [...baseRecords(d, target), ...mine, ...extra], diagnostics, verified: proven,
     // The first thing to fix, in plain words; we keep checking every few minutes on our own.
     detail: blocking ? blocking.title
       // DNS and the TXT are right: Cloudflare's own "does not CNAME" lags behind until it re-reads them.
@@ -233,7 +307,7 @@ async function inspectCloudflare(cf: Cloudflare, d: string, recheck: boolean): P
 }
 
 async function addCloudflare(cf: Cloudflare, d: string): Promise<void> {
-  if (d === apexOf(cf.target) || d.endsWith(`.${apexOf(cf.target)}`)) {
+  if (platformDomain(cf, d)) {
     throw new HttpError(422, 'That is the platform\'s own domain', 'DOMAIN_REJECTED')
   }
   const added = await cf.call<CustomHostname>('POST', '/custom_hostnames', { hostname: d, ssl: SSL })
@@ -273,17 +347,19 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string): Pr
   const pointed = config.ok && !config.data.misconfigured
   const records = [...baseRecords(d, VERCEL_TARGET), ...ownership]
   const diagnostics = await diagnose(d, { vercelPointed: config.ok ? pointed : null })
-  if (verified && pointed) return { status: 'ACTIVE', records, diagnostics, detail: 'Live — the store opens on this domain with HTTPS' }
+  // Vercel verifies ownership itself (the records above) before it serves the domain.
+  if (verified && pointed) return { status: 'ACTIVE', records, diagnostics, verified: true, detail: 'Live — the store opens on this domain with HTTPS' }
   return { status: 'VERIFYING', records, diagnostics, detail: !pointed ? 'Waiting for the DNS records below (changes can take up to a few hours)' : 'Waiting for the ownership record below' }
 }
 
 /** Waiting domains are checked every 10 minutes for 3 days after the last change, then hourly. */
 export function dueForRecheck(d: { status: string; checked_at?: string | null; created_at?: string | null; diagnostics?: Diagnosis | null }, now = Date.now()): boolean {
   if (d.status === 'REMOVED') return false
-  // A live domain is checked again only while its last check still showed a problem
-  // (often DNS still spreading after a nameserver change), so the status settles by itself.
-  if (d.status === 'ACTIVE' && !d.diagnostics?.issues?.some((i) => i.severity === 'error')) return false
   const checked = d.checked_at ? Date.parse(d.checked_at) : 0
+  // A live domain is checked again often only while its last check still showed a problem (often
+  // DNS still spreading after a nameserver change), so the status settles by itself; else once a
+  // day, so DNS that later moved away is noticed.
+  if (d.status === 'ACTIVE' && !d.diagnostics?.issues?.some((i) => i.severity === 'error')) return !!d.checked_at && now - checked >= 86_400_000
   const age = now - (d.created_at ? Date.parse(d.created_at) : now)
   const every = age > 3 * 86_400_000 ? 55 * 60_000 : 9 * 60_000
   return now - checked >= every
@@ -292,35 +368,51 @@ export function dueForRecheck(d: { status: string; checked_at?: string | null; c
 /** At most this many domains per run, so one run stays well inside the time limit. */
 const RECHECK_LIMIT = 15
 
+type Listed = { domain: string; status: string; checked_at: string | null; created_at: string | null; diagnostics: Diagnosis | null; verify_code?: string | null; verified_at?: string | null }
+type Admin = Parameters<Parameters<typeof forEachMerchant>[1]>[0]
+
+/** Saves that the ownership record was found (nothing else changes). */
+const markVerified = (admin: Admin, d: string) => rpc(admin, 'store_domain_save', { p_domain: d, p: { verified: true }, p_actor: null })
+
 /** The scheduled run: every waiting domain is checked (and attached) as if its owner pressed Check. */
 async function recheckAll() {
   const cf = cloudflare()
   if (!cf) return { checked: 0, live: 0, skipped: 'no hosting API' }
-  let checked = 0
-  let live = 0
+  // Every store's due domains in one queue, oldest check first: one store with many waiting
+  // domains cannot take every slot of every run.
+  const due: Array<{ admin: Admin; d: Listed }> = []
   const run = await forEachMerchant('domains', async (admin) => {
-    const domains = (await rpc<Array<{ domain: string; status: string; checked_at: string | null; created_at: string | null; diagnostics: Diagnosis | null }>>(admin, 'store_domains_list')) ?? []
-    for (const d of domains.filter((x) => dueForRecheck(x)).sort((a, b) => (a.checked_at ?? '').localeCompare(b.checked_at ?? ''))) {
-      if (checked >= RECHECK_LIMIT) break
-      checked += 1
-      try {
-        const result = await inspectAny(cf, d.domain, true)
-        await rpc(admin, 'store_domain_save', { p_domain: d.domain, p: result, p_actor: null })
-        if (result.status === 'ACTIVE') live += 1
-      } catch (error) {
-        void logEvent({ level: 'WARN', category: 'JOB', source: 'domains', message: `Could not re-check ${d.domain}: ${(error as Error).message}` })
-      }
-    }
+    for (const d of (await rpc<Listed[]>(admin, 'store_domains_list')) ?? []) if (dueForRecheck(d)) due.push({ admin, d })
   })
-  return { checked, live, failed: run.failed }
+  due.sort((a, b) => (a.d.checked_at ?? '').localeCompare(b.d.checked_at ?? ''))
+  let live = 0
+  for (const { admin, d } of due.slice(0, RECHECK_LIMIT)) {
+    try {
+      const result = await inspectAny(cf, d.domain, true, ownershipOf(d), () => markVerified(admin, d.domain))
+      const saved = await rpc<Saved | null>(admin, 'store_domain_save', { p_domain: d.domain, p: result, p_actor: null })
+      // Removed while it was being checked: it stays removed, and detached at Cloudflare again.
+      if (!saved) {
+        if (!viaProxy(cf, d.domain)) await removeCloudflare(cf, d.domain).catch(() => undefined)
+        continue
+      }
+      if (result.status === 'ACTIVE') live += 1
+    } catch (error) {
+      const message = (error as Error).message
+      void logEvent({ level: 'WARN', category: 'JOB', source: 'domains', message: `Could not re-check ${d.domain}: ${message}` })
+      // Counted as checked, so a domain that keeps failing does not hold a slot on every run.
+      await rpc(admin, 'store_domain_save', { p_domain: d.domain, p: { detail: `Could not check right now: ${message}` }, p_actor: null }).catch(() => undefined)
+    }
+  }
+  return { checked: Math.min(due.length, RECHECK_LIMIT), live, failed: run.failed }
 }
+
 
 export default (
   handle(async (req) => {
     // The root-domain proxy asks before getting a certificate: only for a domain a store has connected.
     if (req.method === 'GET') {
       const asked = new URL(req.url).searchParams.get('domain')?.trim().toLowerCase() ?? ''
-      const known = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(asked)
+      const known = asked.length <= 253 && NAME.test(asked)
         && (await rpc<boolean>(adminClient(), 'store_domain_known', { p_domain: asked })) === true
       return new Response(known ? 'ok' : 'unknown domain', { status: known ? 200 : 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } })
     }
@@ -346,17 +438,23 @@ export default (
     const save = (d: string, p: Omit<Saved, 'domain'>) => rpc<Saved>(admin, 'store_domain_save', { p_domain: d, p, p_actor: staff.user.id })
 
     if (cf) {
+      // The store's own row (made by the guard): its ownership code, and whether it is proven.
+      const own = async (d: string) => ownershipOf((await rpc<Listed[]>(admin, 'store_domains_list'))?.find((x) => x.domain === d))
+      const persist = (d: string) => () => markVerified(admin, d)
       switch (input.action) {
         case 'list':
           // root_ip: main domains connect with an A record to our proxy, at any DNS company.
-          return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: true, root_ip: rootProxy(cf)?.a ?? null })
+          return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: true, hosting: 'cloudflare', root_ip: rootProxy(cf)?.a ?? null })
         case 'add':
+          if (platformDomain(cf, input.domain)) throw new HttpError(422, 'That is the platform\'s own domain', 'DOMAIN_REJECTED')
           if (!viaProxy(cf, input.domain)) await addCloudflare(cf, input.domain)
-          return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, false)), automatic: true })
+          return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, false, await own(input.domain), persist(input.domain))), automatic: true })
         case 'check':
-          return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, true)), automatic: true })
+          return json(req, { domain: await save(input.domain, await inspectAny(cf, input.domain, true, await own(input.domain), persist(input.domain))), automatic: true })
         case 'remove':
-          await removeCloudflare(cf, input.domain)
+          // A domain on the proxy has no hosting entry at Cloudflare (an old one is cleaned up if Cloudflare answers).
+          if (viaProxy(cf, input.domain)) await removeCloudflare(cf, input.domain).catch(() => undefined)
+          else await removeCloudflare(cf, input.domain)
           await save(input.domain, { status: 'REMOVED', records: [], detail: 'Removed from the store' })
           return json(req, { ok: true })
         case 'primary':
@@ -366,7 +464,7 @@ export default (
 
     switch (input.action) {
       case 'list':
-        return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: !!v })
+        return json(req, { domains: await rpc(admin, 'store_domains_list'), automatic: !!v, hosting: v ? 'vercel' : 'manual' })
       case 'add': {
         if (!v) {
           return json(req, { domain: await save(input.domain, await manual(input.domain,

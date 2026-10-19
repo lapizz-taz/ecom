@@ -91,9 +91,9 @@ describe('custom domains', () => {
       await asService(db)
       const diag = { pointed: true, records: [{ type: 'A', name: '@', value: '76.76.21.21', ok: true }] }
       const first = await value<Record<string, any>>(db, `select public.store_domain_save('shop.example.com', $1, $2)`,
-        [JSON.stringify({ status: 'ACTIVE', records: [], diagnostics: diag }), owner])
+        [JSON.stringify({ status: 'ACTIVE', records: [], diagnostics: diag, verified: true }), owner])
       expect(first).toMatchObject({ is_primary: true, diagnostics: diag })
-      const second = await value<Record<string, any>>(db, `select public.store_domain_save('www.shop.example.com', '{"status":"VERIFYING"}', $1)`, [owner])
+      const second = await value<Record<string, any>>(db, `select public.store_domain_save('www.shop.example.com', '{"status":"VERIFYING","verified":true}', $1)`, [owner])
       expect(second.is_primary).toBe(false)
       // A check without a diagnosis keeps the last one.
       expect((await value<Record<string, any>>(db, `select public.store_domain_save('shop.example.com', '{"status":"ACTIVE"}')`)).diagnostics).toEqual(diag)
@@ -121,8 +121,8 @@ describe('custom domains', () => {
     inTx(async (db) => {
       const owner = await createStaff(db, 'OWNER')
       await asService(db)
-      await db.query(`select public.store_domain_save('shop.example.com', '{"status":"VERIFYING"}', $1)`, [owner])
-      await db.query(`select public.store_domain_save('www.two.example.com', '{"status":"VERIFYING"}', $1)`, [owner])
+      await db.query(`select public.store_domain_save('shop.example.com', '{"status":"VERIFYING","verified":true}', $1)`, [owner])
+      await db.query(`select public.store_domain_save('www.two.example.com', '{"status":"VERIFYING","verified":true}', $1)`, [owner])
       const known = (d: string) => value<boolean>(db, `select public.store_domain_known($1)`, [d])
       expect(await known('www.shop.example.com')).toBe(true)
       expect(await known(' WWW.Shop.Example.com')).toBe(true)

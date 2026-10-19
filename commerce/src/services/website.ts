@@ -28,9 +28,11 @@ export interface StoreDomain {
   id: string; domain: string; status: 'PENDING' | 'VERIFYING' | 'ACTIVE' | 'ERROR' | 'MANUAL' | 'REMOVED'
   records: DnsRecord[]; detail: string | null; created_at: string; checked_at: string | null
   is_primary: boolean; diagnostics: DomainDiagnosis | null
+  /** Set once the ownership TXT record was found (domains live before codes existed count as proven). */
+  verified_at?: string | null
 }
 /** root_ip: set when main domains connect with an A record to Fullfilio's own server (any DNS company). */
-export const listDomains = () => invokeFunction<{ domains: StoreDomain[]; automatic: boolean; root_ip?: string | null }>('domains', { action: 'list' })
+export const listDomains = () => invokeFunction<{ domains: StoreDomain[]; automatic: boolean; hosting?: 'cloudflare' | 'vercel' | 'manual'; root_ip?: string | null }>('domains', { action: 'list' })
 export const addDomain = (domain: string) => invokeFunction<{ domain: StoreDomain; automatic: boolean }>('domains', { action: 'add', domain })
 export const checkDomain = (domain: string) => invokeFunction<{ domain: StoreDomain; automatic: boolean }>('domains', { action: 'check', domain })
 export const removeDomain = (domain: string) => invokeFunction<{ ok: boolean }>('domains', { action: 'remove', domain })

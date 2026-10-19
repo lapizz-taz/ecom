@@ -392,7 +392,7 @@ describe('tenancy: finding the merchant for outside requests', () => {
       const courier = await value<string>(db, `select id from public.couriers where merchant_id = $1 limit 1`, [m2])
       const channel = await value<string>(db, `insert into public.sales_channels (platform, name, shop_domain) values ('WOOCOMMERCE', 'Second Woo', 'https://second.example') returning id`)
       await db.query(`insert into public.site_api_keys (name, kind, key_hash, prefix, allowed_origins) values ('site', 'SECRET', 'hash-m2', 'sk_live_ab', '{}')`)
-      await db.query(`insert into public.store_domains (domain, status) values ('second-shop.example', 'ACTIVE')`)
+      await db.query(`insert into public.store_domains (domain, status, verified_at) values ('second-shop.example', 'ACTIVE', now())`)
 
       await asService(db, null)
       const lookup = (kind: string, key: string) => value<string | null>(db, `select public.merchant_for($1, $2)`, [kind, key])
@@ -427,7 +427,7 @@ describe('tenancy: finding the merchant for outside requests', () => {
     inTx(async (db) => {
       const m2 = await createMerchant(db, 'Second Shop')
       await asSystem(db, m2)
-      await db.query(`insert into public.store_domains (domain, status) values ('second-shop.example', 'ACTIVE')`)
+      await db.query(`insert into public.store_domains (domain, status, verified_at) values ('second-shop.example', 'ACTIVE', now())`)
       await asAnon(db, null)
       expect(await value(db, `select public.storefront_resolve('www.second-shop.example')`)).toMatchObject({ merchant_id: m2, name: 'Second Shop' })
       expect(await value(db, `select public.storefront_resolve('second-shop.example:443')`)).toMatchObject({ merchant_id: m2 })

@@ -165,7 +165,7 @@ export function DomainGlobe({ tone, regions, label }: { tone: GlobeTone; regions
 
   return (
     <div className="relative mx-auto aspect-square w-full max-w-[220px]">
-      <canvas ref={canvas} className="size-full cursor-grab touch-none active:cursor-grabbing" role="img" aria-label={label} />
+      <canvas ref={canvas} className="size-full cursor-grab touch-pan-y active:cursor-grabbing" role="img" aria-label={label} />
       {hover && (
         <span className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[140%] rounded-md bg-white px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap text-zinc-900 shadow"
           style={{ left: hover.x, top: hover.y }}>{hover.name}</span>

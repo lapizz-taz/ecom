@@ -47,10 +47,14 @@ function sameSecret(a: string, b: string): boolean {
 export function fromRootProxy(req: Request, secret: string | undefined): Request {
   if (!PROXY_HEADERS.some((h) => req.headers.has(h))) return req
   const given = req.headers.get('x-fullfilio-proxy') ?? ''
-  const host = (req.headers.get('x-fullfilio-host') ?? '').toLowerCase().replace(/:\d+$/, '')
+  // A final dot ("shop.com.") is the same name.
+  const host = (req.headers.get('x-fullfilio-host') ?? '').toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
   const ip = req.headers.get('x-fullfilio-client-ip') ?? ''
-  const trusted = !!secret && secret.length >= 16 && sameSecret(given, secret) && /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(host)
   const url = new URL(req.url)
+  // Never the platform's own names (its root and every subdomain): the proxy is only for store domains.
+  const platform = url.hostname.split('.').slice(-2).join('.')
+  const trusted = !!secret && secret.length >= 16 && sameSecret(given, secret)
+    && /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,}|xn--[a-z0-9-]{2,59})$/.test(host) && host !== platform && !host.endsWith(`.${platform}`)
   if (trusted) url.host = host
   const out = new Request(url.toString(), req)
   for (const h of PROXY_HEADERS) out.headers.delete(h)

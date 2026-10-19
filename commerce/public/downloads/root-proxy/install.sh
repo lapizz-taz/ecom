@@ -4,6 +4,8 @@
 # Safe to run again: it keeps the PROXY_SECRET it made the first time and only adds what is missing.
 set -euo pipefail
 
+# Everything runs from main, called on the last line: a download cut off half-way runs nothing.
+main() {
 EMAIL="${1:-}"
 DIR="${FFP_DIR:-/opt/fullfilio-root-proxy}"
 OLD_DIR="/home/${SUDO_USER:-ubuntu}/root-proxy"   # an earlier copy-paste install
@@ -65,7 +67,7 @@ https:// {
         transport http {
             tls_server_name {$UPSTREAM_HOST}
         }
-        header_up X-Fullfilio-Host {host}
+        header_up X-Fullfilio-Host {http.request.tls.server_name}
         header_up X-Fullfilio-Client-IP {remote_host}
         header_up X-Fullfilio-Proxy {$PROXY_SECRET}
         header_up -X-Forwarded-For
@@ -101,12 +103,16 @@ FULLFILIO_SITE=https://fullfilio.com
 UPSTREAM_HOST=stores.fullfilio.com
 PROXY_SECRET=$SECRET
 EOF
+chmod 600 "$DIR/.env"
 
 echo "== 4/4 Starting the proxy"
 # An earlier copy-paste install would hold ports 80/443: stop it (its secret was kept above).
 if [ -f "$OLD_DIR/docker-compose.yml" ]; then docker compose -f "$OLD_DIR/docker-compose.yml" down >/dev/null 2>&1 || true; fi
 docker compose -f "$DIR/docker-compose.yml" pull -q
 docker compose -f "$DIR/docker-compose.yml" up -d
+# Already running: load a changed Caddyfile too (up -d does not restart it for that).
+docker compose -f "$DIR/docker-compose.yml" exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
+  || docker compose -f "$DIR/docker-compose.yml" restart caddy >/dev/null 2>&1 || true
 
 ok=""
 for _ in $(seq 1 15); do
@@ -127,3 +133,6 @@ echo "as a Secret named ROOT_PROXY_SECRET (keep it private):"
 echo
 echo "  $SECRET"
 echo
+}
+
+main "$@"
