@@ -209,15 +209,23 @@ export default function DashboardPage() {
 
       <KpiRow c={center.data} prev={before.data} series={series.data as Array<Record<string, unknown>> | undefined} finance={can('finance.view')} />
 
-      {!editing && (
-        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-          {QUICK_ACTIONS.filter((a) => can(a.permission)).map((a) => (
-            <Button key={a.to} variant="outline" size="sm" className="shrink-0" asChild><Link to={a.to}>{a.icon} {a.label}</Link></Button>
-          ))}
+      <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="min-w-0 space-y-6">
+          {!editing && (
+            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+              {QUICK_ACTIONS.filter((a) => can(a.permission)).map((a) => (
+                <Button key={a.to} variant="outline" size="sm" className="shrink-0" asChild><Link to={a.to}>{a.icon} {a.label}</Link></Button>
+              ))}
+            </div>
+          )}
+          {can('orders.view') && <StatusTiles />}
         </div>
-      )}
-
-      {can('orders.view') && <StatusTiles />}
+        <Link to="/admin/help" aria-label="Get help from the Fullfilio team"
+          className="hidden overflow-hidden rounded-xl border transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-sm xl:block">
+          <img src="/media/support-team.webp" alt="Our team, on your side: real people from the Fullfilio team help you set up, connect your couriers and fix any issue."
+            width={640} height={640} className="size-52 object-cover" />
+        </Link>
+      </div>
 
       {overview.error ? <ErrorState error={overview.error} onRetry={() => overview.refetch()} /> : !d ? <CardsSkeleton count={8} /> : (
         <>
