@@ -25,7 +25,7 @@ https:// {
 	encode zstd gzip
 	reverse_proxy https://{$UPSTREAM_HOST} {
 		# The upstream is Fullfilio on Cloudflare: talk to it by its own name...
-		header_up Host {upstream_hostport}
+		header_up Host {$UPSTREAM_HOST}
 		transport http {
 			tls_server_name {$UPSTREAM_HOST}
 		}
