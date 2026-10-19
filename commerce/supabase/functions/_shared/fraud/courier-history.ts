@@ -1,4 +1,5 @@
 import { fetchWithRetry } from '../fetch-retry.ts'
+import { guardedFetch } from '../net.ts'
 import type { FraudCheckInput, FraudProvider, FraudProviderResult } from './types.ts'
 
 type FetchFn = typeof fetch
@@ -245,7 +246,7 @@ export class CourierHistoryProvider implements FraudProvider {
   private readonly direct: boolean
 
   constructor(private readonly config: CourierHistoryConfig, fetchFn?: FetchFn) {
-    this.fetchFn = fetchFn ?? fetchWithRetry(fetch, { attempts: 2, baseDelayMs: 250, maxDelayMs: 800 })
+    this.fetchFn = fetchFn ?? fetchWithRetry(guardedFetch, { attempts: 2, baseDelayMs: 250, maxDelayMs: 800 })
     this.direct = !!fetchFn && fetchFn !== globalThis.fetch
   }
 

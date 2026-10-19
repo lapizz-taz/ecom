@@ -110,3 +110,13 @@ export async function safeFetch(
   }
   throw new Error('Too many redirects')
 }
+
+/**
+ * fetch for providers whose address an operator or merchant can set (payment gateway,
+ * courier, SMS and courier-history base URLs, notification webhooks): redirects are
+ * followed only to public addresses, each hop re-checked (safeFetch), never blindly.
+ */
+export const guardedFetch: typeof fetch = (input, init) => {
+  if (input instanceof Request) return fetch(new Request(input, { ...init, redirect: 'manual' }))
+  return safeFetch(String(input), init ?? {})
+}

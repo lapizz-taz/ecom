@@ -27,7 +27,12 @@ Asterisk; it is marked "coming soon" and stays off.
    string → *Session pooler* (URI), with the database password (reset it there if it is
    not known). Add it in Cloudflare → fullfilio → Settings → Variables and Secrets as a
    **Secret** named `SUPABASE_DB_URL`. Never paste it anywhere else.
-3. **Deploy the new code, still on Supabase**: the work branch goes to the live branch.
+3. **The schema snapshot is current**: the Cloudflare database enforces the grants,
+   row-security rules and function bodies in `worker/db/generated`, made by
+   `npm run db:convert` from a database built from `supabase/migrations`. The unit test
+   `worker/db/snapshot.test.ts` fails when a migration was added without regenerating it;
+   it must pass before the switch.
+4. **Deploy the new code, still on Supabase**: the work branch goes to the live branch.
    With `DATABASE_BACKEND=supabase` nothing changes for anyone; the Cloudflare database
    is created empty and stays unused.
 4. **Trial copy**: add the variable `COPY_FROM_SUPABASE` = `trial-1`. Within a minute

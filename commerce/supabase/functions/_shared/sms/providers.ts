@@ -1,7 +1,7 @@
 // Bangladesh SMS gateways behind one interface (SmsProvider). Credentials
 // come from Vault (saved on the SMS page) and never reach a browser.
 import { env } from '../env.ts'
-import { isPublicHttpUrl } from '../net.ts'
+import { guardedFetch, isPublicHttpUrl } from '../net.ts'
 
 export type SmsDelivery = 'PENDING' | 'DELIVERED' | 'FAILED' | 'UNKNOWN'
 
@@ -290,7 +290,7 @@ export interface HttpGatewayConfig {
 export class HttpSmsGateway implements SmsProvider {
   readonly code = 'http' as const
   readonly reportsDelivery = false
-  constructor(private readonly config: HttpGatewayConfig, private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly config: HttpGatewayConfig, private readonly fetchFn: FetchFn = guardedFetch) {}
 
   buildUrl(message: SmsMessage): string {
     return this.config.urlTemplate
@@ -337,7 +337,7 @@ export class HttpSmsGateway implements SmsProvider {
 }
 
 /** SmsProvider factory from saved credentials. */
-export function smsProviderFromCredentials(code: SmsProviderCode, creds: SmsCredentials, fetchFn: FetchFn = fetch): SmsProvider {
+export function smsProviderFromCredentials(code: SmsProviderCode, creds: SmsCredentials, fetchFn: FetchFn = guardedFetch): SmsProvider {
   const missing = missingSmsFields(code, creds)
   if (missing.length) throw new SmsError(`Enter ${missing.join(', ').replace(/_/g, ' ')}`, true)
   assertSecureUrl(creds.base_url)

@@ -1,7 +1,7 @@
 // PostgREST filters → SQLite conditions with bound parameters. Values are converted
 // with the column's type first, so a bad uuid or date fails like it did in Postgres.
 import { encode, encodeFilter, type SqlValue } from '../codec.ts'
-import { DbError } from '../errors.ts'
+import { DbError, permissionDenied } from '../errors.ts'
 import { quoteId } from '../ident.ts'
 import type { ColumnMeta } from '../meta.ts'
 import { parseList, type Filter, type JsonStep } from './parse.ts'
@@ -10,11 +10,14 @@ export interface Source {
   name: string
   alias: string
   columns: Record<string, ColumnMeta>
+  /** Set when the caller may read only these columns (Postgres column privileges). */
+  readable?: Set<string> | null
 }
 
 export function column(src: Source, name: string): ColumnMeta {
   const c = Object.hasOwn(src.columns, name) ? src.columns[name] : undefined
   if (!c) throw new DbError('42703', `column ${src.name}.${name} does not exist`)
+  if (src.readable && !src.readable.has(name)) permissionDenied(`table ${src.name}`)
   return c
 }
 

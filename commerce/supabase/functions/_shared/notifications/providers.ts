@@ -1,4 +1,5 @@
 import { env } from '../env.ts'
+import { guardedFetch } from '../net.ts'
 
 export type Channel = 'SMS' | 'WHATSAPP' | 'EMAIL'
 
@@ -38,7 +39,7 @@ async function hmacHex(secret: string, payload: string): Promise<string> {
  */
 export class WebhookProvider implements NotificationProvider {
   readonly name = 'webhook'
-  constructor(private readonly url: string, private readonly secret?: string, private readonly fetchFn: FetchFn = fetch) {}
+  constructor(private readonly url: string, private readonly secret?: string, private readonly fetchFn: FetchFn = guardedFetch) {}
 
   async send(message: OutboundMessage): Promise<{ messageId?: string }> {
     const payload = JSON.stringify(message)

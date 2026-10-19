@@ -103,7 +103,7 @@ describe('sign-up by WhatsApp', () => {
       await openWhatsapp(db, staff)
       await asSystem(db, null)
       await db.query(`insert into public.signup_requests (business_name, full_name, phone, message)
-        select 'Shop ' || g, 'Person', '0171' || lpad(g::text, 7, '0'), 'x' from generate_series(1, 60) g`)
+        select 'Shop ' || g, 'Person', '0171' || lpad(g::text, 7, '0'), 'x' from generate_series(1, 200) g`)
       await asAnon(db)
       await expectError(db, `select public.public_signup_request($1)`, [request({ phone: '01999999999' })], /RATE_LIMITED/)
     }))

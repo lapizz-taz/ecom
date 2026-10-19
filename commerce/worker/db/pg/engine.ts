@@ -130,7 +130,8 @@ const NATIVE: Record<string, (ctx: Context, args: Typed[]) => Typed> = {
   is_system_context: (ctx) => ({ t: 'bool', v: ctx.isSystem() }),
   _support_session_id: (ctx) => ({ t: 'uuid', v: ctx.supportSessionId() }),
   _support_read_only: (ctx) => ({ t: 'bool', v: ctx.supportReadOnly() }),
-  merchant_access_mode: (ctx, a) => ({ t: 'text', v: ctx.accessMode(a[0]?.v == null ? ctx.merchantId() : String(a[0].v)) }),
+  // Another store's mode only for server code and platform staff, as in Postgres (20261109002600).
+  merchant_access_mode: (ctx, a) => ({ t: 'text', v: ctx.accessMode(a[0]?.v != null && (ctx.isSystem() || ctx.isPlatformStaff()) ? String(a[0].v) : ctx.merchantId()) }),
   _device_ok: (ctx, a) => ({ t: 'bool', v: ctx.deviceOk(String(a[0].v), String(a[1].v)) }),
 }
 

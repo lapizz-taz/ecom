@@ -17,6 +17,10 @@ const PROVIDERS = ['pathao', 'steadfast'] as const
 type Provider = (typeof PROVIDERS)[number]
 
 // Pathao's merchant panel checks for this header (and HTTP 202) before it starts sending events.
+// The value is the fixed one Pathao's integration expects from every merchant webhook, not a
+// secret of ours: it is only sent after X-PATHAO-Signature checks out, and events are
+// authenticated by that signature alone. PATHAO_WEBHOOK_INTEGRATION_SECRET overrides it
+// should Pathao change it.
 const PATHAO_INTEGRATION_HEADER = 'X-Pathao-Merchant-Webhook-Integration-Secret'
 const pathaoIntegrationSecret = () => env('PATHAO_WEBHOOK_INTEGRATION_SECRET') ?? 'f3992ecc-59da-4cbe-a049-a13da2018d51'
 

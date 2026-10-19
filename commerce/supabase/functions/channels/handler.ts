@@ -39,7 +39,7 @@ import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { env, functionsBase } from '../_shared/env.ts'
 import { adTrackingStatus, processAdEvents, saveAdTracking, testAdTracking } from '../_shared/ads/store-tracking-service.ts'
 import { FraudDetectionService, type FraudSettings, loadFraudProviders } from '../_shared/fraud/service.ts'
-import { handle, HttpError, json, readJson } from '../_shared/http.ts'
+import { handle, HttpError, json, readJson, readText } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
 import { appBase, storefrontBase } from '../_shared/storefront.ts'
@@ -640,6 +640,12 @@ async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: s
   const args = { p_channel_id: c.id, p_phone: d.phone, p_ip: d.ip || null, p_address: d.address || null, p_total: d.total || null, p_shipping: d.shipping ?? null }
   const first = await rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: null })
   if (first.decision === 'block' || first.reason === 'OFF') return first
+  // A new courier lookup spends the store's lookups and the checkout is public: the same
+  // per-visitor and per-store hourly limits as the hosted checkout (a saved check is free).
+  const cached = await rpc<{ id: string | null } | null>(admin, 'recent_fraud_check', { p_phone: d.phone })
+  if (!cached?.id && !(await rpc<boolean>(admin, 'checkout_lookup_allowed', { p_ip: d.ip || '' }))) {
+    return rpc<CheckoutAnswer>(admin, 'channel_checkout_decision', { ...args, p_check_id: null, p_unavailable: true })
+  }
   const check = fraudCheckFor(admin, d.phone, d.total, d.shipping).catch((error) => {
     void logEvent({ level: 'WARN', category: 'FRAUD', source: 'channels', message: `${c.name}: courier check at checkout failed`, error })
     return null
@@ -655,8 +661,7 @@ async function checkoutDecision(admin: SupabaseClient, c: Channel, d: { phone: s
 
 /** POST /channels/plugin/<channel_id>: a signed event from the store's plugin. */
 async function pluginEvent(req: Request, id: string): Promise<Response> {
-  const raw = await req.text()
-  if (raw.length > 512_000) throw new HttpError(413, 'Too large', 'PAYLOAD_TOO_LARGE')
+  const raw = await readText(req, 512_000)
   const merchantId = await merchantFor('channel', id)
   if (!merchantId) throw new HttpError(404, 'Unknown store', 'NOT_FOUND')
   const admin = adminClient(merchantId)

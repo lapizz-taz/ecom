@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { env } from '../env.ts'
 import { HttpError } from '../http.ts'
 import { logEvent } from '../monitoring.ts'
-import { checkedBaseUrl } from '../net.ts'
+import { checkedBaseUrl, guardedFetch } from '../net.ts'
 import { BkashProvider, type BkashTokenStore } from './bkash.ts'
 import { PaystationProvider } from './paystation.ts'
 import { ManualPaymentProvider, SslCommerzProvider } from './providers.ts'
@@ -69,7 +69,7 @@ export function gatewayFromCredentials(
     }
     return new BkashProvider(
       { appKey, appSecret, username, password, sandbox: gatewaySandbox('bkash', config.sandbox), baseUrl: checkedBaseUrl(c.base_url, 'bKash API URL') ?? env('BKASH_BASE_URL') },
-      fetch, Date.now, admin ? bkashTokenStore(admin) : undefined,
+      guardedFetch, Date.now, admin ? bkashTokenStore(admin) : undefined,
     )
   }
   const c = (creds ?? {}) as PaystationCredentials
@@ -81,7 +81,7 @@ export function gatewayFromCredentials(
   return new PaystationProvider({
     merchantId, password, token: c.token ?? env('PAYSTATION_TOKEN'), sandbox: gatewaySandbox('paystation', config.sandbox), baseUrl: checkedBaseUrl(c.base_url, 'PayStation API URL') ?? env('PAYSTATION_BASE_URL'),
     payWithCharge: config.pay_with_charge === true,
-  })
+  }, guardedFetch)
 }
 
 async function savedCredentials(admin: SupabaseClient, code: Gateway): Promise<Record<string, string> | null> {

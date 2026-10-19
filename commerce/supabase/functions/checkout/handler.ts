@@ -43,7 +43,7 @@ export default (
       rateLimit(`track:${ip}`, 60)
       rateLimit(`track-store:${merchantId}`, 1500)
       const input = parse(trackSchema, body)
-      const r = await beaconEvent(admin, input, ip, req.headers.get('user-agent'))
+      const r = await beaconEvent(admin, input, ip, req.headers.get('user-agent'), undefined, req.headers.get('origin'))
       return json(req, { ok: r.ok }, 202)
     }
 

@@ -189,13 +189,34 @@ export interface BeaconInput {
   click?: { fbclid?: string; ttclid?: string }
 }
 
-/** One browser event's server copy (Meta + TikTok), with the browser's own event id. */
-export async function beaconEvent(admin: SupabaseClient, input: BeaconInput, ip: string | null, ua: string | null, fetchFn?: FetchFn) {
+interface TrackScope { hosts: string[]; prices: Record<string, number> }
+
+const hostOf = (raw: string | null | undefined): string | null => {
+  try { return raw ? new URL(raw).hostname.toLowerCase() : null } catch { return null }
+}
+
+/**
+ * One browser event's server copy (Meta + TikTok), with the browser's own event id.
+ * The beacon is public, so what it reports is checked against the store before it is
+ * sent with the store's tokens: the page must be one of the store's own addresses (and
+ * so must the calling page, when the browser names it), products must be the store's
+ * active ones, prices at most their catalog price, and the value is their sum.
+ */
+export async function beaconEvent(admin: SupabaseClient, input: BeaconInput, ip: string | null, ua: string | null, fetchFn?: FetchFn, origin?: string | null) {
   const { config, secrets } = await loadAdTracking(admin, true)
   if (!config.enabled || !config.server_events) return { ok: false, skipped: 'Tracking is off' }
+  const productIds = [...new Set((input.contents ?? []).map((c) => c.id))].filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+  const scope = await rpc<TrackScope>(admin, 'ad_track_scope', { p_ids: productIds })
+  const page = hostOf(input.url)
+  if (!page || !scope.hosts.includes(page)) return { ok: false, skipped: 'Not a page of this store' }
+  if (origin && origin !== 'null' && !scope.hosts.includes(hostOf(origin) ?? '')) return { ok: false, skipped: 'Not a page of this store' }
+  const contents = input.contents
+    ?.filter((c) => scope.prices[c.id] !== undefined)
+    .map((c) => ({ ...c, price: Math.min(c.price, scope.prices[c.id]) }))
+  const value = contents ? Math.round(contents.reduce((sum, c) => sum + c.price * c.quantity, 0) * 100) / 100 : undefined
   const ev: StoreEvent = {
     name: input.event, event_id: input.event_id, time: Math.floor(Date.now() / 1000), url: input.url,
-    value: input.value, currency: input.currency, contents: input.contents,
+    value, currency: value === undefined ? undefined : input.currency, contents,
   }
   const ids: BrowserIds = {
     ip, ua, fbp: input.browser?.fbp, fbc: input.browser?.fbc, ttp: input.browser?.ttp,

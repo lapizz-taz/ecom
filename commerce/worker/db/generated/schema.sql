@@ -39,7 +39,9 @@ INSERT INTO _sequences (name, value) VALUES
   ('account_removals_id_seq', 0),
   ('api_request_logs_id_seq', 0),
   ('billing_invoice_seq', 0),
+  ('billing_payment_checks_id_seq', 0),
   ('channel_plugin_events_id_seq', 0),
+  ('checkout_lookup_slots_id_seq', 0),
   ('config_versions_id_seq', 0),
   ('credit_ledger_id_seq', 0),
   ('credit_lots_id_seq', 0),
@@ -56,8 +58,10 @@ INSERT INTO _sequences (name, value) VALUES
   ('platform_contact_messages_id_seq', 0),
   ('platform_cost_entries_id_seq', 0),
   ('platform_data_exports_id_seq', 0),
+  ('platform_finance_entry_seq', 0),
   ('platform_incident_updates_id_seq', 0),
   ('platform_incidents_number_seq', 0),
+  ('platform_lead_touches_id_seq', 0),
   ('platform_notifications_id_seq', 0),
   ('platform_restore_tests_id_seq', 0),
   ('purchase_order_seq', 1000),
@@ -135,6 +139,27 @@ CREATE TABLE ad_connections (
 
 CREATE TRIGGER ad_connections_updated_at AFTER UPDATE ON ad_connections FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE ad_connections SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE ad_event_queue (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  order_id TEXT NOT NULL CHECK (length(order_id) = 36),
+  event TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  status TEXT DEFAULT 'PENDING' NOT NULL,
+  attempts INTEGER DEFAULT 0 NOT NULL,
+  next_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', next_at) = next_at),
+  results TEXT CHECK (results IS NULL OR json_valid(results)),
+  last_error TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  done_at TEXT CHECK (done_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', done_at) = done_at),
+  PRIMARY KEY (id),
+  CONSTRAINT ad_event_queue_event_check CHECK (event = 'Purchase'),
+  CONSTRAINT ad_event_queue_status_check CHECK (status IN ('PENDING', 'DONE', 'PARTIAL', 'FAILED', 'SKIPPED')),
+  CONSTRAINT ad_event_queue_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT ad_event_queue_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+  CONSTRAINT ad_event_queue_order_id_event_key UNIQUE (order_id, event)
+) STRICT;
 
 CREATE TABLE ad_oauth_states (
   state TEXT NOT NULL,
@@ -250,6 +275,7 @@ CREATE TABLE billing_invoices (
   created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  plan_change TEXT CHECK (plan_change IS NULL OR json_valid(plan_change)),
   PRIMARY KEY (id),
   CONSTRAINT billing_invoices_kind_check CHECK (kind IN ('SUBSCRIPTION', 'CREDITS', 'ADDON', 'OTHER')),
   CONSTRAINT billing_invoices_status_check CHECK (status IN ('OPEN', 'PAID', 'VOID')),
@@ -261,6 +287,29 @@ CREATE TABLE billing_invoices (
 
 CREATE TRIGGER billing_invoices_updated_at AFTER UPDATE ON billing_invoices FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE billing_invoices SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE billing_payment_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payment_id TEXT NOT NULL CHECK (length(payment_id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  source TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  gateway_status TEXT,
+  amount REAL,
+  txn TEXT,
+  detail TEXT DEFAULT '{}' NOT NULL CHECK (json_valid(detail)),
+  actor_id TEXT CHECK (actor_id IS NULL OR length(actor_id) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  CONSTRAINT billing_payment_checks_source_check CHECK (source IN ('RETURN', 'IPN', 'RECONCILE', 'RECHECK', 'REFUND', 'MANUAL')),
+  CONSTRAINT billing_payment_checks_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT billing_payment_checks_payment_id_fkey FOREIGN KEY (payment_id) REFERENCES billing_payments (id)
+) STRICT;
+
+CREATE TRIGGER billing_payment_checks_no_update BEFORE UPDATE ON billing_payment_checks FOR EACH ROW
+BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD: billing_payment_checks rows cannot be updated; record a correcting entry instead'); END;
+
+CREATE TRIGGER billing_payment_checks_no_delete BEFORE DELETE ON billing_payment_checks FOR EACH ROW
+BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD: billing_payment_checks rows cannot be deleted; record a correcting entry instead'); END;
 
 CREATE TABLE billing_payments (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
@@ -279,13 +328,131 @@ CREATE TABLE billing_payments (
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   provider_session TEXT,
   provider_txn_id TEXT,
+  purpose TEXT,
+  currency TEXT DEFAULT 'BDT' NOT NULL,
+  refunded_amount REAL DEFAULT 0 NOT NULL,
+  status_reason TEXT,
+  needs_review INTEGER DEFAULT 0 NOT NULL CHECK (needs_review IN (0, 1)),
+  review_note TEXT,
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
   PRIMARY KEY (id),
   CONSTRAINT billing_payments_amount_check CHECK (amount > 0),
   CONSTRAINT billing_payments_check CHECK ((verified_by is null) or (recorded_by is null) or (verified_by <> recorded_by)),
   CONSTRAINT billing_payments_method_check CHECK (method IN ('BKASH', 'NAGAD', 'BANK', 'CASH', 'GATEWAY', 'OTHER')),
-  CONSTRAINT billing_payments_status_check CHECK (status IN ('PENDING', 'SUCCEEDED', 'FAILED', 'REJECTED')),
+  CONSTRAINT billing_payments_purpose_check CHECK (purpose IN ('SUBSCRIPTION', 'SMS', 'COURIER', 'BALANCE', 'ADDON', 'OTHER')),
+  CONSTRAINT billing_payments_refund_le_amount CHECK (refunded_amount <= amount),
+  CONSTRAINT billing_payments_refunded_amount_check CHECK (refunded_amount >= 0),
+  CONSTRAINT billing_payments_status_check CHECK (status IN ('PENDING', 'SUCCEEDED', 'FAILED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED')),
   CONSTRAINT billing_payments_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES billing_invoices (id),
   CONSTRAINT billing_payments_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+) STRICT;
+
+CREATE TABLE billing_refunds (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  payment_id TEXT NOT NULL CHECK (length(payment_id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  amount REAL NOT NULL,
+  reason TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status TEXT DEFAULT 'PROCESSING' NOT NULL,
+  reverse_credits INTEGER DEFAULT 1 NOT NULL CHECK (reverse_credits IN (0, 1)),
+  credits_reversed INTEGER DEFAULT 0 NOT NULL,
+  credits_short INTEGER DEFAULT 0 NOT NULL,
+  provider_refund_id TEXT,
+  error TEXT,
+  raw TEXT CHECK (raw IS NULL OR json_valid(raw)),
+  requested_by TEXT CHECK (requested_by IS NULL OR length(requested_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  completed_at TEXT CHECK (completed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', completed_at) = completed_at),
+  PRIMARY KEY (id),
+  CONSTRAINT billing_refunds_amount_check CHECK (amount > 0),
+  CONSTRAINT billing_refunds_method_check CHECK (method IN ('GATEWAY', 'MANUAL')),
+  CONSTRAINT billing_refunds_reason_check CHECK (length(trim( reason )) >= 5 AND length(trim( reason )) <= 500),
+  CONSTRAINT billing_refunds_status_check CHECK (status IN ('PROCESSING', 'SUCCEEDED', 'FAILED')),
+  CONSTRAINT billing_refunds_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT billing_refunds_payment_id_fkey FOREIGN KEY (payment_id) REFERENCES billing_payments (id)
+) STRICT;
+
+CREATE TABLE branch_staff (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  branch_id TEXT NOT NULL CHECK (length(branch_id) = 36),
+  profile_id TEXT NOT NULL CHECK (length(profile_id) = 36),
+  PRIMARY KEY (branch_id, profile_id),
+  CONSTRAINT branch_staff_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches (id) ON DELETE CASCADE,
+  CONSTRAINT branch_staff_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT branch_staff_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles (id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE branch_stock (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  branch_id TEXT NOT NULL CHECK (length(branch_id) = 36),
+  variant_id TEXT NOT NULL CHECK (length(variant_id) = 36),
+  on_hand INTEGER DEFAULT 0 NOT NULL,
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (branch_id, variant_id),
+  CONSTRAINT branch_stock_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches (id) ON DELETE RESTRICT,
+  CONSTRAINT branch_stock_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT branch_stock_variant_id_fkey FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE branch_transfers (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  from_branch TEXT NOT NULL CHECK (length(from_branch) = 36),
+  to_branch TEXT NOT NULL CHECK (length(to_branch) = 36),
+  variant_id TEXT NOT NULL CHECK (length(variant_id) = 36),
+  quantity INTEGER NOT NULL,
+  kind TEXT DEFAULT 'TRANSFER' NOT NULL,
+  note TEXT,
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  PRIMARY KEY (id),
+  CONSTRAINT branch_transfers_check CHECK (from_branch <> to_branch),
+  CONSTRAINT branch_transfers_kind_check CHECK (kind IN ('TRANSFER', 'SETUP')),
+  CONSTRAINT branch_transfers_note_check CHECK (length(note) <= 300),
+  CONSTRAINT branch_transfers_quantity_check CHECK (quantity > 0),
+  CONSTRAINT branch_transfers_created_by_fkey FOREIGN KEY (created_by) REFERENCES profiles (id),
+  CONSTRAINT branch_transfers_from_branch_fkey FOREIGN KEY (from_branch) REFERENCES branches (id),
+  CONSTRAINT branch_transfers_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT branch_transfers_to_branch_fkey FOREIGN KEY (to_branch) REFERENCES branches (id),
+  CONSTRAINT branch_transfers_variant_id_fkey FOREIGN KEY (variant_id) REFERENCES product_variants (id)
+) STRICT;
+
+CREATE TABLE branches (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  name TEXT NOT NULL,
+  code TEXT,
+  kind TEXT DEFAULT 'STORE' NOT NULL,
+  is_central INTEGER DEFAULT 0 NOT NULL CHECK (is_central IN (0, 1)),
+  address TEXT,
+  phone TEXT,
+  manager_id TEXT CHECK (manager_id IS NULL OR length(manager_id) = 36),
+  is_active INTEGER DEFAULT 1 NOT NULL CHECK (is_active IN (0, 1)),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT branches_address_check CHECK (length(address) <= 300),
+  CONSTRAINT branches_kind_check CHECK (kind IN ('STORE', 'WAREHOUSE')),
+  CONSTRAINT branches_name_check CHECK (length(trim( name )) >= 2 AND length(trim( name )) <= 80),
+  CONSTRAINT branches_phone_check CHECK (length(phone) <= 20),
+  CONSTRAINT branches_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT branches_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT branches_merchant_id_name_key UNIQUE (merchant_id, name)
+) STRICT;
+
+CREATE TABLE call_claims (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  ref_kind TEXT NOT NULL,
+  ref_id TEXT NOT NULL CHECK (length(ref_id) = 36),
+  queue TEXT NOT NULL,
+  claimed_by TEXT NOT NULL CHECK (length(claimed_by) = 36),
+  claimed_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', claimed_at) = claimed_at),
+  expires_at TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', expires_at) = expires_at),
+  PRIMARY KEY (merchant_id, ref_kind, ref_id),
+  CONSTRAINT call_claims_ref_kind_check CHECK (ref_kind IN ('ORDER', 'LEAD')),
+  CONSTRAINT call_claims_claimed_by_fkey FOREIGN KEY (claimed_by) REFERENCES profiles (id) ON DELETE CASCADE,
+  CONSTRAINT call_claims_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
 ) STRICT;
 
 CREATE TABLE categories (
@@ -561,6 +728,15 @@ CREATE TABLE checkout_leads (
   CONSTRAINT checkout_leads_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE SET NULL
 ) STRICT;
 
+CREATE TABLE checkout_lookup_slots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  ip_hash TEXT NOT NULL,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  CONSTRAINT checkout_lookup_slots_ip_hash_check CHECK (length(ip_hash) = 64),
+  CONSTRAINT checkout_lookup_slots_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id) ON DELETE CASCADE
+) STRICT;
+
 CREATE TABLE config_versions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL,
@@ -738,6 +914,28 @@ CREATE TABLE courier_invoices (
 
 CREATE TRIGGER courier_invoices_updated_at AFTER UPDATE ON courier_invoices FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE courier_invoices SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE courier_sync_runs (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  "trigger" TEXT NOT NULL,
+  scope TEXT DEFAULT 'all' NOT NULL,
+  courier_id TEXT CHECK (courier_id IS NULL OR length(courier_id) = 36),
+  started_by TEXT CHECK (started_by IS NULL OR length(started_by) = 36),
+  started_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', started_at) = started_at),
+  finished_at TEXT CHECK (finished_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', finished_at) = finished_at),
+  total INTEGER DEFAULT 0 NOT NULL,
+  checked INTEGER DEFAULT 0 NOT NULL,
+  changed INTEGER DEFAULT 0 NOT NULL,
+  failed INTEGER DEFAULT 0 NOT NULL,
+  errors TEXT DEFAULT '[]' NOT NULL CHECK (json_valid(errors)),
+  PRIMARY KEY (id),
+  CONSTRAINT courier_sync_runs_scope_check CHECK (scope IN ('all', 'shipped')),
+  CONSTRAINT courier_sync_runs_trigger_check CHECK ("trigger" IN ('MANUAL', 'SCHEDULED')),
+  CONSTRAINT courier_sync_runs_courier_id_fkey FOREIGN KEY (courier_id) REFERENCES couriers (id) ON DELETE SET NULL,
+  CONSTRAINT courier_sync_runs_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT courier_sync_runs_started_by_fkey FOREIGN KEY (started_by) REFERENCES profiles (id) ON DELETE SET NULL
+) STRICT;
 
 CREATE TABLE courier_webhook_events (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
@@ -1255,8 +1453,13 @@ CREATE TABLE hr_attendance (
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  break_minutes INTEGER DEFAULT 0 NOT NULL,
+  checkout_source TEXT,
+  keep_open_today INTEGER DEFAULT 0 NOT NULL CHECK (keep_open_today IN (0, 1)),
   PRIMARY KEY (id),
+  CONSTRAINT hr_attendance_break_minutes_check CHECK (break_minutes >= 0),
   CONSTRAINT hr_attendance_check CHECK ((check_out_at is null) or (check_in_at is null) or (check_out_at >= check_in_at)),
+  CONSTRAINT hr_attendance_checkout_source_check CHECK (checkout_source IN ('SELF', 'AUTO', 'HR')),
   CONSTRAINT hr_attendance_source_check CHECK (source IN ('SELF', 'ADMIN')),
   CONSTRAINT hr_attendance_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
   CONSTRAINT hr_attendance_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles (id),
@@ -1266,6 +1469,25 @@ CREATE TABLE hr_attendance (
 
 CREATE TRIGGER hr_attendance_updated_at AFTER UPDATE ON hr_attendance FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE hr_attendance SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE hr_breaks (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  attendance_id TEXT NOT NULL CHECK (length(attendance_id) = 36),
+  profile_id TEXT NOT NULL CHECK (length(profile_id) = 36),
+  kind TEXT DEFAULT 'MANUAL' NOT NULL,
+  started_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', started_at) = started_at),
+  ended_at TEXT CHECK (ended_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', ended_at) = ended_at),
+  ended_by TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  PRIMARY KEY (id),
+  CONSTRAINT hr_breaks_check CHECK ((ended_at is null) or (ended_at >= started_at)),
+  CONSTRAINT hr_breaks_ended_by_check CHECK (ended_by IN ('SELF', 'CHECKOUT', 'AUTO_CHECKOUT', 'HR')),
+  CONSTRAINT hr_breaks_kind_check CHECK (kind IN ('MANUAL', 'IDLE')),
+  CONSTRAINT hr_breaks_attendance_id_fkey FOREIGN KEY (attendance_id) REFERENCES hr_attendance (id) ON DELETE CASCADE,
+  CONSTRAINT hr_breaks_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT hr_breaks_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles (id)
+) STRICT;
 
 CREATE TABLE hr_departments (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
@@ -1297,7 +1519,12 @@ CREATE TABLE hr_employees (
   emergency_contact TEXT,
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  attendance_exempt INTEGER DEFAULT 0 NOT NULL CHECK (attendance_exempt IN (0, 1)),
+  max_break_minutes INTEGER,
+  auto_break INTEGER CHECK (auto_break IS NULL OR auto_break IN (0, 1)),
+  auto_checkout INTEGER CHECK (auto_checkout IS NULL OR auto_checkout IN (0, 1)),
   PRIMARY KEY (profile_id),
+  CONSTRAINT hr_employees_max_break_minutes_check CHECK (max_break_minutes >= 0 AND max_break_minutes <= 480),
   CONSTRAINT hr_employees_department_id_fkey FOREIGN KEY (department_id) REFERENCES hr_departments (id),
   CONSTRAINT hr_employees_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
   CONSTRAINT hr_employees_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles (id),
@@ -1318,6 +1545,36 @@ CREATE TABLE hr_holidays (
   CONSTRAINT hr_holidays_name_check CHECK (length(trim( name )) >= 2 AND length(trim( name )) <= 80),
   CONSTRAINT hr_holidays_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
 ) STRICT;
+
+CREATE TABLE hr_requests (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  profile_id TEXT NOT NULL CHECK (length(profile_id) = 36),
+  kind TEXT NOT NULL,
+  from_date TEXT NOT NULL CHECK (date(from_date) = from_date),
+  to_date TEXT NOT NULL CHECK (date(to_date) = to_date),
+  check_in TEXT CHECK (check_in IS NULL OR time(check_in) = check_in),
+  check_out TEXT CHECK (check_out IS NULL OR time(check_out) = check_out),
+  reason TEXT NOT NULL,
+  status TEXT DEFAULT 'PENDING' NOT NULL,
+  decided_by TEXT CHECK (decided_by IS NULL OR length(decided_by) = 36),
+  decided_at TEXT CHECK (decided_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', decided_at) = decided_at),
+  decision_note TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT hr_requests_check CHECK (to_date >= from_date AND (to_date - from_date) <= 30),
+  CONSTRAINT hr_requests_decision_note_check CHECK ((decision_note is null) or (length(decision_note) <= 300)),
+  CONSTRAINT hr_requests_kind_check CHECK (kind IN ('LEAVE', 'CORRECTION', 'LATE_EXCUSE')),
+  CONSTRAINT hr_requests_reason_check CHECK (length(trim( reason )) >= 3 AND length(trim( reason )) <= 500),
+  CONSTRAINT hr_requests_status_check CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')),
+  CONSTRAINT hr_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES profiles (id),
+  CONSTRAINT hr_requests_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT hr_requests_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles (id)
+) STRICT;
+
+CREATE TRIGGER hr_requests_updated_at AFTER UPDATE ON hr_requests FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+BEGIN UPDATE hr_requests SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
 CREATE TABLE hr_shifts (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
@@ -1341,6 +1598,22 @@ CREATE TABLE hr_shifts (
 CREATE TRIGGER hr_shifts_updated_at AFTER UPDATE ON hr_shifts FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE hr_shifts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
+CREATE TABLE hr_sop_checks (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  sop_id TEXT NOT NULL CHECK (length(sop_id) = 36),
+  profile_id TEXT NOT NULL CHECK (length(profile_id) = 36),
+  work_date TEXT NOT NULL CHECK (date(work_date) = work_date),
+  done TEXT DEFAULT '[]' NOT NULL CHECK (json_type(done) = 'array'),
+  items_total INTEGER NOT NULL,
+  sop_version INTEGER NOT NULL,
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (sop_id, profile_id, work_date),
+  CONSTRAINT hr_sop_checks_items_total_check CHECK (items_total >= 0),
+  CONSTRAINT hr_sop_checks_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT hr_sop_checks_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES profiles (id),
+  CONSTRAINT hr_sop_checks_sop_id_fkey FOREIGN KEY (sop_id) REFERENCES hr_sops (id) ON DELETE CASCADE
+) STRICT;
+
 CREATE TABLE hr_sops (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
   department_id TEXT CHECK (department_id IS NULL OR length(department_id) = 36),
@@ -1352,7 +1625,9 @@ CREATE TABLE hr_sops (
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  kind TEXT DEFAULT 'GUIDE' NOT NULL,
   PRIMARY KEY (id),
+  CONSTRAINT hr_sops_kind_check CHECK (kind IN ('GUIDE', 'CHECKLIST')),
   CONSTRAINT hr_sops_title_check CHECK (length(trim( title )) >= 2 AND length(trim( title )) <= 160),
   CONSTRAINT hr_sops_department_id_fkey FOREIGN KEY (department_id) REFERENCES hr_departments (id),
   CONSTRAINT hr_sops_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
@@ -1361,6 +1636,275 @@ CREATE TABLE hr_sops (
 
 CREATE TRIGGER hr_sops_updated_at AFTER UPDATE ON hr_sops FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE hr_sops SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE inbox_auto_replies (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  name TEXT NOT NULL,
+  enabled INTEGER DEFAULT 1 NOT NULL CHECK (enabled IN (0, 1)),
+  is_default INTEGER DEFAULT 0 NOT NULL CHECK (is_default IN (0, 1)),
+  applies_to TEXT DEFAULT 'BOTH' NOT NULL,
+  keywords TEXT DEFAULT '[]' NOT NULL CHECK (json_type(keywords) = 'array'),
+  "match" TEXT DEFAULT 'CONTAINS' NOT NULL,
+  channel_ids TEXT DEFAULT '[]' NOT NULL CHECK (json_type(channel_ids) = 'array'),
+  post_ids TEXT DEFAULT '[]' NOT NULL CHECK (json_type(post_ids) = 'array'),
+  reply_text TEXT,
+  private_text TEXT,
+  like_comment INTEGER DEFAULT 0 NOT NULL CHECK (like_comment IN (0, 1)),
+  once_per_customer INTEGER DEFAULT 1 NOT NULL CHECK (once_per_customer IN (0, 1)),
+  sent_count INTEGER DEFAULT 0 NOT NULL,
+  last_sent_at TEXT CHECK (last_sent_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', last_sent_at) = last_sent_at),
+  sort_order INTEGER DEFAULT 0 NOT NULL,
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_auto_replies_applies_to_check CHECK (applies_to IN ('MESSAGE', 'COMMENT', 'BOTH')),
+  CONSTRAINT inbox_auto_replies_channel_ids_check CHECK (json_array_length(channel_ids) <= 50),
+  CONSTRAINT inbox_auto_replies_keywords_check CHECK (json_array_length(keywords) <= 30),
+  CONSTRAINT inbox_auto_replies_match_check CHECK ("match" IN ('CONTAINS', 'EXACT')),
+  CONSTRAINT inbox_auto_replies_name_check CHECK (length(trim( name )) >= 1 AND length(trim( name )) <= 80),
+  CONSTRAINT inbox_auto_replies_post_ids_check CHECK (json_array_length(post_ids) <= 50),
+  CONSTRAINT inbox_auto_replies_private_text_check CHECK (length(private_text) <= 2000),
+  CONSTRAINT inbox_auto_replies_reply_text_check CHECK (length(reply_text) <= 2000),
+  CONSTRAINT inbox_auto_replies_sent_count_check CHECK (sent_count >= 0),
+  CONSTRAINT inbox_auto_replies_created_by_fkey FOREIGN KEY (created_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_auto_replies_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+) STRICT;
+
+CREATE TABLE inbox_automation_log (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  rule_id TEXT CHECK (rule_id IS NULL OR length(rule_id) = 36),
+  conversation_id TEXT CHECK (conversation_id IS NULL OR length(conversation_id) = 36),
+  message_id TEXT CHECK (message_id IS NULL OR length(message_id) = 36),
+  detail TEXT,
+  actor TEXT CHECK (actor IS NULL OR length(actor) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_automation_log_detail_check CHECK (length(detail) <= 500),
+  CONSTRAINT inbox_automation_log_kind_check CHECK (kind IN ('AUTO_REPLY', 'FOLLOW_UP', 'MODERATION', 'COMMENT_ACTION')),
+  CONSTRAINT inbox_automation_log_status_check CHECK (status IN ('SENT', 'FAILED', 'SKIPPED', 'DONE', 'SCHEDULED', 'CANCELLED')),
+  CONSTRAINT inbox_automation_log_actor_fkey FOREIGN KEY (actor) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_automation_log_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES inbox_conversations (id) ON DELETE CASCADE,
+  CONSTRAINT inbox_automation_log_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT inbox_automation_log_message_id_fkey FOREIGN KEY (message_id) REFERENCES inbox_messages (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_automation_log_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES inbox_auto_replies (id) ON DELETE SET NULL
+) STRICT;
+
+CREATE TABLE inbox_channels (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  platform TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  username TEXT,
+  avatar_url TEXT,
+  page_id TEXT,
+  waba_id TEXT,
+  display_phone TEXT,
+  receive_comments INTEGER DEFAULT 1 NOT NULL CHECK (receive_comments IN (0, 1)),
+  status TEXT DEFAULT 'OK' NOT NULL,
+  status_error TEXT,
+  token_hint TEXT,
+  last_event_at TEXT CHECK (last_event_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', last_event_at) = last_event_at),
+  connected_by TEXT CHECK (connected_by IS NULL OR length(connected_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_channels_avatar_url_check CHECK (length(avatar_url) <= 1000),
+  CONSTRAINT inbox_channels_display_phone_check CHECK (length(display_phone) <= 30),
+  CONSTRAINT inbox_channels_name_check CHECK (length(name) >= 1 AND length(name) <= 120),
+  CONSTRAINT inbox_channels_platform_check CHECK (platform IN ('FACEBOOK', 'INSTAGRAM', 'WHATSAPP')),
+  CONSTRAINT inbox_channels_status_check CHECK (status IN ('OK', 'FAILED', 'DISCONNECTED')),
+  CONSTRAINT inbox_channels_status_error_check CHECK (length(status_error) <= 500),
+  CONSTRAINT inbox_channels_token_hint_check CHECK (length(token_hint) <= 20),
+  CONSTRAINT inbox_channels_username_check CHECK (length(username) <= 120),
+  CONSTRAINT inbox_channels_connected_by_fkey FOREIGN KEY (connected_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_channels_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT inbox_channels_merchant_id_platform_external_id_key UNIQUE (merchant_id, platform, external_id)
+) STRICT;
+
+CREATE TABLE inbox_conversations (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  channel_id TEXT NOT NULL CHECK (length(channel_id) = 36),
+  kind TEXT DEFAULT 'MESSAGE' NOT NULL,
+  thread_key TEXT NOT NULL,
+  customer_external_id TEXT,
+  customer_name TEXT,
+  customer_avatar TEXT,
+  customer_phone TEXT,
+  customer_address TEXT,
+  customer_id TEXT CHECK (customer_id IS NULL OR length(customer_id) = 36),
+  post TEXT CHECK (post IS NULL OR json_valid(post)),
+  status TEXT DEFAULT 'OPEN' NOT NULL,
+  assigned_to TEXT CHECK (assigned_to IS NULL OR length(assigned_to) = 36),
+  starred INTEGER DEFAULT 0 NOT NULL CHECK (starred IN (0, 1)),
+  labels TEXT DEFAULT '[]' NOT NULL CHECK (json_type(labels) = 'array'),
+  pinned_message_id TEXT CHECK (pinned_message_id IS NULL OR length(pinned_message_id) = 36),
+  linked_order_id TEXT CHECK (linked_order_id IS NULL OR length(linked_order_id) = 36),
+  unread_count INTEGER DEFAULT 0 NOT NULL,
+  last_message_at TEXT CHECK (last_message_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', last_message_at) = last_message_at),
+  last_message_preview TEXT,
+  last_message_direction TEXT,
+  last_customer_message_at TEXT CHECK (last_customer_message_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', last_customer_message_at) = last_customer_message_at),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  post_external_id TEXT,
+  no_reply_needed INTEGER DEFAULT 0 NOT NULL CHECK (no_reply_needed IN (0, 1)),
+  awaiting_since TEXT CHECK (awaiting_since IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', awaiting_since) = awaiting_since),
+  auto_follow_up_at TEXT CHECK (auto_follow_up_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', auto_follow_up_at) = auto_follow_up_at),
+  auto_follow_up_text TEXT,
+  auto_follow_up_by TEXT CHECK (auto_follow_up_by IS NULL OR length(auto_follow_up_by) = 36),
+  remind_at TEXT CHECK (remind_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', remind_at) = remind_at),
+  remind_note TEXT,
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_conversations_auto_follow_up_text_check CHECK (length(auto_follow_up_text) <= 2000),
+  CONSTRAINT inbox_conversations_customer_address_check CHECK (length(customer_address) <= 300),
+  CONSTRAINT inbox_conversations_customer_avatar_check CHECK (length(customer_avatar) <= 1000),
+  CONSTRAINT inbox_conversations_customer_external_id_check CHECK (length(customer_external_id) <= 200),
+  CONSTRAINT inbox_conversations_customer_name_check CHECK (length(customer_name) <= 200),
+  CONSTRAINT inbox_conversations_customer_phone_check CHECK (length(customer_phone) <= 30),
+  CONSTRAINT inbox_conversations_kind_check CHECK (kind IN ('MESSAGE', 'COMMENT')),
+  CONSTRAINT inbox_conversations_labels_check CHECK (json_array_length(labels) <= 20),
+  CONSTRAINT inbox_conversations_last_message_direction_check CHECK (last_message_direction IN ('IN', 'OUT')),
+  CONSTRAINT inbox_conversations_last_message_preview_check CHECK (length(last_message_preview) <= 200),
+  CONSTRAINT inbox_conversations_post_check CHECK ((post is null) or (json_type(post) = 'object')),
+  CONSTRAINT inbox_conversations_post_external_id_check CHECK (length(post_external_id) <= 200),
+  CONSTRAINT inbox_conversations_remind_note_check CHECK (length(remind_note) <= 300),
+  CONSTRAINT inbox_conversations_status_check CHECK (status IN ('OPEN', 'FOLLOW_UP', 'DONE')),
+  CONSTRAINT inbox_conversations_thread_key_check CHECK (length(thread_key) >= 1 AND length(thread_key) <= 200),
+  CONSTRAINT inbox_conversations_unread_count_check CHECK (unread_count >= 0),
+  CONSTRAINT inbox_conversations_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_conversations_auto_follow_up_by_fkey FOREIGN KEY (auto_follow_up_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_conversations_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES inbox_channels (id) ON DELETE CASCADE,
+  CONSTRAINT inbox_conversations_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_conversations_linked_order_id_fkey FOREIGN KEY (linked_order_id) REFERENCES orders (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_conversations_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT inbox_conversations_pinned_fk FOREIGN KEY (pinned_message_id) REFERENCES inbox_messages (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_conversations_channel_id_kind_thread_key_key UNIQUE (channel_id, kind, thread_key)
+) STRICT;
+
+CREATE TABLE inbox_messages (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  conversation_id TEXT NOT NULL CHECK (length(conversation_id) = 36),
+  direction TEXT NOT NULL,
+  external_id TEXT,
+  body TEXT,
+  attachments TEXT DEFAULT '[]' NOT NULL CHECK (json_valid(attachments)),
+  reply_to_id TEXT CHECK (reply_to_id IS NULL OR length(reply_to_id) = 36),
+  sender_name TEXT,
+  sent_by TEXT CHECK (sent_by IS NULL OR length(sent_by) = 36),
+  status TEXT DEFAULT 'SENT' NOT NULL,
+  error TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  hidden INTEGER DEFAULT 0 NOT NULL CHECK (hidden IN (0, 1)),
+  liked INTEGER DEFAULT 0 NOT NULL CHECK (liked IN (0, 1)),
+  removed_at TEXT CHECK (removed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', removed_at) = removed_at),
+  filtered TEXT,
+  auto_kind TEXT,
+  private_reply INTEGER DEFAULT 0 NOT NULL CHECK (private_reply IN (0, 1)),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_messages_attachments_check CHECK (json_type(attachments) = 'array'),
+  CONSTRAINT inbox_messages_auto_kind_check CHECK (auto_kind IN ('AUTO_REPLY', 'FOLLOW_UP')),
+  CONSTRAINT inbox_messages_body_check CHECK (length(body) <= 8000),
+  CONSTRAINT inbox_messages_direction_check CHECK (direction IN ('IN', 'OUT')),
+  CONSTRAINT inbox_messages_error_check CHECK (length(error) <= 500),
+  CONSTRAINT inbox_messages_external_id_check CHECK (length(external_id) <= 300),
+  CONSTRAINT inbox_messages_filtered_check CHECK (length(filtered) <= 120),
+  CONSTRAINT inbox_messages_sender_name_check CHECK (length(sender_name) <= 200),
+  CONSTRAINT inbox_messages_status_check CHECK (status IN ('RECEIVED', 'SENT', 'DELIVERED', 'READ', 'FAILED')),
+  CONSTRAINT inbox_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES inbox_conversations (id) ON DELETE CASCADE,
+  CONSTRAINT inbox_messages_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT inbox_messages_reply_to_id_fkey FOREIGN KEY (reply_to_id) REFERENCES inbox_messages (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_messages_sent_by_fkey FOREIGN KEY (sent_by) REFERENCES profiles (id) ON DELETE SET NULL
+) STRICT;
+
+CREATE TABLE inbox_notes (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  conversation_id TEXT NOT NULL CHECK (length(conversation_id) = 36),
+  body TEXT NOT NULL,
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_notes_body_check CHECK (length(trim( body )) >= 1 AND length(trim( body )) <= 2000),
+  CONSTRAINT inbox_notes_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES inbox_conversations (id) ON DELETE CASCADE,
+  CONSTRAINT inbox_notes_created_by_fkey FOREIGN KEY (created_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_notes_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+) STRICT;
+
+CREATE TABLE inbox_posts (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  channel_id TEXT NOT NULL CHECK (length(channel_id) = 36),
+  external_id TEXT NOT NULL,
+  caption TEXT,
+  image_url TEXT,
+  permalink TEXT,
+  media_type TEXT,
+  is_ad INTEGER DEFAULT 0 NOT NULL CHECK (is_ad IN (0, 1)),
+  posted_at TEXT CHECK (posted_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', posted_at) = posted_at),
+  likes INTEGER,
+  shares INTEGER,
+  comments INTEGER,
+  fetched_at TEXT CHECK (fetched_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', fetched_at) = fetched_at),
+  fetch_error TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_posts_caption_check CHECK (length(caption) <= 4000),
+  CONSTRAINT inbox_posts_comments_check CHECK (comments >= 0),
+  CONSTRAINT inbox_posts_external_id_check CHECK (length(external_id) >= 1 AND length(external_id) <= 200),
+  CONSTRAINT inbox_posts_fetch_error_check CHECK (length(fetch_error) <= 300),
+  CONSTRAINT inbox_posts_image_url_check CHECK (length(image_url) <= 2000),
+  CONSTRAINT inbox_posts_likes_check CHECK (likes >= 0),
+  CONSTRAINT inbox_posts_media_type_check CHECK (length(media_type) <= 40),
+  CONSTRAINT inbox_posts_permalink_check CHECK (length(permalink) <= 1000),
+  CONSTRAINT inbox_posts_shares_check CHECK (shares >= 0),
+  CONSTRAINT inbox_posts_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES inbox_channels (id) ON DELETE CASCADE,
+  CONSTRAINT inbox_posts_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT inbox_posts_channel_id_external_id_key UNIQUE (channel_id, external_id)
+) STRICT;
+
+CREATE TABLE inbox_saved_replies (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0 NOT NULL,
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_saved_replies_body_check CHECK (length(trim( body )) >= 1 AND length(trim( body )) <= 2000),
+  CONSTRAINT inbox_saved_replies_title_check CHECK (length(trim( title )) >= 1 AND length(trim( title )) <= 80),
+  CONSTRAINT inbox_saved_replies_created_by_fkey FOREIGN KEY (created_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_saved_replies_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+) STRICT;
+
+CREATE TABLE inbox_settings (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  auto_reply_channels TEXT DEFAULT '[]' NOT NULL CHECK (json_type(auto_reply_channels) = 'array'),
+  moderation TEXT DEFAULT '{"enabled": false, "keywords": [], "hide_links": true, "hide_phone": true}' NOT NULL CHECK (json_valid(moderation)),
+  moderation_channels TEXT DEFAULT '[]' NOT NULL CHECK (json_type(moderation_channels) = 'array'),
+  follow_up TEXT DEFAULT '{"enabled": false, "after_minutes": 180}' NOT NULL CHECK (json_valid(follow_up)),
+  updated_by TEXT CHECK (updated_by IS NULL OR length(updated_by) = 36),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT inbox_settings_auto_reply_channels_check CHECK (json_array_length(auto_reply_channels) <= 50),
+  CONSTRAINT inbox_settings_follow_up_check CHECK (json_type(follow_up) = 'object'),
+  CONSTRAINT inbox_settings_moderation_channels_check CHECK (json_array_length(moderation_channels) <= 50),
+  CONSTRAINT inbox_settings_moderation_check CHECK (json_type(moderation) = 'object'),
+  CONSTRAINT inbox_settings_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT inbox_settings_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT inbox_settings_merchant_id_key UNIQUE (merchant_id)
+) STRICT;
 
 CREATE TABLE integration_credentials (
   "key" TEXT NOT NULL,
@@ -1411,8 +1955,10 @@ CREATE TABLE inventory_movements (
   created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  branch_id TEXT CHECK (branch_id IS NULL OR length(branch_id) = 36),
   PRIMARY KEY (id),
   CONSTRAINT inventory_movements_quantity_check CHECK (quantity > 0),
+  CONSTRAINT inventory_movements_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches (id),
   CONSTRAINT inventory_movements_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
   CONSTRAINT inventory_movements_product_id_fkey FOREIGN KEY (product_id) REFERENCES products (id),
   CONSTRAINT inventory_movements_variant_id_fkey FOREIGN KEY (variant_id) REFERENCES product_variants (id)
@@ -1828,6 +2374,7 @@ CREATE TABLE order_attributions (
   note TEXT,
   attributed_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', attributed_at) = attributed_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  browser_ids TEXT CHECK (browser_ids IS NULL OR json_valid(browser_ids)),
   PRIMARY KEY (order_id),
   CONSTRAINT order_attributions_recorded_by_check CHECK (recorded_by IN ('STOREFRONT', 'STAFF', 'SYSTEM')),
   CONSTRAINT order_attributions_marketing_campaign_id_fkey FOREIGN KEY (marketing_campaign_id) REFERENCES marketing_campaigns (id) ON DELETE SET NULL,
@@ -2167,6 +2714,7 @@ CREATE TABLE orders (
   duplicate_reason TEXT,
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
   tax_amount REAL DEFAULT 0 NOT NULL,
+  branch_id TEXT CHECK (branch_id IS NULL OR length(branch_id) = 36),
   PRIMARY KEY (id),
   CONSTRAINT orders_advance_required_check CHECK (advance_required >= 0),
   CONSTRAINT orders_amount_refunded_check CHECK (amount_refunded >= 0),
@@ -2194,6 +2742,7 @@ CREATE TABLE orders (
   CONSTRAINT orders_user_agent_check CHECK ((user_agent is null) or (length(user_agent) <= 400)),
   CONSTRAINT orders_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES profiles (id),
   CONSTRAINT orders_auth_user_id_fkey FOREIGN KEY (auth_user_id) REFERENCES users (id) ON DELETE SET NULL,
+  CONSTRAINT orders_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches (id) ON DELETE SET NULL,
   CONSTRAINT orders_coupon_id_fkey FOREIGN KEY (coupon_id) REFERENCES coupons (id),
   CONSTRAINT orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers (id),
   CONSTRAINT orders_delivery_zone_id_fkey FOREIGN KEY (delivery_zone_id) REFERENCES delivery_zones (id) ON DELETE SET NULL,
@@ -2734,6 +3283,39 @@ CREATE TABLE plans (
 CREATE TRIGGER plans_updated_at AFTER UPDATE ON plans FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE plans SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
+CREATE TABLE platform_ad_accounts (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  platform TEXT DEFAULT 'META' NOT NULL,
+  name TEXT NOT NULL,
+  ad_account_id TEXT NOT NULL,
+  app_id TEXT,
+  usd_rate REAL NOT NULL,
+  is_active INTEGER DEFAULT 1 NOT NULL CHECK (is_active IN (0, 1)),
+  account_name TEXT,
+  currency TEXT,
+  timezone TEXT,
+  token_hint TEXT,
+  has_app_secret INTEGER DEFAULT 0 NOT NULL CHECK (has_app_secret IN (0, 1)),
+  token_expires_at TEXT CHECK (token_expires_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', token_expires_at) = token_expires_at),
+  status TEXT DEFAULT 'NEW' NOT NULL,
+  last_error TEXT,
+  last_sync_at TEXT CHECK (last_sync_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', last_sync_at) = last_sync_at),
+  last_sync_since TEXT CHECK (last_sync_since IS NULL OR date(last_sync_since) = last_sync_since),
+  last_sync_until TEXT CHECK (last_sync_until IS NULL OR date(last_sync_until) = last_sync_until),
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (id),
+  CONSTRAINT platform_ad_accounts_name_check CHECK (length(trim( name )) >= 2 AND length(trim( name )) <= 80),
+  CONSTRAINT platform_ad_accounts_platform_check CHECK (platform = 'META'),
+  CONSTRAINT platform_ad_accounts_status_check CHECK (status IN ('NEW', 'OK', 'FAILED', 'TOKEN_INVALID', 'NO_ACCESS', 'RATE_LIMITED', 'DISCONNECTED')),
+  CONSTRAINT platform_ad_accounts_usd_rate_check CHECK (usd_rate > 0 AND usd_rate <= 100000),
+  CONSTRAINT platform_ad_accounts_ad_account_id_key UNIQUE (ad_account_id)
+) STRICT;
+
+CREATE TRIGGER platform_ad_accounts_updated_at AFTER UPDATE ON platform_ad_accounts FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+BEGIN UPDATE platform_ad_accounts SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
 CREATE TABLE platform_announcement_deliveries (
   announcement_id TEXT NOT NULL CHECK (length(announcement_id) = 36),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
@@ -2974,6 +3556,67 @@ BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD: platform_data_exports rows cannot b
 CREATE TRIGGER platform_data_exports_no_delete BEFORE DELETE ON platform_data_exports FOR EACH ROW
 BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD: platform_data_exports rows cannot be deleted; record a correcting entry instead'); END;
 
+CREATE TABLE platform_finance_categories (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  type TEXT NOT NULL,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT DEFAULT 'slate' NOT NULL,
+  subcategories TEXT DEFAULT '[]' NOT NULL CHECK (json_type(subcategories) = 'array'),
+  allow_manual INTEGER DEFAULT 1 NOT NULL CHECK (allow_manual IN (0, 1)),
+  is_system INTEGER DEFAULT 0 NOT NULL CHECK (is_system IN (0, 1)),
+  is_active INTEGER DEFAULT 1 NOT NULL CHECK (is_active IN (0, 1)),
+  sort_order INTEGER DEFAULT 100 NOT NULL,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  PRIMARY KEY (id),
+  CONSTRAINT platform_finance_categories_name_check CHECK (length(trim( name )) >= 2 AND length(trim( name )) <= 60),
+  CONSTRAINT platform_finance_categories_type_check CHECK (type IN ('INCOME', 'EXPENSE')),
+  CONSTRAINT platform_finance_categories_type_code_key UNIQUE (type, code)
+) STRICT;
+
+CREATE TABLE platform_finance_entries (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  txn_number TEXT NOT NULL,
+  type TEXT NOT NULL,
+  category_id TEXT NOT NULL CHECK (length(category_id) = 36),
+  sub_category TEXT,
+  txn_date TEXT NOT NULL CHECK (date(txn_date) = txn_date),
+  amount REAL NOT NULL,
+  foreign_amount REAL,
+  foreign_currency TEXT,
+  exchange_rate REAL,
+  notes TEXT,
+  reference TEXT,
+  source TEXT DEFAULT 'MANUAL' NOT NULL,
+  source_key TEXT,
+  ad_account_id TEXT CHECK (ad_account_id IS NULL OR length(ad_account_id) = 36),
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_by_email TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  voided_at TEXT CHECK (voided_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', voided_at) = voided_at),
+  voided_by TEXT CHECK (voided_by IS NULL OR length(voided_by) = 36),
+  void_reason TEXT,
+  PRIMARY KEY (id),
+  CONSTRAINT platform_finance_entries_amount_check CHECK (amount > 0 AND amount <= 1000000000),
+  CONSTRAINT platform_finance_entries_check CHECK ((source = 'MANUAL') = (source_key is null)),
+  CONSTRAINT platform_finance_entries_check1 CHECK ((source <> 'META_ADS') or (ad_account_id is not null)),
+  CONSTRAINT platform_finance_entries_exchange_rate_check CHECK ((exchange_rate is null) or (exchange_rate > 0)),
+  CONSTRAINT platform_finance_entries_foreign_amount_check CHECK ((foreign_amount is null) or (foreign_amount > 0)),
+  CONSTRAINT platform_finance_entries_notes_check CHECK ((notes is null) or (length(notes) <= 300)),
+  CONSTRAINT platform_finance_entries_reference_check CHECK ((reference is null) or (length(reference) <= 120)),
+  CONSTRAINT platform_finance_entries_source_check CHECK (source IN ('MANUAL', 'META_ADS')),
+  CONSTRAINT platform_finance_entries_sub_category_check CHECK ((sub_category is null) or ((length(sub_category) >= 1) and (length(sub_category) <= 60))),
+  CONSTRAINT platform_finance_entries_type_check CHECK (type IN ('INCOME', 'EXPENSE')),
+  CONSTRAINT platform_finance_entries_ad_account_id_fkey FOREIGN KEY (ad_account_id) REFERENCES platform_ad_accounts (id),
+  CONSTRAINT platform_finance_entries_category_id_fkey FOREIGN KEY (category_id) REFERENCES platform_finance_categories (id),
+  CONSTRAINT platform_finance_entries_source_key_key UNIQUE (source_key),
+  CONSTRAINT platform_finance_entries_txn_number_key UNIQUE (txn_number)
+) STRICT;
+
+CREATE TRIGGER platform_finance_entries_updated_at AFTER UPDATE ON platform_finance_entries FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+BEGIN UPDATE platform_finance_entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
 CREATE TABLE platform_incident_merchants (
   incident_id TEXT NOT NULL CHECK (length(incident_id) = 36),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
@@ -3039,6 +3682,76 @@ CREATE TABLE platform_incidents (
 
 CREATE TRIGGER platform_incidents_updated_at AFTER UPDATE ON platform_incidents FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE platform_incidents SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE platform_lead_touches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  attribution TEXT NOT NULL CHECK (json_valid(attribution)),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  CONSTRAINT platform_lead_touches_kind_check CHECK (kind IN ('WHATSAPP_SIGNUP', 'SELF_SIGNUP', 'CONTACT')),
+  CONSTRAINT platform_lead_touches_kind_ref_key UNIQUE (kind, ref)
+) STRICT;
+
+CREATE TABLE platform_meta_ads (
+  id TEXT NOT NULL,
+  adset_id TEXT,
+  campaign_id TEXT,
+  name TEXT NOT NULL,
+  status TEXT,
+  effective_status TEXT,
+  thumbnail_url TEXT,
+  title TEXT,
+  synced_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', synced_at) = synced_at),
+  PRIMARY KEY (id)
+) STRICT;
+
+CREATE TABLE platform_meta_adsets (
+  id TEXT NOT NULL,
+  campaign_id TEXT,
+  name TEXT NOT NULL,
+  status TEXT,
+  effective_status TEXT,
+  daily_budget REAL,
+  lifetime_budget REAL,
+  start_time TEXT CHECK (start_time IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', start_time) = start_time),
+  end_time TEXT CHECK (end_time IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', end_time) = end_time),
+  synced_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', synced_at) = synced_at),
+  PRIMARY KEY (id)
+) STRICT;
+
+CREATE TABLE platform_meta_campaigns (
+  id TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT,
+  effective_status TEXT,
+  objective TEXT,
+  daily_budget REAL,
+  lifetime_budget REAL,
+  start_time TEXT CHECK (start_time IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', start_time) = start_time),
+  stop_time TEXT CHECK (stop_time IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', stop_time) = stop_time),
+  synced_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', synced_at) = synced_at),
+  PRIMARY KEY (id)
+) STRICT;
+
+CREATE TABLE platform_meta_insights (
+  ad_id TEXT NOT NULL,
+  date TEXT NOT NULL CHECK (date(date) = date),
+  account_id TEXT NOT NULL,
+  campaign_id TEXT,
+  adset_id TEXT,
+  spend REAL DEFAULT 0 NOT NULL,
+  cost REAL DEFAULT 0 NOT NULL,
+  impressions INTEGER DEFAULT 0 NOT NULL,
+  clicks INTEGER DEFAULT 0 NOT NULL,
+  link_clicks INTEGER DEFAULT 0 NOT NULL,
+  leads INTEGER DEFAULT 0 NOT NULL,
+  registrations INTEGER DEFAULT 0 NOT NULL,
+  messages INTEGER DEFAULT 0 NOT NULL,
+  purchases INTEGER DEFAULT 0 NOT NULL,
+  PRIMARY KEY (ad_id, date)
+) STRICT;
 
 CREATE TABLE platform_modules (
   code TEXT NOT NULL,
@@ -3354,6 +4067,7 @@ CREATE TABLE profiles (
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
   deleted_at TEXT CHECK (deleted_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', deleted_at) = deleted_at),
+  removed_at TEXT CHECK (removed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', removed_at) = removed_at),
   PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT profiles_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
@@ -3691,6 +4405,40 @@ CREATE TABLE shopify_abandoned_checkouts (
   CONSTRAINT shopify_abandoned_checkouts_channel_id_external_id_key UNIQUE (channel_id, external_id)
 ) STRICT;
 
+CREATE TABLE signup_requests (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  business_name TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  whatsapp TEXT,
+  email TEXT,
+  business_type TEXT,
+  website TEXT,
+  sells_on TEXT DEFAULT '[]' NOT NULL CHECK (json_type(sells_on) = 'array'),
+  orders_per_month TEXT,
+  plan_code TEXT,
+  message TEXT NOT NULL,
+  status TEXT DEFAULT 'NEW' NOT NULL,
+  merchant_id TEXT CHECK (merchant_id IS NULL OR length(merchant_id) = 36),
+  note TEXT,
+  handled_by TEXT CHECK (handled_by IS NULL OR length(handled_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  ip_hash TEXT,
+  PRIMARY KEY (id),
+  CONSTRAINT signup_requests_business_name_check CHECK (length(business_name) >= 2 AND length(business_name) <= 120),
+  CONSTRAINT signup_requests_business_type_check CHECK ((business_type is null) or (length(business_type) <= 60)),
+  CONSTRAINT signup_requests_full_name_check CHECK (length(full_name) >= 2 AND length(full_name) <= 100),
+  CONSTRAINT signup_requests_ip_hash_check CHECK ((ip_hash is null) or (length(ip_hash) = 64)),
+  CONSTRAINT signup_requests_note_check CHECK ((note is null) or (length(note) <= 1000)),
+  CONSTRAINT signup_requests_orders_per_month_check CHECK ((orders_per_month is null) or (length(orders_per_month) <= 30)),
+  CONSTRAINT signup_requests_plan_code_check CHECK ((plan_code is null) or (length(plan_code) <= 60)),
+  CONSTRAINT signup_requests_sells_on_check CHECK (json_array_length(sells_on) <= 10),
+  CONSTRAINT signup_requests_status_check CHECK (status IN ('NEW', 'CONTACTED', 'CONVERTED', 'DECLINED')),
+  CONSTRAINT signup_requests_website_check CHECK ((website is null) or (length(website) <= 200)),
+  CONSTRAINT signup_requests_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id) ON DELETE SET NULL
+) STRICT;
+
 CREATE TABLE site_api_keys (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
   name TEXT NOT NULL,
@@ -3764,6 +4512,15 @@ CREATE TABLE stock_reservations (
   CONSTRAINT stock_reservations_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
   CONSTRAINT stock_reservations_order_item_id_fkey FOREIGN KEY (order_item_id) REFERENCES order_items (id) ON DELETE SET NULL,
   CONSTRAINT stock_reservations_variant_id_fkey FOREIGN KEY (variant_id) REFERENCES product_variants (id)
+) STRICT;
+
+CREATE TABLE store_ad_tracking (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  config TEXT DEFAULT '{}' NOT NULL CHECK (json_valid(config)),
+  updated_by TEXT CHECK (updated_by IS NULL OR length(updated_by) = 36),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (merchant_id),
+  CONSTRAINT store_ad_tracking_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
 ) STRICT;
 
 CREATE TABLE store_carts (
@@ -4109,6 +4866,10 @@ CREATE INDEX ad_connections_merchant_idx ON ad_connections (merchant_id);
 
 CREATE UNIQUE INDEX ad_connections_user_uq ON ad_connections (merchant_id, platform, lower(external_user)) WHERE ((status <> 'DISCONNECTED') and (external_user is not null));
 
+CREATE INDEX ad_event_queue_due_idx ON ad_event_queue (merchant_id, status, next_at);
+
+CREATE INDEX ad_event_queue_recent_idx ON ad_event_queue (merchant_id, created_at desc);
+
 CREATE INDEX ad_oauth_states_merchant_idx ON ad_oauth_states (merchant_id);
 
 CREATE INDEX ad_platform_stats_date_idx ON ad_platform_stats (date);
@@ -4137,15 +4898,35 @@ CREATE INDEX billing_invoices_merchant_idx2 ON billing_invoices (merchant_id);
 
 CREATE UNIQUE INDEX billing_invoices_period_uq ON billing_invoices (subscription_id, period_start) WHERE ((kind = 'SUBSCRIPTION') and (status <> 'VOID'));
 
+CREATE INDEX billing_payment_checks_payment_idx ON billing_payment_checks (payment_id, id desc);
+
+CREATE INDEX billing_payments_created_idx ON billing_payments (created_at desc);
+
 CREATE INDEX billing_payments_invoice_idx ON billing_payments (invoice_id);
 
 CREATE INDEX billing_payments_merchant_idx2 ON billing_payments (merchant_id);
 
 CREATE UNIQUE INDEX billing_payments_reference_uq ON billing_payments (method, reference) WHERE ((reference is not null) and (status <> 'REJECTED'));
 
+CREATE INDEX billing_payments_review_idx ON billing_payments (created_at desc) WHERE needs_review;
+
 CREATE UNIQUE INDEX billing_payments_session_uq ON billing_payments (provider, provider_session) WHERE (provider_session is not null);
 
+CREATE INDEX billing_payments_status_idx ON billing_payments (status, created_at desc);
+
 CREATE UNIQUE INDEX billing_payments_txn_uq ON billing_payments (provider, provider_txn_id) WHERE ((provider_txn_id is not null) and (status = 'SUCCEEDED'));
+
+CREATE UNIQUE INDEX billing_refunds_one_open_uq ON billing_refunds (payment_id) WHERE (status = 'PROCESSING');
+
+CREATE INDEX billing_refunds_payment_idx ON billing_refunds (payment_id);
+
+CREATE INDEX branch_stock_variant_idx ON branch_stock (merchant_id, variant_id);
+
+CREATE INDEX branch_transfers_recent_idx ON branch_transfers (merchant_id, created_at desc);
+
+CREATE UNIQUE INDEX branches_one_central_idx ON branches (merchant_id) WHERE is_central;
+
+CREATE INDEX call_claims_agent_idx ON call_claims (merchant_id, claimed_by);
 
 CREATE INDEX categories_merchant_idx ON categories (merchant_id);
 
@@ -4195,6 +4976,8 @@ CREATE INDEX channel_webhook_deliveries_merchant_idx ON channel_webhook_deliveri
 
 CREATE INDEX checkout_leads_merchant_idx ON checkout_leads (merchant_id);
 
+CREATE INDEX checkout_leads_merchant_open_idx ON checkout_leads (merchant_id, updated_at desc) WHERE (status IN ('OPEN', 'CONTACTED'));
+
 CREATE UNIQUE INDEX checkout_leads_open_visitor_idx ON checkout_leads (merchant_id, visitor_id) WHERE (status IN ('OPEN', 'CONTACTED'));
 
 CREATE INDEX checkout_leads_order_idx ON checkout_leads (order_id) WHERE (order_id is not null);
@@ -4202,6 +4985,10 @@ CREATE INDEX checkout_leads_order_idx ON checkout_leads (order_id) WHERE (order_
 CREATE INDEX checkout_leads_phone_idx ON checkout_leads (phone);
 
 CREATE INDEX checkout_leads_status_idx ON checkout_leads (status, updated_at desc);
+
+CREATE INDEX checkout_lookup_slots_ip_idx ON checkout_lookup_slots (merchant_id, ip_hash, created_at desc);
+
+CREATE INDEX checkout_lookup_slots_recent_idx ON checkout_lookup_slots (merchant_id, created_at desc);
 
 CREATE INDEX config_versions_ref_idx ON config_versions (kind, ref, id desc);
 
@@ -4230,6 +5017,8 @@ CREATE INDEX courier_invoices_courier_idx ON courier_invoices (courier_id, creat
 CREATE INDEX courier_invoices_merchant_idx ON courier_invoices (merchant_id);
 
 CREATE UNIQUE INDEX courier_invoices_number_uq ON courier_invoices (courier_id, lower(invoice_number)) WHERE (invoice_number is not null);
+
+CREATE INDEX courier_sync_runs_recent_idx ON courier_sync_runs (merchant_id, started_at desc);
 
 CREATE INDEX courier_webhook_events_merchant_idx ON courier_webhook_events (merchant_id);
 
@@ -4323,17 +5112,51 @@ CREATE INDEX hr_attendance_date_idx ON hr_attendance (work_date);
 
 CREATE INDEX hr_attendance_merchant_idx ON hr_attendance (merchant_id);
 
+CREATE INDEX hr_breaks_attendance_idx ON hr_breaks (attendance_id, started_at);
+
+CREATE INDEX hr_breaks_merchant_idx ON hr_breaks (merchant_id);
+
+CREATE UNIQUE INDEX hr_breaks_one_open_idx ON hr_breaks (attendance_id) WHERE (ended_at is null);
+
 CREATE INDEX hr_departments_merchant_idx ON hr_departments (merchant_id);
 
 CREATE INDEX hr_employees_merchant_idx ON hr_employees (merchant_id);
 
 CREATE INDEX hr_holidays_merchant_idx ON hr_holidays (merchant_id);
 
+CREATE INDEX hr_requests_profile_idx ON hr_requests (profile_id, created_at desc);
+
+CREATE INDEX hr_requests_status_idx ON hr_requests (merchant_id, status, created_at desc);
+
 CREATE INDEX hr_shifts_merchant_idx ON hr_shifts (merchant_id);
+
+CREATE INDEX hr_sop_checks_day_idx ON hr_sop_checks (merchant_id, work_date);
 
 CREATE INDEX hr_sops_department_idx ON hr_sops (department_id);
 
 CREATE INDEX hr_sops_merchant_idx ON hr_sops (merchant_id);
+
+CREATE UNIQUE INDEX inbox_auto_replies_one_default ON inbox_auto_replies (merchant_id) WHERE is_default;
+
+CREATE INDEX inbox_automation_log_conv_idx ON inbox_automation_log (conversation_id, created_at desc);
+
+CREATE INDEX inbox_automation_log_recent_idx ON inbox_automation_log (merchant_id, created_at desc);
+
+CREATE UNIQUE INDEX inbox_channels_one_store_idx ON inbox_channels (platform, external_id) WHERE (status <> 'DISCONNECTED');
+
+CREATE INDEX inbox_conversations_follow_up_idx ON inbox_conversations (auto_follow_up_at) WHERE (auto_follow_up_at is not null);
+
+CREATE INDEX inbox_conversations_phone_idx ON inbox_conversations (merchant_id, customer_phone) WHERE (customer_phone is not null);
+
+CREATE INDEX inbox_conversations_post_idx ON inbox_conversations (merchant_id, channel_id, post_external_id) WHERE (kind = 'COMMENT');
+
+CREATE INDEX inbox_conversations_recent_idx ON inbox_conversations (merchant_id, status, last_message_at desc);
+
+CREATE UNIQUE INDEX inbox_messages_external_idx ON inbox_messages (conversation_id, external_id) WHERE (external_id is not null);
+
+CREATE INDEX inbox_messages_thread_idx ON inbox_messages (conversation_id, created_at desc);
+
+CREATE INDEX inbox_notes_thread_idx ON inbox_notes (conversation_id, created_at desc);
 
 CREATE INDEX integration_credentials_merchant_idx ON integration_credentials (merchant_id);
 
@@ -4474,6 +5297,8 @@ CREATE INDEX orders_approved_idx ON orders (status, confirmed_at desc) WHERE (co
 CREATE INDEX orders_assigned_open_idx ON orders (assigned_to, created_at desc) WHERE (confirmed_at is null);
 
 CREATE INDEX orders_auth_user_idx ON orders (auth_user_id) WHERE (auth_user_id is not null);
+
+CREATE INDEX orders_branch_idx ON orders (merchant_id, branch_id) WHERE (branch_id is not null);
 
 CREATE UNIQUE INDEX orders_channel_external_uq ON orders (sales_channel_id, external_order_id) WHERE (sales_channel_id is not null);
 
@@ -4619,11 +5444,19 @@ CREATE INDEX platform_cost_entries_month_idx ON platform_cost_entries (month);
 
 CREATE INDEX platform_data_exports_idx ON platform_data_exports (created_at desc);
 
+CREATE INDEX platform_finance_entries_category_idx ON platform_finance_entries (category_id);
+
+CREATE INDEX platform_finance_entries_date_idx ON platform_finance_entries (txn_date, type);
+
 CREATE INDEX platform_incident_updates_idx ON platform_incident_updates (incident_id, id);
 
 CREATE UNIQUE INDEX platform_incidents_open_dedupe ON platform_incidents (dedupe_key) WHERE ((status <> 'RESOLVED') and (dedupe_key is not null));
 
 CREATE INDEX platform_incidents_status_idx ON platform_incidents (status, severity, started_at desc);
+
+CREATE INDEX platform_meta_insights_account_idx ON platform_meta_insights (account_id, date);
+
+CREATE INDEX platform_meta_insights_campaign_idx ON platform_meta_insights (campaign_id, date);
 
 CREATE UNIQUE INDEX platform_notifications_dedupe_idx ON platform_notifications (user_id, dedupe_key) WHERE (dedupe_key is not null);
 
@@ -4736,6 +5569,12 @@ CREATE INDEX shopify_abandoned_checkouts_merchant_idx ON shopify_abandoned_check
 CREATE INDEX shopify_abandoned_created_idx ON shopify_abandoned_checkouts (shop_created_at desc);
 
 CREATE INDEX shopify_abandoned_phone_idx ON shopify_abandoned_checkouts (phone) WHERE (phone is not null);
+
+CREATE INDEX signup_requests_created_idx ON signup_requests (created_at desc);
+
+CREATE INDEX signup_requests_ip_idx ON signup_requests (ip_hash, created_at desc) WHERE (ip_hash is not null);
+
+CREATE INDEX signup_requests_phone_idx ON signup_requests (phone, created_at desc);
 
 CREATE INDEX site_api_keys_merchant_idx ON site_api_keys (merchant_id);
 

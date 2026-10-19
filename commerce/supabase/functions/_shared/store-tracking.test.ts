@@ -184,6 +184,8 @@ describe('storefront payloads', () => {
 
 interface Job { id: string; order_id: string; event: 'Purchase'; event_id: string; attempts: number }
 
+const PRODUCT = '6f9619ff-8b86-4d11-b42d-00c04fc964ff'
+
 function fakeAdmin(opts: { config: Record<string, unknown>; secret?: Record<string, string> | null; due?: Job[]; orders?: Record<string, Record<string, unknown> | null> }) {
   const results: Array<Record<string, unknown>> = []
   const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
@@ -191,6 +193,7 @@ function fakeAdmin(opts: { config: Record<string, unknown>; secret?: Record<stri
     if (fn === 'ad_event_due') return { data: opts.due ?? [], error: null }
     if (fn === 'ad_event_order') return { data: opts.orders?.[String(args.p_order_id)] ?? null, error: null }
     if (fn === 'ad_event_result') { results.push(args); return { data: null, error: null } }
+    if (fn === 'ad_track_scope') return { data: { hosts: ['shop.example.com'], prices: { [PRODUCT]: 625 } }, error: null }
     return { data: null, error: { message: `unexpected ${fn}` } }
   })
   const from = vi.fn(() => ({
@@ -263,11 +266,32 @@ describe('browser Purchase and beacon', () => {
     expect(await browserPurchase(merged.admin, 'o1', true)).toBeNull()
   })
 
+  it('the beacon sends only events of the store\'s own pages, with its own products and prices', async () => {
+    const fetchFn = platformsFetch()
+    const { admin } = fakeAdmin({ config: config(), secret: secrets })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 240_000)
+    const off = await beaconEvent(admin, { event: 'AddToCart', event_id: 'ffs_ac_AbCdEf1234567890', url: 'https://attacker.example/x' }, '1.2.3.4', 'UA', fetchFn)
+    const foreignCaller = await beaconEvent(admin, { event: 'PageView', event_id: 'ffs_pv_AbCdEf1234567890', url: 'https://shop.example.com/' }, '1.2.3.4', 'UA', fetchFn, 'https://attacker.example')
+    expect(off).toMatchObject({ ok: false, skipped: 'Not a page of this store' })
+    expect(foreignCaller).toMatchObject({ ok: false })
+    expect(fetchFn).not.toHaveBeenCalled()
+    await beaconEvent(admin, {
+      event: 'AddToCart', event_id: 'ffs_ac_AbCdEf1234567891', url: 'https://shop.example.com/p/shirt', value: 9_999_999, currency: 'BDT',
+      contents: [{ id: PRODUCT, quantity: 2, price: 9_999_999 }, { id: 'not-a-product', quantity: 999, price: 9_999_999 }],
+    }, '1.2.3.4', 'UA', fetchFn, 'https://shop.example.com')
+    now.mockRestore()
+    const meta = (fetchFn.mock.calls as unknown as Array<[string, RequestInit]>).find(([u]) => String(u).includes('graph.facebook.com'))
+    expect(meta).toBeTruthy()
+    const sent = JSON.parse(String(meta![1].body)).data[0]
+    expect(sent.custom_data.value).toBe(1250)
+    expect(sent.custom_data.contents).toEqual([expect.objectContaining({ id: PRODUCT, quantity: 2, item_price: 625 })])
+  })
+
   it('the beacon sends nothing while tracking is off', async () => {
     const fetchFn = platformsFetch()
     const { admin } = fakeAdmin({ config: config({ enabled: false }), secret: secrets })
     // The beacon keeps settings for a minute: step past that so it reads these ones.
-    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 120_000)
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 900_000)
     const r = await beaconEvent(admin, { event: 'AddToCart', event_id: 'ffs_ac_AbCdEf1234567890', url: 'https://shop.example.com/' }, '1.2.3.4', 'UA', fetchFn)
     now.mockRestore()
     expect(r.ok).toBe(false)

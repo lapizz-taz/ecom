@@ -68,6 +68,8 @@ export interface TableMeta {
   partialUnique?: Array<{ columns: string[]; where: string }>
   fks: ForeignKey[]
   grants: Partial<Record<'anon' | 'authenticated', string[]>>
+  /** Columns a role may read when it has no table-wide SELECT (Postgres column privileges). */
+  columnGrants?: Partial<Record<'anon' | 'authenticated', { select?: string[] }>>
   rls: boolean
   policies: PolicyMeta[]
   checks: Array<{ name: string; tree?: CheckTree; manual?: string }>
