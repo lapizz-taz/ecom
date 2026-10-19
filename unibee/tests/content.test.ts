@@ -73,3 +73,11 @@ describe("helpers", () => {
     expect(slugify("Klaipėda University")).toBe("klaipeda-university");
   });
 });
+
+describe("about section", () => {
+  it("has starting content and drops untitled items", () => {
+    expect(defaultContent.about.whatWeDo.length).toBeGreaterThan(0);
+    const c = normalizeContent({ ...defaultContent, about: { ...defaultContent.about, whatWeDo: [{ title: "", text: "x" }, { title: "Guide", text: "y" }] } });
+    expect(c.about.whatWeDo).toEqual([{ title: "Guide", text: "y" }]);
+  });
+});

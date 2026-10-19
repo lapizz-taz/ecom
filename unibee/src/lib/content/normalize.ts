@@ -48,6 +48,14 @@ export function slugify(s: string): string {
   );
 }
 
+/** List of { title, text } items; items without a title are dropped. */
+const titledList = (v: unknown, max: number) =>
+  list(v, (item) => {
+    const s = obj(item);
+    const title = str(s.title, "", 80);
+    return title ? { title, text: str(s.text, "", 400) } : null;
+  }, max);
+
 function university(v: unknown, used: Set<string>): University | null {
   const u = obj(v);
   const name = str(u.name, "", 200);
@@ -86,6 +94,7 @@ export function normalizeContent(input: unknown): SiteContent {
   const services = obj(c.services);
   const process = obj(c.process);
   const ep = obj(c.englishPrep);
+  const ab = obj(c.about);
   const ins = obj(ep.instructor);
   const video = obj(ep.video);
 
@@ -127,6 +136,15 @@ export function normalizeContent(input: unknown): SiteContent {
       imageMobile: safeImage(hero.imageMobile, d.hero.imageMobile) || d.hero.imageMobile,
       imageAlt: str(hero.imageAlt, d.hero.imageAlt, 200),
       placeholder: bool(hero.placeholder, d.hero.placeholder),
+    },
+    about: {
+      placeholder: bool(ab.placeholder, d.about.placeholder),
+      title: str(ab.title, d.about.title, 80) || d.about.title,
+      intro: str(ab.intro, d.about.intro, 400),
+      story: str(ab.story, d.about.story, 1500),
+      mission: str(ab.mission, d.about.mission, 400),
+      whatWeDo: Array.isArray(ab.whatWeDo) ? titledList(ab.whatWeDo, 8) : d.about.whatWeDo,
+      values: Array.isArray(ab.values) ? titledList(ab.values, 6) : d.about.values,
     },
     universities: Array.isArray(c.universities) ? list(c.universities, (u) => university(u, used), 60) : d.universities,
     services: {

@@ -54,6 +54,15 @@ export type SiteContent = {
     imageAlt: string;
     placeholder: boolean;
   };
+  about: {
+    placeholder: boolean;
+    title: string;
+    intro: string;
+    story: string;
+    mission: string;
+    whatWeDo: { title: string; text: string }[];
+    values: { title: string; text: string }[];
+  };
   universities: University[];
   services: { items: { icon: string; title: string; description: string }[]; placeholder: boolean };
   process: { steps: { icon: string; title: string; text: string; time: string }[]; documents: string[]; placeholder: boolean };

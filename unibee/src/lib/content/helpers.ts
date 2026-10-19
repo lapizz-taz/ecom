@@ -15,6 +15,7 @@ export const PAGE3_HREF = "/english-prep";
 
 export const navItems = (c: SiteContent) => [
   { label: "Home", href: "/" },
+  { label: "About", href: "/#about" },
   { label: "Our Services", href: "/services" },
   { label: c.general.page3Name, href: PAGE3_HREF },
   { label: "Contact", href: "/#contact" },

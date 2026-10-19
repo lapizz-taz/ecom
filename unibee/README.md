@@ -34,6 +34,7 @@ Log in at **`/admin`** and open the **Website content** tab. Everything on the s
 | General | Business name, tagline, Google/link-preview description, footer text, Page 3 name, the "New" announcement above the hero, placeholder tags on/off |
 | Contact & social | Phone, WhatsApp number + pre-filled message, email, address, map location, office hours, social media links |
 | Home hero | Headline, text, trust line, cover photos (computer + phone), photo description |
+| About us | The "About UniBee" section: title, intro, who we are, mission, "What we do" list, "How we work" values |
 | Universities | Add / remove / reorder / duplicate; name, city, logo upload, about, programs, fees, intakes, requirements, deadline, website, "to be confirmed" flag |
 | Services | Service cards (icon, title, description) |
 | Process | Timeline steps (title, text, time, icon) and the documents checklist |
@@ -59,6 +60,7 @@ The defaults live in **`src/content/`** and are only used until something is sav
 | Service cards | `src/content/services.ts` |
 | "How it works" steps + documents | `src/content/process.ts` |
 | English Prep page | `src/content/english-prep.ts` |
+| About UniBee section | `src/content/about.ts` |
 
 ### (a) Add, edit or remove a university
 

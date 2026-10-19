@@ -3,6 +3,7 @@ import { Hero } from "@/components/home/Hero";
 import { UniversityMarquee } from "@/components/home/UniversityMarquee";
 import { RegisterSection } from "@/components/home/RegisterSection";
 import { StayConnected } from "@/components/home/StayConnected";
+import { AboutSection } from "@/components/home/AboutSection";
 import { Placeholder } from "@/components/ui/Placeholder";
 import { getContent } from "@/lib/server/content-store";
 
@@ -34,6 +35,7 @@ export default async function HomePage() {
       </section>
       )}
 
+      <AboutSection about={content.about} />
       <RegisterSection />
       <StayConnected content={content} />
     </>

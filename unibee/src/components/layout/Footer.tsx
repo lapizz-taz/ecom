@@ -12,6 +12,7 @@ export function Footer({ content }: { content: SiteContent }) {
       title: "UniBee",
       links: [
         { label: "Home", href: page("/") },
+        { label: "About us", href: page("/#about") },
         { label: "Our Services", href: page("/services") },
         { label: content.general.page3Name, href: page(PAGE3_HREF) },
         { label: "Register", href: page("/#register") },

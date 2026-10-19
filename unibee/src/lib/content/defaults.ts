@@ -8,6 +8,7 @@ import { universities } from "@/content/universities";
 import { services, servicesPlaceholder } from "@/content/services";
 import { documentsNeeded, processPlaceholder, processSteps } from "@/content/process";
 import { englishPrep } from "@/content/english-prep";
+import { about } from "@/content/about";
 import type { SiteContent } from "./types";
 
 export const defaultContent: SiteContent = {
@@ -31,6 +32,7 @@ export const defaultContent: SiteContent = {
     imageAlt: "Sunrise over Vilnius old town, Lithuania, with a hot-air balloon above the rooftops",
     placeholder: true,
   },
+  about: JSON.parse(JSON.stringify(about)),
   universities: universities.map((u) => ({ ...u, placeholder: Boolean(u.placeholder) })),
   services: { items: services.map((s) => ({ ...s })), placeholder: servicesPlaceholder },
   process: { steps: processSteps.map((s) => ({ ...s })), documents: [...documentsNeeded], placeholder: processPlaceholder },

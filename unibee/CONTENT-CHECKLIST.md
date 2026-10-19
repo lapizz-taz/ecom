@@ -52,7 +52,10 @@ The 8 universities shown are samples. For each real partner, send:
 - [ ] Google Analytics 4 Measurement ID (G-XXXXXXX), if you have one
 - [ ] Meta Pixel ID, if you run Facebook/Instagram ads
 
-## 7. Final checks
+## 7. About us
+- [ ] Review the "About UniBee" text (written from the brief). Add anything personal: when UniBee started, the founders, your office, numbers you can stand behind
+
+## 8. Final checks
 - [ ] Announcement bar text (currently "Applications for the next September intake are open")
 - [ ] Review the Privacy Policy wording and the publish date
 - [ ] Approve the preview → then we deploy to Vercel and connect the domain

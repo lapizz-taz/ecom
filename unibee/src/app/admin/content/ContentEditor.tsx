@@ -12,6 +12,7 @@ const SECTIONS = [
   { id: "general", label: "General", hint: "Name, announcement, placeholders" },
   { id: "contact", label: "Contact & social", hint: "Phone, WhatsApp, email, links" },
   { id: "hero", label: "Home hero", hint: "Headline and cover photo" },
+  { id: "about", label: "About us", hint: "Who we are, what we do" },
   { id: "universities", label: "Universities", hint: "Partner list and details" },
   { id: "services", label: "Services", hint: "Service cards" },
   { id: "process", label: "Process", hint: "Steps and documents" },
@@ -254,6 +255,50 @@ export function ContentEditor({
               <TextInput label="Photo description (for screen readers & Google)" value={h.imageAlt} onChange={(v) => set("hero", { imageAlt: v })} />
               <Toggle label="Mark photo as placeholder" checked={h.placeholder} onChange={(v) => set("hero", { placeholder: v })} />
             </Panel>
+          )}
+
+          {section === "about" && (
+            <>
+              <Panel title="About us" description="The “About UniBee” section on the Home page.">
+                <TextInput label="Section title" value={content.about.title} onChange={(v) => set("about", { title: v })} maxLength={80} />
+                <TextInput label="Intro (next to the title)" value={content.about.intro} onChange={(v) => set("about", { intro: v })} multiline rows={3} maxLength={400} />
+                <TextInput label="Who we are" value={content.about.story} onChange={(v) => set("about", { story: v })} multiline rows={5} maxLength={1500} />
+                <TextInput label="Mission" value={content.about.mission} onChange={(v) => set("about", { mission: v })} multiline rows={2} maxLength={400} hint="Shown as a highlighted quote. Leave empty to hide." />
+                <Toggle label="Mark text as placeholder" checked={content.about.placeholder} onChange={(v) => set("about", { placeholder: v })} />
+              </Panel>
+              <Panel title="What we do" description="Shown as a numbered list, in this order.">
+                <ListEditor
+                  items={content.about.whatWeDo}
+                  onChange={(whatWeDo) => set("about", { whatWeDo })}
+                  newItem={() => ({ title: "New item", text: "" })}
+                  itemTitle={(i) => i.title}
+                  addLabel="Add item"
+                  max={8}
+                  renderItem={(i, update) => (
+                    <>
+                      <TextInput label="Title" value={i.title} onChange={(v) => update({ title: v })} maxLength={80} />
+                      <TextInput label="Text" value={i.text} onChange={(v) => update({ text: v })} multiline rows={2} maxLength={400} />
+                    </>
+                  )}
+                />
+              </Panel>
+              <Panel title="How we work" description="Short values shown in a row under the section.">
+                <ListEditor
+                  items={content.about.values}
+                  onChange={(values) => set("about", { values })}
+                  newItem={() => ({ title: "New value", text: "" })}
+                  itemTitle={(i) => i.title}
+                  addLabel="Add value"
+                  max={6}
+                  renderItem={(i, update) => (
+                    <>
+                      <TextInput label="Title" value={i.title} onChange={(v) => update({ title: v })} maxLength={80} />
+                      <TextInput label="Text" value={i.text} onChange={(v) => update({ text: v })} multiline rows={2} maxLength={400} />
+                    </>
+                  )}
+                />
+              </Panel>
+            </>
           )}
 
           {section === "universities" && (
