@@ -8,6 +8,15 @@
  * server with the SAME event id, so an ad blocker or iOS loses nothing and the
  * platforms count it once. The Purchase uses one id per order (ffc_ord_<id>).
  *
+ * First-party route: the browser sends its events to this store's own domain, on a
+ * path that is random per site (https://<store>/<path>/), and this server forwards
+ * them to Meta and TikTok. Ad blockers do not know the path, and the visitor's ids
+ * (_fbp, _fbc, ffc_vid) are renewed by this server, so browsers keep them for their
+ * full life (Safari keeps cookies written by scripts for 7 days only). Nothing runs
+ * on anyone else's server. Each event id is sent once: the browser keeps a list of
+ * the ids it sent, the server refuses a repeat when a persistent object cache is
+ * available, InitiateCheckout fires once per cart and the Purchase once per order.
+ *
  * When the Purchase counts is the merchant's choice:
  *   placed     the normal way: as soon as the order is placed
  *   confirmed  held until the call confirms it (status Confirmed)  — recommended for COD
@@ -37,6 +46,8 @@ class FFC_Tracking {
 	const RR_META    = '_ffc_receive_rate';
 	const LOG_OPT    = 'ffc_track_log';
 	const VID        = 'ffc_vid';
+	const ROUTE_OPT  = 'ffc_fp_route';
+	const STATS_OPT  = 'ffc_fp_stats';
 	const GRAPH      = 'https://graph.facebook.com/v22.0';
 	const TIKTOK     = 'https://business-api.tiktok.com/open_api/v1.3/event/track/';
 	const GA4_MP     = 'https://www.google-analytics.com/mp/collect';
@@ -125,7 +136,9 @@ class FFC_Tracking {
 		// "When the order is placed": after FFC_Checkout has saved the click ids (priority 10).
 		add_action( 'woocommerce_checkout_order_created', array( __CLASS__, 'on_placed' ), 50 );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( __CLASS__, 'on_placed' ), 50 );
-		add_action( 'wc_ajax_ffc_px', array( __CLASS__, 'beacon' ) );
+		add_action( 'wc_ajax_ffc_px', array( __CLASS__, 'beacon' ) ); // pages cached before 1.6.0
+		// After WooCommerce has loaded the cart and the customer (wp_loaded, priority 10).
+		add_action( 'wp_loaded', array( __CLASS__, 'route' ), 20 );
 	}
 
 	// --- browser pixels ------------------------------------------------------------------------
@@ -190,7 +203,7 @@ class FFC_Tracking {
 			'cart'     => $cart,
 			'purchase' => $purchase,
 			'funnel'   => (bool) $s['browser_events'],
-			'server'   => $s['server_events'] && ( ( $s['meta']['on'] && $s['meta']['token'] ) || ( $s['tiktok']['on'] && $s['tiktok']['token'] ) ) && class_exists( 'WC_AJAX' ) ? WC_AJAX::get_endpoint( 'ffc_px' ) : '',
+			'server'   => self::server_on( $s ) ? self::endpoint() : '',
 			'currency' => function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : '',
 			// Hashed customer data only for a signed-in customer or the buyer's own thank-you
 			// page: those pages are never served from a page cache to someone else.
@@ -202,8 +215,9 @@ class FFC_Tracking {
 		if ( ! $cfg['funnel'] && ! $cfg['purchase'] && ! $cfg['server'] ) {
 			return;
 		}
-		wp_enqueue_script( 'ffc-track', FFC_URL . 'assets/ffc-track.js', array(), FFC_VERSION, true );
-		wp_localize_script( 'ffc-track', 'ffcTrack', $cfg );
+		// A neutral file name: ad blockers drop scripts called *track*.
+		wp_enqueue_script( 'ffc-s', FFC_URL . 'assets/ffc-s.js', array(), FFC_VERSION, true );
+		wp_localize_script( 'ffc-s', 'ffcTrack', $cfg );
 	}
 
 	/** Hashed matching keys for the browser pixels (Meta/TikTok/Google naming handled in JS). */
@@ -263,31 +277,42 @@ class FFC_Tracking {
 
 	// --- server copy of the funnel events (same event id as the browser) ----------------------
 
-	/** wc-ajax=ffc_px: the browser tells us which funnel event it fired; we send the server copy. */
+	/** Server events go out when a platform has a token and the merchant left them on. */
+	public static function server_on( $s ) {
+		return $s['server_events'] && ( ( $s['meta']['on'] && $s['meta']['pixel'] && $s['meta']['token'] ) || ( $s['tiktok']['on'] && $s['tiktok']['pixel'] && $s['tiktok']['token'] ) );
+	}
+
+	/** The browser tells this store which funnel event it fired; we send the server copy. */
 	public static function beacon() {
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- public, rate limited, sends only the visitor's own event; works with page caching.
 		$s  = self::settings();
 		$ev = isset( $_POST['ev'] ) ? sanitize_text_field( wp_unslash( $_POST['ev'] ) ) : '';
 		$id = isset( $_POST['id'] ) ? sanitize_text_field( wp_unslash( $_POST['id'] ) ) : '';
-		if ( ! self::any_on() || ! $s['server_events'] || ! in_array( $ev, self::FUNNEL, true ) || ! preg_match( '/^[A-Za-z0-9_.-]{8,64}$/', $id ) ) {
+		if ( 'ping' === $ev ) {
+			self::beacon_reply( true, true, array( 'route' => 1 ) ); // the admin's route check; nothing is sent or counted
+		}
+		if ( ! self::any_on() || ! self::server_on( $s ) || ! in_array( $ev, self::FUNNEL, true ) || ! preg_match( '/^[A-Za-z0-9_.-]{8,64}$/', $id ) ) {
 			self::beacon_reply( false );
 		}
 		$ip = class_exists( 'WC_Geolocation' ) ? WC_Geolocation::get_ip_address() : ( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' );
 		// Limits: a site-wide cap per minute (one reused row, so spoofed IPs cannot fill the
 		// database) and, with a persistent object cache, 60 events per visitor IP per 5 minutes.
-		// Meta and TikTok drop a repeated event id themselves.
-		$bucket = 'ffc_px_' . gmdate( 'YmdHi' );
-		$n      = (int) get_transient( $bucket );
-		if ( $n >= (int) apply_filters( 'ffc_server_events_per_minute', 600 ) ) {
+		$minute = gmdate( 'YmdHi' );
+		$stats  = self::stats();
+		if ( $stats['m'] === $minute && $stats['n'] >= (int) apply_filters( 'ffc_server_events_per_minute', 600 ) ) {
 			self::beacon_reply( false );
 		}
-		set_transient( $bucket, $n + 1, 2 * MINUTE_IN_SECONDS );
 		if ( wp_using_ext_object_cache() ) {
 			$ik = 'ip_' . md5( (string) $ip );
 			wp_cache_add( $ik, 0, 'ffc_px', 5 * MINUTE_IN_SECONDS );
 			if ( (int) wp_cache_incr( $ik, 1, 'ffc_px' ) > 60 ) {
 				self::beacon_reply( false );
 			}
+		}
+		// Each event id once. The browser never sends an id twice; this also stops a replayed
+		// request. Meta and TikTok drop a repeated event id themselves as well.
+		if ( ! self::first_time( $id ) ) {
+			self::beacon_reply( true, true, array( 'dup' => 1 ) );
 		}
 
 		// The page must be on this store.
@@ -313,9 +338,18 @@ class FFC_Tracking {
 				$custom = array( 'currency' => $c['currency'], 'value' => $c['value'], 'content_type' => 'product', 'content_ids' => wp_list_pluck( $c['contents'], 'id' ), 'contents' => array_map( static function ( $x ) { return array( 'id' => $x['id'], 'quantity' => $x['quantity'], 'item_price' => $x['item_price'] ); }, $c['contents'] ), 'num_items' => array_sum( wp_list_pluck( $c['contents'], 'quantity' ) ) );
 			}
 		}
+		// Did the browser pixel load? 1 yes, 0 blocked or failed, '' not known (pixel off).
+		$px = isset( $_POST['px'] ) ? sanitize_text_field( wp_unslash( $_POST['px'] ) ) : '';
+		$cd = isset( $_POST['cd'] ) ? sanitize_text_field( wp_unslash( $_POST['cd'] ) ) : '';
 		// phpcs:enable
 
+		// The visitor's ids, renewed by this server (before the answer is sent).
 		$attr = self::live_attribution( $ip );
+		$keys = array( '_fbp' => 'fbp', '_fbc' => 'fbc', '_ttp' => 'ttp', self::VID => 'vid' );
+		foreach ( self::cookie_plan( $_COOKIE, $url, (string) $home, $cd, $s, time() ) as $c ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- cookie_plan only keeps values matching strict patterns.
+			self::set_cookie( $c );
+			$attr[ $keys[ $c['name'] ] ] = $c['value']; // the server event carries the ids the browser now holds
+		}
 		$ud   = self::user_data_from( self::visitor_person(), $attr );
 		$jobs = array();
 		if ( $s['meta']['on'] && $s['meta']['pixel'] && $s['meta']['token'] ) {
@@ -325,23 +359,26 @@ class FFC_Tracking {
 			$jobs[] = 'tiktok';
 		}
 		self::beacon_reply( true, false );
+		$all = true;
 		foreach ( $jobs as $job ) {
 			$r = 'meta' === $job
 				? self::meta_event( $s['meta'], $ev, $id, $url, self::meta_user( $ud, $attr ), $custom, time() )
 				: self::tiktok_event( $s['tiktok'], $ev, $id, $url, self::tiktok_user( $ud, $attr ), self::tiktok_props( $custom ), time() );
 			self::remember_status( $job, $r, 'event' );
+			$all = $all && $r['ok'];
 		}
+		self::stats_add( $minute, $px, (bool) $jobs, $all );
 		exit;
 	}
 
 	/** Answers the browser at once; the server copy is sent after the visitor got the reply. */
-	private static function beacon_reply( $ok, $stop = true ) {
+	private static function beacon_reply( $ok, $stop = true, $extra = array() ) {
 		if ( ! headers_sent() ) {
 			status_header( 200 );
 			header( 'Content-Type: application/json; charset=utf-8' );
 			header( 'Cache-Control: no-store' );
 		}
-		echo $ok ? '{"ok":true}' : '{"ok":false}';
+		echo wp_json_encode( array_merge( array( 'ok' => (bool) $ok ), $extra ) );
 		if ( $stop ) {
 			exit;
 		}
@@ -356,6 +393,188 @@ class FFC_Tracking {
 			}
 			flush();
 		}
+	}
+
+	// --- first-party route: this store's own domain ---------------------------------------------
+
+	/** This site's private path for the events, random per site so no block list can know it. */
+	public static function route_slug() {
+		$slug = get_option( self::ROUTE_OPT );
+		if ( ! is_string( $slug ) || ! preg_match( '/^[a-z][a-z0-9]{7}$/', $slug ) ) {
+			$letters = 'abcdefghijklmnopqrstuvwxyz';
+			$slug    = $letters[ wp_rand( 0, 25 ) ] . strtolower( wp_generate_password( 7, false, false ) );
+			update_option( self::ROUTE_OPT, $slug, true ); // read on every request: kept in the autoloaded options
+		}
+		return $slug;
+	}
+
+	/** Where the browser sends events: https://<store>/<path>/, or /?<path>=1 with plain permalinks. */
+	public static function endpoint() {
+		$slug = self::route_slug();
+		return get_option( 'permalink_structure' ) ? home_url( '/' . $slug . '/' ) : add_query_arg( $slug, '1', home_url( '/' ) );
+	}
+
+	/** True when the request is a POST to the route (either form). */
+	public static function route_matches( $method, $uri, $query, $slug, $home_path ) {
+		if ( 'POST' !== strtoupper( (string) $method ) || ! is_string( $slug ) || '' === $slug ) {
+			return false;
+		}
+		if ( is_array( $query ) && isset( $query[ $slug ] ) ) {
+			return true;
+		}
+		$path = (string) wp_parse_url( (string) $uri, PHP_URL_PATH );
+		return '' !== $path && rtrim( $path, '/' ) === rtrim( (string) $home_path, '/' ) . '/' . $slug;
+	}
+
+	public static function route() {
+		$slug = get_option( self::ROUTE_OPT );
+		if ( ! $slug || ! isset( $_SERVER['REQUEST_METHOD'] ) || 'POST' !== $_SERVER['REQUEST_METHOD'] ) {
+			return;
+		}
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- only compared with the route path.
+		if ( self::route_matches( 'POST', $uri, $_GET, $slug, (string) wp_parse_url( home_url(), PHP_URL_PATH ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- only checks for the route's name.
+			self::beacon();
+		}
+	}
+
+	/** False when this event id was already sent (needs a persistent object cache; else always true). */
+	public static function first_time( $id ) {
+		if ( ! wp_using_ext_object_cache() ) {
+			return true;
+		}
+		return (bool) wp_cache_add( 'ev_' . $id, 1, 'ffc_px', 2 * DAY_IN_SECONDS );
+	}
+
+	/** The cookie domain the browser found (the one Meta's pixel uses), if it belongs to this host. */
+	public static function cookie_domain( $host, $cd ) {
+		$host = strtolower( (string) $host );
+		$cd   = strtolower( ltrim( (string) $cd, '.' ) );
+		if ( '' === $cd || ! preg_match( '/^[a-z0-9-]+(\.[a-z0-9-]+)+$/', $cd ) ) {
+			return '';
+		}
+		return ( $host === $cd || substr( $host, -strlen( '.' . $cd ) ) === '.' . $cd ) ? $cd : '';
+	}
+
+	/**
+	 * The visitor's ids this answer renews from the store's own server. Only values the browser
+	 * already holds are renewed (or a missing _fbp made in Meta's format); a fresh fbclid in the
+	 * page address makes a new _fbc.
+	 *
+	 * @return array<int,array{name:string,value:string,days:int,domain:string}>
+	 */
+	public static function cookie_plan( $cookies, $url, $host, $cd, $s, $now ) {
+		$domain = self::cookie_domain( $host, $cd );
+		$get    = static function ( $name ) use ( $cookies ) {
+			return is_array( $cookies ) && isset( $cookies[ $name ] ) && is_string( $cookies[ $name ] ) ? $cookies[ $name ] : '';
+		};
+		$out = array();
+		$add = static function ( $name, $value, $days ) use ( &$out, $domain ) {
+			$out[] = array( 'name' => $name, 'value' => $value, 'days' => $days, 'domain' => $domain );
+		};
+		$vid = $get( self::VID );
+		if ( preg_match( '/^[A-Za-z0-9]{12,40}$/', $vid ) ) {
+			$add( self::VID, $vid, 395 );
+		}
+		if ( $s['meta']['on'] && $s['meta']['pixel'] ) {
+			$fbp = $get( '_fbp' );
+			$add( '_fbp', preg_match( '/^fb\.\d\.\d{10,13}\.\d{1,25}$/', $fbp ) ? $fbp : 'fb.1.' . ( (int) $now * 1000 ) . '.' . wp_rand( 1000000000, 2147483647 ), 180 );
+			$query = (string) wp_parse_url( (string) $url, PHP_URL_QUERY );
+			parse_str( $query, $q );
+			$fbclid = isset( $q['fbclid'] ) && is_string( $q['fbclid'] ) && preg_match( '/^[A-Za-z0-9_-]{8,500}$/', $q['fbclid'] ) ? $q['fbclid'] : '';
+			$fbc    = $get( '_fbc' );
+			$valid  = (bool) preg_match( '/^fb\.\d\.\d{10,13}\.[A-Za-z0-9_-]{8,500}$/', $fbc );
+			if ( '' !== $fbclid && ( ! $valid || implode( '.', array_slice( explode( '.', $fbc ), 3 ) ) !== $fbclid ) ) {
+				$add( '_fbc', 'fb.1.' . ( (int) $now * 1000 ) . '.' . $fbclid, 90 );
+			} elseif ( $valid ) {
+				$add( '_fbc', $fbc, 90 );
+			}
+		}
+		if ( $s['tiktok']['on'] && $s['tiktok']['pixel'] ) {
+			$ttp = $get( '_ttp' );
+			if ( preg_match( '/^[A-Za-z0-9_.-]{8,80}$/', $ttp ) ) {
+				$add( '_ttp', $ttp, 395 );
+			}
+		}
+		return $out;
+	}
+
+	private static function set_cookie( $c ) {
+		if ( headers_sent() ) {
+			return;
+		}
+		$o = array( 'expires' => time() + $c['days'] * DAY_IN_SECONDS, 'path' => '/', 'secure' => is_ssl(), 'httponly' => false, 'samesite' => 'Lax' );
+		if ( $c['domain'] ) {
+			$o['domain'] = '.' . $c['domain'];
+		}
+		setcookie( $c['name'], $c['value'], $o );
+	}
+
+	// --- first-party coverage: what the browser pixel missed and the server delivered -------------
+
+	private static function stats() {
+		$st = get_option( self::STATS_OPT, array() );
+		return array_merge( array( 'm' => '', 'n' => 0, 'last' => 0, 'h' => array() ), is_array( $st ) ? $st : array() );
+	}
+
+	/**
+	 * One write per event, after the visitor has the answer. Per hour: r received, k pixel state
+	 * known, b pixel blocked, ok delivered to every platform, f a platform refused.
+	 */
+	public static function stats_add( $minute, $px, $sent, $ok, $now = null ) {
+		$now  = $now ? (int) $now : time();
+		$st   = self::stats();
+		$st['n']    = $st['m'] === $minute ? (int) $st['n'] + 1 : 1;
+		$st['m']    = $minute;
+		$st['last'] = $now;
+		$hour = gmdate( 'YmdH', $now );
+		$row  = isset( $st['h'][ $hour ] ) && is_array( $st['h'][ $hour ] ) ? $st['h'][ $hour ] : array();
+		$row  = array_merge( array( 'r' => 0, 'k' => 0, 'b' => 0, 'ok' => 0, 'f' => 0 ), $row );
+		$row['r']++;
+		if ( '1' === (string) $px || '0' === (string) $px ) {
+			$row['k']++;
+			$row['b'] += '0' === (string) $px ? 1 : 0;
+		}
+		if ( $sent ) {
+			$ok ? $row['ok']++ : $row['f']++;
+		}
+		$st['h'][ $hour ] = $row;
+		ksort( $st['h'] );
+		$st['h'] = array_slice( $st['h'], -48, null, true );
+		update_option( self::STATS_OPT, $st, false );
+	}
+
+	/** The last $hours: events received on this domain, pixel blocked, delivered — and the two coverages. */
+	public static function first_party_summary( $hours = 24, $now = null ) {
+		$now  = $now ? (int) $now : time();
+		$st   = self::stats();
+		$from = (int) gmdate( 'YmdH', $now - ( $hours - 1 ) * HOUR_IN_SECONDS );
+		$t    = array( 'r' => 0, 'k' => 0, 'b' => 0, 'ok' => 0, 'f' => 0 );
+		foreach ( $st['h'] as $h => $row ) {
+			if ( (int) $h >= $from && is_array( $row ) ) {
+				foreach ( $t as $k => $v ) {
+					$t[ $k ] += isset( $row[ $k ] ) ? (int) $row[ $k ] : 0;
+				}
+			}
+		}
+		$t['last']         = (int) $st['last'];
+		$t['pixel_pct']    = $t['k'] ? round( ( $t['k'] - $t['b'] ) / $t['k'] * 100, 1 ) : null; // browser pixel alone
+		$t['coverage_pct'] = $t['r'] ? round( $t['ok'] / $t['r'] * 100, 1 ) : null;                 // through this server
+		return $t;
+	}
+
+	/** Admin check: does the route answer on this domain? (a loopback request; nothing is sent to Meta) */
+	public static function route_check() {
+		$url = self::endpoint();
+		$res = wp_remote_post( $url, array( 'timeout' => 10, 'redirection' => 0, 'body' => array( 'ev' => 'ping' ), 'sslverify' => apply_filters( 'https_local_ssl_verify', false ) ) );
+		if ( is_wp_error( $res ) ) {
+			return array( 'ok' => false, 'hint' => true, 'message' => 'Your server could not call its own address (' . $res->get_error_message() . '). Many hosts block that; visitors can still reach the route — open the shop once and check "Last event" here.' );
+		}
+		$code = (int) wp_remote_retrieve_response_code( $res );
+		$json = json_decode( (string) wp_remote_retrieve_body( $res ), true );
+		if ( 200 === $code && is_array( $json ) && ! empty( $json['route'] ) ) {
+			return array( 'ok' => true, 'hint' => false, 'message' => 'The route answers on your own domain: ' . $url );
+		}
+		return array( 'ok' => false, 'hint' => false, 'message' => 'The route did not answer (HTTP ' . $code . '). A security plugin or a server rule may block POST requests to ' . $url . ' — allow that address.' );
 	}
 
 	// --- the Purchase ----------------------------------------------------------------------------

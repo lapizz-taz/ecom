@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.5.2
+Stable tag: 1.6.0
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -17,6 +17,7 @@ Fullfilio reads orders and products through WooCommerce's own REST API with the 
 * Instant order events with a retrying delivery queue (nothing is lost while Fullfilio is unreachable; nothing is imported twice).
 * Unfinished checkouts: phone, name, address and cart of checkouts that were not completed, so your team can call back.
 * Ad attribution: UTM tags, click ids (fbclid, gclid, ttclid) and Meta cookies saved on each order.
+* Ad tracking for Meta, TikTok and Google through your own domain: the shopper's browser sends each event to this store, and your own hosting server passes it to the ad platform. No extra server or paid service, and nothing an ad blocker knows about. Browser and server share one event id, so every event is counted once.
 * Order shield: block-listed numbers are refused at checkout; customers with a poor courier delivery record are asked to pay in advance. If Fullfilio cannot answer within a few seconds the order goes through.
 * Delivered and Returned order statuses, set by Fullfilio when the courier reports them.
 * A health report, troubleshooting checks and a debug log under WooCommerce → Fullfilio.
@@ -31,9 +32,17 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 
 == Privacy ==
 
-The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. It sends nothing to any other service.
+The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. When you turn on ad tracking, your own server also sends the ad platforms you chose (Meta, TikTok, Google) the shop events, with customer details hashed. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.6.0 =
+* First-party tracking: the browser sends every event (PageView, ViewContent, AddToCart, InitiateCheckout) to this store's own domain, on a path that is random for each site, and your server passes it to Meta and TikTok. An ad blocker or iOS that stops the pixel no longer loses the event — no extra server or service is needed.
+* The visitor's ids (_fbp, _fbc and the visitor id) are renewed by your own server, so Safari keeps them for months instead of 7 days, on the same domain Meta's pixel uses.
+* De-duplication everywhere: browser and server send each event with one event id, each id only once (a replayed request is refused when the site has a persistent object cache), InitiateCheckout once per cart and the Purchase once per order, even when the thank-you page is reloaded.
+* Ad tracking → "First-party tracking" shows the route, how often the browser pixel was blocked and how much your server delivered in the last 24 hours, with a "Check the route" button.
+* The tracking script has a neutral file name, so ad blockers that drop scripts called "track" do not stop it.
+* Removing the plugin also removes the ad tracking settings.
 
 = 1.5.2 =
 * The advance payment follows Fullfilio (Settings → Fraud) whenever the order shield is on: the customer pays the advance online and the rest on delivery. Your own per-level amounts on this site are now an optional extra.
