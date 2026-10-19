@@ -15,11 +15,15 @@ Subdomains (`www.shop.com`) keep using the CNAME to `stores.fullfilio.com`.
 
 1. **A small server with a fixed public IPv4** (1 vCPU / 1 GB is plenty to start), for example
    Hetzner, DigitalOcean, Vultr or Lightsail. Open ports 80 and 443 (TCP) and 443 (UDP).
-2. Install Docker, copy this folder to the server, then:
+2. On the server, one line opens the ports, installs Docker, writes these files to
+   `/opt/fullfilio-root-proxy` with a new `PROXY_SECRET`, starts Caddy and prints the secret
+   (safe to run again; it keeps the secret):
    ```sh
-   cp .env.example .env    # fill in ACME_EMAIL and PROXY_SECRET (openssl rand -hex 32)
-   docker compose up -d
+   curl -fsSL https://fullfilio.com/downloads/root-proxy/install.sh | sudo bash -s -- you@example.com
    ```
+   Or by hand: install Docker, copy this folder to the server, then
+   `cp .env.example .env` (fill in ACME_EMAIL and PROXY_SECRET from `openssl rand -hex 32`)
+   and `docker compose up -d`.
 3. In Cloudflare → Workers → **fullfilio** → Settings → Variables and secrets, add:
    - `ROOT_PROXY_SECRET` = the same `PROXY_SECRET` (secret)
    - `ROOT_DOMAIN_IP` = the server's IPv4 (and `ROOT_DOMAIN_IPV6` if it has a fixed IPv6)
