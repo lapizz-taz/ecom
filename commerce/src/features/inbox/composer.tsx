@@ -252,7 +252,7 @@ export function SavedReplies({ onPick, disabled }: { onPick: (body: string) => v
             </button>
           ))}
           {replies.data && !shown.length && (
-            <p className={cn('p-3 text-center text-xs text-muted-foreground')}>No saved replies yet. Add them under Inbox → Channels → Saved replies.</p>
+            <p className={cn('p-3 text-center text-xs text-muted-foreground')}>No saved replies yet. Add them under Messaging → Channels → Saved replies.</p>
           )}
         </div>
       </PopoverContent>
