@@ -35,6 +35,34 @@ describe('custom domains: adding one again', () => {
       expect(await status(db, 'atheron.shop')).toMatch(/^PENDING:/)
     }))
 
+  it('a domain added again is the primary one when the store has no other', () =>
+    inTx(async (db) => {
+      await domainsOn(db)
+      const owner = await createStaff(db, 'OWNER')
+      const primary = () => value<boolean>(db, `select is_primary from public.store_domains where domain = 'atheron.shop'`)
+      await asUser(db, owner)
+      await db.query(`select public.store_domain_guard('atheron.shop', 'add')`)
+      await asService(db)
+      await db.query(`select public.store_domain_save('atheron.shop', '{"status":"ACTIVE"}', $1)`, [owner])
+      expect(await primary()).toBe(true)
+      await db.query(`select public.store_domain_save('atheron.shop', '{"status":"REMOVED","records":[]}', $1)`, [owner])
+      expect(await primary()).toBe(false)
+
+      // Added back: the guard marks it pending first, then the check saves it.
+      await asUser(db, owner)
+      await db.query(`select public.store_domain_guard('atheron.shop', 'add')`)
+      await asService(db)
+      await db.query(`select public.store_domain_save('atheron.shop', '{"status":"ACTIVE"}', $1)`, [owner])
+      expect(await primary()).toBe(true)
+
+      // With another primary in place, a returning domain stays secondary.
+      await asUser(db, owner)
+      await db.query(`select public.store_domain_guard('two.shop', 'add')`)
+      await asService(db)
+      await db.query(`select public.store_domain_save('two.shop', '{"status":"ACTIVE"}', $1)`, [owner])
+      expect(await value(db, `select is_primary from public.store_domains where domain = 'two.shop'`)).toBe(false)
+    }))
+
   it('a domain another store uses is refused with the real reason, not "no permission"', () =>
     inTx(async (db) => {
       await domainsOn(db)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apexOf, cloudflareTarget, diagnose, dnsHostOf, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS, wwwIssue } from './domain-check.ts'
+import { apexOf, cloudflareTarget, diagnose, dnsHostOf, proxyTarget, domainKind, hostLabel, isCloudflare, isVercelA, isVercelCname, oldHostOf, REGIONS, inspectWww } from './domain-check.ts'
 
 type Zone = Record<string, Partial<Record<'A' | 'AAAA' | 'CNAME' | 'CAA' | 'NS' | 'TXT', string[]>>>
 const CODE = { A: 1, NS: 2, CNAME: 5, TXT: 16, AAAA: 28, CAA: 257 } as const
@@ -274,29 +274,32 @@ describe('root domain through our proxy (any DNS company)', () => {
 describe('www next to a root domain on the proxy', () => {
   const target = proxyTarget('203.0.113.7', 'stores.fullfilio.example')
 
-  it('is fine with an A record (or a CNAME to the root) leading to the proxy', async () => {
-    expect(await wwwIssue('shop.com', target, fakeFetch({ 'www.shop.com': { A: ['203.0.113.7'] } }))).toBeNull()
+  it('is fine with an A record (or a CNAME to the root) leading to the proxy, and lists it', async () => {
+    const a = await inspectWww('shop.com', target, fakeFetch({ 'www.shop.com': { A: ['203.0.113.7'] } }))
+    expect(a).toEqual({ issue: null, records: [{ type: 'A', name: 'www', value: '203.0.113.7', ok: true }] })
     // A CNAME to the root answers with the root's address.
     const viaRoot = (async (input: string | URL) => {
       const name = new URL(String(input)).searchParams.get('name')
       const answer = name === 'www.shop.com' ? [{ name, type: 5, data: 'shop.com.' }, { name: 'shop.com', type: 1, data: '203.0.113.7' }] : []
       return new Response(JSON.stringify({ Status: 0, Answer: answer }))
     }) as typeof fetch
-    expect(await wwwIssue('shop.com', target, viaRoot)).toBeNull()
+    expect(await inspectWww('shop.com', target, viaRoot)).toMatchObject({ issue: null, records: [{ type: 'CNAME', name: 'www', value: 'shop.com', ok: true }] })
   })
 
-  it('asks for the www record when it is missing or leads elsewhere, as a warning only', async () => {
-    const none = await wwwIssue('shop.com', target, fakeFetch({}))
-    expect(none).toMatchObject({ code: 'WWW_SETUP', severity: 'warning' })
-    expect(none!.detail).toContain('A record for www pointing to 203.0.113.7')
-    const old = await wwwIssue('shop.com', target, fakeFetch({ 'www.shop.com': { CNAME: ['stores.fullfilio.example'] } }))
-    expect(old!.detail).toContain('a CNAME to stores.fullfilio.example')
+  it('asks for the www record when it is missing or leads elsewhere, as a warning only, and lists what is there', async () => {
+    const none = await inspectWww('shop.com', target, fakeFetch({}))
+    expect(none!.issue).toMatchObject({ code: 'WWW_SETUP', severity: 'warning' })
+    expect(none!.issue!.detail).toContain('A record for www pointing to 203.0.113.7')
+    expect(none!.records).toEqual([expect.objectContaining({ type: 'A', name: 'www', value: '—', ok: false })])
+    const old = await inspectWww('shop.com', target, fakeFetch({ 'www.shop.com': { CNAME: ['stores.fullfilio.example'] } }))
+    expect(old!.issue!.detail).toContain('a CNAME to stores.fullfilio.example')
+    expect(old!.records).toEqual([expect.objectContaining({ type: 'CNAME', name: 'www', value: 'stores.fullfilio.example', ok: false, note: expect.stringContaining('Should be A 203.0.113.7') })])
   })
 
   it('says nothing for subdomains, other hosting, or when DNS does not answer', async () => {
-    expect(await wwwIssue('www.shop.com', target, fakeFetch({}))).toBeNull()
-    expect(await wwwIssue('shop.com', cloudflareTarget('stores.fullfilio.example'), fakeFetch({}))).toBeNull()
-    expect(await wwwIssue('shop.com', target, (async () => { throw new Error('offline') }) as typeof fetch)).toBeNull()
+    expect(await inspectWww('www.shop.com', target, fakeFetch({}))).toBeNull()
+    expect(await inspectWww('shop.com', cloudflareTarget('stores.fullfilio.example'), fakeFetch({}))).toBeNull()
+    expect(await inspectWww('shop.com', target, (async () => { throw new Error('offline') }) as typeof fetch)).toBeNull()
   })
 })
 
