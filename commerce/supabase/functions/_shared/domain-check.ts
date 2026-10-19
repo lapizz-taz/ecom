@@ -29,7 +29,7 @@ export interface Diagnosis {
    * Who answers DNS for the domain (its nameservers, as the registry has them), so the steps can
    * name the right panel. moving_from: the nameservers DNS servers still remember after a switch.
    */
-  dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean; moving_from?: { provider: string | null; nameservers: string[] } }
+  dns_host?: { provider: string | null; nameservers: string[]; mixed: boolean; moving_from?: { provider: string | null; nameservers: string[] }; source?: 'registry' | 'resolvers' }
   /** What the hosting itself says (Cloudflare for SaaS): ownership and certificate status. */
   hosting?: { status: string; ssl_status: string | null; error: string | null }
 }
@@ -175,10 +175,22 @@ const only = (answers: DohAnswer[] | null, type: RecordType) => (answers ?? []).
  * when the registry does not say (some country domains have no RDAP).
  */
 export async function registryRecord(domain: string, fetcher: Fetch = fetch): Promise<{ nameservers: string[]; changed_at: string | null } | null> {
+  const apex = apexOf(domain)
+  // The registry's own RDAP server first (from IANA's list), then the rdap.org redirector:
+  // rdap.org can turn away requests from cloud servers.
+  const base = await rdapBase(apex, fetcher)
+  for (const url of [...(base ? [`${base}domain/${encodeURIComponent(apex)}`] : []), `https://rdap.org/domain/${encodeURIComponent(apex)}`]) {
+    const found = await rdapDomain(url, fetcher)
+    if (found) return found
+  }
+  return null
+}
+
+const RDAP_HEADERS = { accept: 'application/rdap+json, application/json', 'user-agent': 'Fullfilio-domain-check/1.0 (+https://fullfilio.com)' }
+
+async function rdapDomain(url: string, fetcher: Fetch): Promise<{ nameservers: string[]; changed_at: string | null } | null> {
   try {
-    const res = await fetcher(`https://rdap.org/domain/${encodeURIComponent(apexOf(domain))}`, {
-      headers: { accept: 'application/rdap+json, application/json' }, signal: AbortSignal.timeout(6_000),
-    })
+    const res = await fetcher(url, { headers: RDAP_HEADERS, signal: AbortSignal.timeout(6_000) })
     if (!res.ok) return null
     const body = await res.json() as { nameservers?: Array<{ ldhName?: unknown }>; events?: Array<{ eventAction?: unknown; eventDate?: unknown }> }
     const ns = [...new Set((Array.isArray(body?.nameservers) ? body.nameservers : []).map((n) => nsName(String(n?.ldhName ?? ''))).filter(Boolean))].sort()
@@ -187,6 +199,28 @@ export async function registryRecord(domain: string, fetcher: Fetch = fetch): Pr
   } catch {
     return null
   }
+}
+
+// IANA's list of each top-level domain's RDAP server, kept for a day once read.
+let rdapServers: { at: number; byTld: Map<string, string> } | null = null
+async function rdapBase(apex: string, fetcher: Fetch): Promise<string | null> {
+  if (!rdapServers || Date.now() - rdapServers.at > 86_400_000) {
+    try {
+      const res = await fetcher('https://data.iana.org/rdap/dns.json', { headers: RDAP_HEADERS, signal: AbortSignal.timeout(6_000) })
+      const body = res.ok ? await res.json() as { services?: unknown } : null
+      const byTld = new Map<string, string>()
+      for (const service of Array.isArray(body?.services) ? body.services : []) {
+        const [tlds, urls] = Array.isArray(service) ? service as unknown[] : []
+        const url = Array.isArray(urls) ? urls.find((u): u is string => typeof u === 'string' && u.startsWith('https://')) : undefined
+        if (url && Array.isArray(tlds)) for (const t of tlds) if (typeof t === 'string') byTld.set(t.toLowerCase(), url.endsWith('/') ? url : `${url}/`)
+      }
+      // Only a list that came back is kept; otherwise it is asked again next time.
+      if (byTld.size) rdapServers = { at: Date.now(), byTld }
+    } catch {
+      // rdap.org below
+    }
+  }
+  return rdapServers?.byTld.get(apex.split('.').pop() ?? '') ?? null
 }
 
 /** How long after a change at the registry resolvers may still hold the old DNS company's records. */
@@ -200,6 +234,8 @@ const SWITCH_WINDOW_MS = 72 * 3600_000
 export interface DnsView {
   /** The registry's nameservers, else the ones the resolvers answer with. */
   nameservers: string[]
+  /** Where the nameservers came from. */
+  source: 'registry' | 'resolvers'
   /** Nameservers the registry no longer lists that resolvers still use (a switch in progress). */
   old: string[]
   /** Where to read the records: the first resolver already on the registry's nameservers. */
@@ -235,6 +271,7 @@ export async function dnsView(domain: string, fetcher: Fetch = fetch, now: Date 
     : []
   return {
     nameservers: registry ?? [...new Set(seen.flat())].sort(),
+    source: registry ? 'registry' : 'resolvers',
     old,
     resolver: asked[Math.max(current, 0)].url,
     stale: old.length > 0 && current === -1,
@@ -439,7 +476,7 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   // Nameservers: who answers for the domain. Two different companies means half the
   // visitors get one set of records and half the other (old site, then new, then old).
   const owners = [...new Set(nameservers.map(nsOwner))]
-  const dnsHost: NonNullable<Diagnosis['dns_host']> = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1 }
+  const dnsHost: NonNullable<Diagnosis['dns_host']> = { provider: owners.length === 1 ? owners[0] : null, nameservers, mixed: owners.length > 1, source: view.source }
   if (view.old.length) {
     // Just switched DNS company: the registry has the new nameservers, resolvers still the old ones.
     const now = dnsHost.provider ?? nameservers.join(', ')

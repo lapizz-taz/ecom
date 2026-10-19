@@ -155,7 +155,7 @@ describe('domain check on Cloudflare (Cloudflare for SaaS)', () => {
     expect(d.pointed).toBe(true)
     expect(d.records.every((r) => r.ok && r.note === 'Points to Fullfilio (ALIAS / flattening)')).toBe(true)
     expect(d.regions.every((r) => r.ok)).toBe(true)
-    expect(d.dns_host).toEqual({ provider: 'Cloudflare', nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], mixed: false })
+    expect(d.dns_host).toMatchObject({ provider: 'Cloudflare', nameservers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'], mixed: false })
     expect(d.issues.filter((i) => i.severity === 'error')).toEqual([])
   })
 
@@ -370,7 +370,7 @@ describe('right after moving the DNS to another company', () => {
     const fetcher = moving(oldZone, oldZone)
     const d = await diagnose('shop.com', { target, fetcher })
     expect(d.pointed).toBe(false)
-    expect(d.dns_host).toEqual({ provider: 'Hostinger', nameservers: hostinger, mixed: false, moving_from: { provider: 'Cloudflare', nameservers: cloudflareNs } })
+    expect(d.dns_host).toMatchObject({ provider: 'Hostinger', nameservers: hostinger, mixed: false, moving_from: { provider: 'Cloudflare', nameservers: cloudflareNs } })
     expect(d.issues.map((i) => [i.code, i.severity])).toEqual([['NS_SWITCHING', 'error']])
     expect(d.issues[0].title).toBe('Your DNS moved to Hostinger — add the records there')
     expect(d.issues[0].detail).toContain('Add the records below at Hostinger')
@@ -401,7 +401,7 @@ describe('right after moving the DNS to another company', () => {
 
   it('changes nothing when the registry and the resolvers agree, or the registry does not say', async () => {
     const settled = await diagnose('shop.com', { target, fetcher: moving(newZone, newZone) })
-    expect(settled.dns_host).toEqual({ provider: 'Hostinger', nameservers: hostinger, mixed: false })
+    expect(settled.dns_host).toMatchObject({ provider: 'Hostinger', nameservers: hostinger, mixed: false })
     expect(settled.issues.map((i) => i.code)).not.toContain('NS_SWITCHING')
     // Same company under other names: the zone lists its own nameservers, not a switch.
     expect((await dnsView('shop.com', moving(newZone, newZone, ['ns1.dns-parking.com', 'ns2.dns-parking.com'])))).toMatchObject({ old: [], stale: false })
