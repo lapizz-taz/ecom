@@ -205,6 +205,16 @@ export async function renewNow(): Promise<{ id: string; number: string; total: n
   return data as unknown as { id: string; number: string; total: number; amount_paid: number; status: string }
 }
 
+/**
+ * Choose a plan. While a new business waits for its first payment this switches its plan, the
+ * offer and the first invoice (activation_invoice_id); later it raises a plan-change invoice.
+ */
+export async function choosePlan(code: string): Promise<{ applied: boolean; plan?: string; activation_invoice_id?: string | null; id?: string; total?: number }> {
+  const { data, error } = await supabase.rpc('billing_choose_plan' as never, { p_code: code } as never)
+  if (error) throw error
+  return data as unknown as { applied: boolean; plan?: string; activation_invoice_id?: string | null; id?: string; total?: number }
+}
+
 export interface OnboardingSettings { method: 'online_payment' | 'whatsapp'; whatsapp_number: string | null; whatsapp_template: string; reminder_days: number[] }
 export const saveOnboarding = (value: OnboardingSettings, reason?: string) =>
   platformRpc<OnboardingSettings>('platform_onboarding_save', { p_value: value, p_reason: reason ?? null })
