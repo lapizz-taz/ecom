@@ -8,10 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { toast } from '@/lib/toast'
+import { cn } from '@/lib/utils'
 import { type CreditPackage, formatCredits, isMoneyCredit, LEDGER_KIND, myCredits, payInvoice, type PlatformGateway, startRecharge } from '@/services/credits'
 
 export const GATEWAY_NAME: Record<PlatformGateway, string> = { bkash: 'bKash', paystation: 'PayStation (card, mobile banking)', sslcommerz: 'SSLCommerz (card, mobile and internet banking)' }
 export const GATEWAY_SHORT: Record<PlatformGateway, string> = { bkash: 'bKash', paystation: 'PayStation', sslcommerz: 'SSLCommerz' }
+const PLATFORM_GATEWAYS: PlatformGateway[] = ['bkash', 'paystation', 'sslcommerz']
 
 export function useMyCredits() {
   return useQuery({ queryKey: ['my-credits'], queryFn: myCredits, staleTime: 30_000 })
@@ -25,15 +27,22 @@ export function PayDialog({ title, amount, gateways, start, onClose }: {
   start: (gateway: PlatformGateway) => Promise<void>
   onClose: () => void
 }) {
-  const [gateway, setGateway] = useState(gateways[0])
-  const pay = useMutation({ mutationFn: () => start(gateway), onError: (e) => toast.error((e as Error).message) })
+  const [gateway, setGateway] = useState<PlatformGateway | undefined>(gateways[0])
+  const pay = useMutation({ mutationFn: () => start(gateway!), onError: (e) => toast.error((e as Error).message) })
   return (
-    <FormDialog open onOpenChange={(o) => !o && onClose()} title={title} submitLabel={`Pay ${formatMoney(amount)}`} busy={pay.isPending} onSubmit={() => pay.mutate()}
+    <FormDialog open onOpenChange={(o) => !o && onClose()} title={title} submitLabel={`Pay ${formatMoney(amount)}`} busy={pay.isPending} disabled={!gateway} onSubmit={() => pay.mutate()}
       description="You are sent to the payment page. When the payment is confirmed you come back here and it is applied automatically.">
-      <RadioGroup value={gateway} onValueChange={(v) => setGateway(v as typeof gateway)} className="gap-2">
-        {gateways.map((g) => (
-          <label key={g} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><RadioGroupItem value={g} /> {GATEWAY_NAME[g]}</label>
-        ))}
+      <RadioGroup value={gateway ?? ''} onValueChange={(v) => setGateway(v as PlatformGateway)} className="gap-2">
+        {/* Every way to pay; one the platform has not connected yet is shown, not selectable. */}
+        {PLATFORM_GATEWAYS.map((g) => {
+          const on = gateways.includes(g)
+          return (
+            <label key={g} className={cn('flex items-center gap-2 rounded-md border px-3 py-2 text-sm', on ? 'cursor-pointer' : 'opacity-50')}>
+              <RadioGroupItem value={g} disabled={!on} /> {GATEWAY_NAME[g]}
+              {!on && <span className="ml-auto text-xs text-muted-foreground">Not available yet</span>}
+            </label>
+          )
+        })}
       </RadioGroup>
     </FormDialog>
   )

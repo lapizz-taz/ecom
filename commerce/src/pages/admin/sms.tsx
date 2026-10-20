@@ -15,7 +15,7 @@ export default function SmsPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="SMS" description="Text customers automatically as their order moves along. Every message and its cost is logged; costs go to Finance."
-        actions={!loading && !isOff('sms') ? <SmsHeaderActions /> : undefined} />
+        actions={loading ? undefined : <SmsHeaderActions smsOn={!isOff('sms')} />} />
       {loading ? <LoadingState /> : isOff('sms') ? (
         // Super Admin → Features & Access has SMS switched off (for everyone or this business).
         <ComingSoon icon={<MessageSquare />} title="SMS is coming soon" description="Order updates by text message will open here for your business soon. Messenger, Instagram and WhatsApp work in the Inbox meanwhile." />
