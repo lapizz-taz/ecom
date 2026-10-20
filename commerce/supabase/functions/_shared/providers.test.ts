@@ -130,6 +130,38 @@ describe('SSLCommerz payment provider', () => {
     const failed = await provider(vi.fn()).verifyCallback({ status: 'FAILED', tran_id: 'PAY-1' })
     expect(failed).toMatchObject({ success: false, eventId: 'PAY-1:FAILED' })
   })
+
+  it('a payment to the platform is a service, a store order goods', () => {
+    const billing = provider(vi.fn()).buildInitForm({ ...ctx, payment: { ...ctx.payment, purpose: 'BILLING' }, order: { ...ctx.order, order_number: 'INV-7' } })
+    expect(billing.get('product_profile')).toBe('non-physical-goods')
+    expect(billing.get('product_name')).toBe('Fullfilio INV-7')
+    expect(provider(vi.fn()).buildInitForm(ctx).get('product_profile')).toBe('physical-goods')
+  })
+
+  it('reconciles by the reference: a paid one is confirmed through the validation API, nothing yet waits, then expires', async () => {
+    const paid = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ APIConnect: 'DONE', no_of_trans_found: 1, element: [{ status: 'VALID', tran_id: 'PAY-1', val_id: 'v9' }] }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'VALID', tran_id: 'PAY-1', amount: '120.00', currency: 'BDT', bank_tran_id: 'B9' }))
+    expect(await provider(paid).reconcile('PAY-1', 'PAY-1', 5)).toMatchObject({ success: true, amount: 120, reference: 'PAY-1', providerTransactionId: 'B9' })
+    expect(String(paid.mock.calls[0][0])).toContain('merchantTransIDvalidationAPI.php?tran_id=PAY-1')
+    expect(String(paid.mock.calls[1][0])).toContain('val_id=v9')
+
+    const none = () => vi.fn().mockResolvedValue(jsonResponse({ APIConnect: 'DONE', no_of_trans_found: 0, element: [] }))
+    expect(await provider(none()).reconcile('PAY-1', 'PAY-1', 10)).toBeNull()
+    expect(await provider(none()).reconcile('PAY-1', 'PAY-1', 120)).toMatchObject({ success: false, eventType: 'reconcile.expired' })
+    // Someone else's paid transaction never confirms ours.
+    const other = vi.fn().mockResolvedValue(jsonResponse({ APIConnect: 'DONE', element: [{ status: 'VALID', tran_id: 'PAY-2', val_id: 'v2' }] }))
+    expect(await provider(other).reconcile('PAY-1', 'PAY-1', 10)).toBeNull()
+    await expect(provider(vi.fn().mockResolvedValue(jsonResponse({ APIConnect: 'INVALID_REQUEST' }))).reconcile('PAY-1', 'PAY-1', 10)).rejects.toThrow(/INVALID_REQUEST/)
+  })
+
+  it('tests the store ID and password by opening a payment page nobody pays', async () => {
+    const ok = vi.fn().mockResolvedValue(jsonResponse({ status: 'SUCCESS', GatewayPageURL: 'https://pay.example/t' }))
+    expect(await provider(ok).test('https://cb')).toMatch(/Connected to SSLCommerz/)
+    expect((ok.mock.calls[0][1].body as URLSearchParams).get('total_amount')).toBe('10.00')
+    const refused = vi.fn().mockResolvedValue(jsonResponse({ status: 'FAILED', failedreason: 'Store Credential Error Or Store is De-active' }))
+    await expect(provider(refused).test()).rejects.toThrow(/refused the store ID or password: Store Credential Error/)
+  })
 })
 
 describe('Steadfast courier provider', () => {

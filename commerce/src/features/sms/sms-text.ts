@@ -19,7 +19,7 @@ export const SMS_EVENTS: Array<{ value: SmsEvent; label: string; when: string }>
 ]
 
 export function eventLabel(event: string | null | undefined): string {
-  if (!event || event === 'TEST') return 'Test message'
+  if (!event || event === 'TEST') return 'Quick SMS'
   if (event === 'ADVANCE_RECEIVED') return 'Advance received'
   return SMS_EVENTS.find((e) => e.value === event)?.label ?? event
 }

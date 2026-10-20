@@ -118,29 +118,31 @@ export function ConnectSmsDialog({ current, connect: connectFn, onClose, onDone 
   )
 }
 
-export function TestSmsDialog({ storeName, onClose, onSent, send = sendTestSms, description }: {
+export function TestSmsDialog({ storeName, onClose, onSent, send = sendTestSms, description, quick = false }: {
   storeName: string
   onClose: () => void
   onSent: () => void
   send?: (to: string, message: string) => Promise<unknown>
   description?: string
+  /** Quick SMS: one message to any number, written from scratch. */
+  quick?: boolean
 }) {
   const [to, setTo] = useState('')
-  const [message, setMessage] = useState(`Test message from ${storeName || 'our store'}. SMS is working.`)
+  const [message, setMessage] = useState(quick ? '' : `Test message from ${storeName || 'our store'}. SMS is working.`)
   const parts = smsParts(message)
   const sending = useMutation({
     mutationFn: () => send(to.trim(), message),
-    onSuccess: () => { toast.success('Test SMS sent'); onSent(); onClose() },
+    onSuccess: () => { toast.success(quick ? 'SMS sent' : 'Test SMS sent'); onSent(); onClose() },
   })
   return (
-    <FormDialog open onOpenChange={(o) => !o && onClose()} title="Send a test SMS" submitLabel="Send" busy={sending.isPending}
+    <FormDialog open onOpenChange={(o) => !o && onClose()} title={quick ? 'Quick SMS' : 'Send a test SMS'} submitLabel="Send" busy={sending.isPending}
       disabled={!/^(\+?88)?01[3-9]\d{8}$/.test(to.replace(/[\s-]/g, '')) || !message.trim()} onSubmit={() => sending.mutate()}
       description={description ?? 'Sent through the platform SMS service. It is logged and charged like any other message (free allowance first, then credits).'}>
       <Field label="Mobile number" htmlFor="test-to">
         <Input id="test-to" inputMode="tel" value={to} onChange={(e) => setTo(e.target.value)} placeholder="01XXXXXXXXX" />
       </Field>
       <Field label="Message" htmlFor="test-msg" hint={`${message.length} characters · ${parts.segments} SMS${parts.encoding === 'UNICODE' ? ' · Unicode' : ''}`}>
-        <Textarea id="test-msg" rows={3} maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} />
+        <Textarea id="test-msg" rows={quick ? 5 : 3} maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={quick ? `Hi, this is ${storeName || 'our store'}…` : undefined} />
       </Field>
     </FormDialog>
   )

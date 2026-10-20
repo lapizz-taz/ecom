@@ -16,7 +16,7 @@ export interface SmsSettings {
   connected: boolean
   provided_by_platform: true
   sender_id: string
-  /** What one SMS credit costs the business, for Finance. */
+  /** What one SMS credit costs the business: the platform's price, for Finance. Not set by the business. */
   cost_per_sms: number
   currency_text: string
 }
@@ -39,14 +39,12 @@ export async function smsOverview(from: string, to: string) {
   return fromJson<SmsOverview>(data)
 }
 
-export async function updateSmsSettings(values: { enabled?: boolean; costPerSms?: number; currencyText?: string }) {
-  const { error } = await supabase.rpc('sms_update_settings', {
-    p_enabled: values.enabled, p_cost_per_sms: values.costPerSms, p_currency_text: values.currencyText,
-  })
+export async function updateSmsSettings(values: { enabled?: boolean; currencyText?: string }) {
+  const { error } = await supabase.rpc('sms_update_settings', { p_enabled: values.enabled, p_currency_text: values.currencyText })
   if (error) throw error
 }
 
-// --- Test message (through the platform SMS service; charged like any message)
+// --- Quick SMS / test message (through the platform SMS service; charged like any message)
 export const sendTestSms = (to: string, message: string) =>
   invokeFunction<{ ok: boolean; parts: number; message_id: string | null }>('sms', { action: 'send_test', to, message })
 

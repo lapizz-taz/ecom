@@ -6,6 +6,9 @@ import { supabase } from '@/lib/supabase'
 import type { SmsProviderCode } from '@/services/sms'
 import { platformRpc } from '@/services/platform'
 
+/** The platform's own gateway accounts merchants pay the platform with (Super Admin → Billing). */
+export type PlatformGateway = 'bkash' | 'paystation' | 'sslcommerz'
+
 export type CreditType = 'SMS' | 'COURIER' | 'AI' | 'BALANCE'
 
 /** The store balance is kept in poisha (100 = 1 Tk); other credits are counted one by one. */
@@ -131,9 +134,9 @@ export const saveSmsSettings = (p: { sender_ids?: string[]; sender_id?: string; 
 export const usageReport = (service: Service, from: string, to: string, merchant?: string | null) =>
   platformRpc<UsageReport>('platform_usage_report', { p_service: service, p_from: from, p_to: to, p_merchant: merchant ?? null })
 export const billingGateways = () =>
-  platformRpc<{ gateways: Record<'bkash' | 'paystation', { enabled?: boolean; connected?: boolean; hint?: string | null; sandbox?: boolean; connected_at?: string | null; last_verified_at?: string | null }>; can_manage: boolean }>(
+  platformRpc<{ gateways: Record<PlatformGateway, { enabled?: boolean; connected?: boolean; hint?: string | null; sandbox?: boolean; connected_at?: string | null; last_verified_at?: string | null }>; can_manage: boolean }>(
     'platform_billing_gateways')
-export const toggleBillingGateway = (provider: 'bkash' | 'paystation', enabled: boolean) => platformRpc('platform_billing_gateway_toggle', { p_provider: provider, p_enabled: enabled })
+export const toggleBillingGateway = (provider: PlatformGateway, enabled: boolean) => platformRpc('platform_billing_gateway_toggle', { p_provider: provider, p_enabled: enabled })
 
 // Platform service accounts (edge function; credentials go to Vault)
 export const connectPlatformSms = (provider: SmsProviderCode, credentials: Record<string, string>, senderId: string) =>
@@ -175,9 +178,9 @@ export const testCourierPanel = (provider: CourierPanelProvider, accountId: stri
   invokeFunction<{ ok: boolean; message: string; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_test', provider, account_id: accountId, test_phone: testPhone })
 export const disconnectCourierPanel = (provider: CourierPanelProvider, accountId: string) =>
   invokeFunction<{ ok: boolean; providers: CourierPanelAccountStatus[] }>('platform-admin', { action: 'courier_panel_disconnect', provider, account_id: accountId })
-export const connectGateway = (provider: 'bkash' | 'paystation', sandbox: boolean, credentials: Record<string, string>) =>
+export const connectGateway = (provider: PlatformGateway, sandbox: boolean, credentials: Record<string, string>) =>
   invokeFunction<{ ok: boolean; message: string }>('platform-admin', { action: 'gateway_connect', provider, sandbox, credentials })
-export const disconnectGateway = (provider: 'bkash' | 'paystation') => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'gateway_disconnect', provider })
+export const disconnectGateway = (provider: PlatformGateway) => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'gateway_disconnect', provider })
 
 // ---- Order fee (charged for each approved order, from the store balance)
 export type OrderFeeCharge = 'CHARGED' | 'FREE' | 'EXEMPT' | 'UNPAID'
@@ -208,7 +211,7 @@ export interface MyCredits {
   sms_policy: { refund_undelivered: boolean; hold_hours: number }
   recharges: Array<{ id: string; number: string; total: number; status: 'OPEN' | 'PAID' | 'VOID'; lines: Array<{ label: string; credits?: number }>; created_at: string; paid_at: string | null }>
   can_pay: boolean
-  gateways: Array<'bkash' | 'paystation'>
+  gateways: PlatformGateway[]
   order_fee?: OrderFeeState
 }
 
@@ -223,7 +226,7 @@ export async function startRecharge(packageId: string) {
   return data as unknown as { id: string; number: string; total: number; gateways: string[] }
 }
 /** Sends the browser to the platform's gateway to pay one invoice (credits or subscription). */
-export async function payInvoice(invoiceId: string, provider: 'bkash' | 'paystation') {
+export async function payInvoice(invoiceId: string, provider: PlatformGateway) {
   const r = await invokeFunction<{ redirect_url: string }>('billing', { action: 'checkout', invoice_id: invoiceId, provider })
   window.location.assign(r.redirect_url)
 }

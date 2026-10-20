@@ -11,12 +11,13 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { formatDateTime } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { billingGateways, connectGateway, disconnectGateway, toggleBillingGateway } from '@/services/credits'
+import { billingGateways, connectGateway, disconnectGateway, type PlatformGateway, toggleBillingGateway } from '@/services/credits'
 
-type Code = 'bkash' | 'paystation'
+type Code = PlatformGateway
 const GATEWAYS: Record<Code, { name: string; fields: Array<{ key: string; label: string; secret?: boolean }> }> = {
   bkash: { name: 'bKash (tokenized checkout)', fields: [{ key: 'app_key', label: 'App key' }, { key: 'app_secret', label: 'App secret', secret: true }, { key: 'username', label: 'Username' }, { key: 'password', label: 'Password', secret: true }] },
   paystation: { name: 'PayStation', fields: [{ key: 'merchant_id', label: 'Merchant ID' }, { key: 'password', label: 'Password', secret: true }] },
+  sslcommerz: { name: 'SSLCommerz', fields: [{ key: 'store_id', label: 'Store ID' }, { key: 'store_password', label: 'Store password', secret: true }] },
 }
 
 function ConnectDialog({ code, onClose }: { code: Code; onClose: () => void }) {
@@ -35,7 +36,7 @@ function ConnectDialog({ code, onClose }: { code: Code; onClose: () => void }) {
       disabled={g.fields.some((f) => !values[f.key]?.trim())} onSubmit={() => connect.mutate()} submitLabel="Test and connect">
       {g.fields.map((f) => (
         <Field key={f.key} label={f.label} required>
-          <Input type={f.secret ? 'password' : 'text'} autoComplete="off" value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
+          <Input type={f.secret ? 'password' : 'text'} autoComplete={f.secret ? 'new-password' : 'off'} value={values[f.key] ?? ''} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
         </Field>
       ))}
       <label className="flex items-center gap-2 text-sm"><Switch checked={sandbox} onCheckedChange={setSandbox} /> Sandbox (test money)</label>

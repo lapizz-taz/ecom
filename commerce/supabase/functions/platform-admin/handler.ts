@@ -206,6 +206,8 @@ const schema = z.discriminatedUnion('action', [
       merchant_id: z.string().trim().min(1).max(80).optional(),
       token: z.string().trim().min(1).max(200).optional(),
       base_url: z.union([z.url({ protocol: /^https?$/ }), z.literal('')]).optional(),
+      store_id: z.string().trim().min(1).max(80).optional(),
+      store_password: z.string().trim().min(1).max(200).optional(),
     }),
   }),
   z.object({ action: z.literal('gateway_disconnect'), provider: z.enum(PLATFORM_GATEWAYS) }),
@@ -254,7 +256,9 @@ const pbxTrunkKey = (businessId: string) => `voicedrive.trunk.${businessId.repla
 const GATEWAY_FIELDS: Record<(typeof PLATFORM_GATEWAYS)[number], string[]> = {
   bkash: ['app_key', 'app_secret', 'username', 'password'],
   paystation: ['merchant_id', 'password'],
+  sslcommerz: ['store_id', 'store_password'],
 }
+const GATEWAY_LABEL: Record<(typeof PLATFORM_GATEWAYS)[number], string> = { bkash: 'bKash', paystation: 'PayStation', sslcommerz: 'SSLCommerz' }
 
 /** Finds the login for this email, or creates it (invitation e-mail, or a password the employee hands over). */
 async function ensureLogin(admin: SupabaseClient, who: { email: string; full_name: string; password?: string }, redirectTo: string) {
@@ -625,8 +629,8 @@ export default (
         } catch (error) {
           throw new HttpError(422, `Could not connect: ${(error as Error).message}`, 'CONNECTION_FAILED')
         }
-        const id = creds.username ?? creds.merchant_id ?? ''
-        const hint = `${input.provider === 'bkash' ? 'bKash' : 'PayStation'} ${id ? `${id.slice(0, 3)}••••${id.slice(-2)}` : ''}${input.sandbox ? ' (sandbox)' : ''}`.trim()
+        const id = creds.username ?? creds.merchant_id ?? creds.store_id ?? ''
+        const hint = `${GATEWAY_LABEL[input.provider]} ${id ? `${id.slice(0, 3)}••••${id.slice(-2)}` : ''}${input.sandbox ? ' (sandbox)' : ''}`.trim()
         await rpc(admin, 'platform_secret_store', { p_key: platformGatewaySecret(input.provider), p_value: creds, p_hint: hint, p_actor: user.id })
         const gateways = await rpc(admin, 'platform_billing_gateway_set', { p_provider: input.provider, p_connected: true, p_hint: hint, p_sandbox: input.sandbox, p_actor: user.id })
         return json(req, { ok: true, message, gateways })
