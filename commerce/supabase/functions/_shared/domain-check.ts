@@ -568,8 +568,11 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
         : aValues.length && !cnameValues.length ? `Delete the A record for ${name} and add a CNAME record for ${name} pointing to ${target.cname}.`
         : `Change the CNAME record for ${name} to ${target.cname}.` })
   }
-  // On Cloudflare a customer's own Cloudflare proxy in front of us works as is.
-  if (proxied && !onCloudflare && !orangeCloud) {
+  // On Cloudflare a customer's own Cloudflare proxy in front of us works as is. Records that lead to
+  // our own Cloudflare address (a CNAME, or an ALIAS at another DNS company flattened to it) are not
+  // the customer's proxy: only a domain whose DNS is at Cloudflare can have one.
+  const toOurCloudflare = cnameValues.some((v) => v.toLowerCase().replace(/\.$/, '') === target.cname) || (nameservers.length > 0 && !onCloudflareDns)
+  if (proxied && !onCloudflare && !orangeCloud && !toOurCloudflare) {
     issues.push({ code: 'CLOUDFLARE_PROXY', severity: servedByUs ? 'warning' : 'error', title: 'Your domain has a Cloudflare proxy',
       detail: servedByUs
         ? 'The store opens through it, but the proxy can delay certificate renewals and cache pages. In Cloudflare, set the record to "DNS only" (grey cloud).'

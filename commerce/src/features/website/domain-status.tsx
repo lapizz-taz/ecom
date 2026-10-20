@@ -72,9 +72,11 @@ const BAND: Record<Tone, { band: string; ring: string; title: string }> = {
 
 /** The status at a glance: a dark globe with a pin for every region the DNS check asked,
  *  over a band that is red until the domain is connected and blue once it is. */
-function StatusHero({ tone, regions, pointed }: { tone: Tone; regions: RegionCheck[] | null; pointed?: boolean }) {
-  // DNS is done; only the hosting's confirmation and the certificate are left.
-  const b = tone === 'pending' && pointed ? { ...BAND.pending, title: 'DNS is right · finishing HTTPS' } : BAND[tone]
+function StatusHero({ tone, regions, pointed, left }: { tone: Tone; regions: RegionCheck[] | null; pointed?: boolean; left?: 'txt' | 'hosting' }) {
+  // DNS is done: say what is left (the TXT record, the hosting, or only the certificate).
+  const b = tone === 'pending' && pointed
+    ? { ...BAND.pending, title: left === 'txt' ? 'DNS is right · add the TXT record' : left === 'hosting' ? 'DNS is right · waiting for the hosting' : 'DNS is right · finishing HTTPS' }
+    : BAND[tone]
   const ok = regions?.filter((r) => r.ok).length ?? 0
   return (
     <div className={cn('relative overflow-hidden bg-gradient-to-r', b.band)}>
@@ -122,7 +124,7 @@ function RecordMark({ r }: { r: RecordRow }) {
   return r.ok ? <Check className="ml-auto size-3.5 text-blue-600" aria-label="Correct" /> : <X className="ml-auto size-3.5 text-red-600" aria-label="Wrong" />
 }
 const RecordNote = ({ r }: { r: RecordRow }) =>
-  r.note || r.why ? <span className={cn('block text-[10.5px]', r.ok === false ? 'text-red-600' : 'text-muted-foreground')}>{r.note ?? r.why}</span> : null
+  r.note || r.why ? <span className={cn('block text-[10.5px] [overflow-wrap:anywhere]', r.ok === false ? 'text-red-600' : 'text-muted-foreground')}>{r.note ?? r.why}</span> : null
 /** A name to add can be copied too (a TXT name such as _fullfilio is easy to mistype). */
 const RecordName = ({ r }: { r: RecordRow }) =>
   r.ok === undefined && r.name !== '@'
@@ -137,7 +139,7 @@ function RecordsTable({ rows }: { rows: RecordRow[] }) {
         {rows.map((r, i) => (
           <li key={i} className="flex items-start gap-2 px-3 py-2 text-xs">
             <div className="min-w-0 flex-1 space-y-0.5">
-              <p className="font-mono text-[11px] text-muted-foreground"><span className="font-medium text-foreground">{r.type}</span> · <RecordName r={r} /></p>
+              <p className="font-mono text-[11px] text-muted-foreground break-all"><span className="font-medium text-foreground">{r.type}</span> · <RecordName r={r} /></p>
               <p className="font-mono text-[11px] break-all">{r.value}</p>
               <RecordNote r={r} />
             </div>
@@ -152,7 +154,7 @@ function RecordsTable({ rows }: { rows: RecordRow[] }) {
             {rows.map((r, i) => (
               <tr key={i} className="border-t align-top">
                 <td className="px-3 py-2 font-mono text-[11px]">{r.type}</td>
-                <td className="px-3 py-2 font-mono text-[11px]"><RecordName r={r} /></td>
+                <td className="px-3 py-2 font-mono text-[11px] break-all"><RecordName r={r} /></td>
                 <td className="px-3 py-2">
                   <span className="font-mono text-[11px] break-all">{r.value}</span>
                   <RecordNote r={r} />
@@ -168,7 +170,9 @@ function RecordsTable({ rows }: { rows: RecordRow[] }) {
 }
 
 function Issues({ diag, active }: { diag: DomainDiagnosis; active: boolean }) {
-  const list = diag.issues.filter((i) => i.severity !== 'info')
+  const shown = diag.issues.filter((i) => i.severity !== 'info')
+  // "The last check could not confirm the store" only when nothing else listed says why.
+  const list = shown.length > 1 ? shown.filter((i) => i.code !== 'UNCONFIRMED') : shown
   if (!list.length) return null
   // Our DNS check not answering is no fault of the domain.
   const blocking = list.some((i) => i.severity === 'error' && i.code !== 'CHECK_FAILED')
@@ -215,30 +219,16 @@ export function CloudflareSteps({ domain, target = 'stores.fullfilio.com' }: { d
   const name = domain ?? 'your-domain.com'
   const b = (t: ReactNode) => <b className="text-foreground">{t}</b>
   const rows = [
-    { type: 'CNAME', name: '@', value: target },
-    { type: 'CNAME', name: 'www', value: target },
+    { type: 'CNAME', name: '@', value: target, why: 'Proxy status: DNS only (grey cloud)' },
+    { type: 'CNAME', name: 'www', value: target, why: 'Proxy status: DNS only (grey cloud)' },
   ]
   return (
     <ol className="list-decimal space-y-2 pl-4 text-xs text-muted-foreground">
       <li>Free account at {b('dash.cloudflare.com')} → {b('Add a domain')} → {name} → {b('Free')} plan.</li>
       <li>
         {b('DNS → Records')}: delete every {b('A')} and {b('AAAA')} record named {name} (Cloudflare copied the old ones). Then {b('Add record')} twice:
-        <div className="mt-1.5 overflow-x-auto rounded-lg border">
-          <table className="w-full min-w-[320px] text-[11px]">
-            <thead><tr className="bg-muted/40 text-left text-muted-foreground"><th className="px-2 py-1 font-medium">Type</th><th className="px-2 py-1 font-medium">Name</th><th className="px-2 py-1 font-medium">Target</th><th className="px-2 py-1 font-medium">Proxy status</th><th /></tr></thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.name} className="border-t">
-                  <td className="px-2 py-1 font-mono">{r.type}</td>
-                  <td className="px-2 py-1 font-mono">{r.name}</td>
-                  <td className="px-2 py-1 font-mono break-all">{r.value}</td>
-                  <td className="px-2 py-1">DNS only (grey)</td>
-                  <td className="px-1 py-1 text-right"><Button size="icon-sm" variant="ghost" aria-label="Copy target" onClick={() => copy(r.value)}><Copy /></Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* Cards on a phone (copy buttons in view), a table from tablet width up. */}
+        <div className="mt-1.5"><RecordsTable rows={rows} /></div>
       </li>
       <li>Click the orange cloud on {b('every')} record so it turns {b('grey — DNS only')}. Email records (MX, autoconfig, autodiscover, …_domainkey) stop working when they are orange.</li>
       <li>Where you bought the domain (Hostinger → Domains → {name} → {b('Nameservers')}): choose custom nameservers and enter {b('only the two Cloudflare ones')} (…ns.cloudflare.com). Delete the old ones (Hostinger: …dns-parking.com).</li>
@@ -297,18 +287,32 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
   const needsCloudflare = !!diag?.issues.some((i) => i.code === 'NEEDS_CLOUDFLARE')
   const useWww = needsCloudflare && canEdit && onUseWww
   const okRegions = diag?.regions.filter((r) => r.ok).length ?? 0
-  const notes = diag?.issues.filter((i) => i.severity === 'info') ?? []
   const active = d.status === 'ACTIVE'
+  // Nobody issues a certificate for a MANUAL / ERROR domain, and a live one already has it.
+  const noCertComing = active || d.status === 'MANUAL' || d.status === 'ERROR'
+  const notes = diag?.issues.filter((i) => i.severity === 'info' && !(i.code === 'TLS_PENDING' && noCertComing)) ?? []
   const unchecked = !!diag && !diag.pointed && diag.issues.some((i) => i.code === 'CHECK_FAILED')
   const pointing = !diag || unchecked ? 'wait' : diag.pointed || active ? (diag.pointed && !diag.issues.some((i) => i.severity !== 'info') ? 'ok' : 'warn') : 'bad'
   const sub = d.records.find((r) => r.type === 'CNAME')?.name
-  // HTTPS: DNS already right means the certificate is only waiting to be issued.
-  const tlsState = !diag ? 'wait' : diag.tls.ok ? (diag.tls.served_by_store === false ? 'bad' : 'ok') : diag.pointed ? 'wait' : 'bad'
   // Not proven the store's yet: no certificate until the ownership TXT record is found.
   const waitingTxt = !active && d.records.some((r) => r.type === 'TXT' && r.name.startsWith('_fullfilio'))
+  // The store's server answered with an error (HTTP 5xx through the proxy): not a pass.
+  const storeDown = !!diag && diag.tls.ok && diag.tls.served_by_store !== true && (diag.tls.status ?? 0) >= 500
+  // HTTPS: DNS already right means the certificate is only waiting to be issued; a live domain
+  // has one, so a failed probe there is "not confirmed", never "being issued".
+  const tlsState = !diag ? 'wait'
+    : diag.tls.ok ? (diag.tls.served_by_store === false ? 'bad' : storeDown ? 'warn' : 'ok')
+    : active ? 'warn' : waitingTxt || noCertComing || diag.pointed ? 'wait' : 'bad'
   const tlsTitle = !diag ? 'HTTPS not checked yet'
-    : !diag.tls.ok && waitingTxt ? 'HTTPS starts once the TXT record below is found'
-    : !diag.tls.ok && diag.pointed ? 'DNS is right — the HTTPS certificate is being issued (usually a few minutes)' : diag.tls.detail
+    : diag.tls.ok ? diag.tls.detail
+    : active ? 'HTTPS could not be confirmed on the last check (the store still opens; it is checked again by itself)'
+    : waitingTxt ? 'HTTPS starts once the TXT record below is found'
+    : d.status === 'MANUAL' ? 'HTTPS starts once the domain is connected to the hosting'
+    : d.status === 'ERROR' ? 'HTTPS starts once the domain is attached to the hosting'
+    : diag.pointed ? 'DNS is right — the HTTPS certificate is being issued (usually a few minutes)' : diag.tls.detail
+  // Waiting domains are checked every 10 minutes for 3 days after the last change, then hourly.
+  const changed = Date.parse(d.status_changed_at ?? d.created_at)
+  const cadence = Number.isFinite(changed) && Date.now() - changed > 3 * 86_400_000 ? 'every hour' : 'every 10 minutes'
 
   // min-w-0: inside the popup's grid, a wide table scrolls in its own box instead of widening the popup past the screen.
   return (
@@ -328,7 +332,8 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
       </div>}
 
       <div className={cn('overflow-hidden bg-card', inDialog ? 'border-y' : 'rounded-xl border')}>
-        <StatusHero tone={tone} regions={d.diagnostics?.regions ?? null} pointed={d.diagnostics?.pointed} />
+        <StatusHero tone={tone} regions={unchecked ? null : d.diagnostics?.regions ?? null} pointed={d.diagnostics?.pointed}
+          left={waitingTxt ? 'txt' : d.status === 'MANUAL' ? 'hosting' : undefined} />
         <div className="divide-y">
           <Section icon={<StatusIcon state={pointing} />} badge={pointing === 'warn' ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">Issue</span> : undefined}
             title={!diag ? 'DNS not checked yet' : diag.pointed ? 'DNS records are pointing to Fullfilio'
@@ -353,15 +358,18 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
                 <RecordsTable rows={diag.records} />
               </div>
             )}
-            {(d.status !== 'ACTIVE' || !diag?.pointed || diag.issues.some((i) => i.code === 'WWW_SETUP')) && d.records.length > 0 && (
+            {(d.status !== 'ACTIVE' || (!diag?.pointed && !unchecked) || diag?.issues.some((i) => i.code === 'WWW_SETUP')) && d.records.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Add at your domain provider</p>
                 <RecordsTable rows={d.records} />
               </div>
             )}
           </Section>
-          <Section icon={<StatusIcon state={!diag ? 'wait' : diag.live_everywhere ? 'ok' : okRegions > 0 ? 'warn' : 'bad'} />}
-            title={!diag ? 'Regions not checked yet' : diag.live_everywhere ? <>Domain is live in <b>all regions</b> globally</> : <>Domain is live in <b>{okRegions} of {diag.regions.length}</b> regions</>}
+          {/* "Live" only for a domain the store opens on; before that it is the DNS being seen. */}
+          <Section icon={<StatusIcon state={!diag || unchecked ? 'wait' : diag.live_everywhere ? 'ok' : okRegions > 0 ? 'warn' : 'bad'} />}
+            title={!diag ? 'Regions not checked yet' : unchecked ? 'Regions could not be checked right now'
+              : diag.live_everywhere ? (active ? <>Domain is live in <b>all regions</b> globally</> : <>DNS seen in <b>all regions</b></>)
+              : <>{active ? 'Domain is live in' : 'DNS seen in'} <b>{okRegions} of {diag.regions.length}</b> regions</>}
             sub={diag ? `Last checked at ${formatDateTime(diag.checked_at)}` : undefined}>
             {diag && (
               <>
@@ -386,10 +394,10 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground">
-          <span className="w-full min-w-0 sm:w-auto sm:flex-1">
+          <span className="w-full min-w-0 sm:w-auto sm:flex-1 [overflow-wrap:anywhere]">
             {d.detail}
             {d.status !== 'ACTIVE' && d.status !== 'REMOVED' && d.status !== 'MANUAL' && (
-              <span className="block">We keep checking by ourselves every 10 minutes — you can close this, the store goes live on its own.</span>
+              <span className="block">We keep checking by ourselves {cadence} — you can close this, the store goes live on its own.</span>
             )}
           </span>
           {canEdit && (

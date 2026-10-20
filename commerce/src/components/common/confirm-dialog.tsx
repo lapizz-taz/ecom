@@ -37,8 +37,9 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+          {/* A long domain in the title is one unbreakable word: let it wrap so the buttons stay in view. */}
+          <DialogTitle className="[overflow-wrap:anywhere]">{title}</DialogTitle>
+          {description && <DialogDescription className="[overflow-wrap:anywhere]">{description}</DialogDescription>}
         </DialogHeader>
         {children}
         {reason && (

@@ -54,7 +54,8 @@ function DomainsTab() {
   const list = useQuery({
     queryKey: ['store-domains'], queryFn: listDomains,
     // A domain still waiting is re-checked on the server every 10 minutes: show it going live without a reload.
-    refetchInterval: (q) => (q.state.data?.domains.some((d) => d.status !== 'ACTIVE' && d.status !== 'MANUAL') ? 60_000 : false),
+    // Waiting domains (MANUAL too: the scheduled check can connect them) refresh by themselves.
+    refetchInterval: (q) => (q.state.data?.domains.some((d) => d.status !== 'ACTIVE') ? 60_000 : false),
   })
   // Set when main domains connect through Fullfilio's own server (an A record, at any DNS company).
   const rootIp = list.data?.root_ip ?? null
@@ -196,7 +197,8 @@ function DomainsTab() {
 function removeNote(domains: StoreDomain[], removing: string | null, featureOff: boolean): string {
   if (!removing) return ''
   const d = domains.find((x) => x.domain === removing)
-  const twin = domains.find((x) => x.domain === (removing.startsWith('www.') ? removing.slice(4) : `www.${removing}`))
+  // Only a proven twin keeps the domain open (an unproven one serves nobody yet).
+  const twin = domains.find((x) => x.domain === (removing.startsWith('www.') ? removing.slice(4) : `www.${removing}`) && !!x.verified_at)
   const first = twin ? `${twin.domain} stays connected, so ${removing} keeps opening the store through it.`
     : 'The store stops opening on this domain. Your default address keeps working.'
   const back = featureOff ? ' Custom domains are off for your store, so it cannot be added again afterwards.'
