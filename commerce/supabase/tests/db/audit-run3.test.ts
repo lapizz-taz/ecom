@@ -254,7 +254,7 @@ describe('order RPCs: no costs for the Call role', () => {
 
 describe('WhatsApp sign-up requests', () => {
   const request = (over: Record<string, unknown> = {}) =>
-    JSON.stringify({ business_name: 'Nadia Crafts', full_name: 'Nadia Rahman', phone: '01712345678', ...over })
+    JSON.stringify({ business_name: 'Nadia Crafts', full_name: 'Nadia Rahman', phone: '01712345678', email: 'nadia@shop.example', ...over })
 
   it('a second request with the same phone does not overwrite the first; a few per hour per number', () =>
     inTx(async (db) => {
@@ -301,11 +301,11 @@ describe('open leads (run 3)', () => {
       const from = (ip: string) => db.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'cf-connecting-ip': ip })])
       await from('203.0.113.50')
       for (let i = 0; i < 5; i++) {
-        await db.query(`select public.public_signup_request($1)`, [JSON.stringify({ business_name: `Shop ${i}`, full_name: 'Some One', phone: `0171200010${i}` })])
+        await db.query(`select public.public_signup_request($1)`, [JSON.stringify({ business_name: `Shop ${i}`, full_name: 'Some One', phone: `0171200010${i}`, email: `shop${i}@shop.example` })])
       }
-      await expectError(db, `select public.public_signup_request($1)`, [JSON.stringify({ business_name: 'Shop X', full_name: 'Some One', phone: '01712000199' })], /from this network/)
+      await expectError(db, `select public.public_signup_request($1)`, [JSON.stringify({ business_name: 'Shop X', full_name: 'Some One', phone: '01712000199', email: 'shopx@shop.example' })], /from this network/)
       await from('198.51.100.60')
-      await db.query(`select public.public_signup_request($1)`, [JSON.stringify({ business_name: 'Real Shop', full_name: 'Real Person', phone: '01812000100' })])
+      await db.query(`select public.public_signup_request($1)`, [JSON.stringify({ business_name: 'Real Shop', full_name: 'Real Person', phone: '01812000100', email: 'real@shop.example' })])
     }))
 
   it("refuses a store phone pattern with nested repetition", () =>

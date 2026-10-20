@@ -7,6 +7,7 @@
 -- first payment before the admin opens; a WhatsApp sign-up the platform team activates is
 -- taken as paid for the first period (as for plans without a trial).
 
+-- Text is compared without carriage returns (a script pasted on Windows has CRLF line ends).
 create or replace function pg_temp.lf(p text) returns text
 language sql immutable as $$ select replace(p, E'\r', '') $$;
 
@@ -84,8 +85,8 @@ $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public.platform_merchant_activate(uuid,text)'::regprocedure));
-  v_from text := $a$      s := public._signup_offer_apply(s.id, v_plan.price);$a$;
-  v_to text := $b$      s := public._signup_offer_apply(s.id, v_plan.price, true);$b$;
+  v_from text := pg_temp.lf($a$      s := public._signup_offer_apply(s.id, v_plan.price);$a$);
+  v_to text := pg_temp.lf($b$      s := public._signup_offer_apply(s.id, v_plan.price, true);$b$);
 begin
   if position('_signup_offer_apply(s.id, v_plan.price, true)' in v_old) > 0 then
     return;
@@ -100,10 +101,10 @@ end $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public._billing_invoice_for(public.subscriptions,timestamptz,timestamptz)'::regprocedure));
-  v_from text := $a$      'amount', p_sub.price, 'kind', 'plan');
+  v_from text := pg_temp.lf($a$      'amount', p_sub.price, 'kind', 'plan');
     v_total := p_sub.price;
-  end if;$a$;
-  v_to text := $b$      'amount', p_sub.price, 'kind', 'plan');
+  end if;$a$);
+  v_to text := pg_temp.lf($b$      'amount', p_sub.price, 'kind', 'plan');
     v_total := p_sub.price;
     if coalesce(p_sub.setup_fee, 0) > 0 and not exists (
          select 1 from public.billing_invoices i where i.subscription_id = p_sub.id and i.status <> 'VOID'
@@ -111,7 +112,7 @@ declare
       v_lines := v_lines || jsonb_build_object('label', 'One-time setup fee', 'amount', p_sub.setup_fee, 'kind', 'setup_fee');
       v_total := v_total + p_sub.setup_fee;
     end if;
-  end if;$b$;
+  end if;$b$);
 begin
   if position('setup_fee' in v_old) > 0 then
     return;
@@ -126,11 +127,11 @@ end $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public.my_plan()'::regprocedure));
-  v_from text := $a$'intro_price', s.intro_price, 'intro_until', s.intro_until,$a$;
-  v_to text := $b$'intro_price', s.intro_price, 'intro_until', s.intro_until,
+  v_from text := pg_temp.lf($a$'intro_price', s.intro_price, 'intro_until', s.intro_until,$a$);
+  v_to text := pg_temp.lf($b$'intro_price', s.intro_price, 'intro_until', s.intro_until,
       'setup_fee_pending', case when coalesce(s.setup_fee, 0) > 0 and not exists (
         select 1 from public.billing_invoices i where i.subscription_id = s.id and i.status <> 'VOID'
-          and i.lines @> '[{"kind": "setup_fee"}]'::jsonb) then s.setup_fee end,$b$;
+          and i.lines @> '[{"kind": "setup_fee"}]'::jsonb) then s.setup_fee end,$b$);
 begin
   if position('setup_fee_pending' in v_old) > 0 then
     return;

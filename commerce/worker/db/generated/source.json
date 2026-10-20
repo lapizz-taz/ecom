@@ -1,5 +1,5 @@
 {
-  "migrations": 162,
-  "last": "20261121001500_signup_paid_trial.sql",
-  "sha256": "3f8e5387bbd7af2c000b0ec3450c84b60fb26a97bdfb0bf1081d05e8e6ac8b91"
+  "migrations": 163,
+  "last": "20261121001600_signup_request_email.sql",
+  "sha256": "28be53573c5b04dd3208a8ab846cc6da8f9c6cd950c86201da797bed0e162dc3"
 }
