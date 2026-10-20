@@ -2,6 +2,7 @@ import { Menu, Moon, Sun, UserPlus, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation } from 'react-router'
 import { Wordmark } from '@/components/brand/logo'
+import { SocialLinks } from '@/components/brand/social'
 import { captureNavigation } from '@/lib/attribution'
 
 // The frame every page of the Fullfilio website shares: header, footer and
@@ -120,7 +121,10 @@ export function SiteFooter() {
           </div>
         ))}
       </div>
-      <p className="mx-auto max-w-6xl px-5 pb-10 text-[12px] text-(--s-subtle)">© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</p>
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 pb-10">
+        <p className="text-[12px] text-(--s-subtle)">© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</p>
+        <SocialLinks linkClassName="grid size-8 place-items-center rounded-full text-(--s-muted) hover:bg-(--s-tint-strong) hover:text-(--s-fg)" />
+      </div>
     </footer>
   )
 }

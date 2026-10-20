@@ -1,6 +1,7 @@
 import { ArrowRight, Bug, ChevronDown, Keyboard, LifeBuoy, Lightbulb, Mail, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
+import { SocialLinks } from '@/components/brand/social'
 import { PageHeader } from '@/components/common/page-header'
 import { SearchInput } from '@/components/common/search-input'
 import { EmptyState } from '@/components/common/states'
@@ -118,6 +119,10 @@ export default function HelpCenterPage() {
                   <Badge variant="neutral">{a.role === 'OWNER' ? 'Owner' : 'Admin'}</Badge>
                 </a>
               ))}
+              <div className="mt-2 border-t pt-3">
+                <p className="text-xs text-muted-foreground">Fullfilio news, tips and updates</p>
+                <SocialLinks withHandles className="mt-2" linkClassName="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted/40" />
+              </div>
             </CardContent>
           </Card>
           <Card>
