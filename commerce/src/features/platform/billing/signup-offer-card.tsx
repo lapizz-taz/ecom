@@ -14,11 +14,12 @@ import { formatMoney } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { listPlans, platformSettings, savePlatformSetting } from '@/services/billing'
 
-interface Offer { enabled: boolean; trial_days: string; first_price: string; first_periods: string }
+interface Offer { enabled: boolean; trial_days: string; trial_price: string; first_price: string; first_periods: string; setup_fee: string }
 
 /**
- * The new-business offer: a short free trial, then the first month(s) at an introductory price,
- * then the plan's normal price. Applies to businesses that sign up while it is on (paid plans).
+ * The new-business offer: an optional trial (free or paid), the first month(s) at an introductory price, an
+ * optional one-time fee (with the first month at the plan's price), then the plan's normal price.
+ * Applies to businesses that sign up while it is on (paid plans).
  */
 export function SignupOfferCard() {
   const { can } = usePlatform()
@@ -27,12 +28,13 @@ export function SignupOfferCard() {
   const plans = useQuery({ queryKey: ['platform-plans'], queryFn: listPlans })
   const [draft, setDraft] = useState<Offer | null>(null)
   const [confirm, setConfirm] = useState(false)
-  const server = settings.data?.signup_offer?.value as Partial<{ enabled: boolean; trial_days: number; first_price: number | null; first_periods: number }> | undefined
+  const server = settings.data?.signup_offer?.value as Partial<{ enabled: boolean; trial_days: number; trial_price: number | null; first_price: number | null; first_periods: number; setup_fee: number | null }> | undefined
+  const saved = (v: number | null | undefined) => (v == null ? '' : String(v))
   useEffect(() => {
     if (!settings.data || draft) return
     setDraft({
-      enabled: !!server?.enabled, trial_days: String(server?.trial_days ?? 2),
-      first_price: server?.first_price == null ? '' : String(server.first_price), first_periods: String(server?.first_periods ?? 1),
+      enabled: !!server?.enabled, trial_days: String(server?.trial_days ?? 2), trial_price: saved(server?.trial_price),
+      first_price: saved(server?.first_price), first_periods: String(server?.first_periods ?? 1), setup_fee: saved(server?.setup_fee),
     })
   }, [settings.data, server, draft])
   const save = useMutation({
@@ -43,11 +45,13 @@ export function SignupOfferCard() {
   if (!draft) return <LoadingState />
   const editable = can('subscriptions', 'manage')
   const days = Number(draft.trial_days)
+  const trialPrice = draft.trial_price.trim() === '' ? null : Number(draft.trial_price)
   const price = draft.first_price.trim() === '' ? null : Number(draft.first_price)
   const months = Number(draft.first_periods) || 1
+  const fee = Number(draft.setup_fee) || 0
   const example = (plans.data?.plans ?? []).find((p) => p.status === 'ACTIVE' && p.is_public && Number(p.price) > 0)
-  const dirty = draft.enabled !== !!server?.enabled || draft.trial_days !== String(server?.trial_days ?? 2)
-    || draft.first_price !== (server?.first_price == null ? '' : String(server.first_price)) || draft.first_periods !== String(server?.first_periods ?? 1)
+  const dirty = draft.enabled !== !!server?.enabled || draft.trial_days !== String(server?.trial_days ?? 2) || draft.trial_price !== saved(server?.trial_price)
+    || draft.first_price !== saved(server?.first_price) || draft.first_periods !== String(server?.first_periods ?? 1) || draft.setup_fee !== saved(server?.setup_fee)
 
   return (
     <Card>
@@ -57,30 +61,38 @@ export function SignupOfferCard() {
           <Badge variant={server?.enabled ? 'success' : 'neutral'}>{server?.enabled ? 'On' : 'Off'}</Badge>
         </CardTitle>
         <CardDescription>
-          A short free trial, then the first month at a low price, then the plan&apos;s normal price. For businesses that sign up while it is on (paid plans only).
+          What a new business pays: an optional trial (free or paid), or the first month at a low price, an optional one-time fee, then the plan&apos;s normal price. For businesses that sign up while it is on (paid plans only).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <label className="flex items-center gap-2 text-sm font-medium">
           <Switch checked={draft.enabled} disabled={!editable} onCheckedChange={(v) => setDraft({ ...draft, enabled: v })} /> Offer on
         </label>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Free trial (days)" hint="0 for no trial">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Trial (days)" hint="0 for no trial">
             <Input type="number" min={0} max={90} inputMode="numeric" disabled={!editable} value={draft.trial_days} onChange={(e) => setDraft({ ...draft, trial_days: e.target.value })} />
           </Field>
-          <Field label="First month price (Tk)" hint="Empty: the plan price">
+          <Field label="Trial price (Tk)" hint="Paid before the admin opens. Empty: a free trial">
+            <Input type="number" min={0} step="1" inputMode="decimal" disabled={!editable} value={draft.trial_price} onChange={(e) => setDraft({ ...draft, trial_price: e.target.value })} />
+          </Field>
+          <Field label="First month price (Tk)" hint="Instead of a trial price. Empty: the plan price">
             <Input type="number" min={0} step="1" inputMode="decimal" disabled={!editable} value={draft.first_price} onChange={(e) => setDraft({ ...draft, first_price: e.target.value })} />
           </Field>
           <Field label="Months at that price">
             <Input type="number" min={1} max={12} inputMode="numeric" disabled={!editable} value={draft.first_periods} onChange={(e) => setDraft({ ...draft, first_periods: e.target.value })} />
           </Field>
+          <Field label="One-time fee (Tk)" hint="Once, with the first full-price month. Empty: none">
+            <Input type="number" min={0} step="1" inputMode="decimal" disabled={!editable} value={draft.setup_fee} onChange={(e) => setDraft({ ...draft, setup_fee: e.target.value })} />
+          </Field>
         </div>
         {example && Number.isFinite(days) && (
           <p className="rounded-[10px] bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-            A business on {example.name}: {days > 0 ? `${days} day${days === 1 ? '' : 's'} free, ` : ''}
-            {price != null && price < Number(example.price) ? `then ${formatMoney(price)} for the first ${months > 1 ? `${months} months` : 'month'}, ` : ''}
-            then {formatMoney(example.price)} a month. When the trial ends unpaid the account waits for that first payment
-            (&quot;Trial ended, first payment not made&quot; under Rules).
+            A business on {example.name}: {days > 0 ? (trialPrice ? `${formatMoney(trialPrice)} for a ${days}-day trial, then ` : `${days} day${days === 1 ? '' : 's'} free, then `) : ''}
+            {price != null && price < Number(example.price) ? `${formatMoney(price)} for the first ${months > 1 ? `${months} months` : 'month'}, then ` : ''}
+            {fee > 0 ? `a one-time ${formatMoney(fee)} fee + ${formatMoney(example.price)} for the next month, then ` : ''}
+            {formatMoney(example.price)} a month.{' '}
+            {days > 0 && !trialPrice ? 'The admin opens at once; after the free trial it waits for the payment to continue.' : 'The admin opens only once the first payment is made.'}{' '}
+            When the offer ends the account waits for the payment to continue (&quot;New business: payment to continue not made&quot; under Rules).
           </p>
         )}
         {editable && <Button size="sm" disabled={!dirty || save.isPending} onClick={() => setConfirm(true)}>Save offer</Button>}

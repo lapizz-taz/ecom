@@ -431,6 +431,7 @@ export class Compiler implements SqlHelp {
   private cteNames = new Set<string>()
   /** Depth inside UNION/INTERSECT/EXCEPT members, which cannot carry their own ORDER BY. */
   private members = 0
+  private containsN = 0
 
   private groupItem(g: Expr, scope: QScope, raw: SelItem[], items: Array<{ sql: string; name: string }>): string {
     if (g.k === 'lit' && typeof g.v === 'number') return items[g.v - 1]?.sql ?? String(g.v)
@@ -1227,7 +1228,16 @@ export class Compiler implements SqlHelp {
       const v = small.c.v
       if (Array.isArray(v)) {
         if (!v.length) return '1'
-        return `(${v.map((x) => `EXISTS (SELECT 1 FROM json_each(${big.sql}) WHERE value = ${this.bind(typeof x === 'object' && x !== null ? JSON.stringify(x) : x, guessScalar(x))})`).join(' AND ')})`
+        return `(${v.map((x) => {
+          // An object or array element matches an element that contains it, as in Postgres
+          // ('[{"kind":"fee","amount":5}]' @> '[{"kind":"fee"}]').
+          if (x !== null && typeof x === 'object') {
+            const e = `"_ce${this.containsN++}"`
+            const kind = Array.isArray(x) ? 'array' : 'object'
+            return `EXISTS (SELECT 1 FROM json_each(${big.sql}) AS ${e} WHERE ${e}."type" = '${kind}' AND ${this.contains({ sql: `${e}."value"`, t: 'jsonb' }, { sql: '', t: 'jsonb', c: { t: 'jsonb', v: x } })})`
+          }
+          return `EXISTS (SELECT 1 FROM json_each(${big.sql}) WHERE value = ${this.bind(x, guessScalar(x))})`
+        }).join(' AND ')})`
       }
       if (v && typeof v === 'object') {
         const entries = Object.entries(v as Record<string, unknown>)

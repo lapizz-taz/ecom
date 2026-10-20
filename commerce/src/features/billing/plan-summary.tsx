@@ -20,7 +20,8 @@ function accessExplanation(p: MyPlan): string | null {
   const s = p.subscription
   if (!s) return 'Your subscription has ended.'
   if (trialEnded(s)) {
-    return `Your free trial has ended. Pay ${formatMoney(s.intro_price!)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'} to continue (then ${formatMoney(s.price)} a ${s.billing_interval === 'YEAR' ? 'year' : 'month'}).`
+    if (s.current_period_end) return `Your ${s.intro_trial ? 'trial' : 'introductory price'} has ended. Pay your invoice to continue.`
+    return `Your free trial has ended. Pay ${formatMoney(s.intro_price!)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'} to continue (${afterIntro(s)}).`
   }
   if (s.status === 'PAST_DUE') return `An invoice is unpaid${s.grace_until ? ` since before ${formatDate(s.grace_until)}` : ''}. Pay it to restore full access.`
   if (s.status === 'PAUSED') return 'Your subscription is paused.'
@@ -29,9 +30,18 @@ function accessExplanation(p: MyPlan): string | null {
   return null
 }
 
-/** The new-business trial is over and its first (introductory-price) invoice is unpaid. */
+/** "then a one-time ৳1,000 fee + ৳990 a month": what follows the introductory price. */
+export function afterIntro(s: NonNullable<MyPlan['subscription']>): string {
+  return `then ${s.setup_fee_pending ? `a one-time ${formatMoney(s.setup_fee_pending)} fee + ` : ''}${formatMoney(s.price)} a ${s.billing_interval === 'YEAR' ? 'year' : 'month'}`
+}
+
+/**
+ * The new-business offer is over and the payment to continue is not made: the first invoice
+ * after a free trial, or the first at the plan's price after a paid trial or introductory price.
+ */
 export function trialEnded(s: NonNullable<MyPlan['subscription']>): boolean {
-  return s.status === 'PAST_DUE' && s.intro_price != null && !s.current_period_end
+  if (s.status !== 'PAST_DUE' || s.intro_price == null) return false
+  return !s.current_period_end || (!!s.intro_until && new Date(s.current_period_end) <= new Date(s.intro_until))
 }
 
 function usePlan() {
@@ -77,7 +87,9 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
                 </p>
               )}
               {s.status === 'ACTIVE' && s.intro_price != null && s.intro_until && s.current_period_end && new Date(s.current_period_end) <= new Date(s.intro_until) && (
-                <p className="text-muted-foreground">Introductory price {formatMoney(s.intro_price)} until {formatDate(s.intro_until)}; then {formatMoney(s.price)} / {s.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
+                <p className="text-muted-foreground">
+                  {s.intro_trial ? `Trial (${formatMoney(s.intro_price)}) until ${formatDateTime(s.intro_until)}` : `Introductory price ${formatMoney(s.intro_price)} until ${formatDate(s.intro_until)}`}; {afterIntro(s)}
+                </p>
               )}
               {s.status === 'ACTIVE' && s.current_period_end && <p className="text-muted-foreground">Renews {formatDate(s.current_period_end)}{s.cancel_at_period_end && ' — set to end then'}</p>}
               {canPayOnline && s.price > 0 && ['ACTIVE', 'TRIALING'].includes(s.status) && !s.cancel_at_period_end && open.length === 0 && (

@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/format'
 import { normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import {
-  clearSignupDraft, planOfferText, readSignupDraft, saveSignupDraft, selfOnboard, signInOnceConfirmed, type SignupBusiness, signupOptions, signUpOwner, type SignupPlan, signupRequest, type SignupRequestResult, whatsappLink,
+  clearSignupDraft, planOfferText, planThenText, readSignupDraft, saveSignupDraft, selfOnboard, signInOnceConfirmed, type SignupBusiness, signupOptions, signUpOwner, type SignupPlan, signupRequest, type SignupRequestResult, whatsappLink,
 } from '@/services/onboarding'
 
 const EMPTY: SignupBusiness = {
@@ -239,7 +239,7 @@ function planLabel(options: { plans: SignupPlan[] }, business: SignupBusiness) {
   const plan = options.plans.find((p) => p.code === business.plan_code)
   if (!plan) return 'No plan chosen'
   const offer = planOfferText(plan, formatMoney)
-  return `${plan.name} plan${offer ? ` · ${offer}` : ''}`
+  return `${plan.name} plan${offer ? ` · ${offer} · ${planThenText(plan, formatMoney)}` : ''}`
 }
 
 /** Both ways are switched on: the visitor picks one. */

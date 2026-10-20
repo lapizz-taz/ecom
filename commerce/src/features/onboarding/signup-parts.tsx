@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatMoney, formatNumber } from '@/lib/format'
 import { isValidWhatsapp, normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { BUSINESS_TYPES, ORDER_VOLUMES, planOfferText, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
+import { BUSINESS_TYPES, ORDER_VOLUMES, planOfferText, planThenText, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
 
 const BD_MOBILE = /^01[3-9][0-9]{8}$/
 
@@ -59,11 +59,11 @@ export function PlanPicker({ options, value, onChange }: { options: SignupOption
             </div>
             {(p.trial_days > 0 || p.offer?.first_price != null) && (
               <p className="mt-3 inline-flex flex-wrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                {planOfferText(p, formatMoney)}{p.trial_days > 0 && ' · no payment now'}
+                {planOfferText(p, formatMoney)}{p.trial_days > 0 && !p.offer?.trial_price ? ' · no payment now' : ' · pay to start'}
               </p>
             )}
-            {p.offer?.first_price != null && Number(p.price) > 0 && (
-              <p className="mt-1.5 text-[11px] text-muted-foreground">After that {formatMoney(p.price)} per {INTERVAL[p.billing_interval?.toUpperCase()] ?? 'month'}.</p>
+            {(p.offer?.first_price != null || !!p.offer?.trial_price || !!p.offer?.setup_fee) && Number(p.price) > 0 && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">After that, {planThenText(p, formatMoney).replace(/^then /, '')}.</p>
             )}
             <ul className="mt-3 grid gap-x-4 gap-y-1.5 text-[13px] text-muted-foreground sm:grid-cols-2">
               {[...planLimits(p), ...p.features.slice(0, 6)].map((f) => (

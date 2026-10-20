@@ -5,7 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { PlanSummary, trialEnded } from '@/features/billing/plan-summary'
+import { afterIntro, PlanSummary, trialEnded } from '@/features/billing/plan-summary'
 import { formatDate, formatMoney } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { myPlan, type MyPlan, renewNow } from '@/services/billing'
@@ -23,7 +23,9 @@ export function AccountRestricted({ email, onSignOut }: { email: string; onSignO
       <div className="flex items-start gap-3">
         <div className="rounded-full bg-red-50 p-2.5 text-red-600"><Lock className="size-5" /></div>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold">{plan.data?.subscription && trialEnded(plan.data.subscription) ? 'Your free trial has ended' : 'This account is restricted'}</h1>
+          <h1 className="text-lg font-semibold">{plan.data?.subscription && trialEnded(plan.data.subscription)
+            ? `Your ${!plan.data.subscription.current_period_end ? 'free trial' : plan.data.subscription.intro_trial ? 'trial' : 'introductory price'} has ended`
+            : 'This account is restricted'}</h1>
           <p className="text-sm text-muted-foreground">
             Signed in as {email}. Your data is kept and nothing has been deleted.
             {plan.data?.subscription && trialEnded(plan.data.subscription) && ' Pay the invoice below to continue; everything opens as soon as the payment is confirmed.'}
@@ -76,7 +78,10 @@ function ActivationScreen({ plan, email, onSignOut }: { plan: MyPlan; email: str
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{a.state === 'awaiting_payment' ? 'Activate your account' : 'Almost there'}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {plan.merchant.name}{s ? ` · ${s.plan.name} plan, ${formatMoney(s.price)} / ${s.billing_interval === 'YEAR' ? 'year' : 'month'}` : ''}
+          {plan.merchant.name}
+          {s && (s.intro_price != null
+            ? ` · ${s.plan.name} plan: ${formatMoney(s.intro_price)} for ${s.intro_trial ? 'the trial' : `the first ${s.billing_interval === 'YEAR' ? 'year' : 'month'}`}, ${afterIntro(s)}`
+            : ` · ${s.plan.name} plan, ${formatMoney(s.price)} / ${s.billing_interval === 'YEAR' ? 'year' : 'month'}`)}
         </p>
       </div>
 
@@ -84,7 +89,7 @@ function ActivationScreen({ plan, email, onSignOut }: { plan: MyPlan; email: str
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Pay to start</CardTitle>
-            <CardDescription>Your admin opens as soon as the payment is confirmed by {gateways.length ? gateways.map((g) => (g === 'bkash' ? 'bKash' : 'PayStation')).join(' or ') : 'the payment gateway'}.</CardDescription>
+            <CardDescription>Your admin opens as soon as the payment is confirmed by {gateways.length ? gateways.map((g) => ({ bkash: 'bKash', paystation: 'PayStation', sslcommerz: 'SSLCommerz' })[g] ?? g).join(' or ') : 'the payment gateway'}.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             {returned === 'cancelled' || returned === 'failed' ? (

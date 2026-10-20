@@ -233,17 +233,20 @@ export class Context {
       if (!merchant) return 'BLOCKED'
       const rulesRow = this.sql.all("SELECT value FROM platform_settings WHERE key = 'access_rules'")[0]
       const rules = (rulesRow ? JSON.parse(String(rulesRow.value)) : {}) as Record<string, AccessMode | undefined>
-      const m = this.sql.all('SELECT status FROM merchants WHERE id = ?', [merchant])[0]
+      const m = this.sql.all('SELECT status, onboarding FROM merchants WHERE id = ?', [merchant])[0]
       const status = m?.status as string | undefined
       if (!status || status === 'CLOSED') return 'BLOCKED'
+      // A new business waiting for its first payment or for the team to activate it.
+      const activation = m.onboarding ? (JSON.parse(String(m.onboarding)) as { activation?: string }).activation : undefined
+      if (activation === 'awaiting_payment' || activation === 'awaiting_whatsapp') return 'BLOCKED'
       const a = status === 'SUSPENDED' ? rules.MERCHANT_SUSPENDED ?? 'BLOCKED' : status === 'ONBOARDING' ? rules.MERCHANT_ONBOARDING ?? 'FULL' : 'FULL'
       // The current subscription; when none, the last one that ended.
       const s = this.sql.all(
         `SELECT id, status, grace_until, intro_until, current_period_end FROM subscriptions WHERE merchant_id = ?
           ORDER BY (ended_at IS NULL) DESC, ended_at IS NULL, ended_at DESC, created_at DESC LIMIT 1`, [merchant])[0]
       const key = !s ? 'NO_SUBSCRIPTION'
-        // The new-business trial ended and its first invoice is unpaid.
-        : s.status === 'PAST_DUE' && s.intro_until != null && s.current_period_end == null ? 'TRIAL_ENDED'
+        // The new-business offer ended and the payment to continue is not made.
+        : s.status === 'PAST_DUE' && s.intro_until != null && (s.current_period_end == null || String(s.current_period_end) <= String(s.intro_until)) ? 'TRIAL_ENDED'
         : s.status === 'PAST_DUE' && s.grace_until && String(s.grace_until) < this.now ? 'PAST_DUE_AFTER_GRACE'
           : String(s.status)
       const b = rules[key] ?? (key === 'TRIAL_ENDED' ? 'BLOCKED' : 'FULL')

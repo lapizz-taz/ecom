@@ -175,7 +175,7 @@ function Invoices() {
 
 const ACCESS_STATES: Array<{ key: string; label: string }> = [
   { key: 'TRIALING', label: 'On a free trial' },
-  { key: 'TRIAL_ENDED', label: 'Trial ended, first payment not made (new business offer)' },
+  { key: 'TRIAL_ENDED', label: 'New business: payment to continue not made (after the trial or first month)' },
   { key: 'ACTIVE', label: 'Paid up' },
   { key: 'PAST_DUE', label: 'Invoice unpaid, within the grace period' },
   { key: 'PAST_DUE_AFTER_GRACE', label: 'Invoice unpaid after the grace period' },
