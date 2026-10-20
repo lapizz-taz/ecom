@@ -6,7 +6,7 @@ import { LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PlanSummary, trialEnded } from '@/features/billing/plan-summary'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatMoney } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { myPlan, type MyPlan, renewNow } from '@/services/billing'
 import { payInvoice } from '@/services/credits'
@@ -25,7 +25,7 @@ export function AccountRestricted({ email, onSignOut }: { email: string; onSignO
         <div className="rounded-full bg-red-50 p-2.5 text-red-600"><Lock className="size-5" /></div>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold">{plan.data?.subscription && trialEnded(plan.data.subscription)
-            ? `Your ${!plan.data.subscription.current_period_end ? 'free trial' : plan.data.subscription.intro_trial ? 'trial' : 'introductory price'} has ended`
+            ? `Your ${!plan.data.subscription.current_period_end ? 'free trial' : plan.data.subscription.intro_trial ? `${formatMoney(plan.data.subscription.intro_price!)} offer` : 'introductory price'} has ended`
             : 'This account is restricted'}</h1>
           <p className="text-sm text-muted-foreground">
             Signed in as {email}. Your data is kept and nothing has been deleted.

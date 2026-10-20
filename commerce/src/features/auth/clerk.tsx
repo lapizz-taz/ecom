@@ -1,5 +1,5 @@
 import { ClerkProvider, useAuth as useClerkAuth, useClerk } from '@clerk/clerk-react'
-import { isClerkAPIResponseError } from '@clerk/clerk-react/errors'
+import { isClerkAPIResponseError, isClerkRuntimeError } from '@clerk/clerk-react/errors'
 import { dark } from '@clerk/themes'
 import type { Session } from '@supabase/supabase-js'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
@@ -198,6 +198,18 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
 }
 
 /** Clerk's error in words a person can act on. */
+/**
+ * A request that never reached the sign-in service (offline, a dropped connection, an ad
+ * blocker or VPN in the way). ClerkJS words these "ClerkJS: Network error at … Failed to fetch".
+ */
+export function clerkNetworkError(error: unknown): boolean {
+  if (isClerkRuntimeError(error) && error.code === 'network_error') return true
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /network error|failed to fetch|networkerror|load failed|network connection was lost|err_internet_disconnected/i.test(message)
+}
+
+export const CLERK_NETWORK_MESSAGE = 'We could not reach the sign-in service. Check your internet connection, turn off any ad blocker or VPN for this site, and try again.'
+
 export function clerkErrorMessage(error: unknown): string {
   if (isClerkAPIResponseError(error)) {
     const first = error.errors[0]
@@ -206,12 +218,25 @@ export function clerkErrorMessage(error: unknown): string {
       case 'form_identifier_not_found': return 'Email or password is incorrect'
       case 'form_code_incorrect': return 'That code is not right. Check the latest e-mail and try again.'
       case 'verification_expired': return 'That code has expired. Send a new one.'
+      case 'verification_failed': return 'Too many wrong codes. Send a new one.'
       case 'form_identifier_exists': return 'This e-mail already has an account. Sign in instead.'
+      case 'form_password_pwned': return 'This password has appeared in a data leak elsewhere. Choose a different one.'
+      case 'form_password_length_too_short': return 'The password is too short.'
+      case 'form_password_not_strong_enough':
+      case 'form_password_validation_failed': return 'Choose a stronger password: longer, with letters and numbers.'
+      case 'form_param_format_invalid': return first.meta?.paramName === 'email_address' ? 'Enter a valid e-mail address.' : (first.longMessage ?? first.message)
+      case 'captcha_invalid':
+      case 'captcha_missing_token':
+      case 'captcha_not_enabled': return 'The security check did not finish. Reload the page and try again.'
+      case 'session_exists': return 'You are already signed in. Reload the page.'
       case 'too_many_requests': return 'Too many tries. Wait a minute, then try again.'
       default: return first?.longMessage ?? first?.message ?? 'Something went wrong. Please try again.'
     }
   }
-  return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
+  if (clerkNetworkError(error)) return CLERK_NETWORK_MESSAGE
+  const message = error instanceof Error ? error.message : ''
+  // ClerkJS's own wording is for developers, not for the person signing up.
+  return !message || /^clerk/i.test(message) ? 'Something went wrong. Please try again.' : message
 }
 
 /** The Clerk error code, when there is one. */

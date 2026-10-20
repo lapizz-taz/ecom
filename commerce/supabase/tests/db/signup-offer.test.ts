@@ -168,8 +168,8 @@ describe('new-business offer', () => {
       await asStaff(db, superId)
       expect(await value(db, `select public.platform_setting_save('signup_offer', $1, 'launch offer')`,
         [JSON.stringify({ enabled: true, trial_days: '2', first_price: '99', first_periods: '1' })]))
-        .toEqual({ enabled: true, trial_days: 2, trial_price: null, first_price: 99, first_periods: 1, setup_fee: null })
-      await expectError(db, `select public.platform_setting_save('signup_offer', $1)`, [JSON.stringify({ enabled: true, trial_days: '', first_price: '99', first_periods: '1' })], /trial is 0 to 90 days/)
+        .toEqual({ enabled: true, trial_months: 0, trial_days: 2, trial_price: null, first_price: 99, first_periods: 1, setup_fee: null })
+      await expectError(db, `select public.platform_setting_save('signup_offer', $1)`, [JSON.stringify({ enabled: true, trial_days: '', first_price: '99', first_periods: '1' })], /days are 0 to 90/)
       await expectError(db, `select public.platform_setting_save('signup_offer', $1)`, [JSON.stringify({ enabled: true, trial_days: '2', first_price: 'abc', first_periods: '1' })], /first month price/)
       await expectError(db, `select public.platform_setting_save('signup_offer', $1)`, [JSON.stringify({ enabled: true, trial_days: '2', first_price: '99', first_periods: '0' })], /1 to 12 months/)
       const support = await createPlatformStaff(db, 'SUPPORT_AGENT')
@@ -303,7 +303,7 @@ describe('new-business offer without a trial, with a one-time fee', () => {
       await asStaff(db, superId)
       expect(await value(db, `select public.platform_setting_save('signup_offer', $1, 'pay to start')`,
         [JSON.stringify({ enabled: true, trial_days: '0', first_price: '99', first_periods: '1', setup_fee: '1000' })]))
-        .toEqual({ enabled: true, trial_days: 0, trial_price: null, first_price: 99, first_periods: 1, setup_fee: 1000 })
+        .toEqual({ enabled: true, trial_months: 0, trial_days: 0, trial_price: null, first_price: 99, first_periods: 1, setup_fee: 1000 })
       expect(await value(db, `select public.platform_setting_save('signup_offer', $1) -> 'setup_fee'`,
         [JSON.stringify({ enabled: true, trial_days: '0', first_price: '99', first_periods: '1', setup_fee: '' })])).toBeNull()
       await expectError(db, `select public.platform_setting_save('signup_offer', $1)`,
@@ -399,13 +399,13 @@ describe('new-business offer: a paid trial, then the one-time fee with the plan 
       await asStaff(db, superId)
       expect(await value(db, `select public.platform_setting_save('signup_offer', $1, 'paid trial')`,
         [JSON.stringify({ enabled: true, trial_days: '2', trial_price: '99', first_price: '', first_periods: '1', setup_fee: '1000' })]))
-        .toEqual({ enabled: true, trial_days: 2, trial_price: 99, first_price: null, first_periods: 1, setup_fee: 1000 })
+        .toEqual({ enabled: true, trial_months: 0, trial_days: 2, trial_price: 99, first_price: null, first_periods: 1, setup_fee: 1000 })
       await expectError(db, `select public.platform_setting_save('signup_offer', $1)`,
-        [JSON.stringify({ enabled: true, trial_days: '0', trial_price: '99', first_price: '', first_periods: '1' })], /a trial price needs trial days/)
+        [JSON.stringify({ enabled: true, trial_days: '0', trial_price: '99', first_price: '', first_periods: '1' })], /needs months or days/)
       await expectError(db, `select public.platform_setting_save('signup_offer', $1)`,
         [JSON.stringify({ enabled: true, trial_days: '2', trial_price: '99', first_price: '99', first_periods: '1' })], /not both/)
       await expectError(db, `select public.platform_setting_save('signup_offer', $1)`,
-        [JSON.stringify({ enabled: true, trial_days: '2', trial_price: 'free', first_price: '', first_periods: '1' })], /trial price is an amount/)
+        [JSON.stringify({ enabled: true, trial_days: '2', trial_price: 'free', first_price: '', first_periods: '1' })], /price to start is an amount/)
     }))
 })
 
@@ -455,5 +455,111 @@ describe('choosing another plan before the first payment', () => {
       await db.query(`update public.billing_payments set created_at = now() - interval '31 minutes' where invoice_id = $1`, [inv.id])
       await asUser(db, m.id, m.email, m.merchant)
       expect(await value(db, `select public.billing_choose_plan('STARTER')`)).toMatchObject({ applied: true })
+    }))
+})
+
+describe('new-business offer: 99 Tk for 1 month + 2 days, then the one-time fee with the plan price', () => {
+  const OFFER = { enabled: true, trial_months: 1, trial_days: 2, trial_price: 99, first_price: null, first_periods: 1, setup_fee: 1000 }
+  const lineKinds = (i: { lines: Array<Record<string, any>> }) => i.lines.map((l) => [l.kind, Number(l.amount)])
+  const openInvoice = async (db: Db, merchant: string) => (await invoices(db, merchant)).find((i) => i.status === 'OPEN')
+  const coversMonthAndTwoDays = async (db: Db, id: string) => {
+    await asSystem(db, null)
+    return value<boolean>(db, `select period_end = period_start + interval '1 month 2 days' from public.billing_invoices where id = $1`, [id])
+  }
+
+  it('99 Tk opens 1 month + 2 days; to continue, 1,000 Tk once with the plan price (closed until paid); then the plan price', () =>
+    inTx(async (db) => {
+      await onlinePayment(db)
+      await offer(db, OFFER)
+      await asAnon(db, null)
+      const options = await value<{ plans: Array<{ code: string; offer: Record<string, unknown> | null }> }>(db, `select public.public_signup_options()`)
+      expect(options.plans.find((p) => p.code === 'GROWTH')!.offer).toMatchObject({ trial_months: 1, trial_days: 2, trial_price: 99, first_price: null, setup_fee: 1000 })
+
+      // Signed up: closed until the 99 Tk is paid; the invoice covers 1 month + 2 days.
+      const m = await signUpAs(db)
+      expect(m.r).toMatchObject({ status: 'ACTIVE', activation: { state: 'awaiting_payment' } })
+      expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
+      const [first] = await invoices(db, m.merchant)
+      expect(first).toMatchObject({ total: 99, status: 'OPEN' })
+      expect(lineKinds(first)).toEqual([['plan', 99]])
+      expect(first.lines[0].label).toContain('(introductory price; then 2,490 BDT)')
+      expect(await coversMonthAndTwoDays(db, first.id)).toBe(true)
+
+      // Paid: open for the whole 1 month + 2 days, with nothing more to pay in it.
+      expect(await pay(db, m.merchant, first.id, 99)).toBe('succeeded')
+      expect(await accessOf(db, m.merchant)).toBe('FULL')
+      let s = await sub(db, m.merchant)
+      expect(s.current_period_end).toBe(s.intro_until)
+      await asSystem(db, null)
+      expect(await value(db, `select current_period_end = current_period_start + interval '1 month 2 days' from public.subscriptions where id = $1`, [s.id])).toBe(true)
+      await db.query(`select public.billing_run()`)
+      expect(await openInvoice(db, m.merchant)).toBeUndefined()
+
+      // The period is over: the one-time fee with the first month at the plan's price, closed until paid.
+      await db.query(`update public.subscriptions set current_period_end = now() - interval '5 minutes', intro_until = now() - interval '5 minutes'
+                      where merchant_id = $1 and ended_at is null`, [m.merchant])
+      await db.query(`select public.billing_run()`)
+      const second = (await openInvoice(db, m.merchant))!
+      expect(lineKinds(second)).toEqual([['plan', 2490], ['setup_fee', 1000]])
+      expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
+      expect(await pay(db, m.merchant, second.id, 3490)).toBe('succeeded')
+      expect(await accessOf(db, m.merchant)).toBe('FULL')
+
+      // Then the plan price, with the normal grace period.
+      await asSystem(db, null)
+      await db.query(`update public.subscriptions set current_period_end = now() - interval '1 minute' where merchant_id = $1 and ended_at is null`, [m.merchant])
+      await db.query(`select public.billing_run()`)
+      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 2490]])
+      s = await sub(db, m.merchant)
+      expect(s.status).toBe('PAST_DUE')
+      expect(await accessOf(db, m.merchant)).toBe('FULL')
+    }))
+
+  it('choosing another plan before paying raises the same 1 month + 2 days invoice', () =>
+    inTx(async (db) => {
+      await onlinePayment(db)
+      await offer(db, OFFER)
+      const m = await signUpAs(db, 'GROWTH')
+      await asUser(db, m.id, m.email, m.merchant)
+      const r = await value<{ activation_invoice_id: string }>(db, `select public.billing_choose_plan('STARTER')`)
+      const [inv] = await invoices(db, m.merchant)
+      expect(inv).toMatchObject({ id: r.activation_invoice_id, total: 99, status: 'OPEN' })
+      expect(inv.lines[0].label).toContain('(introductory price; then 990 BDT)')
+      expect(await coversMonthAndTwoDays(db, inv.id)).toBe(true)
+    }))
+
+  it('WhatsApp sign-up: the team activating it is the 99 Tk payment', () =>
+    inTx(async (db) => {
+      const superId = await createPlatformStaff(db, 'SUPER_ADMIN')
+      await asStaff(db, superId)
+      await value(db, `select public.platform_onboarding_save($1)`, [JSON.stringify({ method: 'whatsapp', whatsapp_number: '8801999000111', reminder_days: [1] })])
+      await offer(db, OFFER)
+      const m = await signUpAs(db)
+      await asStaff(db, superId)
+      await value(db, `select public.platform_merchant_activate($1, 'Paid 99 Tk by bKash, TrxID 7QK2')`, [m.merchant])
+      const s = await sub(db, m.merchant)
+      expect(s).toMatchObject({ status: 'ACTIVE', intro_trial: true })
+      expect(s.current_period_end).toBe(s.intro_until)
+      await asSystem(db, null)
+      expect(await value(db, `select current_period_end = current_period_start + interval '1 month 2 days' from public.subscriptions where id = $1`, [s.id])).toBe(true)
+      expect(await accessOf(db, m.merchant)).toBe('FULL')
+      expect(await invoices(db, m.merchant)).toEqual([])
+    }))
+
+  it('Super Admin sets the months, checked', () =>
+    inTx(async (db) => {
+      const superId = await createPlatformStaff(db, 'SUPER_ADMIN')
+      await asStaff(db, superId)
+      expect(await value(db, `select public.platform_setting_save('signup_offer', $1, '1 month + 2 days for 99')`,
+        [JSON.stringify({ enabled: true, trial_months: '1', trial_days: '2', trial_price: '99', first_price: '', first_periods: '1', setup_fee: '1000' })]))
+        .toEqual({ enabled: true, trial_months: 1, trial_days: 2, trial_price: 99, first_price: null, first_periods: 1, setup_fee: 1000 })
+      // Months alone are a period too.
+      expect(await value(db, `select public.platform_setting_save('signup_offer', $1)`,
+        [JSON.stringify({ enabled: true, trial_months: '1', trial_days: '0', trial_price: '99', first_price: '', first_periods: '1' })]))
+        .toMatchObject({ trial_months: 1, trial_days: 0, trial_price: 99 })
+      await expectError(db, `select public.platform_setting_save('signup_offer', $1)`,
+        [JSON.stringify({ enabled: true, trial_months: '13', trial_days: '2', trial_price: '99', first_price: '', first_periods: '1' })], /months are 0 to 12/)
+      await expectError(db, `select public.platform_setting_save('signup_offer', $1)`,
+        [JSON.stringify({ enabled: true, trial_months: 'one', trial_days: '2', trial_price: '99', first_price: '', first_periods: '1' })], /months are 0 to 12/)
     }))
 })
