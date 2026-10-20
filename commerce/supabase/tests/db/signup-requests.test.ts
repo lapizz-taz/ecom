@@ -95,6 +95,7 @@ describe('sign-up by WhatsApp', () => {
       await expectError(db, `select public.public_signup_request($1)`, [request({ phone: '12345' })], /mobile number/)
       await expectError(db, `select public.public_signup_request($1)`, [request({ business_name: '' })], /business name/)
       await expectError(db, `select public.public_signup_request($1)`, [request({ email: 'not-an-email' })], /e-mail/)
+      await expectError(db, `select public.public_signup_request($1)`, [request({ email: '' })], /enter your e-mail address/)
     }))
 
   it('stops a flood of requests', () =>

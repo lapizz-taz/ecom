@@ -273,8 +273,8 @@ function WhatsappStep({ steps, chooser, business, email, onEmail, planLabel: pla
 }) {
   const [agree, setAgree] = useState(false)
   const [touched, setTouched] = useState(false)
-  const send = useMutation({ meta: { silent: true }, mutationFn: () => signupRequest({ ...business, email: email.trim() || undefined }), onSuccess: onSent })
-  const problem = email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter a valid e-mail address, or leave it empty' : !agree ? 'Accept the terms to continue' : null
+  const send = useMutation({ meta: { silent: true }, mutationFn: () => signupRequest({ ...business, email: email.trim() }), onSuccess: onSent })
+  const problem = !email.trim() ? 'Enter your e-mail address' : !/^\S+@\S+\.\S+$/.test(email.trim()) ? 'Enter a valid e-mail address' : !agree ? 'Accept the terms to continue' : null
 
   if (sent) {
     const link = whatsappLink(sent.whatsapp_number, sent.message)
@@ -311,8 +311,8 @@ function WhatsappStep({ steps, chooser, business, email, onEmail, planLabel: pla
       <h1 className="mt-8 text-[28px] leading-tight font-semibold tracking-[-0.025em]">Get set up on WhatsApp</h1>
       <p className="mt-2 text-sm text-muted-foreground">We prepare a message with your details. You send it to our official WhatsApp, and our team opens the account and helps you get started. No password needed now.</p>
       <div className="mt-7 grid gap-4">
-        <Field label="E-mail (optional)" hint="For your login; we can also set it up with you on WhatsApp">
-          <Input type="email" autoComplete="email" value={email} onChange={(e) => onEmail(e.target.value)} className="h-10" placeholder="you@yourshop.com" />
+        <Field label="E-mail" required hint="For your login">
+          <Input type="email" autoComplete="email" required value={email} onChange={(e) => onEmail(e.target.value)} className="h-10" placeholder="you@yourshop.com" />
         </Field>
         <label className="flex items-start gap-2.5 text-[13px] text-muted-foreground">
           <Checkbox checked={agree} onCheckedChange={(v) => setAgree(v === true)} className="mt-0.5" />
