@@ -256,9 +256,11 @@ describe('store reset', () => {
       // No other connection or its key is left; the business starts with a new business's courier and settings.
       expect(all.counts.every_connection).toBe(true)
       expect(await value<string[]>(db, `select coalesce(array_agg(name), '{}') from public.couriers where merchant_id = $1`, [MERCHANT_1])).toEqual(['Own delivery'])
-      for (const t of ['courier_credentials', 'integration_credentials', 'store_domains', 'api_keys', 'ad_connections', 'system_logs']) {
+      for (const t of ['courier_credentials', 'integration_credentials', 'api_keys', 'ad_connections', 'system_logs']) {
         expect(await value<number>(db, `select count(*)::int from public.${t} where merchant_id = $1`, [MERCHANT_1]), t).toBe(0)
       }
+      // Domains stay as removed rows (so their visitors see "store not available"), never live or proven.
+      expect(await value<number>(db, `select count(*)::int from public.store_domains where merchant_id = $1 and (status <> 'REMOVED' or verified_at is not null)`, [MERCHANT_1])).toBe(0)
       expect(await value<number>(db, `select count(*)::int from vault.secrets where id in ($1, $2)`, [courierSecret, smsSecret])).toBe(0)
       expect(await value<Record<string, any>>(db, `select value from public.settings where key = 'sms' and merchant_id = $1`, [MERCHANT_1])).toMatchObject({ connected: false, provider: null })
       const storefront = await value<Record<string, any>>(db, `select value from public.settings where key = 'storefront' and merchant_id = $1`, [MERCHANT_1])

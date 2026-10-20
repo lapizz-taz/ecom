@@ -755,7 +755,9 @@ describe('store reset and merchant delete', () => {
       await asPlatform(db, superId)
       await db.query(`select public.platform_merchant_export($1, 'Copy before resetting the store')`, [A.m])
       await db.query(`select public.platform_store_reset($1, 'EVERYTHING', $2, 'Fresh start before going live')`, [A.m, name])
-      expect(await row(db, 'reset-shop.test')).toBeNull()
+      // Removed (proof cleared), not deleted: visitors there see "store not available".
+      expect(await row(db, 'reset-shop.test')).toMatchObject({ status: 'REMOVED', is_primary: false })
+      expect(await resolve(db, 'reset-shop.test')).toEqual({ kind: 'missing' })
       expect(await known(db, 'reset-shop.test')).toBe(false)
       expect(await known(db, 'www.reset-shop.test')).toBe(false)
       expect(storeOf(await resolve(db, 'reset-shop.test'))).not.toBe(A.m)

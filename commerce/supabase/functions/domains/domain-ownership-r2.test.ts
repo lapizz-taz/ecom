@@ -94,10 +94,12 @@ async function dbRpc(client: Client, fn: string, rawArgs: Record<string, unknown
         const twin = db.rows.get(twinOf(d))
         if (live(twin) && twin!.merchant_id !== mid) raise('DUPLICATE: That domain is already connected to another store')
         if (db.rows.get(d)?.status === 'REMOVED' && db.rows.get(d)!.merchant_id !== mid) db.rows.delete(d)
-        if (!db.rows.has(d)) db.rows.set(d, newRow(d, mid!, 'PENDING'))
+        // The same store's proven twin (live, or removed under 7 days ago) carries the proof.
+        const twinProven = twin?.merchant_id === mid && !!twin?.verified_at && (live(twin) || (!!twin?.removed_at && Date.parse(twin.removed_at) > Date.now() - 7 * 86_400_000))
+        if (!db.rows.has(d)) db.rows.set(d, { ...newRow(d, mid!, 'PENDING'), verified_at: twinProven ? now() : null })
         const r = db.rows.get(d)!
         if (r.merchant_id === mid && r.status === 'REMOVED') Object.assign(r, { status: 'PENDING', is_primary: false, removed_at: null,
-          verified_at: r.removed_at && Date.parse(r.removed_at) > Date.now() - 7 * 86_400_000 ? r.verified_at : null })
+          verified_at: (r.removed_at && Date.parse(r.removed_at) > Date.now() - 7 * 86_400_000 ? r.verified_at : null) ?? (twinProven ? now() : null) })
         if (!(r.merchant_id === mid && live(r))) raise('DUPLICATE: That domain is already connected to another store')
       } else {
         const r = db.rows.get(d)
