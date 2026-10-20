@@ -8,6 +8,10 @@
 //                                             domain is connected to a store, so it may get a certificate
 //   POST {action: 'recheck_all'}             scheduled (cron secret): checks every domain still
 //                                             waiting, so it goes live without anyone pressing Check
+//   POST {action: 'platform_check' | 'platform_remove', merchant_id, domain}
+//                                            Super Admin → Domains: the same check or removal for a
+//                                            store's domain, by an employee who may manage that store
+//                                            (platform_can merchants.manage); recorded in the audit log
 // Every add/check also runs a full diagnosis (DNS records found, each region,
 // HTTPS, issues such as a stray proxy), saved with the domain.
 //
@@ -32,10 +36,10 @@ import { z } from 'zod'
 import { apexOf, cloudflareTarget, diagnose, dnsView, doh, proxyTarget, RESOLVERS, VERCEL_TARGET, inspectWww, type Diagnosis, type ExpectedRecord, type HostingTarget } from '../_shared/domain-check.ts'
 import { env } from '../_shared/env.ts'
 import { isCronRequest } from '../_shared/cron.ts'
-import { handle, HttpError, json, readJson } from '../_shared/http.ts'
+import { handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { adminClient, forEachMerchant, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, optionalUser, requireStaff, rpc, userClient } from '../_shared/supabase.ts'
 
 interface DnsRecord { type: 'A' | 'AAAA' | 'CNAME' | 'TXT'; name: string; value: string; why: string }
 /** verified: the ownership record was found (saved as the domain's verified_at). */
@@ -66,6 +70,11 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('check'), domain }),
   z.object({ action: z.literal('remove'), domain }),
   z.object({ action: z.literal('primary'), domain }),
+])
+const platformActions = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('platform_check'), merchant_id: z.uuid(), domain }),
+  // Removing a store's domain takes it offline for that store: the reason goes in the audit log.
+  z.object({ action: z.literal('platform_remove'), merchant_id: z.uuid(), domain, reason: z.string().trim().min(3, 'Say why the domain is removed').max(300) }),
 ])
 
 /**
@@ -477,6 +486,51 @@ async function recheckAll() {
   return { checked: Math.min(due.length, RECHECK_LIMIT), live, failed: run.failed }
 }
 
+/** Super Admin → Domains: check again or remove one store's domain, as that store's own Check / Remove would. */
+async function platformAction(req: Request, input: z.infer<typeof platformActions>) {
+  const user = await optionalUser(req)
+  if (!user) throw new HttpError(401, 'Please sign in', 'UNAUTHENTICATED')
+  rateLimit(`domains-platform:${user.id}`, 30)
+  // Asked as the employee: their role and the stores they are assigned decide.
+  if (!(await rpc<boolean>(userClient(req), 'platform_can', { p_module: 'merchants', p_action: 'manage', p_merchant: input.merchant_id }))) {
+    throw new HttpError(403, 'Managing this store is not allowed for your role', 'PERMISSION_DENIED')
+  }
+  const d = input.domain
+  const admin = adminClient(input.merchant_id)
+  const rows = (await rpc<Listed[]>(admin, 'store_domains_list')) ?? []
+  if (!rows.some((x) => x.domain === d)) throw new HttpError(404, 'That store has no such domain', 'NOT_FOUND')
+  const audit = (result: 'SUCCESS' | 'FAILED', metadata: Record<string, unknown>) =>
+    rpc(adminClient(), 'platform_record_action', {
+      p_actor: user.id, p_action: input.action === 'platform_check' ? 'domain.checked' : 'domain.removed', p_entity_type: 'store_domain',
+      p_entity_id: d, p_result: result, p_metadata: { merchant_id: input.merchant_id, ...metadata },
+    }).catch(() => undefined)
+  const cf = cloudflare()
+  const v = cf ? null : vercel()
+  try {
+    if (input.action === 'platform_check') {
+      const own = ownershipOf(rows, d)
+      const persist = () => markVerified(admin, d)
+      const result = cf ? await inspectAny(cf, d, true, own, persist) : v ? await inspect(v, d, own, persist) : await manual(d, MANUAL_CHECK, own, persist)
+      // No actor on the row: the employee is not one of the store's staff (the audit log names them).
+      const saved = await rpc<Saved | null>(admin, 'store_domain_save', { p_domain: d, p: result, p_actor: null })
+      await audit('SUCCESS', { status: saved?.status ?? null })
+      return { domain: saved }
+    }
+    if (cf) {
+      if (viaProxy(cf, d)) await removeCloudflare(cf, d).catch(() => undefined)
+      else await removeCloudflare(cf, d)
+    } else if (v) {
+      const r = await v.call<VercelDomain>('DELETE', `/v9/projects/${v.project}/domains/${d}`)
+      if (!r.ok && r.status !== 404) throw new HttpError(422, `Vercel would not remove it: ${r.data.error?.message ?? r.status}`, 'DOMAIN_REJECTED')
+    }
+    await rpc(admin, 'store_domain_save', { p_domain: d, p: { status: 'REMOVED', records: [], detail: 'Removed by the Fullfilio team' }, p_actor: null })
+    await audit('SUCCESS', { reason: input.reason })
+    return { ok: true }
+  } catch (error) {
+    await audit('FAILED', { error: (error as Error).message })
+    throw error
+  }
+}
 
 export default (
   handle(async (req) => {
@@ -492,6 +546,9 @@ export default (
     if (body?.action === 'recheck_all') {
       if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
       return json(req, await recheckAll())
+    }
+    if (body?.action === 'platform_check' || body?.action === 'platform_remove') {
+      return json(req, await platformAction(req, parse(platformActions, body)))
     }
     const input = parse(actions, body)
     const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage', { supportView: input.action === 'list' })

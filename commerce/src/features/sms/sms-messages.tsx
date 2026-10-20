@@ -111,7 +111,7 @@ export function SmsMessagesTab() {
           <SelectContent>
             <SelectItem value="all">All messages</SelectItem>
             {SMS_EVENTS.map((e) => <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>)}
-            <SelectItem value="TEST">Test messages</SelectItem>
+            <SelectItem value="TEST">Quick SMS</SelectItem>
           </SelectContent>
         </Select>
       </div>

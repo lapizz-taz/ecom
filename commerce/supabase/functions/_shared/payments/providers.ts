@@ -43,6 +43,8 @@ export class SslCommerzProvider implements PaymentProvider {
 
   buildInitForm(ctx: PaymentInitContext): URLSearchParams {
     const { payment, order, urls } = ctx
+    // A payment to the platform (credits, an invoice) is a service; a store order is goods.
+    const billing = payment.purpose === 'BILLING'
     return new URLSearchParams({
       store_id: this.config.storeId,
       store_passwd: this.config.storePassword,
@@ -60,9 +62,9 @@ export class SslCommerzProvider implements PaymentProvider {
       cus_city: order.shipping_district,
       cus_country: 'Bangladesh',
       shipping_method: 'NO',
-      product_name: `Order ${order.order_number}`,
-      product_category: 'ecommerce',
-      product_profile: 'physical-goods',
+      product_name: billing ? `Fullfilio ${order.order_number}` : `Order ${order.order_number}`,
+      product_category: billing ? 'service' : 'ecommerce',
+      product_profile: billing ? 'non-physical-goods' : 'physical-goods',
       value_a: order.order_number,
       value_b: payment.purpose,
     })
@@ -120,5 +122,40 @@ export class SslCommerzProvider implements PaymentProvider {
       reason: validated ? undefined : `Validation returned ${body?.status ?? 'no response'}`,
       raw: body ?? params,
     }
+  }
+
+  /**
+   * A payment whose browser never came back: SSLCommerz is asked for the transaction by its id
+   * (our reference), and a paid one is confirmed through the validation API like a callback.
+   */
+  async reconcile(_session: string, reference: string, ageMinutes: number): Promise<VerifiedPayment | null> {
+    const url = new URL(`${this.base}/validator/api/merchantTransIDvalidationAPI.php`)
+    url.search = new URLSearchParams({ tran_id: reference, store_id: this.config.storeId, store_passwd: this.config.storePassword, format: 'json' }).toString()
+    const response = await this.fetchFn(url.toString())
+    const body = (await response.json().catch(() => null)) as { APIConnect?: string; element?: Array<Record<string, string>> } | null
+    if (!response.ok || body?.APIConnect !== 'DONE') {
+      throw new Error(`SSLCommerz could not look up ${reference}: ${body?.APIConnect ?? `HTTP ${response.status}`}`)
+    }
+    const found = body.element ?? []
+    const paid = found.find((e) => (e.status === 'VALID' || e.status === 'VALIDATED') && e.val_id && e.tran_id === reference)
+    if (paid) return this.verifyCallback({ tran_id: reference, val_id: paid.val_id, status: paid.status })
+    if (ageMinutes < 90) return null
+    return {
+      reference, providerTransactionId: null, amount: null, currency: null, success: false,
+      eventId: `sslcommerz:${reference}:expired`, eventType: 'reconcile.expired',
+      reason: found[0]?.status ? `SSLCommerz says ${found[0].status}` : 'No payment arrived from SSLCommerz', raw: body,
+    }
+  }
+
+  /** Checks the store ID and password by opening a ৳10 payment page that nobody pays — nothing is charged. */
+  async test(callbackUrl = 'https://example.com/sslcommerz-test'): Promise<string> {
+    const reference = `TEST${Date.now()}`
+    await this.initiate({
+      payment: { id: reference, reference, amount: 10, currency: 'BDT', purpose: 'BILLING' },
+      order: { order_number: 'Connection test', customer_name: 'Connection test', customer_phone: '01700000000', customer_email: null,
+        shipping_address: 'Connection test', shipping_district: 'Dhaka' },
+      urls: { success: callbackUrl, fail: callbackUrl, cancel: callbackUrl, ipn: callbackUrl },
+    }).catch((error: Error) => { throw new Error(error.message.replace('could not start the payment', 'refused the store ID or password')) })
+    return 'Connected to SSLCommerz (store ID and password accepted)'
   }
 }

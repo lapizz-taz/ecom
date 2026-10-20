@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Trash2, X, Zap } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from '@/lib/toast'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -19,7 +19,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, isoDateToday } from '@/lib/format'
 import { listCouriers } from '@/services/couriers'
-import { deleteSmsRule, listSmsRules, saveSmsRule, setSmsRuleEnabled, type SmsRule, type SmsSettings } from '@/services/sms'
+import { deleteSmsRule, listSmsRules, saveSmsRule, setSmsRuleEnabled, type SmsRule, type SmsSettings, updateSmsSettings } from '@/services/sms'
 import { useSmsOverview } from './sms-overview'
 import {
   type Condition, CONDITION_FIELDS, conditionProblem, type ConditionField, describeCondition, newCondition, PAYMENT_OPTIONS,
@@ -63,7 +63,10 @@ export function SmsAutomationsTab() {
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">Each customer gets a message once per order and event, even if a status is set twice.</p>
-        {manage && <Button onClick={() => setEditing('new')}><Plus /> New automation</Button>}
+        <div className="flex flex-wrap items-center gap-2">
+          {settings && <MoneyText current={settings.currency_text} manage={manage} onSaved={refresh} />}
+          {manage && <Button onClick={() => setEditing('new')}><Plus /> New automation</Button>}
+        </div>
       </div>
       {sorted.length === 0 ? <EmptyState icon={<Zap className="size-5" />} title="No automations yet" /> : (
         <div className="grid gap-2">
@@ -110,6 +113,24 @@ export function SmsAutomationsTab() {
       <ConfirmDialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)} title={`Delete "${deleting?.name}"?`} destructive
         confirmLabel="Delete" description="Messages already sent stay in the log."
         onConfirm={async () => { await deleteSmsRule(deleting!.id); toast.success('Automation deleted'); refresh() }} />
+    </div>
+  )
+}
+
+/** How amounts are written in messages ("Tk 1,250" or "৳1,250"); ৳ makes every message Unicode. */
+function MoneyText({ current, manage, onSaved }: { current: string; manage: boolean; onSaved: () => void }) {
+  const [value, setValue] = useState(current)
+  useEffect(() => setValue(current), [current])
+  const save = useMutation({
+    mutationFn: () => updateSmsSettings({ currencyText: value.trim() }),
+    onSuccess: () => { toast.success('Saved'); onSaved() },
+  })
+  const dirty = value.trim() !== current
+  return (
+    <div className="flex items-center gap-1.5" title={value.includes('৳') ? '৳ makes every message Unicode: 70 characters per SMS.' : 'Keeps messages at 160 characters per SMS.'}>
+      <label htmlFor="sms-currency" className="text-sm text-muted-foreground">Amounts as</label>
+      <Input id="sms-currency" className="h-9 w-20" value={value} maxLength={6} disabled={!manage} onChange={(e) => setValue(e.target.value)} />
+      {manage && dirty && <Button size="sm" variant="outline" disabled={save.isPending || !value.trim()} onClick={() => save.mutate()}>Save</Button>}
     </div>
   )
 }

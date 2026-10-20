@@ -5,6 +5,7 @@
 import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 import { platformRpc } from '@/services/platform'
+import type { PlatformGateway } from './credits'
 
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'REFUND_PENDING' | 'REFUNDED'
 export type PaymentPurpose = 'SUBSCRIPTION' | 'SMS' | 'COURIER' | 'BALANCE' | 'ADDON' | 'OTHER'
@@ -46,7 +47,7 @@ export interface MyPayment {
 
 export interface MyBilling {
   can_pay: boolean
-  gateways: Array<'bkash' | 'paystation'>
+  gateways: PlatformGateway[]
   purposes: Partial<Record<PaymentPurpose, boolean>>
   max_payment_tk: number
   pricing: { SMS: Pricing; COURIER: Pricing; BALANCE: Pricing }

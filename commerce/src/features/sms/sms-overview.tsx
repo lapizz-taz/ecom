@@ -1,24 +1,22 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { MessageSquare, Send } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { MessageSquare, Plus, Send, Wallet } from 'lucide-react'
+import { useState } from 'react'
 import { toast } from '@/lib/toast'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
-import { Field } from '@/components/common/field'
 import { Money } from '@/components/common/money'
 import { StatCard } from '@/components/common/stat-card'
 import { EmptyState, LoadingState, Spinner } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/features/auth/auth-context'
+import { AddSmsBalanceDialog } from '@/features/billing/billing-payments'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useUrlState } from '@/hooks/use-url-state'
 import { rangeFor } from '@/lib/dates'
-import { formatMoney, formatNumber, formatPercent } from '@/lib/format'
+import { formatMoney, formatNumber, formatPercent, isoDateToday } from '@/lib/format'
 import { type SmsOverview, smsOverview, updateSmsSettings } from '@/services/sms'
 import { TestSmsDialog } from './sms-provider'
 import { eventLabel } from './sms-text'
@@ -68,18 +66,54 @@ export function SmsOverviewTab() {
   )
 }
 
-/** The platform's SMS service for this business: on/off, sender, free SMS and credits. */
-function ConnectionCard({ overview }: { overview: SmsOverview }) {
+/** The SMS page's header: the SMS balance, buying more (bKash, PayStation, SSLCommerz) and a quick SMS to anyone. */
+export function SmsHeaderActions() {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const { data: config } = useStoreConfig()
+  const today = isoDateToday()
+  const overview = useSmsOverview(today, today)
+  const [dialog, setDialog] = useState<'buy' | 'quick' | null>(null)
+  if (!overview.data) return null
+  const { usage: u, settings: s } = overview.data
+  const canPay = can('sms.manage') || can('settings.manage')
+  const available = u.feature_enabled && s.connected
+  return (
+    <>
+      <span className="inline-flex h-9 items-center gap-2 rounded-[10px] border bg-card px-3 text-sm">
+        <Wallet className="size-4 text-muted-foreground" />
+        <span className="text-muted-foreground">Balance</span>
+        <span className="font-semibold tabular-nums">{u.unmetered ? 'Included' : `${formatNumber(u.credits_available)} SMS`}</span>
+        {!u.unmetered && u.free.eligible && u.free.remaining > 0 && (
+          <span className="text-xs text-muted-foreground">+ {formatNumber(u.free.remaining)} free</span>
+        )}
+      </span>
+      {!u.unmetered && canPay && <Button onClick={() => setDialog('buy')}><Plus /> Add SMS Balance</Button>}
+      {can('sms.manage') && (
+        <Button variant="outline" disabled={!available} title={available ? undefined : 'SMS is not available right now'} onClick={() => setDialog('quick')}>
+          <Send /> Quick SMS
+        </Button>
+      )}
+      {dialog === 'buy' && <AddSmsBalanceDialog onClose={() => setDialog(null)} />}
+      {dialog === 'quick' && (
+        <TestSmsDialog quick storeName={config?.store.name ?? ''} onClose={() => setDialog(null)}
+          onSent={() => {
+            void queryClient.invalidateQueries({ queryKey: ['sms-overview'] })
+            void queryClient.invalidateQueries({ queryKey: ['sms-messages'] })
+          }}
+          description="Goes out right away through the platform SMS service, from your sender name. Logged under Messages and charged like any other SMS (free SMS first, then your balance)." />
+      )}
+    </>
+  )
+}
+
+/** The platform's SMS service for this business: on/off, sender, free SMS, balance and the price per SMS. */
+function ConnectionCard({ overview }: { overview: SmsOverview }) {
+  const { can } = useAuth()
+  const queryClient = useQueryClient()
   const s = overview.settings
   const u = overview.usage
   const manage = can('sms.manage')
-  const [dialog, setDialog] = useState<'test' | null>(null)
-  const [cost, setCost] = useState(String(s.cost_per_sms))
-  const [currency, setCurrency] = useState(s.currency_text)
-  useEffect(() => { setCost(String(s.cost_per_sms)); setCurrency(s.currency_text) }, [s.cost_per_sms, s.currency_text])
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['sms-overview'] })
     void queryClient.invalidateQueries({ queryKey: ['sms-messages'] })
@@ -88,11 +122,6 @@ function ConnectionCard({ overview }: { overview: SmsOverview }) {
     mutationFn: (enabled: boolean) => updateSmsSettings({ enabled }),
     onSuccess: (_, enabled) => { toast.success(enabled ? 'Automatic SMS is on' : 'Automatic SMS is off'); refresh() },
   })
-  const saveCosts = useMutation({
-    mutationFn: () => updateSmsSettings({ costPerSms: Number(cost), currencyText: currency }),
-    onSuccess: () => { toast.success('Saved'); refresh() },
-  })
-  const costDirty = Number(cost) !== Number(s.cost_per_sms) || currency !== s.currency_text
   const available = u.feature_enabled && s.connected
   const unit = u.unit === 'MESSAGE' ? 'message' : 'SMS part'
 
@@ -110,41 +139,39 @@ function ConnectionCard({ overview }: { overview: SmsOverview }) {
           Automatic SMS {s.enabled ? 'on' : 'off'}
         </label>
       </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+      <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <p className="text-xs text-muted-foreground">SMS credits</p>
-            <p className="text-lg font-semibold tabular-nums">{u.unmetered ? 'Included' : formatNumber(u.credits_available)}</p>
+            <p className="text-xs text-muted-foreground">SMS balance</p>
+            <p className="text-lg font-semibold tabular-nums">{u.unmetered ? 'Included' : `${formatNumber(u.credits_available)} SMS`}</p>
             <p className="text-xs text-muted-foreground">
-              {u.unmetered ? 'Your plan includes SMS' : u.free.eligible ? `${formatNumber(u.free.remaining)} free ${unit}s left${u.free.period === 'MONTH' ? ' this month' : ''}` : `${u.credits_per_unit} credit per ${unit}`}
+              {u.unmetered ? 'Your plan includes SMS' : u.credits_per_unit === 1 && u.unit !== 'MESSAGE' ? 'One SMS: 160 characters, or 70 with Bangla' : `${u.credits_per_unit} SMS per ${unit}`}
             </p>
-            {!u.unmetered && <Link to="/admin/settings/billing#credits" className="text-xs font-medium underline">Buy SMS credits</Link>}
           </div>
-          <Field label="Cost per SMS credit" htmlFor="sms-cost" hint="What one credit costs you; free SMS count as zero. Used in Finance.">
-            <Input id="sms-cost" type="number" min={0} max={20} step="0.01" value={cost} disabled={!manage} onChange={(e) => setCost(e.target.value)} />
-          </Field>
-          <Field label="Money written as" htmlFor="sms-currency" hint={currency.includes('৳') ? '৳ makes every message Unicode: 70 characters per SMS.' : 'e.g. "Tk 1,250" — keeps messages at 160 characters per SMS.'}>
-            <Input id="sms-currency" value={currency} maxLength={6} disabled={!manage} onChange={(e) => setCurrency(e.target.value)} />
-          </Field>
+          <div>
+            <p className="text-xs text-muted-foreground">Free SMS</p>
+            <p className="text-lg font-semibold tabular-nums">{u.unmetered ? '—' : u.free.eligible ? formatNumber(u.free.remaining) : '0'}</p>
+            <p className="text-xs text-muted-foreground">
+              {u.unmetered ? 'Not needed on your plan' : u.free.eligible ? `left${u.free.period === 'MONTH' ? ' this month' : ''}, used before your balance` : 'No free SMS on your plan'}
+            </p>
+          </div>
+          {!u.unmetered && (
+            <div>
+              <p className="text-xs text-muted-foreground">Price per SMS</p>
+              <p className="text-lg font-semibold tabular-nums">{formatMoney(s.cost_per_sms)}</p>
+              <p className="text-xs text-muted-foreground">Set by the platform; shown in Finance</p>
+            </div>
+          )}
         </div>
-        {manage && (
-          <div className="flex flex-wrap gap-2 md:justify-end">
-            {costDirty && (
-              <Button onClick={() => saveCosts.mutate()} disabled={saveCosts.isPending || !(Number(cost) >= 0)}>{saveCosts.isPending && <Spinner />} Save</Button>
-            )}
-            {available && <Button variant="outline" onClick={() => setDialog('test')}><Send /> Send test</Button>}
-          </div>
-        )}
         {overview.totals.waiting_credits > 0 && (
-          <p className="text-sm text-amber-600 md:col-span-2">
-            {formatNumber(overview.totals.waiting_credits)} message{overview.totals.waiting_credits === 1 ? ' is' : 's are'} waiting for SMS credits. They go out as soon as you have credits (within {overview.policy.hold_hours} hours, then they fail without charge).
+          <p className="text-sm text-amber-600">
+            {formatNumber(overview.totals.waiting_credits)} message{overview.totals.waiting_credits === 1 ? ' is' : 's are'} waiting for SMS balance. They go out as soon as you add balance (within {overview.policy.hold_hours} hours, then they fail without charge).
           </p>
         )}
-        <p className="text-xs text-muted-foreground md:col-span-2">
+        <p className="text-xs text-muted-foreground">
           Charged when the provider accepts a message. Messages the provider rejects are refunded{overview.policy.refund_undelivered ? ', and so are messages reported undelivered' : ''}. Retries are never charged twice.
         </p>
       </CardContent>
-      {dialog === 'test' && <TestSmsDialog storeName={config?.store.name ?? ''} onClose={() => setDialog(null)} onSent={refresh} />}
     </Card>
   )
 }

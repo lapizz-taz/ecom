@@ -2,7 +2,7 @@
 // courier-check credit packages, through the platform's own gateway account.
 //   POST {action: 'checkout', invoice_id, provider}  owner or settings manager of the business;
 //        returns the gateway page to send the browser to
-//   GET/POST ?callback=…&provider=…   browser return from bKash / PayStation; verified with
+//   GET/POST ?callback=…&provider=…   browser return (or IPN) from bKash / PayStation / SSLCommerz; verified with
 //        the gateway server to server, then back to Plan & Billing
 //   POST ?reconcile=1  (pg_cron, x-cron-secret) finishes attempts whose browser never came back
 // Credits and paid invoices change only in billing_gateway_confirm(), after the
@@ -40,7 +40,7 @@ export default (
     if (callback) {
       const provider = url.searchParams.get('provider') ?? ''
       const params = await formOrQuery(req)
-      const session = provider === 'bkash' ? params.paymentID : provider === 'paystation' ? params.invoice_number : undefined
+      const session = provider === 'bkash' ? params.paymentID : provider === 'paystation' ? params.invoice_number : provider === 'sslcommerz' ? params.tran_id : undefined
       const found = session && (PLATFORM_GATEWAYS as readonly string[]).includes(provider)
         ? await rpc<Found | null>(adminClient(), 'billing_gateway_lookup', { p_provider: provider, p_session: session }).catch(() => null)
         : null

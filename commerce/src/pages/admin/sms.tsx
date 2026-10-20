@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useMerchantFeatures } from '@/features/billing/use-features'
 import { SmsAutomationsTab } from '@/features/sms/sms-automations'
 import { SmsMessagesTab } from '@/features/sms/sms-messages'
-import { SmsOverviewTab } from '@/features/sms/sms-overview'
+import { SmsHeaderActions, SmsOverviewTab } from '@/features/sms/sms-overview'
 import { useUrlState } from '@/hooks/use-url-state'
 
 export default function SmsPage() {
@@ -14,7 +14,8 @@ export default function SmsPage() {
   const [state, update] = useUrlState({ tab: 'overview' })
   return (
     <div className="space-y-4">
-      <PageHeader title="SMS" description="Text customers automatically as their order moves along. Every message and its cost is logged; costs go to Finance." />
+      <PageHeader title="SMS" description="Text customers automatically as their order moves along. Every message and its cost is logged; costs go to Finance."
+        actions={!loading && !isOff('sms') ? <SmsHeaderActions /> : undefined} />
       {loading ? <LoadingState /> : isOff('sms') ? (
         // Super Admin → Features & Access has SMS switched off (for everyone or this business).
         <ComingSoon icon={<MessageSquare />} title="SMS is coming soon" description="Order updates by text message will open here for your business soon. Messenger, Instagram and WhatsApp work in the Inbox meanwhile." />

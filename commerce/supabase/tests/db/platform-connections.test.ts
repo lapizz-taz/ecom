@@ -72,6 +72,7 @@ describe('platform connections reach the merchant screens', () => {
       await asService(db, null)
       await db.query(`select public.platform_billing_gateway_set('bkash', false, null, true, $1)`, [superId])
       await db.query(`select public.platform_billing_gateway_set('paystation', false, null, true, $1)`, [superId])
+      await db.query(`select public.platform_billing_gateway_set('sslcommerz', false, null, true, $1)`, [superId])
       expect(await walletGateways()).toEqual([])
 
       // Super Admin cannot switch on a gateway whose account was never connected.
@@ -88,6 +89,15 @@ describe('platform connections reach the merchant screens', () => {
 
       await db.query(`select public.platform_billing_gateway_toggle('bkash', false)`)
       expect(await walletGateways()).toEqual([])
+
+      // SSLCommerz, for paying the platform by card, mobile or internet banking.
+      await asService(db, null)
+      await db.query(`select public.platform_billing_gateway_set('sslcommerz', true, 'store ••••01', false, $1)`, [superId])
+      expect(await walletGateways()).toEqual(['sslcommerz'])
+      await asOwner(db, m)
+      expect((await value<{ gateways: string[] }>(db, `select public.my_billing()`)).gateways).toEqual(['sslcommerz'])
+      await asService(db, null)
+      await expectError(db, `select public.platform_billing_gateway_set('nagad', true, 'x', false, $1)`, [superId], /unknown gateway/)
 
       // A merchant can neither connect nor switch gateways.
       await asOwner(db, m)

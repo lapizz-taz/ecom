@@ -6,7 +6,7 @@ import { ErrorState, LoadingState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format'
@@ -15,7 +15,7 @@ import {
   billingReceipt, buyCredits, type BuyType, type MyBilling, myBilling, PAYMENT_STATUS, priceFor, type Pricing, PURPOSE_LABEL,
 } from '@/services/billing-payments'
 import { payInvoice } from '@/services/credits'
-import { PayDialog, useMyCredits } from './credits-section'
+import { GATEWAY_SHORT, PayDialog, useMyCredits } from './credits-section'
 
 export function useMyBilling() {
   return useQuery({ queryKey: ['my-billing'], queryFn: myBilling, staleTime: 15_000 })
@@ -28,15 +28,6 @@ export function useMyBilling() {
  */
 function BuyCard({ type, pricing, billing, balance }: { type: BuyType; pricing: Pricing; billing: MyBilling; balance: string }) {
   const money = type === 'BALANCE'
-  const [qty, setQty] = useState(String(pricing.presets[1] ?? pricing.presets[0] ?? pricing.min))
-  const [paying, setPaying] = useState<number | null>(null)
-  const n = Math.floor(Number(qty))
-  const total = money ? n : priceFor(n, pricing.unit_price ?? 0)
-  const tooFew = !(n >= pricing.min)
-  const tooMany = n > pricing.max
-  const overLimit = total > billing.max_payment_tk
-  const canBuy = billing.can_pay && billing.gateways.length > 0
-  const invalid = !Number.isFinite(n) || tooFew || tooMany || overLimit
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -51,45 +42,91 @@ function BuyCard({ type, pricing, billing, balance }: { type: BuyType; pricing: 
           {' '}You have <span className="font-medium text-foreground tabular-nums">{balance}</span>.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-1.5">
-          {pricing.presets.map((p) => (
-            <button key={p} type="button" onClick={() => setQty(String(p))}
-              className={cn('rounded-[10px] border px-3 py-1 text-sm tabular-nums transition-colors',
-                Number(qty) === p ? 'border-foreground bg-foreground text-background' : 'hover:bg-muted')}>
-              {money ? formatMoney(p) : formatNumber(p)}
-            </button>
-          ))}
-        </div>
-        <Field label={money ? 'Amount (Tk)' : 'Credits'} hint={`Between ${money ? formatMoney(pricing.min) : formatNumber(pricing.min)} and ${money ? formatMoney(pricing.max) : formatNumber(pricing.max)}`}>
-          <Input type="number" inputMode="numeric" min={pricing.min} max={pricing.max} step={1} value={qty} onChange={(e) => setQty(e.target.value)} className="tabular-nums" />
-        </Field>
-        <div className="flex items-center justify-between rounded-[10px] bg-muted/60 px-3 py-2.5 text-sm">
-          <span className="text-muted-foreground">
-            {money ? 'Balance added' : `${formatNumber(Number.isFinite(n) ? n : 0)} × ${formatMoney(pricing.unit_price)}`}
-          </span>
-          <span className="text-base font-semibold tabular-nums">{formatMoney(Number.isFinite(total) ? total : 0)}</span>
-        </div>
-        {(tooFew || tooMany) && Number.isFinite(n) && qty !== '' && (
-          <p className="text-xs text-destructive">Choose between {formatNumber(pricing.min)} and {formatNumber(pricing.max)}.</p>
-        )}
-        {overLimit && !tooMany && <p className="text-xs text-destructive">One online payment can be at most {formatMoney(billing.max_payment_tk)}.</p>}
-        <Button className="w-full" disabled={!canBuy || invalid} onClick={() => setPaying(n)}>
-          Pay {formatMoney(Number.isFinite(total) ? total : 0)} with {billing.gateways.includes('bkash') ? 'bKash' : 'online payment'}
-        </Button>
-        {!canBuy && (
-          <p className="text-xs text-muted-foreground">{billing.can_pay ? 'Online payment is not available yet — contact the platform team to recharge.' : 'Only the owner or staff who manage settings can pay.'}</p>
-        )}
-      </CardContent>
+      <CardContent><BuyForm type={type} pricing={pricing} billing={billing} /></CardContent>
+    </Card>
+  )
+}
+
+/** Amount, total and the pay button; the gateway (bKash, PayStation, SSLCommerz) is chosen next. */
+function BuyForm({ type, pricing, billing, onStarted }: { type: BuyType; pricing: Pricing; billing: MyBilling; onStarted?: () => void }) {
+  const money = type === 'BALANCE'
+  const [qty, setQty] = useState(String(pricing.presets[1] ?? pricing.presets[0] ?? pricing.min))
+  const [paying, setPaying] = useState<number | null>(null)
+  const n = Math.floor(Number(qty))
+  const total = money ? n : priceFor(n, pricing.unit_price ?? 0)
+  const tooFew = !(n >= pricing.min)
+  const tooMany = n > pricing.max
+  const overLimit = total > billing.max_payment_tk
+  const canBuy = billing.can_pay && billing.gateways.length > 0
+  const invalid = !Number.isFinite(n) || tooFew || tooMany || overLimit
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {pricing.presets.map((p) => (
+          <button key={p} type="button" onClick={() => setQty(String(p))}
+            className={cn('rounded-[10px] border px-3 py-1 text-sm tabular-nums transition-colors',
+              Number(qty) === p ? 'border-foreground bg-foreground text-background' : 'hover:bg-muted')}>
+            {money ? formatMoney(p) : formatNumber(p)}
+          </button>
+        ))}
+      </div>
+      <Field label={money ? 'Amount (Tk)' : type === 'SMS' ? 'SMS credits' : 'Credits'} hint={`Between ${money ? formatMoney(pricing.min) : formatNumber(pricing.min)} and ${money ? formatMoney(pricing.max) : formatNumber(pricing.max)}`}>
+        <Input type="number" inputMode="numeric" min={pricing.min} max={pricing.max} step={1} value={qty} onChange={(e) => setQty(e.target.value)} className="tabular-nums" />
+      </Field>
+      <div className="flex items-center justify-between rounded-[10px] bg-muted/60 px-3 py-2.5 text-sm">
+        <span className="text-muted-foreground">
+          {money ? 'Balance added' : `${formatNumber(Number.isFinite(n) ? n : 0)} × ${formatMoney(pricing.unit_price)}`}
+        </span>
+        <span className="text-base font-semibold tabular-nums">{formatMoney(Number.isFinite(total) ? total : 0)}</span>
+      </div>
+      {(tooFew || tooMany) && Number.isFinite(n) && qty !== '' && (
+        <p className="text-xs text-destructive">Choose between {formatNumber(pricing.min)} and {formatNumber(pricing.max)}.</p>
+      )}
+      {overLimit && !tooMany && <p className="text-xs text-destructive">One online payment can be at most {formatMoney(billing.max_payment_tk)}.</p>}
+      <Button className="w-full" disabled={!canBuy || invalid} onClick={() => setPaying(n)}>
+        Pay {formatMoney(Number.isFinite(total) ? total : 0)}
+      </Button>
+      {canBuy ? (
+        <p className="text-center text-xs text-muted-foreground">With {billing.gateways.map((g) => GATEWAY_SHORT[g]).join(', ')}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">{billing.can_pay ? 'Online payment is not available yet — contact the platform team to recharge.' : 'Only the owner or staff who manage settings can pay.'}</p>
+      )}
       {paying != null && (
         <PayDialog title={money ? `Top up ${formatMoney(paying)}` : `Buy ${formatNumber(paying)} ${type === 'SMS' ? 'SMS' : 'courier check'} credits`}
           amount={money ? paying : priceFor(paying, pricing.unit_price ?? 0)} gateways={billing.gateways} onClose={() => setPaying(null)}
           start={async (gateway) => {
             const invoice = await buyCredits(type, paying)
+            onStarted?.()
             await payInvoice(invoice.id, gateway)
           }} />
       )}
-    </Card>
+    </div>
+  )
+}
+
+/** "Add SMS Balance" on the SMS page: buy SMS credits and pay with bKash, PayStation or SSLCommerz. */
+export function AddSmsBalanceDialog({ onClose }: { onClose: () => void }) {
+  const billing = useMyBilling()
+  const credits = useMyCredits()
+  const b = billing.data
+  const balance = credits.data?.balances.find((x) => x.code === 'SMS')?.available ?? 0
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add SMS balance</DialogTitle>
+          <DialogDescription>
+            {b?.pricing.SMS.enabled
+              ? <>{formatMoney(b.pricing.SMS.unit_price)} per SMS. One SMS is 160 characters, or 70 with Bangla. You have <span className="font-medium text-foreground tabular-nums">{formatNumber(balance)} SMS</span>.</>
+              : 'Buy SMS for your store.'}
+          </DialogDescription>
+        </DialogHeader>
+        {billing.error ? <ErrorState error={billing.error} onRetry={() => billing.refetch()} />
+          : !b ? <LoadingState />
+            : !b.pricing.SMS.enabled ? <p className="text-sm text-muted-foreground">SMS cannot be bought online right now — contact the platform team to recharge.</p>
+              : <BuyForm type="SMS" pricing={b.pricing.SMS} billing={b} />}
+      </DialogContent>
+    </Dialog>
   )
 }
 

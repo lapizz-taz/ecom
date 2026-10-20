@@ -23,8 +23,18 @@ interface Log {
 async function smsOn(db: Db, events: string[], settings: Record<string, unknown> = {}) {
   await asSystem(db)
   await db.query(`update public.platform_settings set value = value || '{"connected": true, "provider": "smsnetbd", "sender_id": "FULLFILIO"}' where key = 'sms'`)
-  await setSetting(db, 'sms', { enabled: true, cost_per_sms: 0.3, ...settings })
+  await setSetting(db, 'sms', { enabled: true, ...settings })
+  await smsPrice(db, 30)
   await db.query(`update public.notifications set is_enabled = (event::text = any($1)) where channel = 'SMS'`, [events])
+}
+
+/** The platform's price of one SMS credit, in poisha (Super Admin → Billing → prices). */
+async function smsPrice(db: Db, poisha: unknown) {
+  await asSystem(db)
+  await db.query(`insert into public.platform_settings (key, value) values ('billing_controls', '{}') on conflict (key) do nothing`)
+  await db.query(`update public.platform_settings set value = jsonb_set(value, '{pricing}',
+      coalesce(value -> 'pricing', '{}') || jsonb_build_object('SMS', coalesce(value -> 'pricing' -> 'SMS', '{}') || jsonb_build_object('unit_poisha', $1::jsonb)))
+    where key = 'billing_controls'`, [JSON.stringify(poisha)])
 }
 
 async function smsLogs(db: Db, orderId: string | null = null): Promise<Log[]> {
@@ -229,7 +239,8 @@ describe('SMS automation', () => {
 
   it('never blocks an order change when a message cannot be queued, and says so in the System log', () =>
     inTx(async (db) => {
-      await smsOn(db, ['ORDER_CONFIRMED'], { cost_per_sms: 'not a number' })
+      await smsOn(db, ['ORDER_CONFIRMED'])
+      await smsPrice(db, 'not a number')
       const o = await order(db, '01711000914')
       const confirmed = await transition(db, o.id, 'CONFIRMED')
       expect(confirmed.status).toBe('CONFIRMED')
@@ -294,8 +305,13 @@ describe('SMS page access', () => {
       await db.query(`update public.platform_settings set value = value || '{"connected": false}' where key = 'sms'`)
       await asUser(db, admin)
       await expectError(db, `select public.sms_update_settings(p_enabled => true)`, [], /not available on the platform/)
-      const saved = await value<Record<string, unknown>>(db, `select public.sms_update_settings(p_cost_per_sms => 0.25, p_currency_text => 'BDT')`)
-      expect(saved).toMatchObject({ cost_per_sms: 0.25, currency_text: 'BDT' })
+      const saved = await value<Record<string, unknown>>(db, `select public.sms_update_settings(p_currency_text => 'BDT')`)
+      expect(saved).toMatchObject({ currency_text: 'BDT' })
+      // The price of SMS is the platform's: a business cannot set it, and costs use the platform's price.
+      await expectError(db, `select public.sms_update_settings(p_cost_per_sms => 0.01)`, [], /set by the platform/)
+      await smsPrice(db, 45)
+      await asUser(db, admin)
+      expect(await value<Record<string, unknown>>(db, `select public.sms_overview(current_date, current_date) -> 'settings'`)).toMatchObject({ cost_per_sms: 0.45 })
       // The sender ID and the provider are the platform's to set.
       await expectError(db, `select public.sms_update_settings(p_sender_id => 'MyShop')`, [], /set by the platform/)
       await expectError(db, `select public.sms_set_connection('smsnetbd', 'x', 'MyShop', null, null)`, [], /managed by the platform|permission/i)

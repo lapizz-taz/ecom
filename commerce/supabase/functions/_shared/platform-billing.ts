@@ -6,13 +6,16 @@ import { appBase } from './storefront.ts'
 import { functionsBase } from './env.ts'
 import { HttpError } from './http.ts'
 import { type Gateway, gatewayFromCredentials, gatewaySandbox } from './payments/registry.ts'
+import { SslCommerzProvider } from './payments/providers.ts'
+import { guardedFetch } from './net.ts'
 import { logEvent } from './monitoring.ts'
 import { redactGatewayAnswer } from './payments/redact.ts'
 import type { PaymentProvider, VerifiedPayment } from './payments/types.ts'
 import { adminClient, rpc } from './supabase.ts'
 
-export const PLATFORM_GATEWAYS = ['bkash', 'paystation'] as const
-export const platformGatewaySecret = (code: Gateway) => `gateway.${code}`
+export const PLATFORM_GATEWAYS = ['bkash', 'paystation', 'sslcommerz'] as const
+export type PlatformGateway = (typeof PLATFORM_GATEWAYS)[number]
+export const platformGatewaySecret = (code: PlatformGateway) => `gateway.${code}`
 
 interface GatewaySettings { enabled?: boolean; connected?: boolean; sandbox?: boolean }
 
@@ -20,7 +23,7 @@ interface GatewaySettings { enabled?: boolean; connected?: boolean; sandbox?: bo
  * The platform's gateway. Uses a client without a merchant, so the bKash
  * token is the platform's (shared by every merchant's payment), not a merchant's.
  */
-export async function platformGateway(code: Gateway, opts: { allowDisabled?: boolean; credentials?: Record<string, string>; sandbox?: boolean } = {}): Promise<PaymentProvider> {
+export async function platformGateway(code: PlatformGateway, opts: { allowDisabled?: boolean; credentials?: Record<string, string>; sandbox?: boolean } = {}): Promise<PaymentProvider> {
   const platform = adminClient()
   const { data: settings, error } = await platform.rpc('platform_billing_gateways_config')
   if (error) throw new HttpError(500, `Could not read the payment settings: ${error.message}`, 'SETTINGS_READ_FAILED')
@@ -33,7 +36,12 @@ export async function platformGateway(code: Gateway, opts: { allowDisabled?: boo
     creds = (data as Record<string, string> | null) ?? null
     if (!creds) throw new HttpError(503, 'Online payment is not set up yet', 'PROVIDER_NOT_CONFIGURED')
   }
-  return gatewayFromCredentials(code, { enabled: true, sandbox: opts.sandbox ?? gatewaySandbox(code, config.sandbox) }, creds, platform)
+  if (code === 'sslcommerz') {
+    // Only the platform's own account: stores pay their own SSLCommerz account at checkout.
+    if (!creds.store_id || !creds.store_password) throw new HttpError(503, 'Online payment is not set up yet', 'PROVIDER_NOT_CONFIGURED')
+    return new SslCommerzProvider({ storeId: creds.store_id, storePassword: creds.store_password, sandbox: opts.sandbox ?? config.sandbox !== false }, guardedFetch)
+  }
+  return gatewayFromCredentials(code as Gateway, { enabled: true, sandbox: opts.sandbox ?? gatewaySandbox(code, config.sandbox) }, creds, platform)
 }
 
 /** Where the admin app lives, for returning merchants after a payment. */

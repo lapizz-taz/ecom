@@ -31,7 +31,7 @@ const TONE: Record<Tone, { label: string; chip: string }> = {
   error: { label: 'Not connected', chip: 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10 dark:text-red-300' },
 }
 
-function DomainChip({ d }: { d: StoreDomain }) {
+export function DomainChip({ d }: { d: StoreDomain }) {
   const t = TONE[domainTone(d)]
   return <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset', t.chip)}>{t.label}</span>
 }
@@ -270,8 +270,10 @@ function DnsHost({ diag, aName, sub, hideTip }: { diag: DomainDiagnosis; aName?:
 }
 
 /** The full status of one domain: DNS records, regions, HTTPS, target and type. */
-export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove, onMakePrimary, onUseWww, onBack, inDialog }: {
+export function DomainDetail({ d, primary, canEdit, canChangeType = canEdit, checking, onCheck, onRemove, onMakePrimary, onUseWww, onBack, inDialog }: {
   d: StoreDomain; primary: string | null; canEdit: boolean; checking: boolean
+  /** Primary / redirect can be changed here (Super Admin checks and removes, the store picks its primary). */
+  canChangeType?: boolean
   onCheck: () => void; onRemove: () => void; onMakePrimary: () => Promise<unknown>; onBack: () => void
   /** The root cannot connect at this DNS company: connect www.<domain> and make it primary. */
   onUseWww?: () => Promise<unknown>
@@ -422,7 +424,7 @@ export function DomainDetail({ d, primary, canEdit, checking, onCheck, onRemove,
               <p className="text-[13px] font-medium">Type</p>
               <p className="truncate text-[11px] text-muted-foreground">{d.is_primary ? 'Primary domain' : `Redirects to ${primary ?? 'the primary domain'}`}</p>
             </div>
-            {canEdit && !d.is_primary && (active
+            {canChangeType && !d.is_primary && (active
               ? <Button size="sm" variant="secondary" onClick={() => setTypeOpen(true)}>Change</Button>
               : <span className="text-[11px] text-muted-foreground">Can be primary once connected</span>)}
           </div>

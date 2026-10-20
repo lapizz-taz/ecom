@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { type CreditPackage, formatCredits, isMoneyCredit, LEDGER_KIND, myCredits, payInvoice, startRecharge } from '@/services/credits'
+import { type CreditPackage, formatCredits, isMoneyCredit, LEDGER_KIND, myCredits, payInvoice, type PlatformGateway, startRecharge } from '@/services/credits'
 
-const GATEWAY_NAME = { bkash: 'bKash', paystation: 'PayStation (card, mobile banking)' } as const
+export const GATEWAY_NAME: Record<PlatformGateway, string> = { bkash: 'bKash', paystation: 'PayStation (card, mobile banking)', sslcommerz: 'SSLCommerz (card, mobile and internet banking)' }
+export const GATEWAY_SHORT: Record<PlatformGateway, string> = { bkash: 'bKash', paystation: 'PayStation', sslcommerz: 'SSLCommerz' }
 
 export function useMyCredits() {
   return useQuery({ queryKey: ['my-credits'], queryFn: myCredits, staleTime: 30_000 })
@@ -20,8 +21,8 @@ export function useMyCredits() {
 export function PayDialog({ title, amount, gateways, start, onClose }: {
   title: string
   amount: number
-  gateways: Array<'bkash' | 'paystation'>
-  start: (gateway: 'bkash' | 'paystation') => Promise<void>
+  gateways: PlatformGateway[]
+  start: (gateway: PlatformGateway) => Promise<void>
   onClose: () => void
 }) {
   const [gateway, setGateway] = useState(gateways[0])
