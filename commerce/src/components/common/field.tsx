@@ -19,7 +19,7 @@ export function Field({ label, htmlFor, error, hint, required, className, childr
   const id = htmlFor ?? ownId ?? (only ? auto : undefined)
   const control = only && !htmlFor && !ownId ? cloneElement(only, { id: auto }) : children
   return (
-    <div className={cn('grid gap-1.5', className)}>
+    <div className={cn('grid content-start gap-1.5', className)}>
       <Label htmlFor={id}>
         {label}
         {required && <span className="text-destructive">*</span>}
