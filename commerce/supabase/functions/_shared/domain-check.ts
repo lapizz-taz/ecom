@@ -169,12 +169,34 @@ export const RESOLVERS = [
 
 const only = (answers: DohAnswer[] | null, type: RecordType) => (answers ?? []).filter((a) => a.type === TYPE_CODE[type]).map((a) => a.data)
 
+export type RegistryRecord = { nameservers: string[]; changed_at: string | null }
+
+// Registries such as .shop's refuse requests from Cloudflare Workers: there the lookup runs in the
+// relay on Supabase (worker/index.ts sets it; nowhere else does, so the relay asks directly).
+let registryRelay: ((domain: string) => Promise<RegistryRecord | null>) | null = null
+export function setRegistryRelay(relay: ((domain: string) => Promise<RegistryRecord | null>) | null): void {
+  registryRelay = relay
+}
+
 /**
  * What the registry has for the domain (RDAP): its nameservers, who really answers its DNS even
  * while DNS servers still remember the old ones, and when the domain last changed there. Null
  * when the registry does not say (some country domains have no RDAP).
  */
-export async function registryRecord(domain: string, fetcher: Fetch = fetch): Promise<{ nameservers: string[]; changed_at: string | null } | null> {
+export async function registryRecord(domain: string, fetcher: Fetch = fetch): Promise<RegistryRecord | null> {
+  // A stand-in fetch (a test, a fake) still runs here.
+  if (registryRelay && fetcher === globalThis.fetch) {
+    try {
+      return await registryRelay(apexOf(domain))
+    } catch {
+      // The relay is down: ask directly (it may still answer).
+    }
+  }
+  return registryRecordDirect(domain, fetcher)
+}
+
+/** The registry asked from here: its own RDAP server (from IANA's list), then rdap.org. */
+export async function registryRecordDirect(domain: string, fetcher: Fetch = fetch): Promise<RegistryRecord | null> {
   const apex = apexOf(domain)
   // The registry's own RDAP server first (from IANA's list), then the rdap.org redirector:
   // rdap.org can turn away requests from cloud servers.
@@ -188,7 +210,7 @@ export async function registryRecord(domain: string, fetcher: Fetch = fetch): Pr
 
 const RDAP_HEADERS = { accept: 'application/rdap+json, application/json', 'user-agent': 'Fullfilio-domain-check/1.0 (+https://fullfilio.com)' }
 
-async function rdapDomain(url: string, fetcher: Fetch): Promise<{ nameservers: string[]; changed_at: string | null } | null> {
+async function rdapDomain(url: string, fetcher: Fetch): Promise<RegistryRecord | null> {
   try {
     const res = await fetcher(url, { headers: RDAP_HEADERS, signal: AbortSignal.timeout(6_000) })
     if (!res.ok) return null
