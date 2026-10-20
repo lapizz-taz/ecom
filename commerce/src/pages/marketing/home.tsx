@@ -230,9 +230,11 @@ function Pricing() {
                   {p.trial_days ? <span className="rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}
                 </div>
                 <p className="mt-4"><span className="text-[36px] font-medium tracking-tight tabular-nums">৳{Number(p.price).toLocaleString('en-IN')}</span><span className="text-[13px] text-(--s-muted)"> / {p.billing_interval === 'YEAR' ? 'year' : 'month'}</span></p>
-                {p.offer?.first_price != null && (
+                {p.offer && (p.offer.first_price != null || !!p.offer.trial_price) && (
                   <p className="mt-2 text-[13px] text-(--s-accent)">
-                    {p.trial_days ? `${p.trial_days} days free, then ` : 'Start for '}৳{Number(p.offer.first_price).toLocaleString('en-IN')} for your first {p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}
+                    {p.offer.trial_price
+                      ? `${p.trial_days}-day trial for ৳${Number(p.offer.trial_price).toLocaleString('en-IN')}`
+                      : `${p.trial_days ? `${p.trial_days} days free, then ` : 'Start for '}৳${Number(p.offer.first_price).toLocaleString('en-IN')} for your first ${p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}`}
                     {p.offer.setup_fee ? `, then a one-time ৳${Number(p.offer.setup_fee).toLocaleString('en-IN')} fee` : ''}
                   </p>
                 )}

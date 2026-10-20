@@ -59,10 +59,10 @@ export function PlanPicker({ options, value, onChange }: { options: SignupOption
             </div>
             {(p.trial_days > 0 || p.offer?.first_price != null) && (
               <p className="mt-3 inline-flex flex-wrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                {planOfferText(p, formatMoney)}{p.trial_days > 0 ? ' · no payment now' : ' · pay to start'}
+                {planOfferText(p, formatMoney)}{p.trial_days > 0 && !p.offer?.trial_price ? ' · no payment now' : ' · pay to start'}
               </p>
             )}
-            {(p.offer?.first_price != null || !!p.offer?.setup_fee) && Number(p.price) > 0 && (
+            {(p.offer?.first_price != null || !!p.offer?.trial_price || !!p.offer?.setup_fee) && Number(p.price) > 0 && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">After that, {planThenText(p, formatMoney).replace(/^then /, '')}.</p>
             )}
             <ul className="mt-3 grid gap-x-4 gap-y-1.5 text-[13px] text-muted-foreground sm:grid-cols-2">

@@ -245,8 +245,8 @@ export class Context {
         `SELECT id, status, grace_until, intro_until, current_period_end FROM subscriptions WHERE merchant_id = ?
           ORDER BY (ended_at IS NULL) DESC, ended_at IS NULL, ended_at DESC, created_at DESC LIMIT 1`, [merchant])[0]
       const key = !s ? 'NO_SUBSCRIPTION'
-        // The new-business trial ended and its first invoice is unpaid.
-        : s.status === 'PAST_DUE' && s.intro_until != null && s.current_period_end == null ? 'TRIAL_ENDED'
+        // The new-business offer ended and the payment to continue is not made.
+        : s.status === 'PAST_DUE' && s.intro_until != null && (s.current_period_end == null || String(s.current_period_end) <= String(s.intro_until)) ? 'TRIAL_ENDED'
         : s.status === 'PAST_DUE' && s.grace_until && String(s.grace_until) < this.now ? 'PAST_DUE_AFTER_GRACE'
           : String(s.status)
       const b = rules[key] ?? (key === 'TRIAL_ENDED' ? 'BLOCKED' : 'FULL')
