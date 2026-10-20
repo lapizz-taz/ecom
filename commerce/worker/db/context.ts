@@ -239,12 +239,14 @@ export class Context {
       const a = status === 'SUSPENDED' ? rules.MERCHANT_SUSPENDED ?? 'BLOCKED' : status === 'ONBOARDING' ? rules.MERCHANT_ONBOARDING ?? 'FULL' : 'FULL'
       // The current subscription; when none, the last one that ended.
       const s = this.sql.all(
-        `SELECT id, status, grace_until FROM subscriptions WHERE merchant_id = ?
+        `SELECT id, status, grace_until, intro_until, current_period_end FROM subscriptions WHERE merchant_id = ?
           ORDER BY (ended_at IS NULL) DESC, ended_at IS NULL, ended_at DESC, created_at DESC LIMIT 1`, [merchant])[0]
       const key = !s ? 'NO_SUBSCRIPTION'
+        // The new-business trial ended and its first invoice is unpaid.
+        : s.status === 'PAST_DUE' && s.intro_until != null && s.current_period_end == null ? 'TRIAL_ENDED'
         : s.status === 'PAST_DUE' && s.grace_until && String(s.grace_until) < this.now ? 'PAST_DUE_AFTER_GRACE'
           : String(s.status)
-      const b = rules[key] ?? 'FULL'
+      const b = rules[key] ?? (key === 'TRIAL_ENDED' ? 'BLOCKED' : 'FULL')
       return [a, b].includes('BLOCKED') ? 'BLOCKED' : [a, b].includes('READ_ONLY') ? 'READ_ONLY' : 'FULL'
     })
   }

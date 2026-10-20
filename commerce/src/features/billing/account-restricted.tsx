@@ -5,7 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { PlanSummary } from '@/features/billing/plan-summary'
+import { PlanSummary, trialEnded } from '@/features/billing/plan-summary'
 import { formatDate, formatMoney } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { myPlan, type MyPlan, renewNow } from '@/services/billing'
@@ -23,8 +23,11 @@ export function AccountRestricted({ email, onSignOut }: { email: string; onSignO
       <div className="flex items-start gap-3">
         <div className="rounded-full bg-red-50 p-2.5 text-red-600"><Lock className="size-5" /></div>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold">This account is restricted</h1>
-          <p className="text-sm text-muted-foreground">Signed in as {email}. Your data is kept and nothing has been deleted.</p>
+          <h1 className="text-lg font-semibold">{plan.data?.subscription && trialEnded(plan.data.subscription) ? 'Your free trial has ended' : 'This account is restricted'}</h1>
+          <p className="text-sm text-muted-foreground">
+            Signed in as {email}. Your data is kept and nothing has been deleted.
+            {plan.data?.subscription && trialEnded(plan.data.subscription) && ' Pay the invoice below to continue; everything opens as soon as the payment is confirmed.'}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={onSignOut}>Sign out</Button>
       </div>

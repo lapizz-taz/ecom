@@ -19,11 +19,19 @@ function accessExplanation(p: MyPlan): string | null {
   if (p.merchant.status === 'CLOSED') return 'Your account is closed.'
   const s = p.subscription
   if (!s) return 'Your subscription has ended.'
+  if (trialEnded(s)) {
+    return `Your free trial has ended. Pay ${formatMoney(s.intro_price!)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'} to continue (then ${formatMoney(s.price)} a ${s.billing_interval === 'YEAR' ? 'year' : 'month'}).`
+  }
   if (s.status === 'PAST_DUE') return `An invoice is unpaid${s.grace_until ? ` since before ${formatDate(s.grace_until)}` : ''}. Pay it to restore full access.`
   if (s.status === 'PAUSED') return 'Your subscription is paused.'
   if (s.status === 'CANCELLED') return 'Your subscription is cancelled.'
   if (s.status === 'EXPIRED') return 'Your subscription expired unpaid.'
   return null
+}
+
+/** The new-business trial is over and its first (introductory-price) invoice is unpaid. */
+export function trialEnded(s: NonNullable<MyPlan['subscription']>): boolean {
+  return s.status === 'PAST_DUE' && s.intro_price != null && !s.current_period_end
 }
 
 function usePlan() {
@@ -62,10 +70,20 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
               <p className="flex items-center gap-2 text-lg font-semibold">{s.plan.name} <StatusBadge value={s.status} map={SUBSCRIPTION_STATUS} /></p>
               {s.plan.description && <p className="text-muted-foreground">{s.plan.description}</p>}
               <p>{formatMoney(s.price)} / {s.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
-              {s.status === 'TRIALING' && <p className="text-muted-foreground">Free trial until {formatDateTime(s.trial_ends_at)}</p>}
+              {s.status === 'TRIALING' && (
+                <p className="text-muted-foreground">
+                  Free trial until {formatDateTime(s.trial_ends_at)}
+                  {s.intro_price != null && ` — then ${formatMoney(s.intro_price)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'}`}
+                </p>
+              )}
+              {s.status === 'ACTIVE' && s.intro_price != null && s.intro_until && s.current_period_end && new Date(s.current_period_end) <= new Date(s.intro_until) && (
+                <p className="text-muted-foreground">Introductory price {formatMoney(s.intro_price)} until {formatDate(s.intro_until)}; then {formatMoney(s.price)} / {s.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
+              )}
               {s.status === 'ACTIVE' && s.current_period_end && <p className="text-muted-foreground">Renews {formatDate(s.current_period_end)}{s.cancel_at_period_end && ' — set to end then'}</p>}
               {canPayOnline && s.price > 0 && ['ACTIVE', 'TRIALING'].includes(s.status) && !s.cancel_at_period_end && open.length === 0 && (
-                <Button size="sm" variant="outline" className="mt-2" disabled={renew.isPending} onClick={() => renew.mutate()}>Renew now</Button>
+                <Button size="sm" variant="outline" className="mt-2" disabled={renew.isPending} onClick={() => renew.mutate()}>
+                  {s.status === 'TRIALING' ? `Pay ${formatMoney(s.intro_price ?? s.price)} now` : 'Renew now'}
+                </Button>
               )}
             </>}
           </CardContent>

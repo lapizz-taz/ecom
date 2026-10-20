@@ -14,8 +14,19 @@ export interface SignupPlan {
   currency: string
   billing_interval: string
   trial_days: number
+  /** New-business offer: the trial, then the first month(s) at an introductory price (null when off). */
+  offer?: { trial_days: number; first_price: number | null; first_periods: number } | null
   limits: Record<string, number>
   features: string[]
+}
+
+/** "2-day free trial · then ৳99 for the first month", for a plan on the sign-up page. */
+export function planOfferText(p: Pick<SignupPlan, 'trial_days' | 'offer' | 'billing_interval'>, money: (n: number) => string): string {
+  const trial = p.trial_days > 0 ? `${p.trial_days}-day free trial` : ''
+  const first = p.offer?.first_price != null
+    ? `${money(p.offer.first_price)} for the first ${p.offer.first_periods > 1 ? `${p.offer.first_periods} ${p.billing_interval?.toUpperCase() === 'YEAR' ? 'years' : 'months'}` : p.billing_interval?.toUpperCase() === 'YEAR' ? 'year' : 'month'}`
+    : ''
+  return [trial, first && (trial ? `then ${first}` : first)].filter(Boolean).join(' · ')
 }
 
 export interface SignupOptions {

@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { GatewaysCard } from '@/features/platform/billing/gateways-card'
 import { OnboardingCard, PendingActivations } from '@/features/platform/billing/onboarding-card'
+import { SignupOfferCard } from '@/features/platform/billing/signup-offer-card'
 import { SignupRequests } from '@/features/platform/billing/signup-requests'
 import { InvoiceTable, PendingPayments } from '@/features/platform/billing/invoices'
 import { AddonDialog, PlanDialog } from '@/features/platform/billing/plan-dialog'
@@ -174,6 +175,7 @@ function Invoices() {
 
 const ACCESS_STATES: Array<{ key: string; label: string }> = [
   { key: 'TRIALING', label: 'On a free trial' },
+  { key: 'TRIAL_ENDED', label: 'Trial ended, first payment not made (new business offer)' },
   { key: 'ACTIVE', label: 'Paid up' },
   { key: 'PAST_DUE', label: 'Invoice unpaid, within the grace period' },
   { key: 'PAST_DUE_AFTER_GRACE', label: 'Invoice unpaid after the grace period' },
@@ -247,7 +249,10 @@ function Rules() {
                 await save.mutateAsync({ key: 'access_rules', value: r, reason })
                 setRules(null)
               } else {
-                await save.mutateAsync({ key: 'billing', value: { ...settings.data.billing?.value, ...Object.fromEntries(Object.entries(b).map(([k, v]) => [k, /^\d+$/.test(v) ? Number(v) : v])) }, reason })
+                // Every number is required: an empty one used to stop the billing run.
+                const missing = ['invoice_due_days', 'grace_days', 'expire_after_days'].find((k) => !/^\d+$/.test(String(b[k] ?? '').trim()))
+                if (missing) throw new Error(`Enter a number of days for "${missing.replace(/_/g, ' ')}"`)
+                await save.mutateAsync({ key: 'billing', value: { ...settings.data.billing?.value, ...Object.fromEntries(Object.entries(b).map(([k, v]) => [k, /^\d+$/.test(String(v).trim()) ? Number(v) : v])) }, reason })
                 setBilling(null)
               }
             } catch (e) {
@@ -284,7 +289,7 @@ export default function SubscriptionsPage() {
             {can('subscriptions') ? <GatewaysCard /> : <p className="text-sm text-muted-foreground">You need the Subscriptions permission to change these.</p>}
           </div>
         </TabsContent>
-        <TabsContent value="onboarding"><div className="grid gap-4 lg:grid-cols-2"><SignupRequests /><PendingActivations /><OnboardingCard /></div></TabsContent>
+        <TabsContent value="onboarding"><div className="grid gap-4 lg:grid-cols-2"><SignupRequests /><PendingActivations /><SignupOfferCard /><OnboardingCard /></div></TabsContent>
         {can('settings') && <TabsContent value="rules"><Rules /></TabsContent>}
       </Tabs>
     </div>

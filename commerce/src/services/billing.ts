@@ -181,6 +181,8 @@ export interface MyPlan {
   subscription: {
     status: SubscriptionStatus; price: number; currency: string; billing_interval: 'MONTH' | 'YEAR'; trial_ends_at: string | null
     current_period_end: string | null; grace_until: string | null; cancel_at_period_end: boolean; plan: { name: string; code: string; description: string | null }
+    /** New-business offer: the first invoice(s) after the trial are at this price, for periods starting before intro_until. */
+    intro_price?: number | null; intro_until?: string | null
   } | null
   limits: Limits
   usage: Record<LimitKey, number>
