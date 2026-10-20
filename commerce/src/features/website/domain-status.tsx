@@ -70,7 +70,7 @@ const BAND: Record<Tone, { band: string; ring: string; title: string }> = {
   error: { band: 'from-red-700 via-red-500 to-red-700', ring: 'text-red-600', title: 'Not connected' },
 }
 
-/** The status at a glance: a dark globe with a pin for every region the DNS check asked,
+/** The status at a glance: a white globe with a pin for every region the DNS check asked,
  *  over a band that is red until the domain is connected and blue once it is. */
 function StatusHero({ tone, regions, pointed, left }: { tone: Tone; regions: RegionCheck[] | null; pointed?: boolean; left?: 'txt' | 'hosting' }) {
   // DNS is done: say what is left (the TXT record, the hosting, or only the certificate).
@@ -80,9 +80,9 @@ function StatusHero({ tone, regions, pointed, left }: { tone: Tone; regions: Reg
   const ok = regions?.filter((r) => r.ok).length ?? 0
   return (
     <div className={cn('relative overflow-hidden bg-gradient-to-r', b.band)}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_55%,rgb(9_9_11/.92)_0,rgb(9_9_11/.92)_38%,transparent_72%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgb(255_255_255/.22)_0,transparent_60%)]" />
       <div className="relative px-4 pt-4 pb-3">
-        <DomainGlobe tone={tone} regions={regions} label={`${b.title}${regions ? `: ${ok} of ${regions.length} regions see the domain` : ''}`} />
+        <DomainGlobe regions={regions} label={`${b.title}${regions ? `: ${ok} of ${regions.length} regions see the domain` : ''}`} />
         <p className="mt-1 text-center text-[11px] font-medium text-white/90">
           {b.title}{regions ? ` · ${ok} of ${regions.length} regions` : ''}
         </p>
