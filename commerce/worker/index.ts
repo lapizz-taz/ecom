@@ -5,6 +5,7 @@
 // rebuildable cache entries only.
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { setSharedCache } from '../supabase/functions/_shared/cache.ts'
+import { setRegistryRelay } from '../supabase/functions/_shared/domain-check.ts'
 import { setHistoryRelay } from '../supabase/functions/_shared/fraud/courier-history.ts'
 import { setPanelRelay } from '../supabase/functions/_shared/fraud/courier-panel.ts'
 import { httpPanelRelay } from '../supabase/functions/_shared/fraud/courier-relay.ts'
@@ -49,6 +50,8 @@ function setUp(env: Env): Router {
   const relay = relayUrl ? httpPanelRelay({ url: relayUrl, cronSecret, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY }) : null
   setPanelRelay(relay)
   setHistoryRelay(relay ? (phone) => relay.history(phone) : null)
+  // Registries (RDAP) refuse Workers too: the domain check asks them through the same relay.
+  setRegistryRelay(relay ? (domain) => relay.rdap(domain) : null)
   // bKash and PayStation refuse Workers as well: their calls go through the same relay.
   if (relayUrl) globalThis.fetch = relayedFetch({ url: relayUrl, cronSecret, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY }, globalThis.fetch)
   const kv = env.CACHE

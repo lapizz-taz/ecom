@@ -6,6 +6,7 @@
 // Only the customer's phone travels for a lookup; the relay reads the platform's
 // courier logins and BD Courier key from Vault itself. A login test sends the login being tested
 // (Super Admin typed it), over HTTPS, to our own function.
+import type { RegistryRecord } from '../domain-check.ts'
 import type { CourierHistorySummary } from './courier-history.ts'
 import type { CourierPanelProviderId, PanelLogin, PanelRelay } from './courier-panel.ts'
 
@@ -25,6 +26,8 @@ export interface RelayConfig {
 export interface CourierRelay extends PanelRelay {
   /** One BD Courier lookup on the platform's key. */
   history(phone: string): Promise<CourierHistorySummary>
+  /** The domain's registry record (RDAP), for the domain check. */
+  rdap(domain: string): Promise<RegistryRecord | null>
 }
 
 export function httpPanelRelay(c: RelayConfig): CourierRelay {
@@ -60,6 +63,10 @@ export function httpPanelRelay(c: RelayConfig): CourierRelay {
       const r = await call<{ ok: boolean; summary?: CourierHistorySummary; message?: string }>({ action: 'history', phone }, 20_000)
       if (!r.ok || !r.summary) throw new Error(r.message || 'BD Courier check failed')
       return r.summary
+    },
+    async rdap(domain: string): Promise<RegistryRecord | null> {
+      const r = await call<{ ok: boolean; record?: RegistryRecord | null }>({ action: 'rdap', domain }, 20_000)
+      return r.record ?? null
     },
     test(provider: CourierPanelProviderId, login: PanelLogin, samplePhone: string) {
       return call<{ ok: boolean; message: string }>({ action: 'test', provider, login, phone: samplePhone })

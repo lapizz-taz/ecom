@@ -6,6 +6,9 @@
 //   POST {action: 'test', provider, login, phone}     one login, nothing saved
 //   POST {action: 'gateway', url, method, headers, body}  one call to bKash or PayStation,
 //        which refuse Workers too (see _shared/payments/gateway-relay.ts); those hosts only
+//   POST {action: 'rdap', domain}                     the domain's registry record (nameservers),
+//        for the domain check: registries such as .shop's refuse Workers; the RDAP server
+//        comes from IANA's list, never from the caller
 // Only our own servers may call it: the cron secret, or a key Supabase accepts
 // as the service role (asked of Supabase, so the Worker's copy may be another format).
 // Metering stays with the caller; nothing here is logged.
@@ -15,6 +18,7 @@ import { fetchWithRetry } from '../_shared/fetch-retry.ts'
 import { CourierHistoryProvider } from '../_shared/fraud/courier-history.ts'
 import { COURIER_PANEL_PROVIDERS, type CourierPanelCreds, CourierPanelProvider, testPanelLogin } from '../_shared/fraud/courier-panel.ts'
 import { courierHistoryConfig, platformCourierHistorySecret, platformPanelCreds } from '../_shared/fraud/service.ts'
+import { registryRecordDirect } from '../_shared/domain-check.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { callGateway } from '../_shared/payments/gateway-relay.ts'
 import { parse } from '../_shared/schemas.ts'
@@ -24,6 +28,7 @@ const phone = z.string().trim().min(6).max(20).regex(/^[+0-9\s-]+$/)
 const input = z.discriminatedUnion('action', [
   z.object({ action: z.literal('lookup'), phone }),
   z.object({ action: z.literal('history'), phone }),
+  z.object({ action: z.literal('rdap'), domain: z.string().trim().toLowerCase().max(253).regex(/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,}|xn--[a-z0-9-]{2,59})$/) }),
   z.object({
     action: z.literal('gateway'), url: z.url({ protocol: /^https$/ }).max(500), method: z.enum(['GET', 'POST']),
     headers: z.record(z.string().max(64), z.string().max(2000)), body: z.string().max(100_000),
@@ -45,6 +50,8 @@ export default (
     const body = parse(input, await readJson(req))
 
     if (body.action === 'gateway') return json(req, await callGateway(body))
+
+    if (body.action === 'rdap') return json(req, { ok: true, record: await registryRecordDirect(body.domain) })
 
     if (body.action === 'test') return json(req, await testPanelLogin(body.provider, body.login, body.phone))
 
