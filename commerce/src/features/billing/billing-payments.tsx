@@ -110,6 +110,7 @@ export function AddSmsBalanceDialog({ onClose }: { onClose: () => void }) {
   const credits = useMyCredits()
   const b = billing.data
   const balance = credits.data?.balances.find((x) => x.code === 'SMS')?.available ?? 0
+  const included = !!credits.data?.usage.sms?.unmetered
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -121,6 +122,11 @@ export function AddSmsBalanceDialog({ onClose }: { onClose: () => void }) {
               : 'Buy SMS for your store.'}
           </DialogDescription>
         </DialogHeader>
+        {included && (
+          <p className="rounded-[10px] bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            Your plan includes SMS right now, so messages do not use this balance. What you add stays yours for when your plan no longer includes SMS.
+          </p>
+        )}
         {billing.error ? <ErrorState error={billing.error} onRetry={() => billing.refetch()} />
           : !b ? <LoadingState />
             : !b.pricing.SMS.enabled ? <p className="text-sm text-muted-foreground">SMS cannot be bought online right now — contact the platform team to recharge.</p>
@@ -138,9 +144,9 @@ export function BuySection() {
   if (!billing.data || !credits.data) return <LoadingState />
   const b = billing.data
   const bal = (code: string) => credits.data.balances.find((x) => x.code === code)?.available ?? 0
-  const sms = credits.data.usage.sms?.unmetered ? null : b.pricing.SMS
+  const smsIncluded = !!credits.data.usage.sms?.unmetered
   const cards: Array<{ type: BuyType; pricing: Pricing; balance: string }> = [
-    ...(sms?.enabled ? [{ type: 'SMS' as const, pricing: sms, balance: `${formatNumber(bal('SMS'))} SMS credits` }] : []),
+    ...(b.pricing.SMS.enabled ? [{ type: 'SMS' as const, pricing: b.pricing.SMS, balance: `${formatNumber(bal('SMS'))} SMS credits${smsIncluded ? ' (your plan includes SMS right now)' : ''}` }] : []),
     ...(b.pricing.BALANCE.enabled ? [{ type: 'BALANCE' as const, pricing: b.pricing.BALANCE, balance: formatMoney(bal('BALANCE') / 100) }] : []),
     ...(b.pricing.COURIER.enabled ? [{ type: 'COURIER' as const, pricing: b.pricing.COURIER, balance: `${formatNumber(bal('COURIER'))} checks` }] : []),
   ]

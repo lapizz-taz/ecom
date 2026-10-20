@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/features/auth/auth-context'
 import { AddSmsBalanceDialog } from '@/features/billing/billing-payments'
+import { useMyCredits } from '@/features/billing/credits-section'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useUrlState } from '@/hooks/use-url-state'
 import { rangeFor } from '@/lib/dates'
@@ -21,8 +22,8 @@ import { type SmsOverview, smsOverview, updateSmsSettings } from '@/services/sms
 import { TestSmsDialog } from './sms-provider'
 import { eventLabel } from './sms-text'
 
-export function useSmsOverview(from: string, to: string) {
-  return useQuery({ queryKey: ['sms-overview', from, to], placeholderData: keepPreviousData, queryFn: () => smsOverview(from, to) })
+export function useSmsOverview(from: string, to: string, enabled = true) {
+  return useQuery({ queryKey: ['sms-overview', from, to], placeholderData: keepPreviousData, queryFn: () => smsOverview(from, to), enabled })
 }
 
 /** The SMS service, the on/off switch and what SMS cost in a period. */
@@ -66,30 +67,36 @@ export function SmsOverviewTab() {
   )
 }
 
-/** The SMS page's header: the SMS balance, buying more (bKash, PayStation, SSLCommerz) and a quick SMS to anyone. */
-export function SmsHeaderActions() {
+/**
+ * The SMS page's header: the SMS balance, buying more (bKash, PayStation, SSLCommerz) and a quick
+ * SMS to anyone. Buying is offered even while SMS is "coming soon" or included in the plan.
+ */
+export function SmsHeaderActions({ smsOn = true }: { smsOn?: boolean }) {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const { data: config } = useStoreConfig()
+  const credits = useMyCredits()
   const today = isoDateToday()
-  const overview = useSmsOverview(today, today)
+  const overview = useSmsOverview(today, today, smsOn)
   const [dialog, setDialog] = useState<'buy' | 'quick' | null>(null)
-  if (!overview.data) return null
-  const { usage: u, settings: s } = overview.data
+  const u = overview.data?.usage ?? credits.data?.usage.sms
   const canPay = can('sms.manage') || can('settings.manage')
-  const available = u.feature_enabled && s.connected
+  if (!u && !canPay) return null
+  const available = smsOn && !!u?.feature_enabled && !!overview.data?.settings.connected
   return (
     <>
-      <span className="inline-flex h-9 items-center gap-2 rounded-[10px] border bg-card px-3 text-sm">
-        <Wallet className="size-4 text-muted-foreground" />
-        <span className="text-muted-foreground">Balance</span>
-        <span className="font-semibold tabular-nums">{u.unmetered ? 'Included' : `${formatNumber(u.credits_available)} SMS`}</span>
-        {!u.unmetered && u.free.eligible && u.free.remaining > 0 && (
-          <span className="text-xs text-muted-foreground">+ {formatNumber(u.free.remaining)} free</span>
-        )}
-      </span>
-      {!u.unmetered && canPay && <Button onClick={() => setDialog('buy')}><Plus /> Add SMS Balance</Button>}
-      {can('sms.manage') && (
+      {u && (
+        <span className="inline-flex h-9 items-center gap-2 rounded-[10px] border bg-card px-3 text-sm">
+          <Wallet className="size-4 text-muted-foreground" />
+          <span className="text-muted-foreground">Balance</span>
+          <span className="font-semibold tabular-nums">{formatNumber(u.credits_available)} SMS</span>
+          {u.unmetered
+            ? <span className="text-xs text-muted-foreground">· plan includes SMS</span>
+            : u.free.eligible && u.free.remaining > 0 && <span className="text-xs text-muted-foreground">+ {formatNumber(u.free.remaining)} free</span>}
+        </span>
+      )}
+      {canPay && <Button onClick={() => setDialog('buy')}><Plus /> Add SMS Balance</Button>}
+      {smsOn && can('sms.manage') && (
         <Button variant="outline" disabled={!available} title={available ? undefined : 'SMS is not available right now'} onClick={() => setDialog('quick')}>
           <Send /> Quick SMS
         </Button>
