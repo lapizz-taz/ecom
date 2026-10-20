@@ -78,6 +78,8 @@ export interface PaymentAccount {
 export type CheckoutFieldMode = 'hidden' | 'optional' | 'required'
 
 export interface StoreConfig {
+  /** The business whose store this is (checked against the address the visitor opened). */
+  merchant_id?: string | null
   store: {
     name: string
     tagline?: string

@@ -467,6 +467,8 @@ CREATE TABLE categories (
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  seo_title TEXT,
+  seo_description TEXT,
   PRIMARY KEY (id),
   CONSTRAINT categories_name_check CHECK (length(trim( name )) > 0),
   CONSTRAINT categories_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
@@ -4223,6 +4225,48 @@ CREATE TABLE sales_channels (
 
 CREATE TRIGGER sales_channels_updated_at AFTER UPDATE ON sales_channels FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE sales_channels SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
+
+CREATE TABLE seo_entries (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  entity_type TEXT NOT NULL,
+  entity_key TEXT NOT NULL,
+  title TEXT,
+  description TEXT,
+  canonical_url TEXT,
+  noindex INTEGER DEFAULT 0 NOT NULL CHECK (noindex IN (0, 1)),
+  focus_keyword TEXT,
+  og_image TEXT,
+  sources TEXT DEFAULT '{}' NOT NULL CHECK (json_valid(sources)),
+  updated_by TEXT CHECK (updated_by IS NULL OR length(updated_by) = 36),
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  PRIMARY KEY (merchant_id, entity_type, entity_key),
+  CONSTRAINT seo_entries_canonical_url_check CHECK (length(canonical_url) <= 500),
+  CONSTRAINT seo_entries_description_check CHECK (length(description) <= 1000),
+  CONSTRAINT seo_entries_entity_key_check CHECK (length(entity_key) >= 1 AND length(entity_key) <= 80),
+  CONSTRAINT seo_entries_entity_type_check CHECK (entity_type IN ('product', 'collection', 'page')),
+  CONSTRAINT seo_entries_focus_keyword_check CHECK (length(focus_keyword) <= 100),
+  CONSTRAINT seo_entries_og_image_check CHECK (length(og_image) <= 1000),
+  CONSTRAINT seo_entries_sources_check CHECK (json_type(sources) = 'object'),
+  CONSTRAINT seo_entries_title_check CHECK (length(title) <= 300),
+  CONSTRAINT seo_entries_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+) STRICT;
+
+CREATE TABLE seo_redirects (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  from_path TEXT NOT NULL,
+  to_path TEXT NOT NULL,
+  source TEXT DEFAULT 'auto' NOT NULL,
+  created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  PRIMARY KEY (id),
+  CONSTRAINT seo_redirects_check CHECK (from_path <> to_path),
+  CONSTRAINT seo_redirects_from_path_check CHECK (length(from_path) <= 300),
+  CONSTRAINT seo_redirects_source_check CHECK (source IN ('auto', 'manual')),
+  CONSTRAINT seo_redirects_to_path_check CHECK (length(to_path) <= 300),
+  CONSTRAINT seo_redirects_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT seo_redirects_merchant_id_from_path_key UNIQUE (merchant_id, from_path)
+) STRICT;
 
 CREATE TABLE service_usage (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),

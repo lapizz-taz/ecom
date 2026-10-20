@@ -25,8 +25,9 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    // Only these paths start the Worker; every other request is a static file or the app shell.
-    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*", "/rest/*", "/auth/*", "/realtime/*"]
+    // The Worker answers first for the API paths and for pages (a store's page carries the store's
+    // settings and head: worker/storefront.ts); the static folders below are served directly.
+    "run_worker_first": ["/*", "!/assets/*", "!/icons/*", "!/media/*", "!/downloads/*", "!/favicon.svg", "!/fullfilio-wordmark.svg", "!/site.webmanifest"]
   },
 
   "vars": {

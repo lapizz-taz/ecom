@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck, RotateCcw, ShieldCheck, Truck } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import { type CSSProperties, type FormEvent, type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
-import { getCategories, listProducts } from '@/services/storefront'
+import { toUserMessage } from '@/lib/errors'
+import { getCategories, listProducts, submitContact } from '@/services/storefront'
 import { ProductGrid } from './product-card'
 import { isThemePreview, SECTIONS, selectInBuilder, usePreviewSelection, type Settings, type ThemeSection } from './theme'
 
@@ -48,7 +49,11 @@ function Section({ section }: { section: ThemeSection }) {
     case 'hero': return <Hero st={st} />
     case 'collections': return <CollectionList st={st} />
     case 'featured':
-    case 'new': return <ProductsSection st={st} />
+    case 'new':
+    case 'best_sellers': return <ProductsSection st={st} />
+    case 'testimonials': return <Testimonials st={st} />
+    case 'faq': return <Faq st={st} />
+    case 'newsletter': return <Newsletter st={st} />
     case 'trust': return <Trust st={st} />
     case 'banner': return <Banner st={st} />
     case 'rich_text': return <RichText st={st} />
@@ -58,7 +63,9 @@ function Section({ section }: { section: ThemeSection }) {
   }
 }
 
+/** An empty image slot: labelled in the theme editor's preview, plain on the live store. */
 function Placeholder({ className, label }: { className?: string; label: string }) {
+  if (!isThemePreview()) return <div aria-hidden className={cn('size-full bg-zinc-100', className)} />
   return (
     <div className={cn('grid size-full place-items-center bg-[repeating-linear-gradient(135deg,#e4e4e7_0_1px,transparent_1px_14px)] bg-zinc-100 text-xs tracking-widest text-zinc-500 uppercase', className)}>{label}</div>
   )
@@ -136,7 +143,8 @@ function ProductsSection({ st }: { st: Settings }) {
   const category = s(st.category)
   const q = useQuery({
     queryKey: ['products', 'section', source, category, limit],
-    queryFn: () => listProducts(source === 'featured' ? { featured: true, limit, sort: 'featured' } : source === 'category' && category ? { category, limit, sort: 'newest' } : { limit, sort: 'newest' }),
+    queryFn: () => listProducts(source === 'featured' ? { featured: true, limit, sort: 'featured' } : source === 'category' && category ? { category, limit, sort: 'newest' }
+      : source === 'best_selling' ? { limit, sort: 'best_selling' } : { limit, sort: 'newest' }),
   })
   const items = q.data?.items ?? []
   if (!q.isLoading && !items.length && !isThemePreview()) return null
@@ -186,6 +194,93 @@ function Banner({ st }: { st: Settings }) {
       </div>
     </section>
   )
+}
+
+const rows = (v: unknown) => (Array.isArray(v) ? (v as Array<Record<string, string>>) : [])
+
+/** Customers' own words, as the merchant typed them (nothing is shown until there are some). */
+function Testimonials({ st }: { st: Settings }) {
+  const items = rows(st.items).filter((r) => s(r.quote))
+  if (!items.length) return isThemePreview() ? <EmptyHint text="Add what your customers said (Testimonials → Add)." /> : null
+  const cols = Math.min(Math.max(n(st.columns, 3), 1), 3)
+  return (
+    <section className="mx-auto max-w-[1600px] px-4 py-14 sm:px-8">
+      {s(st.heading) && <h2 className="mb-8 text-center text-2xl font-medium sm:text-[28px]">{s(st.heading)}</h2>}
+      <div className={cn('grid gap-4', cols === 2 && 'md:grid-cols-2', cols === 3 && 'md:grid-cols-2 lg:grid-cols-3')}>
+        {items.map((r, i) => (
+          <figure key={i} className="flex flex-col justify-between gap-5 rounded-[var(--radius)] border border-foreground/10 p-6">
+            <blockquote className="leading-relaxed whitespace-pre-line">“{s(r.quote)}”</blockquote>
+            <figcaption className="text-sm">
+              <span className="font-medium">{s(r.name)}</span>
+              {s(r.detail) && <span className="text-muted-foreground"> · {s(r.detail)}</span>}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function Faq({ st }: { st: Settings }) {
+  const items = rows(st.items).filter((r) => s(r.question) && s(r.answer))
+  if (!items.length) return isThemePreview() ? <EmptyHint text="Add questions and answers (FAQ → Add)." /> : null
+  return (
+    <section className="mx-auto max-w-3xl px-6 py-14">
+      {s(st.heading) && <h2 className="mb-6 text-2xl font-medium sm:text-[28px]">{s(st.heading)}</h2>}
+      <div className="divide-y divide-foreground/10 border-y border-foreground/10">
+        {items.map((r, i) => (
+          <details key={i} className="group py-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium">
+              {s(r.question)}<span aria-hidden className="text-xl leading-none transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <p className="pt-3 leading-relaxed whitespace-pre-line text-muted-foreground">{s(r.answer)}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** An e-mail box; the address reaches the merchant as a store message (Customers → Messages). */
+function Newsletter({ st }: { st: Settings }) {
+  const [email, setEmail] = useState('')
+  const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
+  const [error, setError] = useState('')
+  const center = s(st.align, 'center') === 'center'
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setState('error'); setError('Enter a valid e-mail address.'); return }
+    if (isThemePreview()) { setState('done'); return }
+    setState('sending')
+    try {
+      await submitContact({ name: 'Newsletter sign-up', email: email.trim(), subject: 'Newsletter sign-up', message: 'Asked to receive news and offers by e-mail.' })
+      setState('done')
+    } catch (err) {
+      setState('error'); setError(toUserMessage(err))
+    }
+  }
+  return (
+    <section className={cn('mx-auto max-w-2xl space-y-4 px-6 py-14', center && 'text-center')}>
+      {s(st.heading) && <h2 className="text-2xl font-medium sm:text-[28px]">{s(st.heading)}</h2>}
+      {s(st.text) && <p className="leading-relaxed text-muted-foreground">{s(st.text)}</p>}
+      {state === 'done'
+        ? <p className="text-sm font-medium" role="status">Thank you. You are on the list.</p>
+        : (
+          <form onSubmit={submit} className={cn('flex flex-col gap-2 sm:flex-row', center && 'sm:justify-center')} noValidate>
+            <input type="email" required value={email} onChange={(e) => { setEmail(e.target.value); setState('idle') }} placeholder="Your e-mail" aria-label="Your e-mail"
+              className="h-11 min-w-0 flex-1 rounded-[var(--radius)] border border-foreground/20 bg-transparent px-4 text-sm outline-none focus:border-foreground/50 sm:max-w-sm" />
+            <button type="submit" disabled={state === 'sending'} className="h-11 rounded-[var(--radius)] bg-primary px-6 text-xs font-medium tracking-[0.12em] text-primary-foreground uppercase disabled:opacity-60">
+              {s(st.button_label, 'Subscribe')}
+            </button>
+          </form>
+        )}
+      {state === 'error' && <p className="text-sm text-destructive" role="alert">{error}</p>}
+    </section>
+  )
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return <div className="mx-auto my-6 max-w-[1600px] px-4 sm:px-8"><div className="rounded-lg border border-dashed border-foreground/20 px-4 py-8 text-center text-sm text-muted-foreground">{text}</div></div>
 }
 
 function RichText({ st }: { st: Settings }) {

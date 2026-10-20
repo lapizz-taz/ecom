@@ -121,7 +121,7 @@ export function SchemaField({ field, settings, onChange }: { field: FieldDef; se
     case 'categories':
       return <CategoriesField label={field.label} hint={field.hint} value={Array.isArray(v) ? (v as string[]) : []} onChange={set} />
     case 'list':
-      return <ListField label={field.label} item={field.item} max={field.max} value={Array.isArray(v) ? (v as Array<Record<string, string>>) : []} onChange={set} />
+      return <ListField label={field.label} item={field.item} max={field.max} hint={field.hint} value={Array.isArray(v) ? (v as Array<Record<string, string>>) : []} onChange={set} />
   }
 }
 
@@ -153,16 +153,23 @@ function CategoriesField({ label, hint, value, onChange }: { label: string; hint
   )
 }
 
-export function ListField({ label, item, max, value, onChange }: { label: string; item: Array<{ key: string; label: string }>; max: number; value: Array<Record<string, string>>; onChange: (v: Array<Record<string, string>>) => void }) {
+export function ListField({ label, item, max, value, onChange, hint }: { label: string; item: Array<{ key: string; label: string; multiline?: boolean }>; max: number; value: Array<Record<string, string>>; onChange: (v: Array<Record<string, string>>) => void; hint?: string }) {
   return (
-    <FieldRow label={label}>
+    <FieldRow label={label} hint={hint}>
       <div className="grid gap-2">
         {value.map((row, i) => (
           <div key={i} className="grid gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
-            {item.map((f) => (
-              <input key={f.key} className={inputClass} aria-label={`${f.label} ${i + 1}`} placeholder={f.label} value={row[f.key] ?? ''}
-                onChange={(e) => onChange(value.map((r, j) => (j === i ? { ...r, [f.key]: e.target.value } : r)))} />
-            ))}
+            {item.map((f) => f.multiline
+              ? <textarea key={f.key} rows={3} className={cn(inputClass, 'h-auto py-1.5')} aria-label={`${f.label} ${i + 1}`} placeholder={f.label} value={row[f.key] ?? ''}
+                  onChange={(e) => onChange(value.map((r, j) => (j === i ? { ...r, [f.key]: e.target.value } : r)))} />
+              : <input key={f.key} className={inputClass} aria-label={`${f.label} ${i + 1}`} placeholder={f.label} value={row[f.key] ?? ''}
+                  onChange={(e) => onChange(value.map((r, j) => (j === i ? { ...r, [f.key]: e.target.value } : r)))} />)}
+            {value.length > 1 && (
+              <div className="flex gap-3 justify-self-start text-[11px] text-zinc-500">
+                {i > 0 && <button type="button" className="hover:underline" onClick={() => onChange([...value.slice(0, i - 1), row, value[i - 1], ...value.slice(i + 1)])}>Move up</button>}
+                {i < value.length - 1 && <button type="button" className="hover:underline" onClick={() => onChange([...value.slice(0, i), value[i + 1], row, ...value.slice(i + 2)])}>Move down</button>}
+              </div>
+            )}
             <button type="button" className="flex items-center gap-1 justify-self-end text-[11px] text-red-600 hover:underline" onClick={() => onChange(value.filter((_, j) => j !== i))}>
               <Trash2 className="size-3" /> Remove
             </button>

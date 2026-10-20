@@ -1,4 +1,4 @@
-import { ChevronDown, Film, Image, LayoutGrid, Megaphone, PanelsTopLeft, Search, ShieldCheck, Type } from 'lucide-react'
+import { ChevronDown, CircleHelp, Film, Image, LayoutGrid, Mail, Megaphone, PanelsTopLeft, Quote, Search, ShieldCheck, TrendingUp, Type } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { SECTIONS, type SectionType } from '@/features/storefront/theme'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,7 @@ export const SECTION_ICON: Record<SectionType, ReactNode> = {
   hero: <PanelsTopLeft className="size-4" />, banner: <Megaphone className="size-4" />, collections: <LayoutGrid className="size-4" />,
   featured: <LayoutGrid className="size-4" />, new: <LayoutGrid className="size-4" />, rich_text: <Type className="size-4" />,
   marquee: <Type className="size-4" />, image_text: <Image className="size-4" />, video: <Film className="size-4" />, trust: <ShieldCheck className="size-4" />,
+  best_sellers: <TrendingUp className="size-4" />, testimonials: <Quote className="size-4" />, faq: <CircleHelp className="size-4" />, newsletter: <Mail className="size-4" />,
 }
 
 /** A small drawing of what the section looks like. Fixed colours: the editor looks the same in light and dark admin. */
@@ -18,8 +19,12 @@ function Thumb({ type }: { type: SectionType }) {
     case 'hero': return <div className="flex h-full flex-col justify-end bg-[#3f3f46] p-3"><div className="h-2 w-1/3 rounded-sm bg-white/80" /><div className="mt-1.5 flex gap-1.5"><div className="h-3 w-10 bg-white" /><div className="h-1.5 w-1/3 self-center rounded-sm bg-white/50" /></div></div>
     case 'banner': return <div className="grid h-full place-items-center bg-[#27272a]"><div className="grid justify-items-center gap-1.5"><div className="h-2 w-24 rounded-sm bg-white/80" /><div className="h-3 w-12 bg-white" /></div></div>
     case 'collections': return <div className="grid h-full grid-cols-3 gap-px p-2">{[0, 1, 2].map((i) => <div key={i} className="flex flex-col gap-1"><div className="flex-1 bg-[#d4d4d8]" /><div className={cn(bar, 'h-1 w-2/3')} /></div>)}</div>
+    case 'testimonials': return <div className="grid h-full grid-cols-3 gap-2 p-3">{[0, 1, 2].map((i) => <div key={i} className="flex flex-col justify-between rounded-sm border border-[#e4e4e7] p-1.5"><div className="grid gap-1"><div className={cn(bar, 'h-1')} /><div className={cn(bar, 'h-1 w-3/4')} /></div><div className={cn(bar, 'h-1 w-1/2 bg-[#a1a1aa]')} /></div>)}</div>
+    case 'faq': return <div className="grid h-full content-center gap-2 px-6">{[0, 1, 2].map((i) => <div key={i} className="flex items-center justify-between border-b border-[#e4e4e7] pb-1.5"><div className={cn(bar, 'h-1.5 w-2/3')} /><div className="text-[10px] leading-none text-[#71717a]">+</div></div>)}</div>
+    case 'newsletter': return <div className="grid h-full place-items-center"><div className="grid justify-items-center gap-2"><div className={cn(bar, 'h-2 w-20 bg-[#a1a1aa]')} /><div className="flex gap-1"><div className="h-3 w-24 rounded-sm border border-[#d4d4d8]" /><div className="h-3 w-10 rounded-sm bg-[#18181b]" /></div></div></div>
     case 'featured':
-    case 'new': return <div className="flex h-full flex-col gap-1.5 p-2"><div className={cn(bar, 'h-1.5 w-1/4')} /><div className="grid flex-1 grid-cols-4 gap-px">{[0, 1, 2, 3].map((i) => <div key={i} className="flex flex-col gap-1"><div className="flex-1 bg-[#e4e4e7]" /><div className={cn(bar, 'h-1 w-3/4')} /></div>)}</div></div>
+    case 'new':
+    case 'best_sellers': return <div className="flex h-full flex-col gap-1.5 p-2"><div className={cn(bar, 'h-1.5 w-1/4')} /><div className="grid flex-1 grid-cols-4 gap-px">{[0, 1, 2, 3].map((i) => <div key={i} className="flex flex-col gap-1"><div className="flex-1 bg-[#e4e4e7]" /><div className={cn(bar, 'h-1 w-3/4')} /></div>)}</div></div>
     case 'rich_text': return <div className="grid h-full place-items-center"><div className="grid justify-items-center gap-1.5"><div className={cn(bar, 'h-2 w-20 bg-[#a1a1aa]')} /><div className={cn(bar, 'h-1 w-32')} /><div className={cn(bar, 'h-1 w-28')} /></div></div>
     case 'marquee': return <div className="grid h-full items-center"><div className="flex h-5 items-center gap-3 overflow-hidden bg-[#18181b] px-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-1 w-12 shrink-0 rounded-sm bg-white/70" />)}</div></div>
     case 'image_text': return <div className="grid h-full grid-cols-2"><div className="bg-[#d4d4d8]" /><div className="grid content-center gap-1.5 p-3"><div className={cn(bar, 'h-2 w-2/3 bg-[#a1a1aa]')} /><div className={cn(bar, 'h-1 w-full')} /><div className={cn(bar, 'h-1 w-4/5')} /></div></div>

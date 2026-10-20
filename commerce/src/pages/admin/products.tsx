@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { useUrlState } from '@/hooks/use-url-state'
+import { SeoEditorDialog } from '@/features/seo/seo-editor'
 import { toUserMessage } from '@/lib/errors'
 import { formatMoney, formatNumber, slugify, toNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -547,6 +548,7 @@ function CategoryManager() {
   const queryClient = useQueryClient()
   const categories = useQuery({ queryKey: ['categories'], queryFn: listCategories })
   const [editing, setEditing] = useState<Partial<Tables<'categories'>> | null>(null)
+  const [seoFor, setSeoFor] = useState<{ id: string; name: string } | null>(null)
   const save = useMutation({
     mutationFn: () => saveCategory({
       id: editing?.id, name: editing?.name ?? '', slug: editing?.slug || slugify(editing?.name ?? ''), description: editing?.description ?? null,
@@ -571,6 +573,7 @@ function CategoryManager() {
               </div>
               {can('products.manage') && (
                 <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setSeoFor(c)} aria-label={`SEO for ${c.name}`}>SEO</Button>
                   <Button size="icon-sm" variant="ghost" onClick={() => setEditing(c)} aria-label={`Edit ${c.name}`}><Pencil /></Button>
                   <Button size="icon-sm" variant="ghost" onClick={() => confirm(`Delete ${c.name}? Products keep existing without a category.`) && remove.mutate(c.id)} aria-label={`Delete ${c.name}`}><Trash2 /></Button>
                 </div>
@@ -579,6 +582,7 @@ function CategoryManager() {
           ))}
         </ul>
       </CardContent>
+      <SeoEditorDialog type="collection" itemKey={seoFor?.id ?? null} name={seoFor?.name} open={!!seoFor} onOpenChange={(o) => !o && setSeoFor(null)} />
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing?.id ? 'Edit category' : 'New category'}</DialogTitle></DialogHeader>

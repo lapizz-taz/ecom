@@ -7,12 +7,16 @@
 //   /oauth/shopify/callback  Shopify's OAuth return on the app's host (channels)
 //   /rest/v1/…, /auth/v1/…   the Cloudflare database (when DATABASE_BACKEND=cloudflare; see db/gateway.ts)
 //
-// Everything else is the site itself (Workers Static Assets, single-page app).
+//   /robots.txt, /sitemap.xml  per address: the store's own, or the website's (storefront.ts)
+//
+// Pages are the site itself (Workers Static Assets, single-page app); on a store's address the
+// page carries that store's settings and head (title, meta tags, structured data).
 import { apexOf } from '../supabase/functions/_shared/domain-check.ts'
 import type { CopyEnv } from './copy.ts'
 import { database, type DbEnv } from './db/gateway.ts'
 import { filesApi, serveFile, type FilesEnv } from './files.ts'
 import { FUNCTIONS, type Handler } from './functions.ts'
+import { isPageRequest, storefrontFile, storefrontPage } from './storefront.ts'
 
 export interface Env extends FilesEnv, DbEnv, Omit<CopyEnv, 'DATABASE'> {
   ASSETS: Fetcher
@@ -141,6 +145,8 @@ export function createRouter(env: Env, fns: Record<string, Handler> = FUNCTIONS)
     if (path.startsWith('/assets/') || /\.(m?js|css|map)$/i.test(path)) {
       return Promise.resolve(new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } }))
     }
+    if (path === '/robots.txt' || path === '/sitemap.xml') return storefrontFile(req, url, env)
+    if (isPageRequest(req, url)) return storefrontPage(req, url, env)
     return env.ASSETS.fetch(req)
   }
 

@@ -19,6 +19,8 @@ export function setPageTitle(area: Area, title: string): void {
 
 /** At start-up: the title this address had last time (the admin falls back to "Fullfilio"). */
 export function restorePageTitle(): void {
+  // A store page from the Worker already has its own title.
+  if (document.getElementById('ff-boot')) return
   const area = areaOf(location.pathname)
   let title: string | null = null
   try { title = localStorage.getItem(key(area)) } catch { /* private mode */ }

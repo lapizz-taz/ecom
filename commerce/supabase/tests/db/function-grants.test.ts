@@ -14,6 +14,8 @@ const VISITOR_FUNCTIONS = [
   'platform_contact_submit', 'public_lead_touch', 'public_signup_options', 'public_signup_request', 'store_slug_check', 'store_slug_suggest',
   'storefront_ad_tracking', 'storefront_cart_restore', 'storefront_cart_sync', 'storefront_categories', 'storefront_config', 'storefront_get_product',
   'storefront_list_products', 'storefront_mode', 'storefront_quote', 'storefront_resolve', 'storefront_resolve_slug',
+  // The store's public SEO: a page's head, sitemap.xml and robots.txt (public data of the store asked for).
+  'storefront_page', 'storefront_robots', 'storefront_seo', 'storefront_sitemap',
   'submit_contact_message', 'track_order', 'track_storefront_event', 'track_visit_event',
 ].sort()
 
