@@ -157,6 +157,7 @@ const shared: RouteObject[] = [
       admin('ads', () => import('@/pages/admin/ads-hub'), 'marketing.view'),
       admin('channels', () => import('@/pages/admin/sales-channels'), 'settings.view'),
       admin('store/theme', () => import('@/pages/admin/store-theme'), 'settings.manage'),
+      admin('store/seo', () => import('@/pages/admin/store-seo'), 'settings.view'),
       admin('marketing/tiktok', () => import('@/pages/admin/tiktok-ads'), 'marketing.view'),
       admin('marketing/google', () => import('@/pages/admin/google-ads'), 'marketing.view'),
       admin('marketing', () => import('@/pages/admin/marketing'), 'marketing.view'),
@@ -214,10 +215,15 @@ const missing: RouteObject[] = [
   { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/store-missing')) },
 ]
 
+// The first lookup for this address failed (see main.tsx): a retry, never a guess.
+const unreachable: RouteObject[] = [
+  { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/site-unreachable')) },
+]
+
 /** The routes for what this address shows (see currentSite()). */
 export function createAppRouter() {
   const site = currentSite()
-  const own = site.kind === 'store' ? [storefront] : site.kind === 'missing' ? missing : marketing
+  const own = site.kind === 'store' ? [storefront] : site.kind === 'missing' ? missing : site.kind === 'unreachable' ? unreachable : marketing
   return createBrowserRouter([...shared, ...own], { basename: storeBasename() || undefined })
 }
 

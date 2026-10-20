@@ -1,4 +1,4 @@
-import { ExternalLink, Menu, MessageCircle, Search, ShoppingBag, Store, User } from 'lucide-react'
+import { ExternalLink, Menu, MessageCircle, RefreshCw, Search, ShoppingBag, Store, User } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,9 @@ import { captureNavigation } from '@/lib/attribution'
 import { getAdTracking, getCategories, trackEvent } from '@/services/storefront'
 import { adEvent, startAdPixels } from '@/features/storefront/ad-pixels'
 import { useCartSync } from '@/features/cart/use-cart-sync'
-import { setPageTitle } from '@/lib/page-title'
+import { useStoreSeo } from '@/features/storefront/seo-head'
+import { currentSite } from '@/lib/merchant'
+import { Spinner } from '@/components/common/states'
 
 function useCategories() {
   return useQuery({ queryKey: ['storefront-categories'], queryFn: getCategories, staleTime: 10 * 60_000 })
@@ -27,7 +29,7 @@ function useCategories() {
 // The product site at the platform's own address is chosen by the router
 // (storefront_resolve), so this layout only ever shows a store.
 export default function StorefrontLayout() {
-  const { data: config } = useStoreConfig()
+  const { data: config, isError, isFetching, refetch } = useStoreConfig()
   const sf = useStorefront(config?.storefront)
   const theme = resolveTheme(sf)
   useThemeFont(theme.font)
@@ -57,9 +59,8 @@ export default function StorefrontLayout() {
     if (!preview) adEvent('PageView')
   }, [location.pathname, location.search])
 
-  useEffect(() => {
-    if (config?.store.name) setPageTitle('store', config.store.name)
-  }, [config?.store.name])
+  // The page's title, description and other head tags (the store's SEO, per page).
+  useStoreSeo()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)
@@ -68,7 +69,17 @@ export default function StorefrontLayout() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const storeName = config?.store.name ?? 'Store'
+  // Nothing of a store is drawn before its own settings arrive: no stand-in name, menu or empty
+  // sections in between, and a failed request says so instead of showing the built-in theme.
+  if (!config) return isError ? <StoreUnavailable retrying={isFetching} onRetry={() => void refetch()} /> : <StoreLoading />
+  // Signed in as staff of another business on this store's address: the database answers with
+  // that business's store, so say so rather than showing it here.
+  const site = currentSite()
+  if (!preview && site.kind === 'store' && config.merchant_id && site.merchant_id && config.merchant_id !== site.merchant_id) {
+    return <StoreUnavailable message="You are signed in to another business on this browser, so this store cannot be shown here. Sign out, or open the store in a private window." />
+  }
+
+  const storeName = config.store.name || site.name || 'Store'
   // Closed when the business sells only through Shopify / WooCommerce (or switched
   // the store off). Order tracking stays open for past customers.
   const closed = !!sf?.mode && sf.mode !== 'OWN' && !isThemePreview()
@@ -265,6 +276,35 @@ function StoreFooter({ theme, config, storeName, footerText }: { theme: StoreThe
         </div>
       </footer>
     </SectionFrame>
+  )
+}
+
+/** While the store's own settings load: an empty page, never a stand-in store. */
+function StoreLoading() {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-background" role="status" aria-label="Loading the store">
+      <Spinner className="size-5 text-muted-foreground" />
+    </div>
+  )
+}
+
+/** The store's settings could not be loaded (or belong to another business): say so, with a retry. */
+function StoreUnavailable({ onRetry, retrying, message }: { onRetry?: () => void; retrying?: boolean; message?: string }) {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-background px-4">
+      <div className="w-full max-w-sm space-y-4 text-center" role="alert">
+        <span className="mx-auto grid size-12 place-items-center rounded-full border"><Store className="size-5" /></span>
+        <div className="space-y-1.5">
+          <p className="text-lg font-semibold tracking-tight">This store could not be loaded</p>
+          <p className="text-sm text-muted-foreground">{message ?? 'The connection to the store failed. Check your internet connection and try again.'}</p>
+        </div>
+        {onRetry && (
+          <Button onClick={onRetry} disabled={retrying} className="w-full">
+            {retrying ? <Spinner /> : <RefreshCw />} Try again
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }
 

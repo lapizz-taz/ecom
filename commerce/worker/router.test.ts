@@ -7,7 +7,7 @@ import { resolve } from 'node:path'
 const assets = { fetch: vi.fn(async (req: Request) => new Response(`asset ${new URL(req.url).pathname}`)) }
 
 function env(extra: Partial<Env> = {}): Env {
-  return { ASSETS: assets as unknown as Fetcher, SUPABASE_URL: 'https://db.example.supabase.co', ...extra } as Env
+  return { ASSETS: assets as unknown as Fetcher, SUPABASE_URL: 'https://db.example.supabase.co', PLATFORM_URL: 'https://app.example.com', ...extra } as Env
 }
 
 /** Fake functions that echo what they were given. */
@@ -133,8 +133,9 @@ describe('root-domain proxy', () => {
   it('serves the site pages for a proxied root domain', async () => {
     const router = createRouter(env({ ROOT_PROXY_SECRET: SECRET }), fns)
     await router.route(new Request('https://stores.example.com/products/a', { headers: { 'x-fullfilio-proxy': SECRET, 'x-fullfilio-host': 'shop.com' } }))
+    // A store page is the app's page (the shell), fetched on the visitor's own address.
     const seen = assets.fetch.mock.calls[0][0] as Request
-    expect(seen.url).toBe('https://shop.com/products/a')
+    expect(new URL(seen.url).host).toBe('shop.com')
     expect(seen.headers.has('x-fullfilio-proxy')).toBe(false)
   })
 })

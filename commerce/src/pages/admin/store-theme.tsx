@@ -9,12 +9,12 @@ import { Spinner } from '@/components/common/states'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
-import { useSettingDraft } from '@/features/settings/setting-form'
 import {
   ACCENTS, DEFAULT_THEME, FONTS, makeSection, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { ColorInput, FieldRow, inputClass, ListField, RangeInput, SchemaField, SelectInput } from '@/features/theme-editor/fields'
 import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-picker'
+import { useThemeDraft } from '@/features/theme-editor/use-theme-draft'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { cn } from '@/lib/utils'
 import { getCategories, listProducts } from '@/services/storefront'
@@ -35,7 +35,7 @@ const PAGES: Array<{ value: Page; label: string; icon: ReactNode }> = [
 
 /** The theme editor: sections and theme settings on the left, the live store in the middle, the selected item's settings on the right. */
 export default function StoreThemePage() {
-  const s = useSettingDraft('storefront')
+  const s = useThemeDraft()
   const navigate = useNavigate()
   const location = useLocation()
   const { data: config } = useStoreConfig()
@@ -192,13 +192,28 @@ export default function StoreThemePage() {
           <DropdownMenuContent align="end" className="z-[70] w-52">
             <DropdownMenuItem asChild disabled={!store.url}><a href={store.url ?? undefined} target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={!s.dirty} onClick={() => { s.reset(); history.current = { past: [], future: [], last: 0 }; bump((n) => n + 1) }}>Discard changes</DropdownMenuItem>
+            <DropdownMenuItem disabled={!s.dirty} onClick={() => { s.reset(); history.current = { past: [], future: [], last: 0 }; bump((n) => n + 1) }}>Discard unsaved changes</DropdownMenuItem>
+            <DropdownMenuItem disabled={!s.hasDraft || !s.canEdit || s.discardDraft.isPending} onClick={() => {
+              if (window.confirm('Discard the saved draft? The editor goes back to what your store shows now. This cannot be undone.')) {
+                s.discardDraft.mutate(); history.current = { past: [], future: [], last: 0 }; bump((n) => n + 1)
+              }
+            }}>Discard saved draft</DropdownMenuItem>
             <DropdownMenuItem onClick={() => { if (window.confirm('Reset the theme to the default look? You can still discard before saving.')) commit({ ...draft, theme: structuredClone(DEFAULT_THEME) as unknown as Record<string, unknown> }) }}>Reset to default theme</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <button type="button" onClick={() => s.save.mutate()} disabled={!s.dirty || !s.canEdit || s.save.isPending}
+        <span className={cn('ml-1 hidden items-center gap-1.5 text-[12px] md:flex', s.dirty ? 'text-amber-700 dark:text-amber-400' : 'text-zinc-500')} role="status">
+          <span className={cn('size-1.5 rounded-full', s.dirty ? 'bg-amber-500' : s.unpublished ? 'bg-[#2c6ecb]' : 'bg-emerald-500')} />
+          {s.dirty ? 'Unsaved changes' : s.unpublished ? 'Draft saved · not live' : 'Live'}
+        </span>
+        <button type="button" onClick={() => s.save.mutate()} disabled={!s.dirty || !s.canEdit || s.save.isPending || s.publish.isPending}
+          title="Save as a draft: your store does not change until you publish"
+          className="ml-1 flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[13px] font-medium transition-opacity disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900">
+          {s.save.isPending && <Spinner className="size-3.5" />} Save draft
+        </button>
+        <button type="button" onClick={() => { if (window.confirm('Publish these changes? Your store shows them straight away.')) s.publish.mutate() }}
+          disabled={(!s.dirty && !s.unpublished) || !s.canEdit || s.publish.isPending || s.save.isPending}
           className="ml-1 flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-[13px] font-medium text-white shadow-[inset_0_-1px_0_rgb(255_255_255/.15)] transition-opacity disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-zinc-900 dark:disabled:bg-zinc-800">
-          {s.save.isPending && <Spinner className="size-3.5" />} Save
+          {s.publish.isPending && <Spinner className="size-3.5" />} Publish
         </button>
       </header>
 

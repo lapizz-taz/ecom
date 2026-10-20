@@ -10,7 +10,8 @@ export type Storefront = StoreConfig['storefront']
 export type ThemeFont = 'poppins' | 'inter' | 'hind'
 export type ThemeRadius = 'sharp' | 'soft' | 'round'
 
-export type SectionType = 'hero' | 'collections' | 'featured' | 'new' | 'trust' | 'banner' | 'rich_text' | 'marquee' | 'image_text' | 'video'
+export type SectionType = 'hero' | 'collections' | 'featured' | 'new' | 'best_sellers' | 'trust' | 'banner' | 'rich_text' | 'marquee' | 'image_text' | 'video'
+  | 'testimonials' | 'faq' | 'newsletter'
 export type Settings = Record<string, unknown>
 export interface ThemeSection { id: string; type: SectionType; enabled: boolean; settings: Settings }
 export interface MenuLink { label: string; link: string }
@@ -78,7 +79,7 @@ export type FieldDef =
   | { key: string; label: string; type: 'range'; min: number; max: number; step?: number; unit?: string }
   | { key: string; label: string; type: 'category'; hint?: string }
   | { key: string; label: string; type: 'categories'; hint?: string }
-  | { key: string; label: string; type: 'list'; item: Array<{ key: string; label: string }>; max: number }
+  | { key: string; label: string; type: 'list'; item: Array<{ key: string; label: string; multiline?: boolean }>; max: number; hint?: string }
 
 export interface SectionDef { label: string; group: 'Banners' | 'Collections' | 'Products' | 'Text' | 'Media' | 'Trust'; description: string; defaults: Settings; fields: FieldDef[] }
 
@@ -118,7 +119,8 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
     defaults: { heading: 'Featured', source: 'featured', category: '', limit: 8, columns: 4, view_all: true },
     fields: [
       { key: 'heading', label: 'Heading', type: 'text' },
-      { key: 'source', label: 'Products', type: 'select', options: [{ value: 'featured', label: 'Marked featured' }, { value: 'newest', label: 'Newest' }, { value: 'category', label: 'From a category' }] },
+      { key: 'source', label: 'Products', type: 'select', options: [{ value: 'featured', label: 'Marked featured' }, { value: 'newest', label: 'Newest' },
+        { value: 'best_selling', label: 'Best selling (last 90 days)' }, { value: 'category', label: 'From a category' }] },
       { key: 'category', label: 'Category', type: 'category' },
       { key: 'limit', label: 'Products to show', type: 'range', min: 2, max: 16 },
       { key: 'columns', label: 'Columns on desktop', type: 'range', min: 2, max: 5 },
@@ -128,6 +130,11 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
   new: {
     label: 'New arrivals', group: 'Products', description: 'Your newest products.',
     defaults: { heading: 'New Arrivals', source: 'newest', category: '', limit: 8, columns: 4, view_all: true },
+    fields: [],
+  },
+  best_sellers: {
+    label: 'Best sellers', group: 'Products', description: 'Your best-selling products of the last 90 days, from real orders.',
+    defaults: { heading: 'Best sellers', source: 'best_selling', category: '', limit: 8, columns: 4, view_all: true },
     fields: [],
   },
   trust: {
@@ -178,6 +185,34 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
       { key: 'image_side', label: 'Image side', type: 'select', options: [{ value: 'left', label: 'Left' }, { value: 'right', label: 'Right' }] },
     ],
   },
+  testimonials: {
+    label: 'Testimonials', group: 'Trust', description: 'What your customers said, in their words (shown once you add some).',
+    defaults: { heading: 'What customers say', items: [], columns: 3 },
+    fields: [
+      { key: 'heading', label: 'Heading', type: 'text' },
+      { key: 'items', label: 'Testimonials', type: 'list', max: 9, hint: 'Only real customers’ words, with their permission',
+        item: [{ key: 'quote', label: 'What they said', multiline: true }, { key: 'name', label: 'Name' }, { key: 'detail', label: 'Place or product (optional)' }] },
+      { key: 'columns', label: 'Per row on desktop', type: 'range', min: 1, max: 3 },
+    ],
+  },
+  faq: {
+    label: 'FAQ', group: 'Text', description: 'Questions and answers that open one at a time.',
+    defaults: { heading: 'Questions', items: [] },
+    fields: [
+      { key: 'heading', label: 'Heading', type: 'text' },
+      { key: 'items', label: 'Questions', type: 'list', max: 20, item: [{ key: 'question', label: 'Question' }, { key: 'answer', label: 'Answer', multiline: true }] },
+    ],
+  },
+  newsletter: {
+    label: 'Newsletter sign-up', group: 'Text', description: 'An e-mail box; sign-ups arrive in Customers → Messages.',
+    defaults: { heading: 'News and offers', text: 'New arrivals and offers by e-mail. You can unsubscribe at any time.', button_label: 'Subscribe', align: 'center' },
+    fields: [
+      { key: 'heading', label: 'Heading', type: 'text' },
+      { key: 'text', label: 'Text', type: 'textarea' },
+      { key: 'button_label', label: 'Button label', type: 'text' },
+      { key: 'align', label: 'Alignment', type: 'select', options: ALIGN },
+    ],
+  },
   video: {
     label: 'Video', group: 'Media', description: 'A YouTube or MP4 video.',
     defaults: { url: '', heading: '', autoplay: true },
@@ -189,6 +224,7 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
   },
 }
 SECTIONS.new.fields = SECTIONS.featured.fields
+SECTIONS.best_sellers.fields = SECTIONS.featured.fields
 
 export const FONTS: Record<ThemeFont, { label: string; sample: string; family: string; href: string | null }> = {
   poppins: { label: 'Poppins', sample: 'Aa', family: '"Poppins", ui-sans-serif, system-ui, sans-serif', href: null },

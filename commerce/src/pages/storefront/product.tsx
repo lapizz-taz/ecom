@@ -44,7 +44,6 @@ export default function ProductPage() {
 
   useEffect(() => {
     if (!product) return
-    document.title = product.seo_title || product.name
     trackEvent('VIEW_PRODUCT', product.id)
     const shown = product.variants.find((v) => v.in_stock) ?? product.variants[0]
     const price = Number(shown?.price ?? 0)

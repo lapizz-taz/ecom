@@ -20,6 +20,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { toUserMessage } from '@/lib/errors'
 import { formatMoney, slugify, toNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { SeoFields, type SeoEditorState, useSeoEditor } from '@/features/seo/seo-editor'
 import {
   type AdminProduct, addProductImageUrl, deleteProductImage, getAdminProduct, imageUrl, listCategories, reorderProductImages, saveCategory,
   saveProduct, uploadProductImage,
@@ -46,8 +47,6 @@ const schema = z.object({
   track_inventory: z.boolean(),
   requires_production: z.boolean(),
   is_featured: z.boolean(),
-  seo_title: z.string(),
-  seo_description: z.string(),
   option_names: z.string(),
   shipping_note: z.string().max(600),
   admin_note: z.string().max(2000),
@@ -78,7 +77,7 @@ function toForm(p?: AdminProduct): Values {
     compare_at_price: p?.compare_at_price ?? '', cost_price: p?.cost_price ?? '', weight_grams: p?.weight_grams ?? '',
     low_stock_threshold: p?.low_stock_threshold ?? '', track_inventory: p?.track_inventory ?? true,
     requires_production: p?.requires_production ?? false, is_featured: p?.is_featured ?? false,
-    seo_title: p?.seo_title ?? '', seo_description: p?.seo_description ?? '', option_names: (p?.option_names ?? []).join(', '),
+    option_names: (p?.option_names ?? []).join(', '),
     shipping_note: p?.shipping_note ?? '', admin_note: p?.admin_note ?? '', warranty: p?.warranty ?? '',
     variants: p?.product_variants.length
       ? [...p.product_variants].sort((a, b) => a.position - b.position).map((v) => ({
@@ -105,18 +104,22 @@ export default function ProductEditPage() {
   const form = useForm<Values, unknown, Parsed>({ resolver: zodResolver(schema), defaultValues: toForm(), values: loaded })
   const variants = useFieldArray({ control: form.control, name: 'variants' })
   const [pending, setPending] = useState<Pending[]>([])
+  // A saved product's SEO (title, description, address, …) is its own panel, saved with the product.
+  const seo = useSeoEditor('product', id)
 
   const save = useMutation({
     mutationFn: async (v: Parsed) => {
       const optionNames = v.option_names.split(',').map((t) => t.trim()).filter(Boolean)
+      if (seo.dirty && !seo.valid) throw new Error('VALIDATION: fix the highlighted SEO fields first')
       const saved = await saveProduct({
-        id, name: v.name, slug: v.slug || slugify(v.name), sku: v.sku || null, description: v.description || null,
+        // A saved product's address changes in the SEO panel (the old one keeps a redirect).
+        id, name: v.name, slug: isNew ? v.slug || slugify(v.name) : undefined, sku: v.sku || null, description: v.description || null,
         short_description: v.short_description || null, category_id: v.category_id || null,
         extra_category_ids: v.extra_category_ids.filter((c) => c !== v.category_id), brand: v.brand || null,
         tags: v.tags.split(',').map((t) => t.trim()).filter(Boolean), status: v.status, option_names: optionNames,
         price: v.price, compare_at_price: num(v.compare_at_price), cost_price: v.cost_price, weight_grams: num(v.weight_grams),
         low_stock_threshold: num(v.low_stock_threshold), track_inventory: v.track_inventory, requires_production: v.requires_production,
-        is_featured: v.is_featured, seo_title: v.seo_title || null, seo_description: v.seo_description || null,
+        is_featured: v.is_featured,
         shipping_note: v.shipping_note || null, admin_note: v.admin_note || null, warranty: v.warranty || null,
         variants: v.variants.map((variant) => {
           const optionValues: Record<string, string> = {}
@@ -140,10 +143,15 @@ export default function ProductEditPage() {
           else await addProductImageUrl(saved.id, img.url, i, i === 0)
         } catch { failed++ }
       }
-      return { saved, failed }
+      // The product is saved either way; an SEO problem is reported on its own.
+      let seoError: unknown = null
+      if (!isNew && seo.dirty) await seo.save.mutateAsync().catch((err: unknown) => { seoError = err })
+      return { saved, failed, seoError }
     },
-    onSuccess: ({ saved, failed }) => {
+    onSuccess: ({ saved, failed, seoError }) => {
       toast.success('Product saved')
+      if (seoError) toast.error(`SEO not saved: ${toUserMessage(seoError)}`)
+      void queryClient.invalidateQueries({ queryKey: ['seo-item', 'product', saved?.id] })
       if (failed) toast.error(`${failed} image${failed === 1 ? '' : 's'} could not be added — add them again from the product`)
       setPending([])
       void queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -244,20 +252,35 @@ export default function ProductEditPage() {
           <Field label="Internal admin note" htmlFor="p-admin" hint="Staff only — never shown to customers"><Textarea id="p-admin" rows={2} {...form.register('admin_note')} /></Field>
         </Section>
 
-        <Section icon={<SearchIcon />} title="Search engine listing">
-          <Field label="URL handle" htmlFor="p-slug" hint={`/product/${form.watch('slug') || slugify(form.watch('name') || '')}`}><Input id="p-slug" {...form.register('slug')} /></Field>
-          <Field label="Page title" htmlFor="p-seo-title"><Input id="p-seo-title" {...form.register('seo_title')} /></Field>
-          <Field label="Meta description" htmlFor="p-seo-desc"><Textarea id="p-seo-desc" rows={2} {...form.register('seo_description')} /></Field>
-        </Section>
+        {isNew && (
+          <Section icon={<SearchIcon />} title="Search engine listing">
+            <Field label="URL handle" htmlFor="p-slug" hint={`/product/${form.watch('slug') || slugify(form.watch('name') || '')}`}><Input id="p-slug" {...form.register('slug')} /></Field>
+            <p className="text-xs text-muted-foreground">The SEO title and description follow your SEO settings. After the product is created you can preview and change them here.</p>
+          </Section>
+        )}
       </fieldset>
+      {!isNew && <SeoSection seo={seo} />}
 
       {canEdit && (
         <div className="sticky bottom-0 z-10 -mx-1 flex items-center justify-end gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
           <Button type="button" variant="ghost" asChild><Link to="/admin/products">Cancel</Link></Button>
+          {seo.dirty && <span className="mr-auto text-xs text-muted-foreground">SEO changes are saved with the product</span>}
           <Button type="submit" disabled={save.isPending}>{save.isPending && <Spinner />} {isNew ? 'Create product' : 'Save changes'}</Button>
         </div>
       )}
     </form>
+  )
+}
+
+function SeoSection({ seo }: { seo: SeoEditorState }) {
+  return (
+    <Section icon={<SearchIcon />} title="Search engine listing">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>How this product shows in Google and when shared.</span>
+        <Link to="/admin/store/seo?tab=settings" className="underline-offset-2 hover:text-foreground hover:underline">SEO settings</Link>
+      </div>
+      <SeoFields editor={seo} />
+    </Section>
   )
 }
 

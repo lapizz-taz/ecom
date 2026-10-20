@@ -11,10 +11,11 @@
  * - store: a business's store (its own domain, <name>.<root domain>, or
  *   <platform address>/s/<name>);
  * - platform: the Fullfilio website itself (marketing, sign-in, sign-up);
- * - missing: a store address that does not exist or whose store is off.
+ * - missing: a store address that does not exist or whose store is off;
+ * - unreachable: the first lookup for this address failed (never remembered).
  */
 export interface SiteInfo {
-  kind: 'store' | 'platform' | 'missing'
+  kind: 'store' | 'platform' | 'missing' | 'unreachable'
   merchant_id?: string | null
   name?: string
   status?: string
@@ -70,7 +71,32 @@ function writeCache(site: SiteInfo) {
   }
 }
 
-let site: SiteInfo | null = readCache()
+/**
+ * What the site's Worker put in the page for a store address (worker/storefront.ts): the store
+ * and its settings, read on the server for this very request, so the first paint is the store's
+ * own and no lookup is needed.
+ */
+export interface PageBoot { host: string; site: SiteInfo; config?: unknown; seo?: unknown }
+
+let bootRead: PageBoot | null | undefined
+
+/** The Worker's answer for this page (a data block, never run as script), when it is for this address. */
+export function pageBoot(): PageBoot | null {
+  if (bootRead !== undefined) return bootRead
+  bootRead = null
+  if (typeof document === 'undefined' || isPreviewFrame()) return null
+  try {
+    const boot = JSON.parse(document.getElementById('ff-boot')?.textContent || 'null') as PageBoot | null
+    if (boot && boot.host === location.host && boot.site?.kind === 'store' && boot.site.merchant_id && UUID.test(boot.site.merchant_id)) bootRead = boot
+  } catch {
+    // A damaged block: the address is looked up as before.
+  }
+  return bootRead
+}
+
+const booted = pageBoot()
+let site: SiteInfo | null = booted ? booted.site : readCache()
+if (booted) writeCache(booted.site)
 
 /** What this address shows (the remembered answer until the lookup returns). */
 export function currentSite(): SiteInfo {
@@ -114,6 +140,13 @@ export const merchantFetch: typeof fetch = (input, init) => {
 
 let resolving: Promise<SiteInfo> | null = null
 
+/** The first lookup for this address failed: the page says so (with a retry) instead of guessing. */
+export function markUnreachable(): SiteInfo {
+  site = { kind: 'unreachable' }
+  storefrontMerchantId = null
+  return site
+}
+
 /**
  * Asks what this web address shows. Uses the remembered answer straight away
  * when there is one and refreshes it in the background; if the answer changed
@@ -121,6 +154,8 @@ let resolving: Promise<SiteInfo> | null = null
  * The theme editor's preview frame asks for the staff's own store instead.
  */
 export function resolveSite(lookup: (host: string, slug: string | null, preview: boolean) => Promise<SiteInfo | null>): Promise<SiteInfo> {
+  // The Worker already answered for this request.
+  if (booted && !storeSlugInPath()) return (resolving ??= Promise.resolve(booted.site))
   const remembered = site
   resolving ??= lookup(location.host, storeSlugInPath(), isPreviewFrame()).then((found) => {
     const next: SiteInfo = found && found.kind ? found : found?.merchant_id ? { ...found, kind: 'store' } : { kind: 'platform' }
