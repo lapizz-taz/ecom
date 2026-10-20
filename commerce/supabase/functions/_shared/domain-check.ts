@@ -394,6 +394,10 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       const res = await fetcher(`https://${domain}/`, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(8_000) })
       await res.body?.cancel().catch(() => undefined)
       const ours = target.provider === 'vercel' ? res.headers.has('x-vercel-id') || /vercel/i.test(res.headers.get('server') ?? '') : res.headers.has(STORE_HEADER)
+      // Our proxy answering an error page: the store behind it hiccupped, not another server.
+      if (!ours && target.provider === 'proxy' && res.status >= 500) {
+        return { ok: true, status: res.status, served_by_store: null, detail: `The store did not answer just now (HTTP ${res.status})` }
+      }
       return { ok: true, status: res.status, served_by_store: ours, detail: ours ? 'TLS certificate provisioned for secure connections' : 'HTTPS works, but another server answered (not the store)' }
     } catch (error) {
       const msg = String((error as Error)?.message ?? error)
@@ -534,16 +538,19 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
       : { code: 'TXT_MISSING', severity: 'error', title: 'Verification record missing',
       detail: `Add the TXT record ${txtNames} shown below at your domain provider. It proves the domain is yours; the store cannot go live without it. A record added just now can take up to an hour to be seen.` })
   }
-  // Nothing answered at all: say so instead of claiming the records are missing.
+  // Nothing answered at all: say so instead of claiming the records are missing. One lookup
+  // that did not answer (a resolver rate-limiting) is the same: what is missing is unknown.
   const reached = [a, aaaa, cname].some((x) => x !== null)
+  const partial = [a, aaaa, cname].some((x) => x === null)
   if ([a, aaaa, cname].every((x) => x?.servfail)) {
     issues.push({ code: 'DNS_BROKEN', severity: 'error', title: 'DNS servers cannot read your domain',
       detail: `DNS servers answer "server failure" for ${domain}, so visitors cannot open it. Usually DNSSEC is still on where you bought the domain after the nameservers changed: turn DNSSEC off there (or delete its DS record), then wait an hour.` })
   } else if (kind === 'apex' && [a, aaaa, cname].every((x) => x?.nxdomain)) {
     issues.push({ code: 'NO_DOMAIN', severity: 'error', title: `${domain} does not exist in DNS`,
       detail: 'Check the spelling, that the domain is registered and paid (not expired or on hold), and that it has nameservers where you bought it.' })
-  } else if (!reached) {
-    issues.push({ code: 'CHECK_FAILED', severity: 'error', title: 'Could not check DNS right now', detail: 'The DNS resolvers did not answer. Try again in a minute.' })
+  } else if (!reached || (partial && !pointedByDns)) {
+    issues.push({ code: 'CHECK_FAILED', severity: 'error', title: 'Could not check DNS right now',
+      detail: reached ? 'Some DNS lookups did not answer. Try again in a minute.' : 'The DNS resolvers did not answer. Try again in a minute.' })
   } else if (!aValues.length && !cnameValues.length) {
     issues.push({ code: 'NO_RECORDS', severity: 'error', title: 'No DNS records found',
       detail: target.a && (kind === 'apex' || target.provider === 'proxy') ? `Add an A record for ${name} pointing to ${target.a} at your domain provider.`
@@ -590,6 +597,10 @@ export async function diagnose(domain: string, opts: { fetcher?: Fetch; now?: Da
   // Not while the ownership record is missing: the proxy gets no certificate until it is found.
   if (pointedByDns && !tls.ok && !issues.some((i) => i.code === 'CAA' || i.code === 'AAAA') && !missingTxt.some((t) => t.name.startsWith('_fullfilio.'))) {
     issues.push({ code: 'TLS_PENDING', severity: 'info', title: 'Certificate on the way', detail: 'DNS is correct. The HTTPS certificate is usually ready within a few minutes.' })
+  }
+  if (target.provider === 'proxy' && pointedByDns && tls.ok && tls.served_by_store === null) {
+    issues.push({ code: 'STORE_DOWN', severity: 'warning', title: 'The store did not answer just now',
+      detail: `https://${domain} reached the store's server, which answered with an error (HTTP ${tls.status}). This usually clears by itself; we keep checking.` })
   }
   if (target.provider === 'proxy' && pointedByDns && tls.ok && tls.served_by_store === false) {
     issues.push({ code: 'NOT_STORE', severity: 'error', title: 'Another server answers on HTTPS',

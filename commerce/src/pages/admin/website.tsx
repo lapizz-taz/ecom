@@ -20,7 +20,7 @@ import { formatDateTime, formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import {
-  addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, makePrimaryDomain, removeDomain, revokeSiteKey, setStoreSlug, type SiteKey, siteApiBase,
+  addDomain, checkDomain, createSiteKey, listDomains, listSiteKeys, makePrimaryDomain, removeDomain, revokeSiteKey, setStoreSlug, type SiteKey, siteApiBase, type StoreDomain,
 } from '@/services/website'
 import { CloudflareSteps, DomainDetail, DomainList } from '@/features/website/domain-status'
 
@@ -186,13 +186,23 @@ function DomainsTab() {
       </DialogContent>
     </Dialog>
     <ConfirmDialog open={!!removing} onOpenChange={(v) => !v && setRemoving(null)} title={`Remove ${removing}?`}
-      description={`The store stops opening on this domain. Your default address keeps working.${domains.find((d) => d.domain === removing)?.verified_at
-        ? ' Added back within 7 days, it reconnects without proving it again; after that it needs its TXT record.'
-        : domains.find((d) => d.domain === removing)?.records.some((r) => r.type === 'TXT')
-          ? ' If you add it again later, keep its TXT record: it proves the domain is yours again.' : ''} Waiting? No need to remove it: it keeps checking by itself.`} confirmLabel="Remove" destructive
+      description={removeNote(domains, removing, isOff('custom_domains'))} confirmLabel="Remove" destructive
       onConfirm={async () => { await removeDomain(removing!); toast.success('Domain removed'); close(); refresh() }} />
     </>
   )
+}
+
+/** What removing a domain changes, in the words the remove dialog uses. */
+function removeNote(domains: StoreDomain[], removing: string | null, featureOff: boolean): string {
+  if (!removing) return ''
+  const d = domains.find((x) => x.domain === removing)
+  const twin = domains.find((x) => x.domain === (removing.startsWith('www.') ? removing.slice(4) : `www.${removing}`))
+  const first = twin ? `${twin.domain} stays connected, so ${removing} keeps opening the store through it.`
+    : 'The store stops opening on this domain. Your default address keeps working.'
+  const back = featureOff ? ' Custom domains are off for your store, so it cannot be added again afterwards.'
+    : d?.verified_at ? ' Added back within 7 days, it reconnects without proving it again; after that it needs its TXT record.'
+    : d?.records.some((r) => r.type === 'TXT') ? ' If you add it again later, keep its TXT record: it proves the domain is yours again.' : ''
+  return `${first}${back}${d?.status === 'ACTIVE' ? '' : ' Waiting? No need to remove it: it keeps checking by itself.'}`
 }
 
 function ApiTab() {

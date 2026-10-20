@@ -120,10 +120,12 @@ async function dbRpc(client: Client, fn: string, rawArgs: Record<string, unknown
         if (live(twin) && twin!.merchant_id !== mid) raise('DUPLICATE: That domain is already connected to another store')
         // Removed by another store: freed (_store_domain_release).
         if (db.rows.get(d)?.status === 'REMOVED' && db.rows.get(d)!.merchant_id !== mid) db.rows.delete(d)
-        if (!db.rows.has(d)) db.rows.set(d, newRow(d, mid!, 'PENDING')) // insert … on conflict (domain) do nothing
+        // The same store's proven twin (live, or removed under 7 days ago) carries the proof.
+        const twinProven = twin?.merchant_id === mid && !!twin?.verified_at && (live(twin) || (!!twin?.removed_at && Date.parse(twin.removed_at) > Date.now() - 7 * 86_400_000))
+        if (!db.rows.has(d)) db.rows.set(d, { ...newRow(d, mid!, 'PENDING'), verified_at: twinProven ? now() : null }) // insert … on conflict (domain) do nothing
         const r = db.rows.get(d)!
         if (r.merchant_id === mid && r.status === 'REMOVED') Object.assign(r, { status: 'PENDING', is_primary: false, removed_at: null,
-          verified_at: r.removed_at && Date.parse(r.removed_at) > Date.now() - 7 * 86_400_000 ? r.verified_at : null })
+          verified_at: (r.removed_at && Date.parse(r.removed_at) > Date.now() - 7 * 86_400_000 ? r.verified_at : null) ?? (twinProven ? now() : null) })
         if (!(r.merchant_id === mid && live(r))) raise('DUPLICATE: That domain is already connected to another store')
       } else {
         const r = db.rows.get(d)
@@ -832,11 +834,12 @@ describe('recheck_all (cron)', () => {
     expect(issueCodes(db.rows.get('shop.com'))).toEqual([])
   })
 
-  it('without the hosting API it says so and touches nothing', async () => {
+  it('without the hosting API the diagnosis alone re-checks it (manual hosting), never calling Cloudflare', async () => {
     delete H.env.CF_SAAS_API_TOKEN
     seed('shop.example.com', 'm-a', 'VERIFYING', { checkedMin: 60 })
-    expect((await cron()).body).toEqual({ checked: 0, live: 0, skipped: 'no hosting API' })
-    expect(world.log).toEqual([])
+    expect((await cron()).body).toMatchObject({ checked: 1 })
+    expect(db.rows.get('shop.example.com')!.status).toBe('MANUAL')
+    expect(world.log.filter((l) => l.url.hostname === 'api.cloudflare.com')).toEqual([])
   })
 
   it('a domain removed while recheck_all is checking it stays removed and detached at Cloudflare', async () => {

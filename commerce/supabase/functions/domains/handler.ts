@@ -46,7 +46,7 @@ interface Saved { domain: string; status: string; records: DnsRecord[]; detail: 
  * the record is not looked up yet, as DNS servers would remember "not found" for up to an hour
  * before the merchant has even seen the code.
  */
-interface Ownership { code: string | null; verified: boolean; fresh: boolean }
+interface Ownership { code: string | null; verified: boolean; fresh: boolean; live?: boolean }
 
 /** A host name: labels of letters, digits and hyphens; the last one letters (or an xn-- IDN). */
 const NAME = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,}|xn--[a-z0-9-]{2,59})$/
@@ -128,13 +128,13 @@ async function prove(d: string, own: Ownership, persist: () => Promise<unknown>)
   return true
 }
 
-type OwnRow = { domain: string; verify_code?: string | null; verified_at?: string | null; checked_at?: string | null }
+type OwnRow = { domain: string; status?: string; verify_code?: string | null; verified_at?: string | null; checked_at?: string | null }
 const twinOf = (d: string) => (d.startsWith('www.') ? d.slice(4) : `www.${d}`)
 /** The ownership side of a domain, from the store's own rows (its twin is the same store's, if listed). */
 const ownershipOf = (rows: OwnRow[] | null | undefined, d: string): Ownership => {
   const row = rows?.find((x) => x.domain === d)
   const twin = rows?.find((x) => x.domain === twinOf(d))
-  return { code: row?.verify_code ?? null, verified: !!row?.verified_at || !!twin?.verified_at, fresh: !!row && !row.checked_at }
+  return { code: row?.verify_code ?? null, verified: !!row?.verified_at || !!twin?.verified_at, fresh: !!row && !row.checked_at, live: row?.status === 'ACTIVE' }
 }
 /** The record to add and the record to look for, until the domain is proven. */
 const ownershipAsk = (d: string, own: Ownership, proven: boolean) => ({
@@ -146,6 +146,21 @@ const withoutCertPromise = (diagnostics: Diagnosis, proven: boolean): Diagnosis 
   proven ? diagnostics : { ...diagnostics, issues: diagnostics.issues.filter((i) => i.code !== 'TLS_PENDING') }
 const WAITING_TXT = 'Waiting for the TXT record below (it proves the domain is yours)'
 
+/**
+ * A live, proven domain stays live through a check that shows nothing for sure: a probe that
+ * timed out, a DNS checker that did not answer, the store hiccuping behind the proxy, resolvers
+ * still on the old DNS. Only DNS that fully answers and leads elsewhere while the store does not
+ * answer takes it offline: the owner moved it.
+ */
+const movedAway = (diag: Diagnosis) => !diag.pointed && diag.tls.served_by_store !== true && !diag.issues.some((i) => i.code === 'CHECK_FAILED')
+const stillLive = (diag: Diagnosis) => {
+  const issue = diag.issues.find((i) => i.severity === 'error') ?? diag.issues.find((i) => i.severity === 'warning')
+  return issue ? `Live — the last check found a problem: ${issue.title}` : 'Live — the last check could not finish; it runs again by itself'
+}
+/** Kept live without confirming it: said so, and checked again within minutes (dueForRecheck). */
+const unconfirmed = (diag: Diagnosis): Diagnosis => ({ ...diag, issues: [...diag.issues, { code: 'UNCONFIRMED', severity: 'warning',
+  title: 'The last check could not confirm the store', detail: 'Visitors still reach the store. One check did not get a clear answer (a timeout, or a DNS checker not answering); it runs again within minutes by itself.' }] })
+
 /** Without the hosting API: the diagnosis alone decides whether the domain is live. */
 async function manual(d: string, note: string, own: Ownership, persist: () => Promise<unknown>): Promise<Omit<Saved, 'domain'>> {
   const target = env('CUSTOM_DOMAIN_TARGET') ? cloudflareTarget(env('CUSTOM_DOMAIN_TARGET')!) : hostingTarget()
@@ -154,8 +169,9 @@ async function manual(d: string, note: string, own: Ownership, persist: () => Pr
   const diagnostics = withoutCertPromise(await diagnose(d, { target, expect: ask.expect }), proven)
   // Every page of the site carries the store header, so answering alone proves nothing: the TXT does.
   const live = proven && diagnostics.pointed && diagnostics.tls.ok && diagnostics.tls.served_by_store === true
-  return { status: live ? 'ACTIVE' : 'MANUAL', records: [...baseRecords(d, target), ...ask.records], diagnostics, verified: proven,
-    detail: live ? 'Live — the store opens on this domain with HTTPS' : proven ? note : WAITING_TXT }
+  const held = !live && proven && !!own.live && !movedAway(diagnostics)
+  return { status: live || held ? 'ACTIVE' : 'MANUAL', records: [...baseRecords(d, target), ...ask.records], diagnostics: held ? unconfirmed(diagnostics) : diagnostics, verified: proven,
+    detail: live ? 'Live — the store opens on this domain with HTTPS' : held ? stillLive(diagnostics) : proven ? note : WAITING_TXT }
 }
 
 function vercel() {
@@ -231,6 +247,7 @@ async function inspectRoot(target: HostingTarget, d: string, own: Ownership, per
   if (proven && dnsOk && diagnostics.tls.ok && diagnostics.tls.served_by_store === true) {
     return { status: 'ACTIVE', records, diagnostics, verified: true, detail: 'Live — the store opens on this domain with HTTPS' }
   }
+  if (proven && own.live && !movedAway(diagnostics)) return { status: 'ACTIVE', records, diagnostics: unconfirmed(diagnostics), verified: true, detail: stillLive(diagnostics) }
   const blocking = diagnostics.issues.find((i) => i.severity === 'error')
   return {
     status: 'VERIFYING', records, diagnostics, verified: proven,
@@ -372,7 +389,9 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string, own
   const proven = await prove(d, own, persist)
   const ask = ownershipAsk(d, own, proven)
   const info = await v.call<VercelDomain>('GET', `/v9/projects/${v.project}/domains/${d}`)
-  if (!info.ok) return { status: 'ERROR', records: baseRecords(d, VERCEL_TARGET), detail: info.data.error?.message ?? `Vercel answered ${info.status}` }
+  // Vercel not answering says nothing about the domain: nothing is saved but why it was not checked.
+  if (!info.ok && info.status !== 404) throw new HttpError(502, `Vercel answered: ${info.data.error?.message ?? info.status}`, 'UPSTREAM_ERROR')
+  if (!info.ok) return { status: 'ERROR', records: baseRecords(d, VERCEL_TARGET), detail: info.data.error?.message ?? 'Not on the hosting project — press Check again or add it again' }
   let verified = info.data.verified
   if (!verified) {
     const tried = await v.call<VercelDomain>('POST', `/v9/projects/${v.project}/domains/${d}/verify`)
@@ -392,14 +411,18 @@ async function inspect(v: NonNullable<ReturnType<typeof vercel>>, d: string, own
 }
 
 /** Waiting domains are checked every 10 minutes for 3 days after the last change, then hourly. */
-export function dueForRecheck(d: { status: string; checked_at?: string | null; created_at?: string | null; diagnostics?: Diagnosis | null }, now = Date.now()): boolean {
+export function dueForRecheck(d: { status: string; checked_at?: string | null; created_at?: string | null; status_changed_at?: string | null; diagnostics?: Diagnosis | null }, now = Date.now()): boolean {
   if (d.status === 'REMOVED') return false
   const checked = d.checked_at ? Date.parse(d.checked_at) : 0
   // A live domain is checked again often only while its last check still showed a problem (often
   // DNS still spreading after a nameserver change), so the status settles by itself; else once a
   // day, so DNS that later moved away is noticed.
+  // Kept live by a check that could not confirm it: checked again on the next runs.
+  if (d.status === 'ACTIVE' && d.diagnostics?.issues?.some((i) => i.code === 'UNCONFIRMED')) return now - checked >= 9 * 60_000
   if (d.status === 'ACTIVE' && !d.diagnostics?.issues?.some((i) => i.severity === 'error')) return !!d.checked_at && now - checked >= 86_400_000
-  const age = now - (d.created_at ? Date.parse(d.created_at) : now)
+  // Counted from the last status change, so a domain that just changed is followed closely.
+  const since = d.status_changed_at ?? d.created_at
+  const age = now - (since ? Date.parse(since) : now)
   const every = age > 3 * 86_400_000 ? 55 * 60_000 : 9 * 60_000
   return now - checked >= every
 }
@@ -407,16 +430,20 @@ export function dueForRecheck(d: { status: string; checked_at?: string | null; c
 /** At most this many domains per run, so one run stays well inside the time limit. */
 const RECHECK_LIMIT = 15
 
-type Listed = { domain: string; status: string; checked_at: string | null; created_at: string | null; diagnostics: Diagnosis | null; verify_code?: string | null; verified_at?: string | null }
+type Listed = { domain: string; status: string; checked_at: string | null; created_at: string | null; status_changed_at?: string | null; diagnostics: Diagnosis | null; verify_code?: string | null; verified_at?: string | null }
 type Admin = Parameters<Parameters<typeof forEachMerchant>[1]>[0]
 
 /** Saves that the ownership record was found (nothing else changes). */
 const markVerified = (admin: Admin, d: string) => rpc(admin, 'store_domain_save', { p_domain: d, p: { verified: true }, p_actor: null })
 
+const MANUAL_CHECK = 'Add the DNS record below; the platform owner then connects the domain to the hosting.'
+
 /** The scheduled run: every waiting domain is checked (and attached) as if its owner pressed Check. */
 async function recheckAll() {
   const cf = cloudflare()
-  if (!cf) return { checked: 0, live: 0, skipped: 'no hosting API' }
+  const v = cf ? null : vercel()
+  const check = (d: string, own: Ownership, persist: () => Promise<unknown>) =>
+    cf ? inspectAny(cf, d, true, own, persist) : v ? inspect(v, d, own, persist) : manual(d, MANUAL_CHECK, own, persist)
   // One queue for every store: domains still waiting come before the daily check of live ones,
   // and the stores take turns (each store's oldest check first), so one store with many
   // domains, real or made up, cannot hold another store's domain back.
@@ -432,11 +459,11 @@ async function recheckAll() {
   let live = 0
   for (const { admin, d, own } of due.slice(0, RECHECK_LIMIT)) {
     try {
-      const result = await inspectAny(cf, d.domain, true, own, () => markVerified(admin, d.domain))
+      const result = await check(d.domain, own, () => markVerified(admin, d.domain))
       const saved = await rpc<Saved | null>(admin, 'store_domain_save', { p_domain: d.domain, p: result, p_actor: null })
       // Removed while it was being checked: it stays removed, and detached at Cloudflare again.
       if (!saved) {
-        if (!viaProxy(cf, d.domain)) await removeCloudflare(cf, d.domain).catch(() => undefined)
+        if (cf && !viaProxy(cf, d.domain)) await removeCloudflare(cf, d.domain).catch(() => undefined)
         continue
       }
       if (result.status === 'ACTIVE') live += 1
@@ -525,7 +552,7 @@ export default (
         return json(req, { domain: await save(input.domain, await inspect(v, input.domain, await own(input.domain), persist(input.domain))), automatic: true })
       }
       case 'check':
-        if (!v) return json(req, { domain: await save(input.domain, await manual(input.domain, 'Add the DNS record below; the platform owner then connects the domain to the hosting.', await own(input.domain), persist(input.domain))), automatic: false })
+        if (!v) return json(req, { domain: await save(input.domain, await manual(input.domain, MANUAL_CHECK, await own(input.domain), persist(input.domain))), automatic: false })
         return json(req, { domain: await save(input.domain, await inspect(v, input.domain, await own(input.domain), persist(input.domain))), automatic: true })
       case 'remove': {
         if (v) {
