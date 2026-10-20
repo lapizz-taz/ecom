@@ -230,6 +230,11 @@ function Pricing() {
                   {p.trial_days ? <span className="rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}
                 </div>
                 <p className="mt-4"><span className="text-[36px] font-medium tracking-tight tabular-nums">৳{Number(p.price).toLocaleString('en-IN')}</span><span className="text-[13px] text-(--s-muted)"> / {p.billing_interval === 'YEAR' ? 'year' : 'month'}</span></p>
+                {p.offer?.first_price != null && (
+                  <p className="mt-2 text-[13px] text-(--s-accent)">
+                    {p.trial_days ? `${p.trial_days} days free, then ` : ''}৳{Number(p.offer.first_price).toLocaleString('en-IN')} for your first {p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}
+                  </p>
+                )}
                 {p.description && <p className="mt-2 text-[13px] text-(--s-muted)">{p.description}</p>}
                 <ul className="mt-6 flex-1 space-y-2 text-[13px] text-(--s-fg2)">
                   {(p.features ?? []).slice(0, 8).map((f) => <li key={f} className="flex gap-2"><span className="text-(--s-accent)">✓</span>{f}</li>)}

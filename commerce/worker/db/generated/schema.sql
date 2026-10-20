@@ -4673,6 +4673,8 @@ CREATE TABLE subscriptions (
   created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at) = updated_at),
+  intro_price REAL,
+  intro_until TEXT CHECK (intro_until IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', intro_until) = intro_until),
   PRIMARY KEY (id),
   CONSTRAINT subscriptions_status_check CHECK (status IN ('TRIALING', 'ACTIVE', 'PAST_DUE', 'PAUSED', 'CANCELLED', 'EXPIRED')),
   CONSTRAINT subscriptions_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),

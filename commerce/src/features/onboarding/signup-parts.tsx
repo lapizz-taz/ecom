@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatMoney, formatNumber } from '@/lib/format'
 import { isValidWhatsapp, normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { BUSINESS_TYPES, ORDER_VOLUMES, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
+import { BUSINESS_TYPES, ORDER_VOLUMES, planOfferText, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
 
 const BD_MOBILE = /^01[3-9][0-9]{8}$/
 
@@ -57,7 +57,14 @@ export function PlanPicker({ options, value, onChange }: { options: SignupOption
                 {Number(p.price) > 0 && <p className="mt-1 text-[11px] text-muted-foreground">per {INTERVAL[p.billing_interval?.toUpperCase()] ?? 'month'}</p>}
               </div>
             </div>
-            {p.trial_days > 0 && <p className="mt-3 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{p.trial_days}-day free trial · no payment now</p>}
+            {(p.trial_days > 0 || p.offer?.first_price != null) && (
+              <p className="mt-3 inline-flex flex-wrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                {planOfferText(p, formatMoney)}{p.trial_days > 0 && ' · no payment now'}
+              </p>
+            )}
+            {p.offer?.first_price != null && Number(p.price) > 0 && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">After that {formatMoney(p.price)} per {INTERVAL[p.billing_interval?.toUpperCase()] ?? 'month'}.</p>
+            )}
             <ul className="mt-3 grid gap-x-4 gap-y-1.5 text-[13px] text-muted-foreground sm:grid-cols-2">
               {[...planLimits(p), ...p.features.slice(0, 6)].map((f) => (
                 <li key={f} className="flex items-start gap-2">
@@ -78,7 +85,7 @@ export function PlanPicker({ options, value, onChange }: { options: SignupOption
       <p className="text-xs text-muted-foreground">
         {options.onboarding?.method === 'whatsapp'
           ? 'After you sign up, send us the WhatsApp message we prepare for you and our team activates your account.'
-          : 'Plans with a free trial start right away. Other plans are paid with bKash or PayStation, and your account opens as soon as the payment is confirmed.'}
+          : 'Plans with a free trial start right away; you pay when the trial ends. Other plans are paid online (bKash, PayStation or SSLCommerz), and your account opens as soon as the payment is confirmed.'}
       </p>
     </div>
   )

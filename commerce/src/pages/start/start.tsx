@@ -18,10 +18,10 @@ import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+import { formatMoney } from '@/lib/format'
 import { normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import {
-  clearSignupDraft, readSignupDraft, signInOnceConfirmed, saveSignupDraft, selfOnboard, signUpOwner, signupOptions, signupRequest,
-  type SignupBusiness, type SignupRequestResult, whatsappLink,
+  clearSignupDraft, planOfferText, readSignupDraft, saveSignupDraft, selfOnboard, signInOnceConfirmed, type SignupBusiness, signupOptions, signUpOwner, type SignupPlan, signupRequest, type SignupRequestResult, whatsappLink,
 } from '@/services/onboarding'
 
 const EMPTY: SignupBusiness = {
@@ -150,8 +150,7 @@ export default function StartPage() {
           <div className="mt-6 rounded-2xl border bg-muted/40 p-4 text-[13px]">
             <p className="font-medium">{business.business_name.trim() || 'Your business'}</p>
             <p className="mt-0.5 text-muted-foreground">
-              {options.data.plans.find((p) => p.code === business.plan_code)?.name} plan
-              {(options.data.plans.find((p) => p.code === business.plan_code)?.trial_days ?? 0) > 0 && ` · ${options.data.plans.find((p) => p.code === business.plan_code)?.trial_days}-day free trial`}
+              {planLabel(options.data, business)}
               {' · '}{normalizePhone(business.phone)}
             </p>
           </div>
@@ -208,8 +207,7 @@ export default function StartPage() {
               <div className="mt-5 rounded-2xl border bg-muted/40 p-4 text-[13px]">
                 <p className="font-medium">{business.business_name.trim() || 'Your business'}</p>
                 <p className="mt-0.5 text-muted-foreground">
-                  {options.data.plans.find((p) => p.code === business.plan_code)?.name} plan
-                  {(options.data.plans.find((p) => p.code === business.plan_code)?.trial_days ?? 0) > 0 && ` · ${options.data.plans.find((p) => p.code === business.plan_code)?.trial_days}-day free trial`}
+                  {planLabel(options.data, business)}
                   {' · '}{normalizePhone(business.phone)}
                 </p>
               </div>
@@ -237,9 +235,11 @@ export default function StartPage() {
   )
 }
 
-function planLabel(options: { plans: { code: string; name: string; trial_days: number }[] }, business: SignupBusiness) {
+function planLabel(options: { plans: SignupPlan[] }, business: SignupBusiness) {
   const plan = options.plans.find((p) => p.code === business.plan_code)
-  return plan ? `${plan.name} plan${plan.trial_days > 0 ? ` · ${plan.trial_days}-day free trial` : ''}` : 'No plan chosen'
+  if (!plan) return 'No plan chosen'
+  const offer = planOfferText(plan, formatMoney)
+  return `${plan.name} plan${offer ? ` · ${offer}` : ''}`
 }
 
 /** Both ways are switched on: the visitor picks one. */
