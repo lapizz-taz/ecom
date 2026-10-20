@@ -20,7 +20,6 @@ export interface SeoSettings {
   sitemap: { enabled: boolean; products: boolean; collections: boolean; pages: boolean }
   indexing: { store: boolean; products: boolean; collections: boolean; pages: boolean; search: boolean }
   new_items: { products: 'auto' | 'fill'; collections: 'auto' | 'fill' }
-  ai: { enabled: boolean }
 }
 
 export interface SeoSettingsState {
@@ -31,8 +30,23 @@ export interface SeoSettingsState {
   store: Record<string, string | null>
   template_vars: string[]
   counts: { products: number; collections: number; pages: number; manual_titles: number }
-  /** No AI provider is connected to the platform yet. */
-  ai_available: boolean
+}
+
+/** What an item is, from its own data (seo_item_get -> facts): suggestions are written from it. */
+export interface SeoFacts {
+  store?: string | null
+  tagline?: string | null
+  name?: string | null
+  brand?: string | null
+  category?: string | null
+  price?: string | null
+  description?: string | null
+  short_description?: string | null
+  sizes?: string | null
+  colours?: string | null
+  summary?: string | null
+  count?: number | null
+  from_price?: string | null
 }
 
 export interface SeoImage { id: string; url: string; alt: string | null; suggested_alt: string | null }
@@ -65,6 +79,8 @@ export interface SeoItem {
   mode: SeoMode
   base_url: string | null
   images: SeoImage[] | null
+  /** The item's facts (name, brand, category, price, sizes, colours, product count): suggestions are written from them. */
+  facts?: SeoFacts
 }
 
 export interface SeoItemChanges {

@@ -149,6 +149,20 @@ describe('store pages from the Worker', () => {
     expect(platform).toContain('Sitemap: https://fullfilio.com/sitemap.xml')
   })
 
+  it("the website's home page names Fullfilio and its social pages; store pages never do", async () => {
+    database({})
+    const home = await (await storefrontPage(new Request('https://fullfilio.com/'), new URL('https://fullfilio.com/'), env())).text()
+    const ld = [...home.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map((m) => JSON.parse(m[1]))
+    expect(ld[0]).toMatchObject({ '@type': 'Organization', name: 'Fullfilio', url: 'https://fullfilio.com/',
+      sameAs: ['https://www.facebook.com/fullfilio/', 'https://www.instagram.com/fullfiliohq/'] })
+    expect(ld[1]).toMatchObject({ '@type': 'WebSite' })
+    const contact = await (await storefrontPage(new Request('https://fullfilio.com/contact'), new URL('https://fullfilio.com/contact'), env())).text()
+    expect(contact).not.toContain('fullfiliohq')
+    database({ storefront_resolve: { kind: 'store', merchant_id: MERCHANT, name: 'Isolation' }, storefront_page: { config: {}, seo: SEO } })
+    const store = await (await storefrontPage(new Request('https://atheron.shop/'), new URL('https://atheron.shop/'), env())).text()
+    expect(store).not.toContain('fullfiliohq')
+  })
+
   it('the head is written safely whatever the store typed', () => {
     const html = injectHead(SHELL, { host: 'a.shop', origin: 'https://a.shop', site: { kind: 'store', merchant_id: MERCHANT },
       seo: { status: 200, title: '</title><script>x</script>', robots: 'noindex,follow', canonical: '/shop' } })

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ImageIcon, Lock, RotateCcw, Sparkles, Wand2, X } from 'lucide-react'
+import { Check, ImageIcon, Lock, RotateCcw, Wand2, X } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Field } from '@/components/common/field'
 import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
@@ -14,10 +14,12 @@ import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { getSeoItem, saveSeoItem, SEO_MODES, type SeoItem, type SeoItemChanges, type SeoItemType, type SeoSource } from '@/services/seo'
+import { DESCRIPTION_MAX, descriptionIdeas, TITLE_MAX, titleIdeas } from './writer'
 
 // One item's SEO (a product, a collection or a store page): how it shows in search results and
 // when shared, and the fields behind it. Under Hybrid a field the merchant writes is locked
-// (generation never changes it) until "Reset to automatic" hands it back.
+// (generation never changes it) until "Reset to automatic" hands it back. Suggestions are written
+// from the item's own facts (writer.ts): no AI service is used.
 
 interface Values {
   title: string
@@ -175,10 +177,9 @@ function Check1({ ok, children }: { ok: boolean; children: ReactNode }) {
 }
 
 /** The panel's fields and previews (the caller decides where Save lives). */
-export function SeoFields({ editor, aiAvailable = false }: { editor: SeoEditorState; aiAvailable?: boolean }) {
+export function SeoFields({ editor }: { editor: SeoEditorState }) {
   const { can } = useAuth()
   const { item, values, set, problems } = editor
-  const [aiError, setAiError] = useState<string | null>(null)
   if (editor.query.isLoading || (item && !values)) return <LoadingState label="Loading SEO…" className="py-8" />
   if (editor.query.error || !item || !values) return <ErrorState error={editor.query.error ?? new Error('NOT_FOUND: that item does not exist')} onRetry={() => void editor.query.refetch()} className="py-8" />
   const canEdit = item.type === 'page' ? can('settings.manage') : can('products.manage')
@@ -194,9 +195,9 @@ export function SeoFields({ editor, aiAvailable = false }: { editor: SeoEditorSt
   const path = item.type === 'product' ? `/product/${slug}` : item.type === 'collection' ? `/collection/${slug}` : item.path
   const kw = values.focus_keyword.trim().toLowerCase()
   const image = values.og_image.trim() || item.og_image
-  const askAi = () => setAiError(aiAvailable
-    ? 'AI writing is switched off for this store (SEO settings → AI suggestions).'
-    : 'AI writing is not available: no AI provider is connected to Fullfilio yet. Use “Fill from template”, or write it yourself.')
+  const facts = { ...item.facts, name: item.facts?.name ?? item.name }
+  const titles = unique([item.auto_title, ...titleIdeas(item.type, facts, values.focus_keyword)])
+  const descriptions = unique([item.auto_description, ...descriptionIdeas(item.type, facts, values.focus_keyword)])
 
   return (
     <fieldset disabled={!canEdit} className="min-w-0 space-y-5">
@@ -223,11 +224,10 @@ export function SeoFields({ editor, aiAvailable = false }: { editor: SeoEditorSt
         </div>
         <Input id={`seo-title-${item.key}`} value={values.title} onChange={(e) => set('title', e.target.value)} placeholder={item.auto_title ?? item.name} aria-invalid={!!problems.title} />
         <FieldActions
-          hint={problems.title ?? (values.title ? 'Kept as written.' : `Empty: ${mode === 'manual' ? 'the page uses its name' : 'generated from your template'}.`)}
+          hint={problems.title ?? (values.title ? 'Kept as written.' : `Empty: ${mode === 'manual' ? 'the page uses its name' : 'written automatically from your template'}.`)}
           error={!!problems.title}
-          onFill={item.auto_title ? () => set('title', item.auto_title ?? '') : undefined}
+          ideas={titles} max={TITLE_MAX} current={values.title} onPick={(t) => set('title', t)}
           onReset={values.title ? () => set('title', '') : undefined}
-          onAi={askAi}
         />
       </div>
 
@@ -238,14 +238,12 @@ export function SeoFields({ editor, aiAvailable = false }: { editor: SeoEditorSt
         </div>
         <Textarea id={`seo-desc-${item.key}`} rows={3} value={values.description} onChange={(e) => set('description', e.target.value)} placeholder={item.auto_description ?? 'Describe the page in a sentence or two'} aria-invalid={!!problems.description} />
         <FieldActions
-          hint={problems.description ?? (values.description ? 'Kept as written.' : item.auto_description ? 'Empty: generated from your template.' : 'Empty, and nothing to generate it from (add a description to the item, or write one).')}
+          hint={problems.description ?? (values.description ? 'Kept as written.' : item.auto_description ? 'Empty: written automatically from this item\'s details.' : 'Empty: write one, or pick a suggestion.')}
           error={!!problems.description}
-          onFill={item.auto_description ? () => set('description', item.auto_description ?? '') : undefined}
+          ideas={descriptions} max={DESCRIPTION_MAX} current={values.description} onPick={(t) => set('description', t)}
           onReset={values.description ? () => set('description', '') : undefined}
-          onAi={askAi}
         />
       </div>
-      {aiError && <p role="alert" className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"><Sparkles className="mt-0.5 size-3.5 shrink-0" />{aiError}</p>}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {item.type !== 'page' && (
@@ -308,22 +306,50 @@ export function SeoFields({ editor, aiAvailable = false }: { editor: SeoEditorSt
   )
 }
 
-function FieldActions({ hint, error, onFill, onReset, onAi }: { hint: string; error: boolean; onFill?: () => void; onReset?: () => void; onAi: () => void }) {
+const unique = (list: Array<string | null | undefined>) => [...new Set(list.map((s) => (s ?? '').trim()).filter(Boolean))]
+
+/** The hint under a field, its suggestions (one click to use) and "Reset to automatic". */
+function FieldActions({ hint, error, ideas, max, current, onPick, onReset }: {
+  hint: string; error: boolean; ideas: string[]; max: number; current: string; onPick: (text: string) => void; onReset?: () => void
+}) {
+  const [open, setOpen] = useState(false)
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className={cn('text-xs', error ? 'text-destructive' : 'text-muted-foreground')} role={error ? 'alert' : undefined}>{hint}</p>
-      <div className="flex flex-wrap gap-1">
-        {onFill && <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={onFill}><Wand2 /> Fill from template</Button>}
-        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={onAi}><Sparkles /> Generate with AI</Button>
-        {onReset && <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={onReset}><RotateCcw /> Reset to automatic</Button>}
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className={cn('text-xs', error ? 'text-destructive' : 'text-muted-foreground')} role={error ? 'alert' : undefined}>{hint}</p>
+        <div className="flex flex-wrap gap-1">
+          {ideas.length > 0 && (
+            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              <Wand2 /> {open ? 'Hide suggestions' : 'Suggestions'}
+            </Button>
+          )}
+          {onReset && <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={onReset}><RotateCcw /> Reset to automatic</Button>}
+        </div>
       </div>
+      {open && (
+        <div className="space-y-1.5 rounded-lg border bg-muted/30 p-2">
+          <p className="px-1 text-[11px] text-muted-foreground">Written from this item's own details and your focus keyword. Pick one, then edit it if you like.</p>
+          <ul className="space-y-1">
+            {ideas.map((t) => (
+              <li key={t}>
+                <button type="button" onClick={() => { onPick(t); setOpen(false) }} aria-pressed={t === current.trim()}
+                  className={cn('flex w-full items-start justify-between gap-3 rounded-md border bg-card px-2.5 py-2 text-left text-sm transition-colors hover:border-foreground/40',
+                    t === current.trim() && 'border-foreground')}>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{t}</span>
+                  <span className={cn('shrink-0 text-[11px] tabular-nums', t.length > max ? 'text-amber-600' : 'text-muted-foreground')}>{t.length}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
 
 /** A self-contained SEO editor with its own Save (collections, store pages, the audit). */
-export function SeoEditorDialog({ type, itemKey, name, open, onOpenChange, aiAvailable }: {
-  type: SeoItemType; itemKey: string | null; name?: string; open: boolean; onOpenChange: (open: boolean) => void; aiAvailable?: boolean
+export function SeoEditorDialog({ type, itemKey, name, open, onOpenChange }: {
+  type: SeoItemType; itemKey: string | null; name?: string; open: boolean; onOpenChange: (open: boolean) => void
 }) {
   const editor = useSeoEditor(type, itemKey ?? undefined)
   const [confirmClose, setConfirmClose] = useState(false)
@@ -339,7 +365,7 @@ export function SeoEditorDialog({ type, itemKey, name, open, onOpenChange, aiAva
           <DialogTitle>SEO · {editor.item?.name ?? name ?? '…'}</DialogTitle>
           <DialogDescription>{editor.item ? `${SEO_MODES[editor.item.mode].label} mode — ${SEO_MODES[editor.item.mode].summary}` : 'How this page shows in search results and when shared.'}</DialogDescription>
         </DialogHeader>
-        <SeoFields editor={editor} aiAvailable={aiAvailable} />
+        <SeoFields editor={editor} />
         {editor.save.error && <p role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{toUserMessage(editor.save.error)}</p>}
         {confirmClose ? (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">

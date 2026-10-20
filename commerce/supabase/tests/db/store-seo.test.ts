@@ -339,6 +339,55 @@ describe('store SEO', () => {
       await expectError(db, `select public.seo_settings_save('{"mode": "manual"}')`, [], /permission denied|PERMISSION_DENIED/)
     }))
 
+  it('there is no AI setting; a save that still sends one has it dropped', () =>
+    inTx(async (db) => {
+      const o = await owner(db)
+      await o.as()
+      const got = await value<Json>(db, `select public.seo_settings_get()`)
+      expect(got.settings.ai).toBeUndefined()
+      expect(got.ai_available).toBeUndefined()
+      // An admin page opened before the change sends its whole form back, "ai" included.
+      const saved = await value<Json>(db, `select public.seo_settings_save($1)`, [JSON.stringify({ ...got.settings, ai: { enabled: true }, title_suffix: ' – {{store}}' })])
+      expect(saved.ai).toBeUndefined()
+      expect(saved.title_suffix).toBe(' – {{store}}')
+      await asSystem(db)
+      expect(await value(db, `select value ? 'ai' from public.settings where key = 'seo'`)).toBe(false)
+    }))
+
+  it('with nothing for a template to use, descriptions are written from real facts', () =>
+    inTx(async (db) => {
+      const name = await storeName(db)
+      const p = await createProduct(db, { name: 'Twill Overshirt', price: 2450, variants: [
+        { sku: `TW-S-${randomUUID().slice(0, 4)}`, title: 'S / Olive' }, { sku: `TW-M-${randomUUID().slice(0, 4)}`, title: 'M / Black' }] })
+      await asSystem(db)
+      const cat = await value<string>(db, `insert into public.categories (name, slug, is_active) values ('Overshirts', $1, true) returning id`, [`overshirts-${randomUUID().slice(0, 6)}`])
+      await db.query(`update public.products set brand = 'Isolation Studio', category_id = $2, description = null, short_description = null where id = $1`, [p.productId, cat])
+      await db.query(`update public.product_variants set size = split_part(title, ' / ', 1), color = split_part(title, ' / ', 2) where product_id = $1`, [p.productId])
+
+      const o = await owner(db)
+      await o.as()
+      const item = await value<Json>(db, `select public.seo_item_get('product', $1)`, [p.productId])
+      expect(item.description).toBe(`Twill Overshirt by Isolation Studio – Overshirts. Price ৳2,450. Sizes: S, M. Colours: Olive, Black. Order online from ${name}.`)
+      expect(item.description_source).toBe('auto')
+      expect(item.facts).toMatchObject({ name: 'Twill Overshirt', brand: 'Isolation Studio', category: 'Overshirts', sizes: 'S, M', colours: 'Olive, Black', store: name })
+
+      const coll = await value<Json>(db, `select public.seo_item_get('collection', $1)`, [cat])
+      expect(coll.description).toBe(`Shop Overshirts at ${name}: 1 product, from ৳2,450. Order online.`)
+      expect(coll.facts).toMatchObject({ count: 1 })
+
+      const track = await value<Json>(db, `select public.seo_item_get('page', 'track-order')`)
+      expect(track.description).toBe(`Track your ${name} order with your order number and mobile number.`)
+
+      // Bulk generation stores the same sentence; the product's own text, once it has some, wins.
+      await value(db, `select public.seo_bulk('generate', $1)`, [JSON.stringify([{ type: 'product', key: p.productId }])])
+      expect(await value<Json>(db, `select public.seo_item_get('product', $1)`, [p.productId])).toMatchObject({ stored_description: item.description, description_source: 'generated' })
+      await value(db, `select public.seo_bulk('reset', $1)`, [JSON.stringify([{ type: 'product', key: p.productId }])])
+      await asSystem(db)
+      await db.query(`update public.products set short_description = 'Heavy cotton twill, two chest pockets.' where id = $1`, [p.productId])
+      await o.as()
+      expect((await value<Json>(db, `select public.seo_item_get('product', $1)`, [p.productId])).description).toBe('Heavy cotton twill, two chest pockets.')
+    }))
+
   it("each store only sees and changes its own SEO", () =>
     inTx(async (db) => {
       const p = await createProduct(db, { name: 'Tenant Product', price: 100 })

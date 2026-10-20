@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertCircle, ArrowRight, CheckCircle2, ExternalLink, FileCode2, Globe, Info, Link2, RefreshCw, Search, Sparkles, Trash2, TriangleAlert,
+  AlertCircle, ArrowRight, CheckCircle2, ExternalLink, FileCode2, Globe, Info, Link2, ListChecks, RefreshCw, Search, Trash2, TriangleAlert,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
@@ -77,7 +77,7 @@ export default function StoreSeoPage() {
         <TabsContent value="redirects" className="animate-in fade-in-0 duration-300"><Redirects /></TabsContent>
       </Tabs>
       <SeoEditorDialog type={editing?.type ?? 'product'} itemKey={editing?.key ?? null} name={editing?.name} open={!!editing}
-        onOpenChange={(o) => !o && setEditing(null)} aiAvailable={settings.data?.ai_available} />
+        onOpenChange={(o) => !o && setEditing(null)} />
     </div>
   )
 }
@@ -454,7 +454,7 @@ function SettingsForm({ state }: { state: SeoSettingsState }) {
     },
   })
   const set = <K extends keyof SeoSettings>(k: K, v: SeoSettings[K]) => setDraft((d) => ({ ...d, [k]: v }))
-  const group = <K extends 'generate' | 'structured_data' | 'sitemap' | 'indexing' | 'social' | 'new_items' | 'ai' | 'templates'>(k: K, patch: Partial<SeoSettings[K]>) =>
+  const group = <K extends 'generate' | 'structured_data' | 'sitemap' | 'indexing' | 'social' | 'new_items' | 'templates'>(k: K, patch: Partial<SeoSettings[K]>) =>
     setDraft((d) => ({ ...d, [k]: { ...d[k], ...patch } }))
   const storeVars = Object.fromEntries(Object.entries(state.store).map(([k, v]) => [k, v ?? '']))
 
@@ -499,7 +499,7 @@ function SettingsForm({ state }: { state: SeoSettingsState }) {
             return (
               <div key={g.label} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
                 <Field label={`${g.label}: title`} error={problems[g.title]}><Input value={draft.templates[g.title]} onChange={(e) => group('templates', { [g.title]: e.target.value })} /></Field>
-                <Field label={`${g.label}: description`} error={problems[g.description]}><Input value={draft.templates[g.description]} onChange={(e) => group('templates', { [g.description]: e.target.value })} placeholder="Empty: no generated description" /></Field>
+                <Field label={`${g.label}: description`} error={problems[g.description]}><Input value={draft.templates[g.description]} onChange={(e) => group('templates', { [g.description]: e.target.value })} placeholder="Empty: written from each item's details" /></Field>
                 <p className="text-xs text-muted-foreground sm:col-span-2">Example: <b className="font-medium text-foreground">{`${t}${suffix ? ` ${suffix}` : ''}` || '—'}</b>{render(draft.templates[g.description], ex) && <> · {render(draft.templates[g.description], ex).slice(0, 160)}</>}</p>
               </div>
             )
@@ -565,16 +565,12 @@ function SettingsForm({ state }: { state: SeoSettingsState }) {
           </div>
         </Section>
 
-        <Section title="AI suggestions" detail="Writing titles and descriptions with an AI model.">
-          <Toggle label="Allow “Generate with AI”" checked={draft.ai.enabled && state.ai_available} disabled={!state.ai_available} onChange={(v) => group('ai', { enabled: v })}
-            detail={state.ai_available ? 'Suggestions are shown for you to accept; nothing is saved without you.' : 'Not available: no AI provider is connected to Fullfilio yet. Templates and your own writing work as usual.'} />
-        </Section>
       </fieldset>
 
       {canEdit && (
         <Section title="Apply to every item" detail="Store-wide changes. Each asks you to confirm first, and fields you wrote stay as they are unless you say otherwise.">
           {bulk ? <BulkBar targets={null} onDone={() => setBulk(false)} actions={['generate', 'reset', 'alt_text']} />
-            : <Button variant="outline" size="sm" onClick={() => setBulk(true)}><Sparkles /> Show store-wide actions</Button>}
+            : <Button variant="outline" size="sm" onClick={() => setBulk(true)}><ListChecks /> Show store-wide actions</Button>}
         </Section>
       )}
 

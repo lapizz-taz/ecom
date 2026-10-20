@@ -150,6 +150,17 @@ function withHeaders(res: Response, body: string | null, status: number, extra: 
 
 const redirect = (to: string, status = 301) => new Response(null, { status, headers: { Location: to, 'Cache-Control': 'public, max-age=300' } })
 
+/** Fullfilio's own social pages (the same as src/components/brand/social.tsx). */
+const FULLFILIO_SOCIAL = ['https://www.facebook.com/fullfilio/', 'https://www.instagram.com/fullfiliohq/']
+
+/** Who runs the website, for search engines: on the platform's home page only (never on a store). */
+function platformLd(origin: string): unknown[] {
+  return [
+    { '@context': 'https://schema.org', '@type': 'Organization', name: 'Fullfilio', url: `${origin}/`, logo: `${origin}/icons/icon-512.png`, sameAs: FULLFILIO_SOCIAL },
+    { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Fullfilio', url: `${origin}/` },
+  ]
+}
+
 /** A page request: on a store's address, the page with the store's own head; elsewhere the app as it is. */
 export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv): Promise<Response> {
   const host = url.host.toLowerCase()
@@ -161,6 +172,11 @@ export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv)
       const headers = new Headers(res.headers)
       headers.set('X-Robots-Tag', 'noindex, nofollow')
       return new Response(res.body, { status: res.status, headers })
+    }
+    if (url.pathname === '/' && res.ok && (res.headers.get('content-type') ?? '').includes('text/html')) {
+      const ld = platformLd(url.origin).map((v) => `<script type="application/ld+json">${scriptJson(v)}</script>`).join('')
+      const html = (await res.text()).replace('</head>', `${ld}</head>`)
+      return withHeaders(res, req.method === 'HEAD' ? null : html, res.status, {})
     }
     return res
   }

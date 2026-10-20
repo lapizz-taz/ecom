@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { CheckCircle2, Loader2, MessageSquareText } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { SocialLinks } from '@/components/brand/social'
 import { SitePage } from '@/features/site/site-chrome'
 import { toUserMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,11 @@ export default function ContactPage() {
             ))}
           </ul>
           <p className="mt-8 text-[13px] text-(--s-muted)">Already a customer? Sign in and use <span className="text-(--s-fg2)">Support</span> in the admin for the fastest answer.</p>
+          <div className="mt-8">
+            <p className="text-[13px] text-(--s-muted)">Follow Fullfilio for updates and tips</p>
+            <SocialLinks withHandles className="mt-3 gap-3"
+              linkClassName="h-9 rounded-full border border-(--s-line-strong) px-3.5 text-[13px] text-(--s-fg2) hover:bg-(--s-tint) hover:text-(--s-fg)" />
+          </div>
         </div>
 
         <div className="rounded-2xl border border-(--s-line) bg-(--s-panel) p-5 sm:p-7">

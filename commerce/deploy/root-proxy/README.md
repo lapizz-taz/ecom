@@ -37,6 +37,17 @@ Subdomains (`www.shop.com`) keep using the CNAME to `stores.fullfilio.com`.
 - The Worker trusts `X-Fullfilio-Host` / `X-Fullfilio-Client-IP` only together with
   `X-Fullfilio-Proxy` = `ROOT_PROXY_SECRET`; without it the headers are dropped.
 
+## Keeping it running
+
+- A crashed Caddy restarts by itself (`restart: unless-stopped`).
+- A stuck one is caught by the watchdog the install script adds: every minute
+  `/usr/local/bin/fullfilio-proxy-watchdog` (run from `/etc/cron.d/fullfilio-root-proxy`) asks
+  the proxy on port 80 for its redirect and restarts Caddy after two misses in a row. Restarts
+  are logged: `grep fullfilio-proxy /var/log/syslog`.
+- Visitors that never finish sending a request are dropped after 10 s, and a slow upstream
+  answer after 60 s, so neither can hold connections open.
+- If the whole server stops answering (SSH too), reboot it from the hosting company's console.
+
 ## Check it
 
 ```sh

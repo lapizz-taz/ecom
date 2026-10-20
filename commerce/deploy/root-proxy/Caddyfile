@@ -11,6 +11,13 @@
 	on_demand_tls {
 		ask {$FULLFILIO_SITE}/functions/v1/domains
 	}
+	# A client that does not finish sending its request is dropped (it cannot hold a connection open).
+	servers {
+		timeouts {
+			read_header 10s
+			idle 2m
+		}
+	}
 }
 
 # Plain HTTP: certificate challenges are answered by Caddy itself; everything else goes to HTTPS.
@@ -28,6 +35,9 @@ https:// {
 		header_up Host {$UPSTREAM_HOST}
 		transport http {
 			tls_server_name {$UPSTREAM_HOST}
+			# A slow upstream answer never keeps a visitor's connection waiting for ever.
+			dial_timeout 10s
+			response_header_timeout 60s
 		}
 		# ...and say which domain the visitor opened, and from which IP. The Worker only
 		# believes these with the shared secret (ROOT_PROXY_SECRET).
