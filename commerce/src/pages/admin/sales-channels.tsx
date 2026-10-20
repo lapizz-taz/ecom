@@ -489,12 +489,12 @@ function ShopifyDialog({ onClose }: { onClose: () => void }) {
       {app ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Client ID" htmlFor="sh-id"><Input id="sh-id" value={f.client_id} onChange={set('client_id')} autoComplete="off" /></Field>
-          <Field label="Client secret" htmlFor="sh-secret" hint="Kept encrypted on the server"><Input id="sh-secret" type="password" value={f.client_secret} onChange={set('client_secret')} autoComplete="off" /></Field>
+          <Field label="Client secret" htmlFor="sh-secret" hint="Kept encrypted on the server"><Input id="sh-secret" type="password" value={f.client_secret} onChange={set('client_secret')} autoComplete="new-password" /></Field>
         </div>
       ) : <>
         <p className="text-sm text-muted-foreground">Only for an older custom app made in the Shopify admin (Settings → Apps → Develop apps): copy its Admin API access token and API secret key.</p>
-        <Field label="Admin API access token" htmlFor="sh-token"><Input id="sh-token" type="password" value={f.access_token} onChange={set('access_token')} placeholder="shpat_…" autoComplete="off" /></Field>
-        <Field label="API secret key" htmlFor="sh-api" hint="Used to check that orders really come from Shopify"><Input id="sh-api" type="password" value={f.api_secret} onChange={set('api_secret')} autoComplete="off" /></Field>
+        <Field label="Admin API access token" htmlFor="sh-token"><Input id="sh-token" type="password" value={f.access_token} onChange={set('access_token')} placeholder="shpat_…" autoComplete="new-password" /></Field>
+        <Field label="API secret key" htmlFor="sh-api" hint="Used to check that orders really come from Shopify"><Input id="sh-api" type="password" value={f.api_secret} onChange={set('api_secret')} autoComplete="new-password" /></Field>
       </>}
       {run.error && <p className="rounded-lg border border-red-600/40 p-3 text-sm" role="alert">{(run.error as Error).message}</p>}
     </FormDialog>
@@ -629,7 +629,7 @@ function WooDialog({ onClose }: { onClose: () => void }) {
           <p className="text-sm text-muted-foreground">WooCommerce → Settings → Advanced → REST API → Add key, with <b className="text-foreground">Read/Write</b> permission.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Consumer key" htmlFor="wc-ck"><Input id="wc-ck" value={f.consumer_key} onChange={set('consumer_key')} placeholder="ck_…" autoComplete="off" /></Field>
-            <Field label="Consumer secret" htmlFor="wc-cs"><Input id="wc-cs" type="password" value={f.consumer_secret} onChange={set('consumer_secret')} placeholder="cs_…" autoComplete="off" /></Field>
+            <Field label="Consumer secret" htmlFor="wc-cs"><Input id="wc-cs" type="password" value={f.consumer_secret} onChange={set('consumer_secret')} placeholder="cs_…" autoComplete="new-password" /></Field>
           </div>
         </>}
       {run.error && <p className="rounded-lg border border-red-600/40 p-3 text-sm" role="alert">{(run.error as Error).message}</p>}
