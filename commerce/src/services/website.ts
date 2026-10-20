@@ -30,6 +30,8 @@ export interface StoreDomain {
   is_primary: boolean; diagnostics: DomainDiagnosis | null
   /** Set once the ownership TXT record was found (domains live before codes existed count as proven). */
   verified_at?: string | null
+  /** When the status last changed: the re-check runs every 10 minutes for 3 days after it. */
+  status_changed_at?: string | null
 }
 /** root_ip: set when main domains connect with an A record to Fullfilio's own server (any DNS company). */
 export const listDomains = () => invokeFunction<{ domains: StoreDomain[]; automatic: boolean; hosting?: 'cloudflare' | 'vercel' | 'manual'; root_ip?: string | null }>('domains', { action: 'list' })

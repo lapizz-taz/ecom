@@ -757,3 +757,15 @@ describe('many records', () => {
     expect.soft(d.status).toBe('VERIFYING')
   })
 })
+
+describe('r4: records leading to the store\'s own Cloudflare address are not "your Cloudflare proxy"', () => {
+  for (const [how, apex] of [['a CNAME', { CNAME: ['stores.fullfilio.com'] }], ['an ALIAS (flattened)', { A: ['104.21.80.10', '172.67.140.20'] }]] as const) {
+    it(`a root on the proxy with ${how} to stores.fullfilio.com: one clear fix (the A record), no Cloudflare-proxy advice`, async () => {
+      // Cloudflare does not know the name (no custom hostname for a root on the proxy): it answers its own error page.
+      const d = await root('to-stores.com', { zone: { ...STORES, 'to-stores.com': { NS: NS.namecheap, ...apex }, 'www.to-stores.com': { CNAME: ['to-stores.com'] } }, https: { status: 409 } })
+      expect(codes(d).map(([c]) => c)).not.toContain('CLOUDFLARE_PROXY')
+      expect(errors(d)[0]?.code).toBe('WRONG_TARGET')
+      expect(errors(d)[0]?.detail).toContain(IP)
+    })
+  }
+})
