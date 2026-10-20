@@ -1,5 +1,5 @@
 {
-  "migrations": 156,
-  "last": "20261121000900_domain_lifecycle.sql",
-  "sha256": "c7aa3ccef792b018d0460db38190286da8cb90ee79d38e9e0ec2e3f97b421d34"
+  "migrations": 157,
+  "last": "20261121001000_channel_order_products_stock.sql",
+  "sha256": "3efb24ccfbdaa6b3e02151622a37771968acebdfa66d0e14c305dfae93a25dee"
 }
