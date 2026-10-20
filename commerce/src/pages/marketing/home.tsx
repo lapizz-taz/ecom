@@ -232,7 +232,8 @@ function Pricing() {
                 <p className="mt-4"><span className="text-[36px] font-medium tracking-tight tabular-nums">৳{Number(p.price).toLocaleString('en-IN')}</span><span className="text-[13px] text-(--s-muted)"> / {p.billing_interval === 'YEAR' ? 'year' : 'month'}</span></p>
                 {p.offer?.first_price != null && (
                   <p className="mt-2 text-[13px] text-(--s-accent)">
-                    {p.trial_days ? `${p.trial_days} days free, then ` : ''}৳{Number(p.offer.first_price).toLocaleString('en-IN')} for your first {p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}
+                    {p.trial_days ? `${p.trial_days} days free, then ` : 'Start for '}৳{Number(p.offer.first_price).toLocaleString('en-IN')} for your first {p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}
+                    {p.offer.setup_fee ? `, then a one-time ৳${Number(p.offer.setup_fee).toLocaleString('en-IN')} fee` : ''}
                   </p>
                 )}
                 {p.description && <p className="mt-2 text-[13px] text-(--s-muted)">{p.description}</p>}

@@ -14,8 +14,8 @@ export interface SignupPlan {
   currency: string
   billing_interval: string
   trial_days: number
-  /** New-business offer: the trial, then the first month(s) at an introductory price (null when off). */
-  offer?: { trial_days: number; first_price: number | null; first_periods: number } | null
+  /** New-business offer: the trial, the first month(s) at an introductory price, a one-time fee (null when off). */
+  offer?: { trial_days: number; first_price: number | null; first_periods: number; setup_fee?: number | null } | null
   limits: Record<string, number>
   features: string[]
 }
@@ -27,6 +27,12 @@ export function planOfferText(p: Pick<SignupPlan, 'trial_days' | 'offer' | 'bill
     ? `${money(p.offer.first_price)} for the first ${p.offer.first_periods > 1 ? `${p.offer.first_periods} ${p.billing_interval?.toUpperCase() === 'YEAR' ? 'years' : 'months'}` : p.billing_interval?.toUpperCase() === 'YEAR' ? 'year' : 'month'}`
     : ''
   return [trial, first && (trial ? `then ${first}` : first)].filter(Boolean).join(' · ')
+}
+
+/** "then a one-time ৳1,000 fee + ৳990 a month": what follows the offer. */
+export function planThenText(p: Pick<SignupPlan, 'price' | 'offer' | 'billing_interval'>, money: (n: number) => string): string {
+  const fee = p.offer?.setup_fee
+  return `then ${fee ? `a one-time ${money(fee)} fee + ` : ''}${money(Number(p.price))} a ${p.billing_interval?.toUpperCase() === 'YEAR' ? 'year' : 'month'}`
 }
 
 export interface SignupOptions {

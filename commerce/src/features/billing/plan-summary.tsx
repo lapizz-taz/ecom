@@ -20,13 +20,18 @@ function accessExplanation(p: MyPlan): string | null {
   const s = p.subscription
   if (!s) return 'Your subscription has ended.'
   if (trialEnded(s)) {
-    return `Your free trial has ended. Pay ${formatMoney(s.intro_price!)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'} to continue (then ${formatMoney(s.price)} a ${s.billing_interval === 'YEAR' ? 'year' : 'month'}).`
+    return `Your free trial has ended. Pay ${formatMoney(s.intro_price!)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'} to continue (${afterIntro(s)}).`
   }
   if (s.status === 'PAST_DUE') return `An invoice is unpaid${s.grace_until ? ` since before ${formatDate(s.grace_until)}` : ''}. Pay it to restore full access.`
   if (s.status === 'PAUSED') return 'Your subscription is paused.'
   if (s.status === 'CANCELLED') return 'Your subscription is cancelled.'
   if (s.status === 'EXPIRED') return 'Your subscription expired unpaid.'
   return null
+}
+
+/** "then a one-time ৳1,000 fee + ৳990 a month": what follows the introductory price. */
+export function afterIntro(s: NonNullable<MyPlan['subscription']>): string {
+  return `then ${s.setup_fee_pending ? `a one-time ${formatMoney(s.setup_fee_pending)} fee + ` : ''}${formatMoney(s.price)} a ${s.billing_interval === 'YEAR' ? 'year' : 'month'}`
 }
 
 /** The new-business trial is over and its first (introductory-price) invoice is unpaid. */
@@ -77,7 +82,7 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
                 </p>
               )}
               {s.status === 'ACTIVE' && s.intro_price != null && s.intro_until && s.current_period_end && new Date(s.current_period_end) <= new Date(s.intro_until) && (
-                <p className="text-muted-foreground">Introductory price {formatMoney(s.intro_price)} until {formatDate(s.intro_until)}; then {formatMoney(s.price)} / {s.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
+                <p className="text-muted-foreground">Introductory price {formatMoney(s.intro_price)} until {formatDate(s.intro_until)}; {afterIntro(s)}</p>
               )}
               {s.status === 'ACTIVE' && s.current_period_end && <p className="text-muted-foreground">Renews {formatDate(s.current_period_end)}{s.cancel_at_period_end && ' — set to end then'}</p>}
               {canPayOnline && s.price > 0 && ['ACTIVE', 'TRIALING'].includes(s.status) && !s.cancel_at_period_end && open.length === 0 && (

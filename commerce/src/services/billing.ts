@@ -183,6 +183,8 @@ export interface MyPlan {
     current_period_end: string | null; grace_until: string | null; cancel_at_period_end: boolean; plan: { name: string; code: string; description: string | null }
     /** New-business offer: the first invoice(s) after the trial are at this price, for periods starting before intro_until. */
     intro_price?: number | null; intro_until?: string | null
+    /** New-business offer: a one-time fee still to come (added to the first invoice at the plan price). */
+    setup_fee_pending?: number | null
   } | null
   limits: Limits
   usage: Record<LimitKey, number>
