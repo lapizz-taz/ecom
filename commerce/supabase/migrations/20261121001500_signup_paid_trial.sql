@@ -6,6 +6,7 @@
 -- intro_trial set. When the offer's period ends, the first invoice at the plan's price must be
 -- paid to continue: the account is TRIAL_ENDED (Blocked by default) until then, not in grace.
 
+-- Text is compared without carriage returns (a script pasted on Windows has CRLF line ends).
 create or replace function pg_temp.lf(p text) returns text
 language sql immutable as $$ select replace(p, E'\r', '') $$;
 
@@ -99,9 +100,9 @@ $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public._self_onboard_activation(uuid,public.subscriptions,public.plans)'::regprocedure));
-  v_from text := $a$p_sub.current_period_start, p_sub.current_period_start + public._billing_interval(p_sub.billing_interval));$a$;
-  v_to text := $b$p_sub.current_period_start,
-      least(p_sub.current_period_start + public._billing_interval(p_sub.billing_interval), coalesce(p_sub.intro_until, 'infinity'::timestamptz)));$b$;
+  v_from text := pg_temp.lf($a$p_sub.current_period_start, p_sub.current_period_start + public._billing_interval(p_sub.billing_interval));$a$);
+  v_to text := pg_temp.lf($b$p_sub.current_period_start,
+      least(p_sub.current_period_start + public._billing_interval(p_sub.billing_interval), coalesce(p_sub.intro_until, 'infinity'::timestamptz)));$b$);
 begin
   if position('p_sub.intro_until' in v_old) > 0 then
     return;
@@ -116,10 +117,10 @@ end $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public._billing_invoice_for(public.subscriptions,timestamptz,timestamptz)'::regprocedure));
-  v_from text := $a$format('%s plan, %s – %s (introductory price; then %s)', v_plan.name, to_char(p_start, 'DD Mon YYYY'),
-      to_char(p_end, 'DD Mon YYYY'), trim($a$;
-  v_to text := $b$format('%s plan, %s – %s (%s; then %s)', v_plan.name, to_char(p_start, 'DD Mon YYYY'),
-      to_char(p_end, 'DD Mon YYYY'), case when p_sub.intro_trial then 'trial' else 'introductory price' end, trim($b$;
+  v_from text := pg_temp.lf($a$format('%s plan, %s – %s (introductory price; then %s)', v_plan.name, to_char(p_start, 'DD Mon YYYY'),
+      to_char(p_end, 'DD Mon YYYY'), trim($a$);
+  v_to text := pg_temp.lf($b$format('%s plan, %s – %s (%s; then %s)', v_plan.name, to_char(p_start, 'DD Mon YYYY'),
+      to_char(p_end, 'DD Mon YYYY'), case when p_sub.intro_trial then 'trial' else 'introductory price' end, trim($b$);
 begin
   if position('p_sub.intro_trial' in v_old) > 0 then
     return;
@@ -134,9 +135,9 @@ end $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public.merchant_access_mode(uuid)'::regprocedure));
-  v_from text := $a$when s.status = 'PAST_DUE' and s.intro_until is not null and s.current_period_end is null then 'TRIAL_ENDED'$a$;
-  v_to text := $b$when s.status = 'PAST_DUE' and s.intro_until is not null
-         and (s.current_period_end is null or s.current_period_end <= s.intro_until) then 'TRIAL_ENDED'$b$;
+  v_from text := pg_temp.lf($a$when s.status = 'PAST_DUE' and s.intro_until is not null and s.current_period_end is null then 'TRIAL_ENDED'$a$);
+  v_to text := pg_temp.lf($b$when s.status = 'PAST_DUE' and s.intro_until is not null
+         and (s.current_period_end is null or s.current_period_end <= s.intro_until) then 'TRIAL_ENDED'$b$);
 begin
   if position('s.current_period_end <= s.intro_until' in v_old) > 0 then
     return;
@@ -151,8 +152,8 @@ end $$;
 do $$
 declare
   v_old text := pg_temp.lf(pg_get_functiondef('public.my_plan()'::regprocedure));
-  v_from text := $a$'intro_price', s.intro_price, 'intro_until', s.intro_until,$a$;
-  v_to text := $b$'intro_price', s.intro_price, 'intro_until', s.intro_until, 'intro_trial', s.intro_trial,$b$;
+  v_from text := pg_temp.lf($a$'intro_price', s.intro_price, 'intro_until', s.intro_until,$a$);
+  v_to text := pg_temp.lf($b$'intro_price', s.intro_price, 'intro_until', s.intro_until, 'intro_trial', s.intro_trial,$b$);
 begin
   if position('intro_trial' in v_old) > 0 then
     return;
