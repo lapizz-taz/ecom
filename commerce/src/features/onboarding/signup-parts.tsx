@@ -24,7 +24,7 @@ export function businessErrors(b: SignupBusiness): Partial<Record<keyof SignupBu
 
 const LIMIT_LABELS: Array<[string, string]> = [['orders_per_month', 'orders a month'], ['products', 'products'], ['staff', 'team members'], ['stores', 'connected stores']]
 
-function planLimits(p: SignupPlan) {
+export function planLimits(p: SignupPlan) {
   return LIMIT_LABELS.map(([key, label]) => {
     const v = p.limits?.[key]
     return v == null ? `Unlimited ${label}` : `${formatNumber(v)} ${label}`

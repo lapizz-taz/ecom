@@ -408,3 +408,52 @@ describe('new-business offer: a paid trial, then the one-time fee with the plan 
         [JSON.stringify({ enabled: true, trial_days: '2', trial_price: 'free', first_price: '', first_periods: '1' })], /trial price is an amount/)
     }))
 })
+
+describe('choosing another plan before the first payment', () => {
+  const OFFER = { enabled: true, trial_days: 2, trial_price: 99, first_price: null, first_periods: 1, setup_fee: 1000 }
+
+  it('switches the plan, voids the unpaid first invoice and raises the trial invoice again', () =>
+    inTx(async (db) => {
+      await onlinePayment(db)
+      await offer(db, OFFER)
+      const m = await signUpAs(db, 'GROWTH')
+      const [growthTrial] = await invoices(db, m.merchant)
+      await asUser(db, m.id, m.email, m.merchant)
+      const r = await value<{ applied: boolean; plan: string; activation_invoice_id: string }>(db, `select public.billing_choose_plan('starter')`)
+      expect(r).toMatchObject({ applied: true, plan: 'STARTER' })
+      await asSystem(db, null)
+      expect(await value(db, `select status from public.billing_invoices where id = $1`, [growthTrial.id])).toBe('VOID')
+      expect((await invoices(db, m.merchant)).map((i) => [i.id, i.total, i.status])).toEqual([[r.activation_invoice_id, 99, 'OPEN']])
+      const s = await sub(db, m.merchant)
+      expect(s).toMatchObject({ price: 990, intro_trial: true })
+      expect(Number(s.setup_fee)).toBe(1000)
+      expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
+
+      // The same plan again: nothing to change.
+      await asUser(db, m.id, m.email, m.merchant)
+      await expectError(db, `select public.billing_choose_plan('STARTER')`, [], /already on the Starter plan/)
+
+      // Paid: open; a later plan change is the usual one (paid at the plan's price).
+      expect(await pay(db, m.merchant, r.activation_invoice_id, 99)).toBe('succeeded')
+      expect(await accessOf(db, m.merchant)).toBe('FULL')
+      await asUser(db, m.id, m.email, m.merchant)
+      expect(await value(db, `select public.billing_choose_plan('GROWTH')`)).toMatchObject({ applied: false, total: 2490 })
+    }))
+
+  it('not while a payment was just started', () =>
+    inTx(async (db) => {
+      await onlinePayment(db)
+      await offer(db, OFFER)
+      const m = await signUpAs(db, 'GROWTH')
+      const [inv] = await invoices(db, m.merchant)
+      await asService(db, m.merchant)
+      await db.query(`select public.billing_gateway_payment_create($1, 'bkash')`, [inv.id])
+      await asUser(db, m.id, m.email, m.merchant)
+      await expectError(db, `select public.billing_choose_plan('STARTER')`, [], /payment for this plan was started/)
+      // An abandoned attempt (over half an hour old) does not block it.
+      await asSystem(db, null)
+      await db.query(`update public.billing_payments set created_at = now() - interval '31 minutes' where invoice_id = $1`, [inv.id])
+      await asUser(db, m.id, m.email, m.merchant)
+      expect(await value(db, `select public.billing_choose_plan('STARTER')`)).toMatchObject({ applied: true })
+    }))
+})
