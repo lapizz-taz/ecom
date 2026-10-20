@@ -1,5 +1,5 @@
 {
-  "migrations": 164,
-  "last": "20261121001700_activation_plan_choice.sql",
-  "sha256": "1b68cfc43fa7d76f3f50dfecb98c8c199a179cd5369f2305efa0a4d0415d1d48"
+  "migrations": 165,
+  "last": "20261121001800_signup_offer_months.sql",
+  "sha256": "4e47cfd053ceb092c1e4fa93a41592cc9f603dab479fe2d229450912878e5b0b"
 }

@@ -14,15 +14,29 @@ export interface SignupPlan {
   currency: string
   billing_interval: string
   trial_days: number
-  /** New-business offer: the trial, the first month(s) at an introductory price, a one-time fee (null when off). */
-  offer?: { trial_days: number; trial_price?: number | null; first_price: number | null; first_periods: number; setup_fee?: number | null } | null
+  /**
+   * New-business offer (null when off): a period of months + days, free or paid for up front
+   * (trial_price), the first month(s) at an introductory price, a one-time fee.
+   */
+  offer?: { trial_months?: number; trial_days: number; trial_price?: number | null; first_price: number | null; first_periods: number; setup_fee?: number | null } | null
   limits: Record<string, number>
   features: string[]
 }
 
-/** "2-day free trial · then ৳99 for the first month" or "2-day trial for ৳99", for a plan on the sign-up page. */
+/** The offer's period: "1 month + 2 days", "2 days", "3 months" ('' without one). */
+export function offerPeriod(offer: SignupPlan['offer'], trialDays = offer?.trial_days ?? 0): string {
+  const months = offer?.trial_months ?? 0
+  return [months > 0 && `${months} month${months === 1 ? '' : 's'}`, trialDays > 0 && `${trialDays} day${trialDays === 1 ? '' : 's'}`]
+    .filter(Boolean).join(' + ')
+}
+
+/**
+ * "৳99 for 1 month + 2 days", "2-day free trial · then ৳99 for the first month", for a plan on
+ * the sign-up page.
+ */
 export function planOfferText(p: Pick<SignupPlan, 'trial_days' | 'offer' | 'billing_interval'>, money: (n: number) => string): string {
-  const trial = p.trial_days > 0 ? `${p.trial_days}-day ${p.offer?.trial_price ? `trial for ${money(p.offer.trial_price)}` : 'free trial'}` : ''
+  if (p.offer?.trial_price) return `${money(p.offer.trial_price)} for ${offerPeriod(p.offer, p.trial_days)}`
+  const trial = p.offer?.trial_months ? `${offerPeriod(p.offer, p.trial_days)} free` : p.trial_days > 0 ? `${p.trial_days}-day free trial` : ''
   const first = p.offer?.first_price != null
     ? `${money(p.offer.first_price)} for the first ${p.offer.first_periods > 1 ? `${p.offer.first_periods} ${p.billing_interval?.toUpperCase() === 'YEAR' ? 'years' : 'months'}` : p.billing_interval?.toUpperCase() === 'YEAR' ? 'year' : 'month'}`
     : ''

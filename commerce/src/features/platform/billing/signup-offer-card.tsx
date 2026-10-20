@@ -13,12 +13,14 @@ import { usePlatform } from '@/features/platform/platform-context'
 import { formatMoney } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import { listPlans, platformSettings, savePlatformSetting } from '@/services/billing'
+import { offerPeriod } from '@/services/onboarding'
 
-interface Offer { enabled: boolean; trial_days: string; trial_price: string; first_price: string; first_periods: string; setup_fee: string }
+interface Offer { enabled: boolean; trial_months: string; trial_days: string; trial_price: string; first_price: string; first_periods: string; setup_fee: string }
 
 /**
- * The new-business offer: an optional trial (free or paid), the first month(s) at an introductory price, an
- * optional one-time fee (with the first month at the plan's price), then the plan's normal price.
+ * The new-business offer: an optional period of months + days (free, or paid before the admin opens), the
+ * first month(s) at an introductory price, an optional one-time fee (with the first month at the plan's
+ * price), then the plan's normal price.
  * Applies to businesses that sign up while it is on (paid plans).
  */
 export function SignupOfferCard() {
@@ -28,12 +30,12 @@ export function SignupOfferCard() {
   const plans = useQuery({ queryKey: ['platform-plans'], queryFn: listPlans })
   const [draft, setDraft] = useState<Offer | null>(null)
   const [confirm, setConfirm] = useState(false)
-  const server = settings.data?.signup_offer?.value as Partial<{ enabled: boolean; trial_days: number; trial_price: number | null; first_price: number | null; first_periods: number; setup_fee: number | null }> | undefined
+  const server = settings.data?.signup_offer?.value as Partial<{ enabled: boolean; trial_months: number; trial_days: number; trial_price: number | null; first_price: number | null; first_periods: number; setup_fee: number | null }> | undefined
   const saved = (v: number | null | undefined) => (v == null ? '' : String(v))
   useEffect(() => {
     if (!settings.data || draft) return
     setDraft({
-      enabled: !!server?.enabled, trial_days: String(server?.trial_days ?? 2), trial_price: saved(server?.trial_price),
+      enabled: !!server?.enabled, trial_months: String(server?.trial_months ?? 0), trial_days: String(server?.trial_days ?? 2), trial_price: saved(server?.trial_price),
       first_price: saved(server?.first_price), first_periods: String(server?.first_periods ?? 1), setup_fee: saved(server?.setup_fee),
     })
   }, [settings.data, server, draft])
@@ -45,12 +47,13 @@ export function SignupOfferCard() {
   if (!draft) return <LoadingState />
   const editable = can('subscriptions', 'manage')
   const days = Number(draft.trial_days)
+  const period = offerPeriod({ trial_months: Number(draft.trial_months) || 0, trial_days: days, first_price: null, first_periods: 1 })
   const trialPrice = draft.trial_price.trim() === '' ? null : Number(draft.trial_price)
   const price = draft.first_price.trim() === '' ? null : Number(draft.first_price)
   const months = Number(draft.first_periods) || 1
   const fee = Number(draft.setup_fee) || 0
   const example = (plans.data?.plans ?? []).find((p) => p.status === 'ACTIVE' && p.is_public && Number(p.price) > 0)
-  const dirty = draft.enabled !== !!server?.enabled || draft.trial_days !== String(server?.trial_days ?? 2) || draft.trial_price !== saved(server?.trial_price)
+  const dirty = draft.enabled !== !!server?.enabled || draft.trial_months !== String(server?.trial_months ?? 0) || draft.trial_days !== String(server?.trial_days ?? 2) || draft.trial_price !== saved(server?.trial_price)
     || draft.first_price !== saved(server?.first_price) || draft.first_periods !== String(server?.first_periods ?? 1) || draft.setup_fee !== saved(server?.setup_fee)
 
   return (
@@ -61,7 +64,7 @@ export function SignupOfferCard() {
           <Badge variant={server?.enabled ? 'success' : 'neutral'}>{server?.enabled ? 'On' : 'Off'}</Badge>
         </CardTitle>
         <CardDescription>
-          What a new business pays: an optional trial (free or paid), or the first month at a low price, an optional one-time fee, then the plan&apos;s normal price. For businesses that sign up while it is on (paid plans only).
+          What a new business pays: an optional first period of months + days (free, or paid before the admin opens), or the first month at a low price, an optional one-time fee, then the plan&apos;s normal price. For businesses that sign up while it is on (paid plans only).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -69,10 +72,13 @@ export function SignupOfferCard() {
           <Switch checked={draft.enabled} disabled={!editable} onCheckedChange={(v) => setDraft({ ...draft, enabled: v })} /> Offer on
         </label>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Trial (days)" hint="0 for no trial">
+          <Field label="First period: months" hint="0 to 12">
+            <Input type="number" min={0} max={12} inputMode="numeric" disabled={!editable} value={draft.trial_months} onChange={(e) => setDraft({ ...draft, trial_months: e.target.value })} />
+          </Field>
+          <Field label="+ days" hint="0 and 0: no first period">
             <Input type="number" min={0} max={90} inputMode="numeric" disabled={!editable} value={draft.trial_days} onChange={(e) => setDraft({ ...draft, trial_days: e.target.value })} />
           </Field>
-          <Field label="Trial price (Tk)" hint="Paid before the admin opens. Empty: a free trial">
+          <Field label="Price for that period (Tk)" hint="Paid before the admin opens. Empty: free">
             <Input type="number" min={0} step="1" inputMode="decimal" disabled={!editable} value={draft.trial_price} onChange={(e) => setDraft({ ...draft, trial_price: e.target.value })} />
           </Field>
           <Field label="First month price (Tk)" hint="Instead of a trial price. Empty: the plan price">
@@ -87,11 +93,11 @@ export function SignupOfferCard() {
         </div>
         {example && Number.isFinite(days) && (
           <p className="rounded-[10px] bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-            A business on {example.name}: {days > 0 ? (trialPrice ? `${formatMoney(trialPrice)} for a ${days}-day trial, then ` : `${days} day${days === 1 ? '' : 's'} free, then `) : ''}
+            A business on {example.name}: {period ? (trialPrice ? `${formatMoney(trialPrice)} for ${period}, then ` : `${period} free, then `) : ''}
             {price != null && price < Number(example.price) ? `${formatMoney(price)} for the first ${months > 1 ? `${months} months` : 'month'}, then ` : ''}
             {fee > 0 ? `a one-time ${formatMoney(fee)} fee + ${formatMoney(example.price)} for the next month, then ` : ''}
             {formatMoney(example.price)} a month.{' '}
-            {days > 0 && !trialPrice ? 'The admin opens at once; after the free trial it waits for the payment to continue.' : 'The admin opens only once the first payment is made.'}{' '}
+            {period && !trialPrice ? 'The admin opens at once; after the free period it waits for the payment to continue.' : 'The admin opens only once the first payment is made.'}{' '}
             When the offer ends the account waits for the payment to continue (&quot;New business: payment to continue not made&quot; under Rules).
           </p>
         )}

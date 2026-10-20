@@ -20,7 +20,7 @@ function accessExplanation(p: MyPlan): string | null {
   const s = p.subscription
   if (!s) return 'Your subscription has ended.'
   if (trialEnded(s)) {
-    if (s.current_period_end) return `Your ${s.intro_trial ? 'trial' : 'introductory price'} has ended. Pay your invoice to continue.`
+    if (s.current_period_end) return `Your ${s.intro_trial ? `${formatMoney(s.intro_price!)} offer` : 'introductory price'} has ended. Pay your invoice to continue.`
     return `Your free trial has ended. Pay ${formatMoney(s.intro_price!)} for your first ${s.billing_interval === 'YEAR' ? 'year' : 'month'} to continue (${afterIntro(s)}).`
   }
   if (s.status === 'PAST_DUE') return `An invoice is unpaid${s.grace_until ? ` since before ${formatDate(s.grace_until)}` : ''}. Pay it to restore full access.`
@@ -88,7 +88,7 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
               )}
               {s.status === 'ACTIVE' && s.intro_price != null && s.intro_until && s.current_period_end && new Date(s.current_period_end) <= new Date(s.intro_until) && (
                 <p className="text-muted-foreground">
-                  {s.intro_trial ? `Trial (${formatMoney(s.intro_price)}) until ${formatDateTime(s.intro_until)}` : `Introductory price ${formatMoney(s.intro_price)} until ${formatDate(s.intro_until)}`}; {afterIntro(s)}
+                  {s.intro_trial ? `${formatMoney(s.intro_price)} offer until ${formatDateTime(s.intro_until)}` : `Introductory price ${formatMoney(s.intro_price)} until ${formatDate(s.intro_until)}`}; {afterIntro(s)}
                 </p>
               )}
               {s.status === 'ACTIVE' && s.current_period_end && <p className="text-muted-foreground">Renews {formatDate(s.current_period_end)}{s.cancel_at_period_end && ' — set to end then'}</p>}

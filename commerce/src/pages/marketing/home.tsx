@@ -10,7 +10,7 @@ import { CourierBooking, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from 
 import { ThemeEditorDemo } from '@/features/site/theme-editor-demo'
 import { TourVideo } from '@/features/site/tour-video'
 import { cn } from '@/lib/utils'
-import { signupOptions } from '@/services/onboarding'
+import { offerPeriod, signupOptions } from '@/services/onboarding'
 
 // The Fullfilio product site: quiet and precise, black by default with a white
 // version, and the brand blue used sparingly. Every feature shown here exists in the app.
@@ -227,15 +227,15 @@ function Pricing() {
               <div key={p.code} className={cn('flex flex-col rounded-2xl border p-6', highlight ? 'border-[#2142e7]/60 bg-[#2142e7]/[0.06]' : 'border-(--s-line) bg-(--s-tint)')}>
                 <div className="flex items-center justify-between">
                   <p className="text-[15px] font-medium">{p.name}</p>
-                  {p.trial_days ? <span className="rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}
+                  {p.trial_days && !p.offer?.trial_price ? <span className="rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}
                 </div>
                 <p className="mt-4"><span className="text-[36px] font-medium tracking-tight tabular-nums">৳{Number(p.price).toLocaleString('en-IN')}</span><span className="text-[13px] text-(--s-muted)"> / {p.billing_interval === 'YEAR' ? 'year' : 'month'}</span></p>
                 {p.offer && (p.offer.first_price != null || !!p.offer.trial_price) && (
                   <p className="mt-2 text-[13px] text-(--s-accent)">
                     {p.offer.trial_price
-                      ? `${p.trial_days}-day trial for ৳${Number(p.offer.trial_price).toLocaleString('en-IN')}`
+                      ? `৳${Number(p.offer.trial_price).toLocaleString('en-IN')} for ${offerPeriod(p.offer, p.trial_days)}`
                       : `${p.trial_days ? `${p.trial_days} days free, then ` : 'Start for '}৳${Number(p.offer.first_price).toLocaleString('en-IN')} for your first ${p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}`}
-                    {p.offer.setup_fee ? `, then a one-time ৳${Number(p.offer.setup_fee).toLocaleString('en-IN')} fee` : ''}
+                    {p.offer.setup_fee ? `, then a one-time ৳${Number(p.offer.setup_fee).toLocaleString('en-IN')} fee + the plan price` : ''}
                   </p>
                 )}
                 {p.description && <p className="mt-2 text-[13px] text-(--s-muted)">{p.description}</p>}

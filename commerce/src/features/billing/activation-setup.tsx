@@ -9,7 +9,7 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { choosePlan, type MyPlan } from '@/services/billing'
 import { payInvoice } from '@/services/credits'
-import { signupOptions, type SignupPlan } from '@/services/onboarding'
+import { offerPeriod, signupOptions, type SignupPlan } from '@/services/onboarding'
 import { PayDialog, useMyCredits } from './credits-section'
 
 const STEPS = ['Account', 'Business info', 'Plan & payment']
@@ -20,7 +20,7 @@ function charges(p: SignupPlan): { amount: number; per: string; then: string | n
   const month = p.billing_interval?.toUpperCase() === 'YEAR' ? 'yr' : 'mo'
   const fee = p.offer?.setup_fee ? `${formatMoney(p.offer.setup_fee)} once + ` : ''
   const then = `then ${fee}${formatMoney(Number(p.price))}/${month}`
-  if (p.offer?.trial_price) return { amount: Number(p.offer.trial_price), per: `${p.trial_days}-day trial`, then }
+  if (p.offer?.trial_price) return { amount: Number(p.offer.trial_price), per: offerPeriod(p.offer, p.trial_days), then }
   if (p.offer?.first_price != null) return { amount: Number(p.offer.first_price), per: 'first month', then }
   return { amount: Number(p.price), per: month === 'yr' ? 'year' : 'month', then: null }
 }

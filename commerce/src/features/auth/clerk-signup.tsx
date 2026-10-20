@@ -194,7 +194,7 @@ export function ClerkSignUpForm({ fullName, phone, minPassword = 8, onDone }: {
 
       {notice && !error && <p className="text-sm text-muted-foreground" role="status">{notice}</p>}
       {error && (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
           {error.exists
             ? <>This e-mail already has a Fullfilio account. <Link to="/admin/login?next=/start/finish" className="font-medium underline">Sign in</Link> and your business opens there.</>
             : error.text}
