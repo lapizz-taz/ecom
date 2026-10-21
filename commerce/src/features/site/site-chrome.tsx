@@ -96,7 +96,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2 md:ml-4">
           <ThemeToggle />
           <Link to="/admin/login" className="hidden px-2 text-[13px] text-(--s-muted) transition-colors hover:text-(--s-fg) sm:inline">Log in</Link>
-          <Link to="/start" className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-(--s-cta) px-4 text-[13px] font-medium text-(--s-cta-fg) transition-colors hover:bg-(--s-cta-hover) btn-3d btn-3d-site"><UserPlus className="size-3.5" />Sign up</Link>
+          <Link to="/start" className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-(--s-cta) px-3.5 text-[12px] font-medium text-(--s-cta-fg) transition-colors hover:bg-(--s-cta-hover) btn-3d btn-3d-site"><UserPlus className="size-3" />Sign up</Link>
           <button type="button" className="grid size-8 place-items-center md:hidden" aria-label="Menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>{menu ? <X className="size-4" /> : <Menu className="size-4" />}</button>
         </div>
       </div>
