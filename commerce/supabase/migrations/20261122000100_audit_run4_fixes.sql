@@ -24,6 +24,8 @@ language plpgsql as $$
 declare
   v_old text := replace(pg_get_functiondef(p_fn::regprocedure), E'\r', '');
   v_new text;
+  v_from text;
+  v_to text;
   v_hits int;
   i int;
 begin
@@ -32,11 +34,14 @@ begin
   end if;
   v_new := v_old;
   for i in 1 .. array_length(p_pairs, 1) by 2 loop
-    v_hits := (length(v_old) - length(replace(v_old, p_pairs[i], ''))) / length(p_pairs[i]);
+    -- Line endings as Postgres stores them (an editor on Windows may send CRLF).
+    v_from := replace(p_pairs[i], E'\r', '');
+    v_to := replace(p_pairs[i + 1], E'\r', '');
+    v_hits := (length(v_old) - length(replace(v_old, v_from, ''))) / length(v_from);
     if v_hits <> 1 then
-      raise exception 'audit run 4: % has changed (% matches for "%")', p_fn, v_hits, left(p_pairs[i], 60);
+      raise exception 'audit run 4: % has changed (% matches for "%")', p_fn, v_hits, left(v_from, 60);
     end if;
-    v_new := replace(v_new, p_pairs[i], p_pairs[i + 1]);
+    v_new := replace(v_new, v_from, v_to);
   end loop;
   execute v_new;
 end $$;
