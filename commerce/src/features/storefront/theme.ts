@@ -329,7 +329,7 @@ export const DEFAULT_THEME: StoreTheme = {
   logo_position: 'center',
   colors: { background: '#ffffff', text: '#0b0b0c', footer_bg: '#000000', footer_text: '#ffffff', announcement_bg: '#000000', announcement_text: '#ffffff' },
   announcement: { enabled: false, items: [], marquee: true },
-  header: { menu: [], sticky: true, uppercase: true, transparent: false },
+  header: { menu: [], sticky: true, uppercase: false, transparent: true },
   product_card: { aspect: 'portrait', uppercase: true, sale_badge: true, gap: 'small', image_bg: '#f4f4f5' },
   collection: { banner: true, columns: 4 },
   product_page: {
@@ -440,7 +440,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
       announcement_bg: hex(c.announcement_bg, DEFAULT_THEME.colors.announcement_bg), announcement_text: hex(c.announcement_text, DEFAULT_THEME.colors.announcement_text),
     },
     announcement: { enabled: bool(a.enabled, items.length > 0), items, marquee: bool(a.marquee, true) },
-    header: { menu: links(h.menu), sticky: bool(h.sticky, true), uppercase: bool(h.uppercase, true), transparent: bool(h.transparent, false) },
+    header: { menu: links(h.menu), sticky: bool(h.sticky, true), uppercase: bool(h.uppercase, DEFAULT_THEME.header.uppercase), transparent: bool(h.transparent, DEFAULT_THEME.header.transparent) },
     product_card: {
       aspect: pc.aspect === 'square' ? 'square' : 'portrait', uppercase: bool(pc.uppercase, true), sale_badge: bool(pc.sale_badge, true),
       gap: pc.gap === 'none' || pc.gap === 'large' ? pc.gap : 'small', image_bg: hex(pc.image_bg, DEFAULT_THEME.product_card.image_bg),
@@ -516,6 +516,8 @@ export function themeStyle(t: StoreTheme): CSSProperties {
   for (const [k, rem] of Object.entries(HEADING_SIZES)) sizes[`--text-${k}`] = `${+(rem * heading).toFixed(4)}rem`
   return {
     '--primary': t.accent, '--primary-foreground': onColor(t.accent), '--ring': t.accent,
+    // Every button in the store (the app's own are blue) takes the theme colour, black by default.
+    '--brand': t.accent, '--brand-foreground': onColor(t.accent), '--brand-soft': `color-mix(in srgb, ${t.accent} 8%, transparent)`,
     '--background': t.colors.background, '--foreground': t.colors.text,
     '--radius': RADII[t.radius].value, fontFamily: FONTS[t.font].family,
     '--store-font-heading': FONTS[t.heading_font].family, '--store-heading-weight': t.heading_weight === 'default' ? undefined : t.heading_weight,

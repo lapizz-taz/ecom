@@ -669,3 +669,13 @@
    themeData). Unlayered so it wins over the font classes on the headings. */
 [data-store-theme] :is(h1, h2, h3, h4, h5, h6) { font-family: var(--store-font-heading); }
 [data-store-theme][data-heading-weight] :is(h1, h2, h3, h4, h5, h6) { font-weight: var(--store-heading-weight); }
+
+/* A store's buttons are flat: the app's raised 3D look (shadows, press-down) is off inside it. */
+[data-store-theme] {
+  --b3d-ink: none; --b3d-ink-hover: none; --b3d-ink-press: none;
+  --b3d-brand: none; --b3d-brand-hover: none; --b3d-brand-press: none;
+  --b3d-paper: none; --b3d-paper-hover: none; --b3d-paper-press: none;
+  --b3d-danger: none; --b3d-danger-press: none;
+}
+[data-store-theme] .btn-3d:active { translate: none; }
+

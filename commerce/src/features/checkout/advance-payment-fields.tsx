@@ -77,7 +77,7 @@ export function AdvancePaymentFields({ title, note, amount, accounts, value, onC
             <div className="min-w-0 flex-1">
               <p>Open {WALLET[value.channel].name} and <strong>Send Money</strong> <Money value={amount} /> to</p>
               <div className="mt-1.5 flex items-center justify-between rounded-lg border bg-card px-3 py-2">
-                <span className="font-mono text-base tracking-wide tabular-nums">{account.number}</span>
+                <span className="text-base tracking-wide tabular-nums">{account.number}</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => copy(account.number)} aria-label="Copy number">
                   {copied ? <Check /> : <Copy />} {copied ? 'Copied' : 'Copy'}
                 </Button>
@@ -93,7 +93,7 @@ export function AdvancePaymentFields({ title, note, amount, accounts, value, onC
                   onChange={(e) => onChange({ ...value, sender_phone: e.target.value })} aria-invalid={!!errors.sender_phone} />
               </Field>
               <Field label="Transaction ID (TrxID)" htmlFor="adv-trx" error={errors.transaction_id} hint="From the payment SMS">
-                <Input id="adv-trx" className="bg-card font-mono uppercase" placeholder="e.g. 9JK4L2M8NP" value={value.transaction_id}
+                <Input id="adv-trx" className="bg-card uppercase" placeholder="e.g. 9JK4L2M8NP" value={value.transaction_id}
                   onChange={(e) => onChange({ ...value, transaction_id: e.target.value.toUpperCase().replace(/\s/g, '') })}
                   aria-invalid={!!errors.transaction_id} />
               </Field>
