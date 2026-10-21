@@ -7,15 +7,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Switch } from '@/components/ui/switch'
 import { BLOCK_TYPES, PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
 import { resolveTheme, type Storefront } from '@/features/storefront/theme'
+import { currentPresetId } from '@/features/storefront/theme-presets'
 import { BlockThumb } from '@/features/theme-editor/block-library'
+import { ThemeLibrary } from '@/features/theme-editor/theme-library'
 import { useThemeDraft } from '@/features/theme-editor/use-theme-draft'
 import { useStoreAddress } from '@/hooks/use-store-address'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-// Store → Theme, like Shopify's Online Store page: the current theme with "Edit theme", and the
-// product page block library underneath, each block switched on or off here (saved as a draft,
+// Store → Theme, like Shopify's Online Store page: the current theme with "Edit theme", the
+// ready-made themes, and the product page block library underneath, each block switched on or off here (saved as a draft,
 // live once published; the editor has the same switches and every setting).
 
 export default function StoreThemesPage() {
@@ -80,6 +82,8 @@ export default function StoreThemesPage() {
           </div>
         </div>
       </section>
+
+      {draft && <ThemeLibrary current={currentPresetId(theme)} canEdit={s.canEdit} />}
 
       {/* Block library */}
       <section className="space-y-3">

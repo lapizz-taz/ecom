@@ -13,12 +13,14 @@ import {
   ACCENTS, DEFAULT_THEME, FONTS, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
+import { applyPreset, findPreset } from '@/features/storefront/theme-presets'
 import { BLOCK_ICON, BlockPicker } from '@/features/theme-editor/block-library'
 import { ColorInput, FieldRow, inputClass, ListField, RangeInput, SchemaField, SelectInput } from '@/features/theme-editor/fields'
 import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-picker'
 import { FontPicker } from '@/features/theme-editor/font-picker'
 import { useThemeDraft } from '@/features/theme-editor/use-theme-draft'
 import { useStoreConfig } from '@/hooks/use-store-config'
+import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { getCategories, listProducts } from '@/services/storefront'
 import { useStoreAddress } from '@/hooks/use-store-address'
@@ -45,7 +47,7 @@ export default function StoreThemePage() {
   const frame = useRef<HTMLIFrameElement>(null)
   const [tab, setTab] = useState<Tab>('sections')
   // Opened from Store → Theme: ?page=product&block=<id> starts on that page with the block selected.
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [page, setPage] = useState<Page>(() => (PAGES.some((p) => p.value === params.get('page')) ? params.get('page') as Page : 'home'))
   const [selected, setSelected] = useState<string | null>(() => (params.get('block') ? `block:${params.get('block')}` : null))
   const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
@@ -116,6 +118,19 @@ export default function StoreThemePage() {
     h.past.push(draft); h.last = 0
     s.replace(next as Record<string, unknown>); bump((n) => n + 1)
   }, [draft, s])
+
+  // Opened from a ready-made theme on Store → Theme (?preset=bloom): its look goes on the draft once, undoable.
+  const presetParam = params.get('preset')
+  const presetDone = useRef(false)
+  useEffect(() => {
+    if (!presetParam || !draft || presetDone.current) return
+    presetDone.current = true
+    const preset = findPreset(presetParam)
+    setParams((p) => { p.delete('preset'); return p }, { replace: true })
+    if (!preset || !s.canEdit) return
+    commit({ ...draft, theme: applyPreset(theme, preset) as unknown as Record<string, unknown> })
+    toast.success(`${preset.name} is on your draft. Undo to go back, Publish to make it live.`)
+  }, [commit, draft, presetParam, s.canEdit, setParams, theme])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

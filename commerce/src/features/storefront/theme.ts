@@ -99,6 +99,8 @@ export interface StoreTheme {
   cart: CartSettings
   /** The browser-tab icon of the store (square image); the app icon when empty. */
   favicon_url: string
+  /** The ready-made theme the look came from (theme-presets.ts); empty until the store picks one. */
+  preset: string
 }
 
 // --- field schema (drives the editor's settings panel) ---------------------------------
@@ -362,6 +364,7 @@ export const DEFAULT_THEME: StoreTheme = {
     upsell: true, upsell_title: 'You may also like', show_savings: true, note: '',
   },
   favicon_url: '',
+  preset: '',
 }
 
 const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)
@@ -488,6 +491,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
       }
     })(),
     favicon_url: /^(https:\/\/|\/)/.test(str(t.favicon_url)) ? str(t.favicon_url) : '',
+    preset: /^[a-z]{1,20}$/.test(str(t.preset)) ? str(t.preset) : '',
   }
 }
 
