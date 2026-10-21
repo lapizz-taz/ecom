@@ -95,7 +95,20 @@ export function pageBoot(): PageBoot | null {
 }
 
 const booted = pageBoot()
-let site: SiteInfo | null = booted ? booted.site : readCache()
+
+/** The Worker sent a page of the Fullfilio website (worker/site.ts): this address is the website. */
+function websiteBoot(): boolean {
+  if (typeof document === 'undefined' || isPreviewFrame() || storeSlugInPath()) return false
+  try {
+    const boot = JSON.parse(document.getElementById('ff-boot')?.textContent || 'null') as PageBoot | null
+    return !!boot && boot.host === location.host && boot.site?.kind === 'platform'
+  } catch {
+    return false
+  }
+}
+const website = !booted && websiteBoot()
+
+let site: SiteInfo | null = booted ? booted.site : website ? { kind: 'platform' } : readCache()
 if (booted) writeCache(booted.site)
 
 /** What this address shows (the remembered answer until the lookup returns). */
@@ -156,6 +169,7 @@ export function markUnreachable(): SiteInfo {
 export function resolveSite(lookup: (host: string, slug: string | null, preview: boolean) => Promise<SiteInfo | null>): Promise<SiteInfo> {
   // The Worker already answered for this request.
   if (booted && !storeSlugInPath()) return (resolving ??= Promise.resolve(booted.site))
+  if (website) return (resolving ??= Promise.resolve({ kind: 'platform' }))
   const remembered = site
   resolving ??= lookup(location.host, storeSlugInPath(), isPreviewFrame()).then((found) => {
     const next: SiteInfo = found && found.kind ? found : found?.merchant_id ? { ...found, kind: 'store' } : { kind: 'platform' }

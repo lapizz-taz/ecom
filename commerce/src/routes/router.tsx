@@ -220,8 +220,20 @@ const unreachable: RouteObject[] = [
   { path: '*', errorElement: <RouteError />, ...page(() => import('@/pages/marketing/site-unreachable')) },
 ]
 
+export type AppRouter = ReturnType<typeof createBrowserRouter>
+
+/** Resolves once the first page's code has loaded (or after a few seconds, whatever happens). */
+export function routerReady(router: AppRouter, waitMs = 4000): Promise<void> {
+  return new Promise((done) => {
+    if (router.state.initialized) return done()
+    const timer = setTimeout(finish, waitMs)
+    const stop = router.subscribe((state) => { if (state.initialized) finish() })
+    function finish() { clearTimeout(timer); stop(); done() }
+  })
+}
+
 /** The routes for what this address shows (see currentSite()). */
-export function createAppRouter() {
+export function createAppRouter(): AppRouter {
   const site = currentSite()
   const own = site.kind === 'store' ? [storefront] : site.kind === 'missing' ? missing : site.kind === 'unreachable' ? unreachable : marketing
   return createBrowserRouter([...shared, ...own], { basename: storeBasename() || undefined })

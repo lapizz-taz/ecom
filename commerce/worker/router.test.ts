@@ -66,8 +66,10 @@ describe('Worker routing', () => {
     const missing = await r.route(new Request('https://app.example.com/functions/v1/nope', { method: 'POST' }))
     expect(missing.status).toBe(404)
     expect(await missing.json()).toMatchObject({ error: { code: 'NOT_FOUND' } })
+    // Any other address is a page of the site: the app page (worker/site.ts answers 404 for an address the website does not have).
     const page = await r.route(new Request('https://app.example.com/oauth/other'))
-    expect(await page.text()).toBe('asset /oauth/other')
+    expect(await page.text()).toBe('asset /')
+    expect(assets.fetch.mock.calls.at(-1)?.[0].url).toBe('https://app.example.com/')
   })
 
   it('answers 404 (not the app page) for a code file from an older version', async () => {

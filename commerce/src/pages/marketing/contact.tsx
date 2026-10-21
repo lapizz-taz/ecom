@@ -32,7 +32,7 @@ export default function ContactPage() {
       <section className="mx-auto grid max-w-6xl gap-12 px-5 pt-20 pb-24 md:grid-cols-[1fr_1.2fr] md:pt-28">
         <div>
           <p className="font-mono text-[12px] text-(--s-muted)">Contact</p>
-          <h1 className="mt-4 text-[40px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[52px]">Talk to us</h1>
+          <h1 className="mt-4 text-[40px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[52px]">Talk to the Fullfilio team</h1>
           <p className="mt-5 max-w-sm text-[15px] leading-relaxed text-(--s-muted)">
             Questions about plans, moving from another tool, or connecting Shopify or WooCommerce? Send a message and a person from the team replies by e-mail or phone.
           </p>

@@ -1,10 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from '@/App'
+import { env } from '@/lib/env'
 import { hasRememberedSite, isPreviewFrame, markUnreachable, resolveSite, type SiteInfo } from '@/lib/merchant'
 import { initMonitoring, reportError } from '@/lib/monitoring'
 import { restorePageTitle } from '@/lib/page-title'
 import { supabase } from '@/lib/supabase'
+import { createAppRouter, routerReady } from '@/routes/router'
 import './index.css'
 
 restorePageTitle()
@@ -47,9 +49,14 @@ const site = resolveSite((host, slug, preview) => lookup(host, slug, preview)
 
 async function start() {
   if (!hasRememberedSite()) await site
-  createRoot(document.getElementById('root')!).render(
+  const root = document.getElementById('root')!
+  const router = env.isConfigured ? createAppRouter() : null
+  // A website page the Worker sent as HTML (worker/site.ts) stays on screen until its code has
+  // loaded, so the visitor never sees it go blank in between.
+  if (router && root.hasAttribute('data-prerendered')) await routerReady(router)
+  createRoot(root).render(
     <StrictMode>
-      <App />
+      <App router={router} />
     </StrictMode>,
   )
 }

@@ -10,7 +10,7 @@ export default function BlogPage() {
     <SitePage title="Blog — Fullfilio">
       <section className="mx-auto max-w-6xl px-5 pt-20 pb-24 sm:pt-28">
         <p className="font-mono text-[12px] text-(--s-muted)">Blog</p>
-        <h1 className="mt-4 max-w-2xl text-[40px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[52px]">Notes on selling with cash on delivery</h1>
+        <h1 className="mt-4 max-w-2xl text-[40px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[52px]">Guides for selling with cash on delivery</h1>
         <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-(--s-muted)">Guides on fewer returns, faster shipping and running a store with Shopify or WooCommerce, from the team behind Fullfilio.</p>
 
         <Link to={`/blog/${first.slug}`} className="group mt-14 grid gap-6 rounded-2xl border border-(--s-line) bg-(--s-panel) p-6 transition-colors hover:border-(--s-line-strong) sm:p-8 md:grid-cols-[1.2fr_1fr] md:items-end">

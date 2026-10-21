@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
 import { DashboardDemo } from '@/features/site/dashboard-demo'
 import { IntegrationDemo } from '@/features/site/integration-demo'
-import { SiteFooter, SiteHeader, SiteRoot } from '@/features/site/site-chrome'
+import { SiteFooter, SiteHeader, SiteRoot, useSiteHead } from '@/features/site/site-chrome'
 import { CourierBooking, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from '@/features/site/mockups'
 import { ThemeEditorDemo } from '@/features/site/theme-editor-demo'
 import { TourVideo } from '@/features/site/tour-video'
@@ -16,9 +16,13 @@ import { offerPeriod, signupOptions } from '@/services/onboarding'
 // version, and the brand blue used sparingly. Every feature shown here exists in the app.
 
 
+// Sections slide in as they scroll into view. Made as HTML at build time (src/site-prerender.tsx)
+// they are simply shown, and so is a page drawn over that HTML: text is never hidden from a crawler.
+const shownAtStart = typeof document === 'undefined' || !!document.getElementById('root')?.hasAttribute('data-prerendered')
+
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T>(null)
-  const [shown, setShown] = useState(false)
+  const [shown, setShown] = useState(shownAtStart)
   useEffect(() => {
     const el = ref.current
     if (!el || typeof IntersectionObserver === 'undefined') { setShown(true); return }
@@ -35,8 +39,8 @@ function Reveal({ children, className }: { children: ReactNode; className?: stri
 }
 
 export default function MarketingHome() {
+  useSiteHead('Fullfilio')
   useEffect(() => {
-    document.title = 'Fullfilio — the order system for online sellers'
     // Arriving from another page at /#section: scroll once the section exists.
     const id = window.location.hash.slice(1)
     if (id) window.setTimeout(() => document.getElementById(id)?.scrollIntoView(), 120)
@@ -50,8 +54,8 @@ export default function MarketingHome() {
         <section className="relative overflow-hidden" id="product">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-[600px] bg-[radial-gradient(ellipse_60%_50%_at_30%_0%,rgb(33_66_231/.18),transparent)]" />
           <div className="relative mx-auto max-w-6xl px-5 pt-24 pb-14 sm:pt-32">
-            <h1 className="max-w-3xl text-[40px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[64px]">
-              The order system for online sellers
+            <h1 className="max-w-4xl text-[40px] leading-[1.05] font-medium tracking-[-0.035em] text-balance sm:text-[64px]">
+              The order system for online sellers in Bangladesh
             </h1>
             <div className="mt-6 flex flex-wrap items-end justify-between gap-6">
               <p className="max-w-md text-[15px] leading-relaxed text-(--s-muted) sm:text-[17px]">
