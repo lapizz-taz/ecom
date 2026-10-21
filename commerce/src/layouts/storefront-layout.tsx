@@ -48,6 +48,12 @@ export default function StorefrontLayout() {
   const [scrolled, setScrolled] = useState(false)
 
   useCartSync()
+  // While a store is on screen the app's blue glow buttons are off (index.css, .btn-glow), also in
+  // pop-ups rendered outside this layout.
+  useLayoutEffect(() => {
+    document.documentElement.dataset.surface = 'store'
+    return () => { delete document.documentElement.dataset.surface }
+  }, [])
   // The store's ad pixels (Meta, TikTok, Google), when it turned them on; never in the theme editor.
   const preview = isThemePreview()
   const { data: ads } = useQuery({ queryKey: ['storefront-ad-tracking'], queryFn: getAdTracking, staleTime: 10 * 60_000, enabled: !preview, retry: 1 })

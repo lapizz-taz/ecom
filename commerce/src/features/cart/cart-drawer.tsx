@@ -88,7 +88,7 @@ export function CartDrawer() {
     '--cart-w': `${CART_WIDTHS[settings.width]}px`,
   } as CSSProperties
   const button: CSSProperties = { background: buttonBg, color: settings.button_text || onColor(buttonBg), borderRadius: settings.button_radius }
-  const photo = settings.image_shape === 'portrait' ? 'h-24 w-[4.5rem]' : 'size-20'
+  const photo: CSSProperties = { height: settings.image_size, width: settings.image_shape === 'portrait' ? Math.round(settings.image_size * 0.75) : settings.image_size, borderRadius: settings.image_radius }
 
   return (
     <Sheet open={isOpen || previewOpen} onOpenChange={(v) => { if (!previewOpen) setOpen(v) }} modal={!previewOpen}>
@@ -136,8 +136,8 @@ export function CartDrawer() {
                   return (
                     <li key={item.variantId} className={cn('flex gap-3', pad.row)}>
                       <Link to={item.slug ? `/product/${item.slug}` : '/shop'} onClick={() => setOpen(false)} className="shrink-0">
-                        {item.image ? <img src={imageUrl(item.image, 160)} alt="" className={cn('bg-current/5 object-cover', photo)} style={{ borderRadius: settings.image_radius }} loading="lazy" />
-                          : <span aria-hidden className={cn('block bg-current/10', photo)} style={{ borderRadius: settings.image_radius }} />}
+                        {item.image ? <img src={imageUrl(item.image, Math.min(320, settings.image_size * 2))} alt="" className="bg-current/5 object-cover" style={photo} loading="lazy" />
+                          : <span aria-hidden className="block bg-current/10" style={photo} />}
                       </Link>
                       <div className="min-w-0 flex-1">
                         <div className="flex justify-between gap-2">

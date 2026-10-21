@@ -95,10 +95,10 @@ describe('store theme', () => {
     const d = resolveTheme({}).cart
     expect(d).toMatchObject({ side: 'right', width: 'standard', spacing: 'comfortable', background: '', text: '', button_bg: '', button_label: 'Checkout', button_radius: 8, text_scale: 100 })
     const bad = resolveTheme({ theme: { cart: { side: 'top', width: 'huge', background: 'red', button_radius: 99, text_scale: 300, button_label: '', title_size: 'xl' } } } as never).cart
-    expect(resolveTheme({ theme: { cart: { image_radius: 90, stepper_radius: -4 } } } as never).cart).toMatchObject({ image_radius: 24, stepper_radius: 0 })
+    expect(resolveTheme({ theme: { cart: { image_radius: 90, stepper_radius: -4, image_size: 500 } } } as never).cart).toMatchObject({ image_radius: 24, stepper_radius: 0, image_size: 120 })
     expect(bad).toMatchObject({ side: 'right', width: 'standard', background: '', button_radius: 28, text_scale: 120, button_label: 'Checkout', title_size: 'medium' })
     const look = { ...d, side: 'left', width: 'wide', spacing: 'compact', background: '#fff7ed', text: '#1c1917', bar_color: '#ea580c', title: 'Your bag',
-      title_size: 'large', title_uppercase: true, text_scale: 110, image_shape: 'portrait', image_radius: 16, stepper_radius: 20, button_label: 'Place order', button_bg: '#ea580c', button_text: '#ffffff',
+      title_size: 'large', title_uppercase: true, text_scale: 110, image_shape: 'portrait', image_size: 104, image_radius: 16, stepper_radius: 20, button_label: 'Place order', button_bg: '#ea580c', button_text: '#ffffff',
       button_radius: 24, button_show_total: false, button_lock_icon: false, show_view_cart: false, empty_text: 'Nothing here yet.' } as const
     const saved = resolveTheme({ theme: { cart: look } } as never)
     expect(saved.cart).toEqual(look)

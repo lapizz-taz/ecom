@@ -209,6 +209,7 @@ async function until(fn, ms = 15000) {
     await field('Label').locator('input').fill('Place order')
     await field('Button colour').locator('input.font-mono').fill('#ea580c')
     await field('Show the total').getByRole('switch').click()
+    await field('Photo size').locator('input[type=range]').fill('112')
     await field('Photo corners').locator('input[type=range]').fill('18')
     await field('Quantity box corners').locator('input[type=range]').fill('20')
     const live = await until(async () => {
@@ -217,12 +218,13 @@ async function until(fn, ms = 15000) {
       const t = await d.innerText()
       const bg = await d.evaluate((el) => getComputedStyle(el).backgroundColor)
       const btn = await d.getByRole('link', { name: /Place order/ }).evaluate((el) => getComputedStyle(el).backgroundColor)
+      const photoBox = await d.locator('li span[aria-hidden]').first().evaluate((el) => { const r = el.getBoundingClientRect(); return `${r.width}x${r.height}` })
       const photo = await d.locator('li span[aria-hidden]').first().evaluate((el) => getComputedStyle(el).borderTopLeftRadius)
       const stepper = await d.getByRole('button', { name: 'Decrease quantity' }).first().evaluate((el) => getComputedStyle(el.parentElement).borderTopLeftRadius)
-      return /Your bag/.test(t) && /Place order/.test(t) && !/Place order ·/.test(t) && bg === 'rgb(255, 247, 237)' && btn === 'rgb(234, 88, 12)' && box && box.x < 5 && Math.round(box.width) === 480 && photo === '18px' && stepper === '20px' ? { box, bg, btn, photo, stepper } : null
+      return /Your bag/.test(t) && /Place order/.test(t) && !/Place order ·/.test(t) && bg === 'rgb(255, 247, 237)' && btn === 'rgb(234, 88, 12)' && box && box.x < 5 && Math.round(box.width) === 480 && photo === '18px' && stepper === '20px' && photoBox === '112x112' ? { box, bg, btn, photo, stepper, photoBox } : null
     })
     await page.screenshot({ path: join(S, 'round-drawer-edited.png') })
-    step('edits show live: title, left side, 480 px wide, background, button label and colour, total hidden, photo and quantity box corners', !!live, JSON.stringify(live))
+    step('edits show live: title, left side, 480 px wide, background, button label and colour, total hidden, photo size 112 px, photo and quantity box corners', !!live, JSON.stringify(live))
 
     await page.getByRole('button', { name: /Save draft/ }).click()
     const saved = await settle(page, /Draft saved/, 15000)
@@ -239,7 +241,9 @@ async function until(fn, ms = 15000) {
 
     // The preview's checkout button is the store's (theme/drawer colour), not the website's orange.
     const storeBtn = await drawer().getByRole('link', { name: /Place order/ }).evaluate((el) => getComputedStyle(el).backgroundImage)
-    step('store buttons do not take the website button style', storeBtn === 'none', storeBtn)
+    const storeDefaults = await frame.evaluate(() => [...document.querySelectorAll('[data-slot="button"]')].map((el) => getComputedStyle(el).backgroundImage).filter((b) => /radial-gradient/.test(b)).length)
+    const editorDefaults = await page.evaluate(() => [...document.querySelectorAll('[data-theme-editor] [data-slot="button"]')].map((el) => getComputedStyle(el).backgroundImage).filter((b) => /radial-gradient/.test(b)).length)
+    step('store and theme editor buttons do not take the blue glow', storeBtn === 'none' && storeDefaults === 0 && editorDefaults === 0, JSON.stringify({ storeBtn, storeDefaults, editorDefaults }))
 
     // Mobile preview: the drawer fills the phone-width preview.
     await page.getByRole('button', { name: 'Mobile' }).click()
@@ -263,6 +267,12 @@ async function until(fn, ms = 15000) {
     const help = await text(page)
     step('Help → Contact shows help@fullfilio.com and no personal e-mail', /help@fullfilio\.com/.test(help) && !/theme-round@example\.com/.test(help), help.match(/.{0,60}@.{0,40}/g)?.join(' | '))
 
+    // Admin primary buttons: the same blue glow; the theme editor and the store keep their own.
+    await page.goto(`${base}/admin/products`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await settle(page, /Products/, 20000)
+    const adminPrimary = await page.locator('[data-slot="button"][data-variant="default"]').first().evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, text: el.textContent.trim() })).catch((e) => ({ img: String(e), text: '' }))
+    step('admin primary buttons get the blue glow', /radial-gradient/.test(adminPrimary.img) && /rgb\(93, 170, 255\)/.test(adminPrimary.img), JSON.stringify(adminPrimary))
+
     // Cloud Calling in the admin menu.
     await page.goto(`${base}/admin/settings/apps`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await settle(page, /App integration/i, 20000)
@@ -271,6 +281,24 @@ async function until(fn, ms = 15000) {
     const adminBtn = await page.locator('button, a').filter({ hasText: /^Connect$|^Manage$|^Open$/ }).first().evaluate((el) => getComputedStyle(el).backgroundImage).catch(() => 'none')
     step('admin buttons do not take the website button style', !/250, 99, 34/.test(adminBtn), adminBtn)
     await ctx.close()
+
+    // --- The theme editor in the dark admin: top bar readable, no dark blocks ---
+    const dctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    const dpage = await dctx.newPage()
+    watch(dpage, 'editor dark')
+    await dpage.goto(`${base}/admin/login`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await dpage.evaluate(([k, s]) => { localStorage.setItem(k, s); localStorage.setItem('admin-whats-new-seen', '9999-12-31'); localStorage.setItem('admin-major-update-seen', '9999-12-31'); localStorage.setItem('admin-theme', 'dark') }, [`sb-${new URL(base).hostname.split('.')[0]}-auth-token`, JSON.stringify(owner.session)])
+    await dpage.goto(`${base}/admin/store/theme/editor`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await previewFrame(dpage)
+    await dpage.waitForTimeout(800)
+    const lum = (c) => { const m = c.match(/[\d.]+/g); if (!m) return 1; const [r, g, b] = m.slice(0, 3).map(Number); const a = m[3] === undefined ? 1 : Number(m[3]); return a < 0.3 ? 1 : (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 }
+    const bar = await dpage.evaluate(() => [...document.querySelectorAll('[data-theme-editor] header span.rounded-full, [data-theme-editor] header button[aria-pressed="true"]')].map((el) => ({ t: (el.textContent || el.getAttribute('aria-label') || '').trim(), bg: getComputedStyle(el).backgroundColor, fg: getComputedStyle(el).color })))
+    const dark = await dpage.evaluate(() => document.documentElement.classList.contains('dark'))
+    const blocks = bar.filter((x) => lum(x.bg) < 0.35)
+    const unreadable = bar.filter((x) => x.t && Math.abs(lum(x.bg) - lum(x.fg)) < 0.35)
+    await dpage.locator('[data-theme-editor] header').screenshot({ path: join(S, 'round-editor-dark-bar.png') })
+    step('dark admin: the editor top bar has no dark blocks and its badge/buttons are readable', dark && bar.length > 0 && blocks.length === 0 && unreadable.length === 0, JSON.stringify({ dark, bar }))
+    await dctx.close()
 
     // --- The website's buttons, desktop and phone, dark and white versions ---
     for (const [width, light] of [[1440, false], [390, false], [1440, true]]) {
@@ -282,14 +310,19 @@ async function until(fn, ms = 15000) {
       await settle(p, /Start for free/)
       const cta = p.getByRole('link', { name: 'Start for free' }).first()
       const st = await cta.evaluate((el) => { const s = getComputedStyle(el); return { img: s.backgroundImage, border: s.borderTopColor, color: s.color, radius: s.borderTopLeftRadius, h: el.getBoundingClientRect().height } })
-      await cta.hover()
-      await p.waitForTimeout(250)
-      const hover = await cta.evaluate((el) => getComputedStyle(el).backgroundImage)
+      const box = await cta.boundingBox()
+      await p.mouse.move(box.x + 12, box.y + box.height / 2)
+      await p.waitForTimeout(150)
+      const left = await cta.evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
+      await p.mouse.move(box.x + box.width - 12, box.y + box.height / 2)
+      await p.waitForTimeout(150)
+      const right = await cta.evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
+      const hover = width < 500 ? 'rgb(190, 225, 255) (phone: no cursor)' : (parseInt(left.x) < 30 && parseInt(right.x) > box.width - 30 ? right.img : `glow did not follow: ${left.x} → ${right.x}`)
       await p.locator('section').first().screenshot({ path: join(S, `round-site-${width}${light ? '-white' : ''}.png`) })
       const overflow = await p.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth)
       const footer = await p.locator('footer').innerText()
-      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && st.border === 'rgb(11, 74, 184)' && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgb\(111, 182, 255\)/.test(hover) && overflow <= 1
-      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, brighter on hover`, ok, JSON.stringify({ ...st, hover, overflow }))
+      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && st.border === 'rgb(11, 74, 184)' && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgba?\(190, 225, 255/.test(hover) && overflow <= 1
+      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, a light that follows the cursor`, ok, JSON.stringify({ ...st, hover, overflow }))
       step(`website ${width}px${light ? ' (white version)' : ''}: footer shows help@fullfilio.com`, /help@fullfilio\.com/.test(footer))
       await c.close()
     }

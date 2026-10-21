@@ -4,12 +4,14 @@ import App from '@/App'
 import { env } from '@/lib/env'
 import { hasRememberedSite, isPreviewFrame, markUnreachable, resolveSite, type SiteInfo } from '@/lib/merchant'
 import { initMonitoring, reportError } from '@/lib/monitoring'
+import { installCursorGlow } from '@/lib/cursor-glow'
 import { restorePageTitle } from '@/lib/page-title'
 import { supabase } from '@/lib/supabase'
 import { createAppRouter, routerReady } from '@/routes/router'
 import './index.css'
 
 restorePageTitle()
+installCursorGlow()
 void initMonitoring()
 
 // What this address shows: the Fullfilio website, a store, or a missing store.

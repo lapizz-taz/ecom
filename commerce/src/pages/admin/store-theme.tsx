@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import {
-  ACCENTS, CART_TEXT_SCALE, DEFAULT_THEME, FONTS, onColor, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
+  ACCENTS, CART_IMAGE_SIZE, CART_TEXT_SCALE, DEFAULT_THEME, FONTS, onColor, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
 import { applyPreset, findPreset } from '@/features/storefront/theme-presets'
@@ -195,11 +195,11 @@ export default function StoreThemePage() {
   const current = sections.find((x) => x.id === selected)
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-[#f1f1f1] text-[13px] text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div data-theme-editor className="fixed inset-0 z-[60] flex flex-col bg-[#f1f1f1] text-[13px] text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center gap-0.5 border-b border-zinc-200 bg-white px-1.5 whitespace-nowrap sm:gap-1 sm:px-2 dark:border-zinc-800 dark:bg-zinc-900">
+      <header className="flex h-12 shrink-0 items-center gap-0.5 border-b border-zinc-200 bg-white px-1.5 whitespace-nowrap sm:gap-1 sm:px-2 dark:border-black/10 dark:bg-zinc-900">
         <IconButton label="Exit" onClick={exit}><ArrowLeft /></IconButton>
-        <div className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block dark:bg-zinc-800" />
+        <div className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block dark:bg-black/10" />
         <IconButton label="Sections" active={tab === 'sections'} onClick={() => { setTab('sections'); setMobileView('edit') }}><PanelTop /></IconButton>
         <IconButton label="Theme settings" active={tab === 'settings'} onClick={() => { setTab('settings'); setMobileView('edit') }}><Paintbrush /></IconButton>
 
@@ -208,12 +208,12 @@ export default function StoreThemePage() {
           {store.state && (
             <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline', store.state.online
               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
-              : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300')}>
+              : 'bg-zinc-100 text-zinc-600 dark:bg-black/[0.07] dark:text-zinc-300')}>
               {store.state.label}
             </span>
           )}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 [&>svg]:shrink-0">
+            <DropdownMenuTrigger className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-black/[0.06] [&>svg]:shrink-0">
               <span className="max-sm:hidden">{PAGES.find((p) => p.value === page)?.icon}</span><span className="truncate sm:hidden">{PAGES.find((p) => p.value === page)?.short ?? PAGES.find((p) => p.value === page)?.label}</span><span className="truncate max-sm:hidden">{PAGES.find((p) => p.value === page)?.label}</span><ChevronDown className="size-3.5 text-zinc-500" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" className="z-[70] w-48">
@@ -230,13 +230,13 @@ export default function StoreThemePage() {
           <IconButton label="Mobile" active={device === 'mobile'} onClick={() => setDevice('mobile')}><Smartphone /></IconButton>
           <IconButton label="Full width" active={device === 'full'} onClick={() => setDevice('full')}><Maximize2 /></IconButton>
         </div>
-        <div className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block dark:bg-zinc-800" />
+        <div className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block dark:bg-black/10" />
         <span className="hidden sm:contents">
           <IconButton label="Undo" disabled={!h.past.length} onClick={undo}><Undo2 /></IconButton>
           <IconButton label="Redo" disabled={!h.future.length} onClick={redo}><Redo2 /></IconButton>
         </span>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><button type="button" aria-label="More" className="grid size-8 place-items-center rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 [&_svg]:size-4"><MoreHorizontal /></button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><button type="button" aria-label="More" className="grid size-8 place-items-center rounded-lg hover:bg-zinc-100 dark:hover:bg-black/[0.06] [&_svg]:size-4"><MoreHorizontal /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="z-[70] w-52">
             {/* On phones the bar has no room for these. */}
             <DropdownMenuItem className="sm:hidden" disabled={!h.past.length} onSelect={(e) => { e.preventDefault(); undo() }}><Undo2 /> Undo</DropdownMenuItem>
@@ -271,8 +271,8 @@ export default function StoreThemePage() {
       </header>
 
       {/* Phones: edit or preview */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-2 py-1.5 lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
-        <div role="tablist" aria-label="View" className="grid flex-1 grid-cols-2 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-800">
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-2 py-1.5 lg:hidden dark:border-black/10 dark:bg-zinc-900">
+        <div role="tablist" aria-label="View" className="grid flex-1 grid-cols-2 rounded-lg bg-zinc-100 p-0.5 dark:bg-black/[0.07]">
           {(['edit', 'preview'] as const).map((v) => (
             <button key={v} type="button" role="tab" aria-selected={mobileView === v} onClick={() => setMobileView(v)}
               className={cn('h-8 rounded-md text-[13px] font-medium transition-colors', mobileView === v ? 'bg-white shadow-sm dark:bg-zinc-950' : 'text-zinc-500')}>
@@ -288,7 +288,7 @@ export default function StoreThemePage() {
 
       <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left panel */}
-        <aside className={cn('min-h-0 flex-1 overflow-y-auto bg-white lg:w-[300px] lg:flex-none lg:shrink-0 lg:border-r dark:border-zinc-800 dark:bg-zinc-900', mobileView === 'preview' && 'max-lg:hidden')}>
+        <aside className={cn('min-h-0 flex-1 overflow-y-auto bg-white lg:w-[300px] lg:flex-none lg:shrink-0 lg:border-r dark:border-black/10 dark:bg-zinc-900', mobileView === 'preview' && 'max-lg:hidden')}>
           <fieldset disabled={!s.canEdit} className="contents">
             {tab === 'sections' && (
               <SectionTree page={page} theme={theme} sections={sections} selected={selected} onSelect={setSelected} onSections={setSections}
@@ -314,22 +314,22 @@ export default function StoreThemePage() {
 
         {/* Right panel: the selected item's settings */}
         {selected && (
-          <aside className={cn('absolute inset-0 z-10 flex flex-col bg-white sm:left-auto sm:w-[340px] sm:border-l sm:border-zinc-200 sm:shadow-xl lg:static lg:w-[300px] lg:shadow-none dark:border-zinc-800 dark:bg-zinc-900', mobileView === 'preview' && 'max-lg:hidden')}>
-            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
+          <aside className={cn('absolute inset-0 z-10 flex flex-col bg-white sm:left-auto sm:w-[340px] sm:border-l sm:border-zinc-200 sm:shadow-xl lg:static lg:w-[300px] lg:shadow-none dark:border-black/10 dark:bg-zinc-900', mobileView === 'preview' && 'max-lg:hidden')}>
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-black/10">
               <span className="text-zinc-500">{current ? SECTION_ICON[current.type] : currentBlock ? BLOCK_ICON[currentBlock.type] : <PanelBottom className="size-4" />}</span>
               <p className="min-w-0 flex-1 truncate font-semibold">
                 {current ? SECTIONS[current.type].label : currentBlock ? (currentBlock.type === 'buttons' ? 'Buy buttons' : PRODUCT_BLOCKS[currentBlock.type].label) : FIXED[selected] ?? 'Settings'}
               </p>
               {current && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild><button type="button" aria-label="Section actions" className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
+                  <DropdownMenuTrigger asChild><button type="button" aria-label="Section actions" className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-black/[0.06]"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="z-[70]">
                     <DropdownMenuItem onClick={() => duplicate(current.id)}><Copy /> Duplicate</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setSections(sections.map((x) => (x.id === current.id ? { ...x, enabled: !x.enabled } : x)))}>{current.enabled ? <EyeOff /> : <Eye />} {current.enabled ? 'Hide' : 'Show'}</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              <button type="button" aria-label="Close" onClick={() => setSelected(null)} className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"><X className="size-4" /></button>
+              <button type="button" aria-label="Close" onClick={() => setSelected(null)} className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-black/[0.06]"><X className="size-4" /></button>
             </div>
             <fieldset disabled={!s.canEdit} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
               {current
@@ -364,8 +364,8 @@ export default function StoreThemePage() {
 function IconButton({ label, active, disabled, onClick, children }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} title={label} aria-pressed={active} disabled={disabled} onClick={onClick}
-      className={cn('grid size-8 place-items-center rounded-lg text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-35 disabled:hover:bg-transparent dark:text-zinc-300 dark:hover:bg-zinc-800 [&_svg]:size-4',
-        active && 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-white')}>
+      className={cn('grid size-8 place-items-center rounded-lg text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-35 disabled:hover:bg-transparent dark:text-zinc-300 dark:hover:bg-black/[0.06] [&_svg]:size-4',
+        active && 'bg-zinc-100 text-zinc-900 dark:bg-black/[0.08] dark:text-zinc-100')}>
       {children}
     </button>
   )
@@ -373,7 +373,7 @@ function IconButton({ label, active, disabled, onClick, children }: { label: str
 
 function TreeGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="border-b border-zinc-200 px-2 py-2.5 last:border-0 dark:border-zinc-800">
+    <div className="border-b border-zinc-200 px-2 py-2.5 last:border-0 dark:border-black/10">
       <p className="px-2 pb-1 text-xs font-semibold">{title}</p>
       {children}
     </div>
@@ -388,7 +388,7 @@ function TreeItem({ icon, label, sub, active, hidden, onClick, actions, drag }: 
     <div draggable={!!drag} onDragStart={drag?.onDragStart} onDragOver={drag?.onDragOver} onDrop={drag?.onDrop}
       // Selected: a light tint with dark text and a blue edge, readable whether the item is shown, hidden or being dragged.
       className={cn('group/item relative flex h-8 items-center gap-1.5 rounded-lg pr-1 pl-1.5 text-zinc-900 transition-colors dark:text-zinc-100',
-        active ? 'bg-[#e8f0fe] font-medium shadow-[inset_3px_0_0_#2c6ecb] dark:bg-[#2c6ecb]/25' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800',
+        active ? 'bg-[#e8f0fe] font-medium shadow-[inset_3px_0_0_#2c6ecb] dark:bg-[#2c6ecb]/25' : 'hover:bg-zinc-100 dark:hover:bg-black/[0.06]',
         drag?.over && 'before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:bg-[#2c6ecb]')}>
       <span className={cn('grid w-4 place-items-center text-zinc-500 opacity-0 group-hover/item:opacity-100', !drag && 'invisible')}><GripVertical className="size-3.5 cursor-grab" /></span>
       <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
@@ -421,7 +421,7 @@ function SectionTree({ page, theme, sections, selected, onSelect, onSections, pi
   }
   // Blocks inside Product information: drag above or below the buy buttons, show or hide, add.
   const blockList = (
-    <div className="ml-4 border-l border-zinc-200 pl-1.5 dark:border-zinc-800">
+    <div className="ml-4 border-l border-zinc-200 pl-1.5 dark:border-black/10">
       {blocks.map((b, i) => {
         const label = b.type === 'buttons' ? 'Buy buttons' : PRODUCT_BLOCKS[b.type].label
         return (
@@ -440,7 +440,7 @@ function SectionTree({ page, theme, sections, selected, onSelect, onSections, pi
         className={cn('h-1 rounded', overBlock === blocks.length && dragBlock !== null && 'bg-[#2c6ecb]')} />
       <Popover open={blockPicker} onOpenChange={setBlockPicker}>
         <PopoverTrigger asChild>
-          <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-black/[0.06]">
             <span className="grid size-4 place-items-center rounded-full border border-current"><Plus className="size-3" /></span> Add block
           </button>
         </PopoverTrigger>
@@ -488,7 +488,7 @@ function SectionTree({ page, theme, sections, selected, onSelect, onSections, pi
         className={cn('h-1 rounded', over === sections.length && dragging !== null && 'bg-[#2c6ecb]')} />
       <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
         <PopoverTrigger asChild>
-          <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+          <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-black/[0.06]">
             <span className="grid size-4 place-items-center rounded-full border border-current"><Plus className="size-3" /></span> Add section
           </button>
         </PopoverTrigger>
@@ -633,7 +633,7 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
             <FieldRow label="Accordion rows" hint="Rows with no text on a product are hidden on that product.">
               <div className="grid gap-2">
                 {rows.map((row, i) => (
-                  <div key={i} className="grid gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
+                  <div key={i} className="grid gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-black/10">
                     <input className={inputClass} aria-label={`Row ${i + 1} title`} placeholder="Title" value={row.title} onChange={(e) => setRow(i, { title: e.target.value })} />
                     <SelectInput value={row.content} onChange={(v) => setRow(i, { content: v as ProductAccordion['content'] })}
                       options={[{ value: 'description', label: 'Product description' }, { value: 'shipping', label: 'Product shipping note' }, { value: 'warranty', label: 'Product warranty / care' }, { value: 'custom', label: 'My own text' }]} />
@@ -688,6 +688,7 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
           options={[{ value: 'compact', label: 'Compact' }, { value: 'comfortable', label: 'Comfortable' }, { value: 'spacious', label: 'Spacious' }]} /></FieldRow>
         <FieldRow label="Product photos"><SelectInput value={k.image_shape} onChange={(v) => set({ image_shape: v as 'square' | 'portrait' })}
           options={[{ value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }]} /></FieldRow>
+        <FieldRow label="Photo size"><RangeInput value={k.image_size} min={CART_IMAGE_SIZE.min} max={CART_IMAGE_SIZE.max} step={4} unit="px" onChange={(v) => set({ image_size: v })} /></FieldRow>
         <FieldRow label="Photo corners"><RangeInput value={k.image_radius} min={0} max={24} unit="px" onChange={(v) => set({ image_radius: v })} /></FieldRow>
         <FieldRow label="Quantity box corners"><RangeInput value={k.stepper_radius} min={0} max={24} unit="px" onChange={(v) => set({ stepper_radius: v })} /></FieldRow>
 
@@ -739,8 +740,8 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
 function Accordion({ title, children, defaultOpen }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(!!defaultOpen)
   return (
-    <div className="border-b border-zinc-200 dark:border-zinc-800">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex h-11 w-full items-center justify-between px-4 font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+    <div className="border-b border-zinc-200 dark:border-black/10">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex h-11 w-full items-center justify-between px-4 font-medium hover:bg-zinc-50 dark:hover:bg-black/[0.06]">
         {title}<ChevronDown className={cn('size-4 text-zinc-500 transition-transform', open && 'rotate-180')} />
       </button>
       {open && <div className="space-y-4 px-4 pb-4">{children}</div>}
@@ -790,7 +791,7 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
           <SelectInput value={theme.heading_weight} onChange={(v) => setTheme({ heading_weight: v as StoreTheme['heading_weight'] })} options={HEADING_WEIGHTS} />
         </FieldRow>
         <FieldRow label="Heading size"><RangeInput value={theme.heading_size} min={HEADING_SIZE.min} max={HEADING_SIZE.max} step={5} unit="%" onChange={(v) => setTheme({ heading_size: v })} /></FieldRow>
-        <div className="h-px bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-px bg-zinc-200 dark:bg-black/10" />
         <FieldRow label="Body font"><FontPicker label="Body font" value={theme.font} onChange={(f) => setTheme({ font: f })} /></FieldRow>
         <FieldRow label="Body text size" hint="Also buttons, prices and menus."><RangeInput value={theme.text_size} min={TEXT_SIZE.min} max={TEXT_SIZE.max} step={5} unit="%" onChange={(v) => setTheme({ text_size: v })} /></FieldRow>
         <TypeSample theme={theme} />
@@ -802,7 +803,7 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
         <div className="grid grid-cols-3 gap-2">
           {Object.entries(RADII).map(([k, r]) => (
             <button key={k} type="button" aria-pressed={theme.radius === k} onClick={() => setTheme({ radius: k as StoreTheme['radius'] })}
-              className={cn('grid justify-items-center gap-1.5 rounded-lg border px-2 py-2.5', theme.radius === k ? 'border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
+              className={cn('grid justify-items-center gap-1.5 rounded-lg border px-2 py-2.5', theme.radius === k ? 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-black/[0.05]' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
               <span className="h-5 w-10 border-2 border-current" style={{ borderRadius: r.value }} /><span className="text-[11px] text-zinc-500">{r.label}</span>
             </button>
           ))}
@@ -830,7 +831,7 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
 
 /** A heading between groups of settings in the right-hand panel. */
 function PanelGroup({ children }: { children: ReactNode }) {
-  return <p className="border-t border-zinc-200 pt-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase first:border-0 first:pt-0 dark:border-zinc-800">{children}</p>
+  return <p className="border-t border-zinc-200 pt-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase first:border-0 first:pt-0 dark:border-black/10">{children}</p>
 }
 
 /** A colour that follows the theme until one is picked; "Use theme colour" goes back. */
