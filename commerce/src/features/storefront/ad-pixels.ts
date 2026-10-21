@@ -12,11 +12,12 @@
 // Server copies go to our own server on the store's address (first-party, so ad
 // blockers leave them alone), which also keeps the _fbp / _fbc cookies alive
 // (worker/storefront.ts). A returning buyer's details are kept in their browser
-// only as SHA-256 hashes and sent with every event, for better matching.
+// only as SHA-256 hashes, per store, and sent with that store's events for better
+// matching when the store has Advanced matching on.
 import { functionHeaders } from '@/lib/functions'
 import { functionsUrl } from '@/lib/env'
 import { lastClickIds, visitorId } from '@/lib/attribution'
-import { merchantFetch } from '@/lib/merchant'
+import { currentSite, merchantFetch } from '@/lib/merchant'
 import type { AdLine, AdPurchase, StoreAdConfig } from '@/services/storefront'
 
 export type { AdLine, AdPurchase, StoreAdConfig }
@@ -103,7 +104,10 @@ async function sha256(value: string): Promise<string> {
 
 /** SHA-256 of the buyer's details, normalised the way the server does it (store-tracking.ts hashPerson). */
 export interface ShopperHashes { em?: string; ph?: string; ph_e164?: string; fn?: string; ln?: string; ct?: string; st?: string }
-const SHOPPER_KEY = 'ff_am'
+// Stores opened by path (/s/<name>) share the platform's origin, so the key names the store:
+// one store's buyers never reach another store's pixels.
+const shopperKey = () => { const s = currentSite(); return s.kind === 'store' && s.merchant_id ? `ff_am:${s.merchant_id}` : null }
+try { localStorage.removeItem('ff_am') } catch { /* the old, store-less key */ }
 const HEX64 = /^[0-9a-f]{64}$/
 
 /** 8801XXXXXXXXX for a Bangladeshi mobile number, else ''. */
@@ -119,7 +123,9 @@ const nameKey = (v?: string | null) => String(v ?? '').toLowerCase().normalize('
 /** The hashes kept from this browser's last order or sign-up (never the details themselves). */
 export function shopperHashes(): ShopperHashes {
   try {
-    const raw = JSON.parse(localStorage.getItem(SHOPPER_KEY) ?? 'null') as Record<string, unknown> | null
+    const key = shopperKey()
+    if (!key) return {}
+    const raw = JSON.parse(localStorage.getItem(key) ?? 'null') as Record<string, unknown> | null
     if (!raw || typeof raw !== 'object') return {}
     return Object.fromEntries(Object.entries(raw).filter(([k, v]) => ['em', 'ph', 'ph_e164', 'fn', 'ln', 'ct', 'st'].includes(k) && typeof v === 'string' && HEX64.test(v)))
   } catch {
@@ -127,8 +133,13 @@ export function shopperHashes(): ShopperHashes {
   }
 }
 
+/** Advanced matching off (the server honours it too): no buyer details with any event. */
+const matching = () => cfg?.advanced_matching !== false
+
 /** After an order or sign-up: keep the buyer's details as hashes, for the next visits' events. */
 export async function rememberShopper(p: { phone?: string | null; email?: string | null; name?: string | null; city?: string | null; district?: string | null }) {
+  const key = shopperKey()
+  if (!key || !cfg || !matching()) return
   try {
     const out: ShopperHashes = { ...shopperHashes() }
     const email = String(p.email ?? '').trim().toLowerCase()
@@ -143,7 +154,7 @@ export async function rememberShopper(p: { phone?: string | null; email?: string
     const st = nameKey(p.district)
     if (st) out.st = await sha256(st)
     const clean = Object.fromEntries(Object.entries(out).filter(([, v]) => v && HEX64.test(v)))
-    if (Object.keys(clean).length) localStorage.setItem(SHOPPER_KEY, JSON.stringify(clean))
+    if (Object.keys(clean).length) localStorage.setItem(key, JSON.stringify(clean))
   } catch {
     /* private mode: no memory, no harm */
   }
@@ -224,7 +235,7 @@ export async function startAdPixels(c: StoreAdConfig | null | undefined) {
     try {
       if (cfg.meta_pixel) metaCookies()
       const ext = await sha256(visitorId())
-      const am = shopperHashes()
+      const am = matching() ? shopperHashes() : {}
       if (cfg.meta_pixel) loadMeta(cfg.meta_pixel, ext, am, await sha256('bd'))
       if (cfg.tiktok_pixel) loadTikTok(cfg.tiktok_pixel, ext, am)
       if (cfg.ga4_id || cfg.ads_id) loadGoogle(cfg, am)
@@ -295,7 +306,7 @@ async function serverCopy(event: FunnelEvent, id: string, d: AdEventData) {
     browser,
     click: Object.fromEntries(Object.entries({ fbclid: click.fbclid, ttclid: click.ttclid }).filter(([, v]) => v && CLICK.test(v))),
     search: event === 'Search' ? d.search?.slice(0, 100) : undefined,
-    user: Object.keys(shopperHashes()).length ? shopperHashes() : undefined,
+    user: matching() && Object.keys(shopperHashes()).length ? shopperHashes() : undefined,
   }
   try {
     await merchantFetch(functionsUrl('checkout'), {

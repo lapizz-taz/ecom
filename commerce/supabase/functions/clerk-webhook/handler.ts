@@ -10,7 +10,7 @@
 // credential. Endpoint: <site>/functions/v1/clerk-webhook on Cloudflare (or <SUPABASE_URL>/functions/v1/clerk-webhook).
 import { blockLogin, findLogin, syncLoginFromClerk, unblockLogin } from '../_shared/accounts.ts'
 import { type ClerkUser, clerkWebhookSecret, verifyWebhook } from '../_shared/clerk.ts'
-import { handle, HttpError, json } from '../_shared/http.ts'
+import { handle, HttpError, json, readText } from '../_shared/http.ts'
 import { adminClient, rpc } from '../_shared/supabase.ts'
 
 interface ClerkEvent { type: string; data: Partial<ClerkUser> & { id?: string; deleted?: boolean } }
@@ -18,8 +18,7 @@ interface ClerkEvent { type: string; data: Partial<ClerkUser> & { id?: string; d
 export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
-    const body = await req.text()
-    if (body.length > 256 * 1024) throw new HttpError(413, 'Request is too large', 'PAYLOAD_TOO_LARGE')
+    const body = await readText(req, 256 * 1024)
     const secret = await clerkWebhookSecret()
     if (!secret) throw new HttpError(503, 'The Clerk webhook is not set up yet', 'NOT_CONFIGURED')
     if (!(await verifyWebhook(secret, req.headers, body))) throw new HttpError(401, 'Bad signature', 'INVALID_SIGNATURE')

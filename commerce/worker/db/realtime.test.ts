@@ -54,3 +54,17 @@ describe('live updates protocol (realtime-js)', () => {
     expect(deliveries({ ...s, exp: 1 }, [{ table: 'orders', type: 'INSERT', key: { id: 'mine' } }], readAs)).toEqual([])
   })
 })
+
+describe('the per-visitor cap on live connections', () => {
+  it('counts an IPv4 address on its own and an IPv6 visitor by its /48 network', async () => {
+    const { socketOwner } = await import('./realtime.ts')
+    expect(socketOwner('203.0.113.7')).toEqual({ key: '203.0.113.7', max: 20 })
+    // Every address of one /64 (and of one /48) is the same visitor: rotating addresses does not help.
+    const a = socketOwner('2001:db8:1:2::1')
+    expect(a).toEqual({ key: '2001:db8:1::/48', max: 50 })
+    expect(socketOwner('2001:0db8:0001:ffff:aaaa::fb')).toEqual(a)
+    expect(socketOwner('2001:db8:2::1').key).not.toBe(a.key)
+    expect(socketOwner('::1').key).toBe('0:0:0::/48')
+    expect(socketOwner(null).key).toBe('unknown')
+  })
+})

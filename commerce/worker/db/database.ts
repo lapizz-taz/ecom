@@ -6,6 +6,7 @@ import { DurableObject } from 'cloudflare:workers'
 import * as sessions from './auth.ts'
 import { loadStatements, type Summary, targetSummary } from './export.ts'
 import * as live from './realtime.ts'
+import { socketOwner } from './realtime.ts'
 import type { SocketState } from './realtime.ts'
 import { authSecret, type TokenEnv, verifyAccessToken } from './tokens.ts'
 import { Context, type Identity } from './context.ts'
@@ -18,7 +19,6 @@ import { authAdmin, type AuthAdminRequest } from './users.ts'
 export type { Caller }
 
 const MAX_SOCKETS = 5000
-const MAX_SOCKETS_PER_IP = 20
 
 export class Database extends DurableObject {
   protected readonly sql: Sql
@@ -96,12 +96,12 @@ export class Database extends DurableObject {
     }
     // Bounded: a few sockets per visitor and a ceiling for the whole database, so nobody can
     // hold open enough connections to crowd out everyone else.
-    const ip = (request.headers.get('cf-connecting-ip') ?? '').slice(0, 64) || 'unknown'
+    const owner = socketOwner(request.headers.get('cf-connecting-ip'))
     if (this.ctx.getWebSockets().length >= MAX_SOCKETS) return new Response('Too many live connections', { status: 503 })
-    if (this.ctx.getWebSockets(`ip:${ip}`).length >= MAX_SOCKETS_PER_IP) return new Response('Too many live connections', { status: 429 })
+    if (this.ctx.getWebSockets(`ip:${owner.key}`).length >= owner.max) return new Response('Too many live connections', { status: 429 })
     const pair = new WebSocketPair()
     const [client, server] = Object.values(pair)
-    this.ctx.acceptWebSocket(server, [`ip:${ip}`])
+    this.ctx.acceptWebSocket(server, [`ip:${owner.key}`])
     const state: SocketState = { vsn: url.searchParams.get('vsn') ?? '1.0.0', uid: null, sid: null, exp: 0, subs: [], next: 0 }
     server.serializeAttachment(state)
     return new Response(null, { status: 101, webSocket: client })
