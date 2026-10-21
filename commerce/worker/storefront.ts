@@ -239,11 +239,12 @@ const redirect = (to: string, status = 301) => new Response(null, { status, head
 export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv): Promise<Response> {
   const host = url.host.toLowerCase()
   const shell = () => env.ASSETS.fetch(new Request(new URL('/', url), req))
+  // Pages over HTTPS (the website and every store's own address) ask browsers to keep using HTTPS.
+  const security: Record<string, string> = url.protocol === 'https:' ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}
   if (isPlatformHost(host, env)) {
     // The Fullfilio website (worker/site.ts): one address per page, its own head and its HTML.
     const moved = siteRedirect(req, url, env)
     if (moved) return moved
-    const security: Record<string, string> = url.protocol === 'https:' ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}
     // Admin and sign-up pages, and stores opened by path (their own address is the canonical one).
     if (PRIVATE.test(url.pathname) || url.pathname.startsWith('/s/')) {
       const res = await env.ASSETS.fetch(req)
@@ -281,7 +282,7 @@ export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv)
   }
   if (PRIVATE.test(url.pathname)) {
     const res = await shell()
-    return withHeaders(res, await res.text(), 200, { 'X-Robots-Tag': 'noindex, nofollow' })
+    return withHeaders(res, await res.text(), 200, { ...security, 'X-Robots-Tag': 'noindex, nofollow' })
   }
 
   type PageInfo = { config?: unknown; seo?: PageSeo | null }
@@ -293,7 +294,7 @@ export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv)
   if (seo?.status === 301 && seo.redirect && seo.redirect.startsWith('/')) return redirect(`${seo.redirect}${url.search}`)
   const res = await shell()
   const html = injectHead(await res.text(), { host, origin: url.origin, site, config: page?.config, seo })
-  const extra: Record<string, string> = {}
+  const extra: Record<string, string> = { ...security }
   if (seo?.robots?.startsWith('noindex')) extra['X-Robots-Tag'] = seo.robots.replace(',', ', ')
   const out = withHeaders(res, req.method === 'HEAD' ? null : html, seo?.status === 404 ? 404 : 200, extra)
   for (const c of adCookies(req, url, env, meta)) out.headers.append('Set-Cookie', c)

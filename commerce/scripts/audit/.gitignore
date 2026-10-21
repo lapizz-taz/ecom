@@ -1,0 +1,5 @@
+dist/
+*.png
+*-results.json
+*-dev.log
+pl.json

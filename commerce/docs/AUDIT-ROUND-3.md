@@ -57,7 +57,7 @@ System log, last 7 days, ERROR/WARN grouped (14 groups):
 | "Could not find the function public.inbox_channel_remove" (17 Oct 17:30) | Page shipped before its migration ran; function exists now (`inbox_channel_remove(uuid,uuid)`) | P3 | PASS (recovered) |
 | Cloudflare "Could not route to /zones/…%20/custom_hostnames" (16 Oct 14:24) | Space in the zone ID secret; fixed in `ee35509` 31 s later (`.trim()`) | P2 | PASS (recovered) |
 | Super Admin finance error logged as **"[object Object]"** (18 Oct) | (a) page shipped 4 min before `platform_ads_report` migration — recovered. (b) **The client error logger wrote plain error objects as "[object Object]"**, losing the message for every database error | P3 | **FIXED** — `errorText()` in `src/lib/monitoring.ts` keeps message, code and details; unit test `src/lib/monitoring.test.ts` |
-| "Could not verify a paystation billing return" (20 Oct 16:25, ৳99 subscription, merchant `64c2…e975`) | PayStation answered "Transaction found" without a final state; Super Admin rejected the payment by hand 10 min later; only one check on record. A later "paid" answer would still mark it paid (`billing_gateway_confirm` accepts success over REJECTED), but the reconcile job only re-asks PENDING payments | P2 | **BLOCKED — OWNER** (see §6). Improvement **FIXED**: the message now carries PayStation's own payment state (`payment Processing`), so the reviewer can tell; unit test in `payments.test.ts` |
+| "Could not verify a paystation billing return" (20 Oct 16:25, ৳99 subscription, merchant `64c2…e975`) | PayStation answered "Transaction found" without a final state; Super Admin rejected the payment by hand 10 min later; only one check on record. A later "paid" answer would still mark it paid (`billing_gateway_confirm` accepts success over REJECTED), but the reconcile job only re-asks PENDING payments | P2 | **PASS** — owner confirmed 21 Oct: a test, opened and left unpaid, so rejecting it was correct. Improvement **FIXED**: the message now carries PayStation's own payment state (`payment Processing`), so the reviewer can tell; unit test in `payments.test.ts` |
 | Steadfast firewall / 403, PayStation "Invalid Credential", Meta token revoked, Meta `phone_numbers` on a non-WhatsApp ID, Meta delete of a missing object, courier history slow | Outside answers shown to the user with the real reason, as designed | — | PASS (handled) |
 
 Scheduled jobs (16), live `cron.job_run_details`:
@@ -82,6 +82,37 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 | Ad tracking | Page view / add-to-cart / checkout / purchase fire once per real action | unit | 5 tests in `ad-pixels.test.ts` | PASS |
 | Bundles | Live `_bundle_percent` with tiers 1/2/3 → 0/10/15/15 % for 1–4 pieces | live-read | as expected | PASS |
 | Bundles | Atheron has no published Bundles block, so prices unchanged | live-read | `_bundle_rule()` null | PASS |
+| Orders (data) | Duplicate store orders (same channel + external id, not merged); total ≠ subtotal − discounts + delivery + tax; subtotal ≠ sum of lines; >1 active shipment per order; same consignment twice; refunded > paid; returned/damaged > ordered | live-read | 0 of each (only 3 live orders — small sample; the db suite covers the logic) | PASS |
+| Tenant isolation | Every public table has row security on (168 tables with `merchant_id`, 0 without) | live-read | 0 tables without | PASS |
+| Tenant isolation | `tenant_isolation` is RESTRICTIVE on every merchant table; the only rows open to visitors are active delivery zones and settings marked public; `system_logs` read needs staff + `audit.view`, so platform rows (no merchant) never show to a store | live-read | as listed | PASS |
+| Security | Functions a visitor (anon) may call, live = the allowlist in `function-grants.test.ts` (34) | live-read + db | identical | PASS |
+| Security | Supabase security advisor: 0 errors; warnings are the known design (signed-in RPCs are security-definer with their own checks; 16 functions without a fixed search path; `pg_trgm` in public; leaked-password check off because sign-in is through Clerk) | live-read | 0 ERROR | PASS |
+| Orders (browser + Worker) | **Pass 3** — `scripts/audit/order-lifecycle-e2e.cjs`: real Worker, Cloudflare database seeded from all 171 migrations, Chromium; 31/31 | browser | below | PASS |
+| Orders | Storefront order (2 × ৳1,000); the same request sent twice → one order, stock reserved once (on hand 10, reserved 2) | browser | as expected | PASS |
+| Orders | Total = subtotal + delivery | browser | 2,000 + 80 = 2,080 | PASS |
+| Orders | Pending → Confirmed → Processing → Packing → courier → Ready → Shipped → Delivered, each saved; 6+ history rows; Delivered cannot go back to Pending | browser | as expected | PASS |
+| Stock | Delivered: on hand 10 → 8, reserved 2 → 0 (once) | browser | as expected | PASS |
+| Returns | Shipped → Failed delivery (reason) → Coming back → received (RESTOCK): order Returned, +1 on the shelf; receiving again adds nothing | browser | 7 → 8, then 8 | PASS |
+| Cancel | Cancel without a reason refused; with a reason the 3 reserved units are released | browser | reserved 3 → 0 | PASS |
+| Finance | P&L for the day, computed by hand: products 2,000 (delivered only) + delivery 80 − COGS 800 (2 × 400) − courier 140 (2 × 70) − return charge 50 = **1,090** | browser | report: 2,000 / 80 / 800 / 140 / 50 / **1,090**, gross margin 61.54 % | PASS |
+| Call role | Sees the 3 orders; cannot read order cost, item cost, product cost or the P&L; cannot move a delivered order; `/admin/finance` shows no money | browser | refused each | PASS |
+| Tenant isolation | A second store's owner, sending store one's id in `x-merchant-id`: 0 orders, 0 customers, no private settings, P&L without store one's sales, status change refused (order still Delivered) | browser | as expected | PASS |
+| Admin UI | Order page at 1440 and 390 px: number, Delivered, customer, items; survives reload; no sideways scroll; no page errors; finance page shows figures | browser | as expected | PASS |
+| Queues (live) | Store sync jobs, status pushes to stores, courier webhook events, ad event queue, notification log, store webhook deliveries | live-read | all finished or empty; 0 failed. One Shopify INVENTORY job for atheron waits since 00:54 because atheron sells on its **own store** now (only one sales channel runs at a time); it runs if Shopify becomes the active channel again | PASS (by design) |
+| Stock | **Pass 4** — two shoppers buy the last unit at the same moment (two real transactions, own database): one order, the other refused "out of stock", stock 1 reserved / 0 available, never negative | db | new `supabase/tests/db/stock-race.test.ts` | PASS |
+| Integrations (code) | Existing mocked tests read for pass 4: store sync 39, channels 19, catalog 9, Shopify sync 7, WooCommerce plugin 29, couriers 19 + panel 41 + webhooks 12 + history 31 + ops 11, payments 38 + gateway 8 + billing 22, SMS 39, inbox 14, store tracking 52, Meta/ads 35 | unit + db | all in the 931 + 700 passing | PASS (mocked) |
+| Integrations (real providers) | Shopify, WooCommerce, Pathao, Steadfast, RedX, Carrybee, bKash, PayStation, SMS, Meta/TikTok/Google: this session cannot reach them; live usage records show Shopify webhooks arriving (8 deliveries 20 Oct, all handled) | live-read | — | BLOCKED — PROVIDER (from here) |
+| Admin UI | **Pass 4** — every admin page (82: dashboard + 81 routes in `router.tsx`) at 1440 and 390 px, signed in as owner with sample data: no JavaScript error, no "Something went wrong" / "Page not found", no sideways scroll, not sent back to sign-in. Script `scripts/audit/admin-pages-e2e.cjs`. Checks that each page *opens*; what each button does is covered by the module rows | browser | 164/164 | PASS |
+| Storefront | **Pass 5** — every store page (home, shop, search, product, cart, checkout, track order, sign in, register, contact, policies, unknown page → "not found") at 1440 and 390 px: no error, no sideways scroll; product page shows name and ৳1,200. `scripts/audit/storefront-e2e.cjs` | browser | 24/24 | PASS |
+| Checkout (shopper) | On a phone: product → Add to cart → checkout (total ৳1,200 in the folded Order summary) → name, mobile, address, district → **Complete order** → success page with the order number; saved once with the shopper's name, phone and ৳1,200; 1 unit reserved | browser | as expected | PASS |
+| Checkout (shopper) | Reloading the success page places no second order | browser | 1 order | PASS |
+| Track order | Wrong phone → "No order matches"; right phone → the order, its status and date | browser | as expected | PASS |
+| Super Admin | **Pass 5** — every Super Admin page (overview + 24) at 1440 and 390 px as platform staff: no error, no sideways scroll, no bounce to sign-in. `scripts/audit/super-admin-pages-e2e.cjs` | browser | 50/50 | PASS |
+| Super Admin | A store owner opening `/super-admin/merchants` sees "This account is not on the platform team", and the data call is refused (`PERMISSION_DENIED`) | browser | as expected | PASS |
+| Payments | A gateway's "success" callback is never trusted: the status is asked of the gateway (bKash, PayStation), amount/currency/transaction checked, a transaction can pay only one payment, and only the server (system context) can confirm (`billing_gateway_confirm`) | unit + db + code read | `payments.test.ts` 19, `billing-payments` 22, `gateway-payments` 8 | PASS (mocked) |
+| Speed | **Pass 6** — load test (`scripts/load-test.mjs`, 16 clients, 20 s, local PostgreSQL, 4 cores), today's code **and** the round-2 code (`5deb127`) on the same machine: orders 137/s vs 131/s (same); status changes 442/s vs 557/s (**−21 %**, p95 57 ms vs 45 ms — the status change now also queues ad-tracking and store status updates); search p95 26 ms vs 24 ms; 0 errors. A first run read 73 orders/s with the machine busy — discarded as noise after the A/B | load | far above today's traffic | PASS (note P3) |
+| Security headers (live) | fullfilio.com: HSTS, CSP (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`), `nosniff`, `SAMEORIGIN`, strict referrer. atheron.shop: same **but no HSTS** | live-read (database HTTP client) | store pages lacked HSTS | **FIXED** (store pages now send it; test in `worker/storefront.test.ts`) |
+| Rate limits | Checkout, tracking, sign-in and API limits refuse the extra request and keep memory bounded (12,000 keys); not flooded on production on purpose | unit | `http-body.test.ts` | PASS |
 
 ## 5. Fixes this round
 
@@ -89,9 +120,28 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 |---|---|---|---|
 | 1 | Client errors keep their real message instead of "[object Object]" | `src/lib/monitoring.ts` | `src/lib/monitoring.test.ts` (2) |
 | 2 | PayStation "not confirmed" names PayStation's payment state | `supabase/functions/_shared/payments/paystation.ts` | `payments.test.ts` |
+| 4 | Store pages (a merchant's own domain) now send `Strict-Transport-Security` like the website | `worker/storefront.ts` | `worker/storefront.test.ts` (new test) |
+| 3 | The Cloudflare database's reference data was generated on 19 Oct, before the newest migrations: a store created on the Cloudflare database would start with old settings rows. Regenerated from all 171 migrations | `worker/db/generated/seed.sql` | worker tests 85/85; pass 3 runs on it |
 
 ## 6. Needs the owner
 
-| What | Why | Where | What to send back |
-|---|---|---|---|
-| ৳99 PayStation payment `BP-D45C8D2CC16346` (invoice `BP-D45C8D2CC16346-TMVGW9MBT`, 20 Oct 16:25 UTC) was rejected 10 min after PayStation said "Transaction found" | This session cannot reach PayStation, and the payment was never re-checked | PayStation merchant panel → Transactions → search the invoice | Its status (Success / Failed / Processing). If Success: the merchant paid and needs the plan — tell me and I will say how to re-check it from Super Admin → Billing |
+Nothing open. Resolved: PayStation invoice `BP-D45C8D2CC16346-TMVGW9MBT` was the owner's own test, never paid (confirmed 21 Oct).
+
+## 7. Round 3 summary (2026-10-21)
+
+| | Count |
+|---|---|
+| Passes run | 6 (baseline + live logs, live data + isolation, order lifecycle, queues + race + admin pages, storefront + Super Admin, speed + headers) |
+| Automated checks run this round | unit 932, database 700, browser 31 + 164 + 33 + 53 = 281, load 4 measures × 2 versions |
+| Bugs found and fixed | 4 — all P3: error text lost as "[object Object]"; PayStation "not confirmed" without its state; Cloudflare database reference data out of date; store pages without HSTS. Each has a test. |
+| P0 / P1 / P2 open | 0 / 0 / 0 |
+| Recovered on their own before this round (verified) | billing-run empty-setting failures (fixed 20 Oct), inbox channel remove and Cloudflare zone id (fixed within a minute) |
+| Owner questions | 1, answered (PayStation test payment, unpaid) |
+
+**What the evidence covers.** Every admin, Super Admin and store page opens at phone and desktop width. The full order life (place → deliver, fail → return, cancel), stock at every step, a hand-checked P&L, the Call role's limits, a second store's isolation, a shopper's real checkout and Track order were driven in a browser on the real Worker. Live data has no duplicates or broken totals; every table is locked to its store; the 16 scheduled jobs run.
+
+**What it does not cover (stated, not assumed).** Real answers from Shopify, WooCommerce, the couriers, bKash, PayStation, SMS, Meta/TikTok/Google — this session cannot reach them, so those integrations are proven with stand-in providers only (live Shopify webhooks were seen arriving and handled). Production has 3 orders, so live-data checks are a small sample. Camera scanning needs a real phone.
+
+**Notes (P3, not bugs).** Status changes are ~21 % slower than in round 2 under heavy load (still 442/s). `trial_days` in plan/offer saves is cast without the empty-value guard (the forms always send a number). Ad-event dedup on the server is per Worker instance; the platforms also merge by event id.
+
+**Readiness.** No open P0–P2 issue. Ready, with the integrations above verified only as far as stated.
