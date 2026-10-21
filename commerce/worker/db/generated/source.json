@@ -1,5 +1,5 @@
 {
-  "migrations": 170,
-  "last": "20261121002300_seo_writer.sql",
-  "sha256": "2f93fd83128f06014c44085d649a6f754c0993a6dd44683975ce496591ff2d50"
+  "migrations": 171,
+  "last": "20261121002400_product_bundles.sql",
+  "sha256": "3bf10411527e3acc75721d0aeabc9c26b36bc7abf8245e27a02b1ef766c9125f"
 }

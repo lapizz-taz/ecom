@@ -1,7 +1,7 @@
 // Title and meta description suggestions written from an item's own facts (name, brand, category,
 // price, sizes, colours, product count) and the focus keyword: no AI service, nothing invented.
 // Each suggestion is fitted to what search results show (titles about 60 characters, descriptions
-// 120–160) at a word boundary.
+// 120–160) at a word boundary. Title parts are separated with " | ".
 import type { SeoFacts } from '@/services/seo'
 
 export const TITLE_MAX = 60
@@ -55,23 +55,23 @@ export function titleIdeas(kind: SeoKind, f: SeoFacts, keyword = ''): string[] {
   const ideas: string[] = []
   if (kind === 'product') {
     ideas.push(withStore(name, store))
-    if (kw && !has(name, kw)) ideas.push(withStore(`${name} – ${titleCase(kw)}`, store))
+    if (kw && !has(name, kw)) ideas.push(withStore(`${name} | ${titleCase(kw)}`, store))
     if (f.brand && !has(name, f.brand)) ideas.push(withStore(`${name} by ${clean(f.brand)}`, store))
-    if (f.category && !has(name, f.category)) ideas.push(withStore(`${name} – ${clean(f.category)}`, store))
-    ideas.push(withStore(`Buy ${name} Online${f.price ? ` – ${clean(f.price)}` : ''}`, store))
+    if (f.category && !has(name, f.category)) ideas.push(withStore(`${name} | ${clean(f.category)}`, store))
+    ideas.push(withStore(`Buy ${name} Online${f.price ? ` | ${clean(f.price)}` : ''}`, store))
   } else if (kind === 'collection') {
     ideas.push(withStore(name, store))
-    if (kw && !has(name, kw)) ideas.push(withStore(`${name} – ${titleCase(kw)}`, store))
+    if (kw && !has(name, kw)) ideas.push(withStore(`${name} | ${titleCase(kw)}`, store))
     ideas.push(withStore(`Shop ${name} Online`, store))
-    if (f.count) ideas.push(withStore(`${name} – ${f.count} ${f.count === 1 ? 'Product' : 'Products'}`, store))
+    if (f.count) ideas.push(withStore(`${name} | ${f.count} ${f.count === 1 ? 'Product' : 'Products'}`, store))
   } else {
     if (name === store) {
-      ideas.push(fit(f.tagline ? `${store} – ${clean(f.tagline)}` : store, TITLE_MAX))
-      if (kw) ideas.push(fit(`${store} – ${titleCase(kw)}`, TITLE_MAX))
+      ideas.push(fit(f.tagline ? `${store} | ${clean(f.tagline)}` : store, TITLE_MAX))
+      if (kw) ideas.push(fit(`${store} | ${titleCase(kw)}`, TITLE_MAX))
       ideas.push(fit(`${store} | Shop Online`, TITLE_MAX))
     } else {
       ideas.push(withStore(name, store))
-      if (kw && !has(name, kw)) ideas.push(withStore(`${name} – ${titleCase(kw)}`, store))
+      if (kw && !has(name, kw)) ideas.push(withStore(`${name} | ${titleCase(kw)}`, store))
     }
   }
   return unique(ideas).slice(0, 4)

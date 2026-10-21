@@ -12,11 +12,19 @@ import { isThemePreview, type ProductAccordion, type ProductPageSettings } from 
 
 const box = 'rounded-[var(--radius)]'
 
+/** The "Add to cart button" block's look (product-blocks.ts), when it is switched on. */
+export interface ButtonStyle { label?: string; buy_label?: string; background?: string; text?: string; animation?: string }
+
+const hexColor = (v: unknown) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : undefined)
+
 /** Quantity box, "Add to cart" and "Buy it now". */
-export function BuyButtons({ pp, quantity, max, onQuantity, disabled, onAdd, onBuy }: {
+export function BuyButtons({ pp, quantity, max, onQuantity, disabled, onAdd, onBuy, look }: {
   pp: ProductPageSettings; quantity: number; max: number; onQuantity: (v: number) => void; disabled: boolean; onAdd: () => void; onBuy: () => void
+  look?: ButtonStyle | null
 }) {
   const radius = { borderRadius: pp.button_radius }
+  const filled = look ? { ...radius, background: hexColor(look.background), color: hexColor(look.text) } : radius
+  const motion = look?.animation === 'pulse' ? 'ff-anim-pulse' : look?.animation === 'shake' ? 'ff-anim-shake' : ''
   const action = cn('inline-flex h-12 w-full items-center justify-center gap-2 px-4 text-[13px] font-semibold tracking-wide uppercase transition-opacity disabled:cursor-not-allowed disabled:opacity-40')
   return (
     <div className="grid gap-3">
@@ -30,14 +38,14 @@ export function BuyButtons({ pp, quantity, max, onQuantity, disabled, onAdd, onB
               className="grid h-full w-10 place-items-center disabled:opacity-35 [&_svg]:size-4"><Plus /></button>
           </div>
         )}
-        <button type="button" disabled={disabled} onClick={onAdd} style={radius} className={cn(action, 'flex-1 bg-foreground text-background hover:opacity-90')}>
-          <ShoppingBag className="size-4" /> Add to cart
+        <button type="button" disabled={disabled} onClick={onAdd} style={filled} className={cn(action, 'flex-1 bg-foreground text-background hover:opacity-90', !disabled && motion)}>
+          <ShoppingBag className="size-4" /> {look?.label?.trim() || 'Add to cart'}
         </button>
       </div>
       {pp.show_buy_now && (
-        <button type="button" disabled={disabled} onClick={onBuy} style={radius}
+        <button type="button" disabled={disabled} onClick={onBuy} style={pp.buy_now_style === 'filled' ? filled : radius}
           className={cn(action, pp.buy_now_style === 'filled' ? 'bg-foreground text-background hover:opacity-90' : 'border border-foreground hover:bg-foreground hover:text-background')}>
-          Buy it now
+          {look?.buy_label?.trim() || 'Buy it now'}
         </button>
       )}
     </div>

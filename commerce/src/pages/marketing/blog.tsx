@@ -7,7 +7,7 @@ import { SitePage } from '@/features/site/site-chrome'
 export default function BlogPage() {
   const [first, ...rest] = POSTS
   return (
-    <SitePage title="Blog — Fullfilio">
+    <SitePage title="Blog | Fullfilio">
       <section className="mx-auto max-w-6xl px-5 pt-20 pb-24 sm:pt-28">
         <p className="font-mono text-[12px] text-(--s-muted)">Blog</p>
         <h1 className="mt-4 max-w-2xl text-[40px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[52px]">Guides for selling with cash on delivery</h1>

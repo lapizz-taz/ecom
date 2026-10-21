@@ -4,7 +4,7 @@ import {
   Package, Paintbrush, PanelBottom, PanelTop, Plus, Redo2, ShoppingBag, ShoppingCart, Smartphone, Store, Trash2, Undo2, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { Spinner } from '@/components/common/states'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -12,6 +12,8 @@ import { Switch } from '@/components/ui/switch'
 import {
   ACCENTS, DEFAULT_THEME, FONTS, makeSection, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
+import { PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
+import { BLOCK_ICON, BlockPicker } from '@/features/theme-editor/block-library'
 import { ColorInput, FieldRow, inputClass, ListField, RangeInput, SchemaField, SelectInput } from '@/features/theme-editor/fields'
 import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-picker'
 import { useThemeDraft } from '@/features/theme-editor/use-theme-draft'
@@ -24,7 +26,7 @@ type Tab = 'sections' | 'settings'
 type Page = 'home' | 'collection' | 'product' | 'cart'
 const FIXED: Record<string, string> = {
   announcement: 'Announcement bar', header: 'Header', footer: 'Footer', 'collection-banner': 'Collection banner', 'collection-grid': 'Product grid',
-  'product-info': 'Product information', 'product-related': 'Related products',
+  'product-info': 'Product information', 'product-related': 'Related products', 'cart-drawer': 'Cart drawer',
 }
 const PAGES: Array<{ value: Page; label: string; icon: ReactNode }> = [
   { value: 'home', label: 'Home page', icon: <Home className="size-3.5" /> },
@@ -41,8 +43,10 @@ export default function StoreThemePage() {
   const { data: config } = useStoreConfig()
   const frame = useRef<HTMLIFrameElement>(null)
   const [tab, setTab] = useState<Tab>('sections')
-  const [page, setPage] = useState<Page>('home')
-  const [selected, setSelected] = useState<string | null>(null)
+  // Opened from Store → Theme: ?page=product&block=<id> starts on that page with the block selected.
+  const [params] = useSearchParams()
+  const [page, setPage] = useState<Page>(() => (PAGES.some((p) => p.value === params.get('page')) ? params.get('page') as Page : 'home'))
+  const [selected, setSelected] = useState<string | null>(() => (params.get('block') ? `block:${params.get('block')}` : null))
   const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
   const [inspect, setInspect] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -135,17 +139,27 @@ export default function StoreThemePage() {
     setSelected(sec.id); setPickerOpen(false)
   }
   const removeSection = (id: string) => { setSections(sections.filter((x) => x.id !== id)); setSelected(null) }
+  // Product page blocks (product-blocks.ts): selected as "block:<id>".
+  const blocks = theme.product_page.blocks
+  const setBlocks = (next: ProductBlock[]) => setTheme({ product_page: { ...theme.product_page, blocks: next } })
+  const addBlock = (type: Exclude<ProductBlock['type'], 'buttons'>) => {
+    const next = toggleBlock(blocks, type, true)
+    setBlocks(next)
+    const added = next.find((b) => b.type === type)
+    if (added) setSelected(`block:${added.id}`)
+  }
+  const currentBlock = selected?.startsWith('block:') ? blocks.find((b) => `block:${b.id}` === selected) : undefined
   const duplicate = (id: string) => {
     const i = sections.findIndex((x) => x.id === id)
     const copy = { ...makeSection(sections[i].type), settings: structuredClone(sections[i].settings) }
     setSections([...sections.slice(0, i + 1), copy, ...sections.slice(i + 1)])
     setSelected(copy.id)
   }
-  // Back to the page the editor was opened from; Sales Channels when opened directly.
+  // Back to the page the editor was opened from; Store → Theme when opened directly.
   const exit = () => {
     if (s.dirty && !window.confirm('Leave without saving your changes?')) return
     if (location.key !== 'default') navigate(-1)
-    else navigate('/admin/channels')
+    else navigate('/admin/store/theme')
   }
   const h = history.current
   const current = sections.find((x) => x.id === selected)
@@ -223,7 +237,7 @@ export default function StoreThemePage() {
           <fieldset disabled={!s.canEdit} className="contents">
             {tab === 'sections' && (
               <SectionTree page={page} theme={theme} sections={sections} selected={selected} onSelect={setSelected} onSections={setSections}
-                pickerOpen={pickerOpen} setPickerOpen={setPickerOpen} onAdd={addSection} />
+                pickerOpen={pickerOpen} setPickerOpen={setPickerOpen} onAdd={addSection} blocks={blocks} onBlocks={setBlocks} onAddBlock={addBlock} />
             )}
             {tab === 'settings' && <ThemeSettings theme={theme} setTheme={setTheme} />}
           </fieldset>
@@ -247,8 +261,10 @@ export default function StoreThemePage() {
         {selected && (
           <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[320px] flex-col border-l border-zinc-200 bg-white shadow-xl lg:static lg:w-[300px] lg:shadow-none dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
-              <span className="text-zinc-500">{current ? SECTION_ICON[current.type] : <PanelBottom className="size-4" />}</span>
-              <p className="min-w-0 flex-1 truncate font-semibold">{current ? SECTIONS[current.type].label : FIXED[selected] ?? 'Settings'}</p>
+              <span className="text-zinc-500">{current ? SECTION_ICON[current.type] : currentBlock ? BLOCK_ICON[currentBlock.type] : <PanelBottom className="size-4" />}</span>
+              <p className="min-w-0 flex-1 truncate font-semibold">
+                {current ? SECTIONS[current.type].label : currentBlock ? (currentBlock.type === 'buttons' ? 'Buy buttons' : PRODUCT_BLOCKS[currentBlock.type].label) : FIXED[selected] ?? 'Settings'}
+              </p>
               {current && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><button type="button" aria-label="Section actions" className="grid size-7 place-items-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
@@ -266,6 +282,21 @@ export default function StoreThemePage() {
                     {SECTIONS[current.type].fields.map((f) => <SchemaField key={f.key} field={f} settings={current.settings} onChange={(k, v) => setSectionSettings(current.id, k, v)} />)}
                     <button type="button" onClick={() => removeSection(current.id)} className="mx-auto flex items-center gap-1.5 pt-2 text-[13px] font-medium text-red-600 hover:underline"><Trash2 className="size-4" /> Remove section</button>
                   </>
+                : currentBlock
+                ? currentBlock.type === 'buttons'
+                  ? <p className="text-[12px] leading-relaxed text-zinc-600 dark:text-zinc-400">Quantity, “Add to cart” and “Buy it now”. Drag blocks above or below them in the list. Their look is set under Product information, or with the “Add to cart button” block.</p>
+                  : <>
+                      <p className="text-[12px] leading-relaxed text-zinc-600 dark:text-zinc-400">{PRODUCT_BLOCKS[currentBlock.type].description}</p>
+                      <FieldRow label="Show this block" inline>
+                        <Switch checked={currentBlock.enabled} onCheckedChange={(v) => setBlocks(blocks.map((b) => (b.id === currentBlock.id ? { ...b, enabled: v } : b)))} />
+                      </FieldRow>
+                      {PRODUCT_BLOCKS[currentBlock.type].fields.map((f) => (
+                        <SchemaField key={f.key} field={f} settings={currentBlock.settings}
+                          onChange={(k, v) => setBlocks(blocks.map((b) => (b.id === currentBlock.id ? { ...b, settings: { ...b.settings, [k]: v } } : b)))} />
+                      ))}
+                      <button type="button" onClick={() => { setBlocks(blocks.filter((b) => b.id !== currentBlock.id)); setSelected(null) }}
+                        className="mx-auto flex items-center gap-1.5 pt-2 text-[13px] font-medium text-red-600 hover:underline"><Trash2 className="size-4" /> Remove block</button>
+                    </>
                 : <FixedSettings id={selected} theme={theme} setTheme={setTheme} draft={draft} setSf={(k, v) => commit({ ...draft, [k]: v })} />}
             </fieldset>
           </aside>
@@ -300,24 +331,70 @@ function TreeItem({ icon, label, sub, active, hidden, onClick, actions, drag }: 
 }) {
   return (
     <div draggable={!!drag} onDragStart={drag?.onDragStart} onDragOver={drag?.onDragOver} onDrop={drag?.onDrop}
-      className={cn('group/item relative flex h-8 items-center gap-1.5 rounded-lg pr-1 pl-1.5 transition-colors',
-        active ? 'bg-[#2c6ecb] text-white' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800', drag?.over && 'before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:bg-[#2c6ecb]')}>
-      <span className={cn('grid w-4 place-items-center opacity-0 group-hover/item:opacity-60', !drag && 'invisible')}><GripVertical className="size-3.5 cursor-grab" /></span>
-      <button type="button" onClick={onClick} className={cn('flex min-w-0 flex-1 items-center gap-2 text-left', hidden && 'opacity-50')}>
-        <span className={cn('shrink-0', active ? 'text-white' : 'text-zinc-500')}>{icon}</span>
-        <span className="min-w-0 truncate">{label}{sub && <span className={cn('ml-1', active ? 'text-white/75' : 'text-zinc-500')}>{sub}</span>}</span>
+      // Selected: a light tint with dark text and a blue edge, readable whether the item is shown, hidden or being dragged.
+      className={cn('group/item relative flex h-8 items-center gap-1.5 rounded-lg pr-1 pl-1.5 text-zinc-900 transition-colors dark:text-zinc-100',
+        active ? 'bg-[#e8f0fe] font-medium shadow-[inset_3px_0_0_#2c6ecb] dark:bg-[#2c6ecb]/25' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800',
+        drag?.over && 'before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:bg-[#2c6ecb]')}>
+      <span className={cn('grid w-4 place-items-center text-zinc-500 opacity-0 group-hover/item:opacity-100', !drag && 'invisible')}><GripVertical className="size-3.5 cursor-grab" /></span>
+      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <span className={cn('shrink-0', active ? 'text-[#2c6ecb]' : 'text-zinc-500', hidden && 'opacity-60')}>{icon}</span>
+        <span className={cn('min-w-0 truncate', hidden && 'text-zinc-500 line-through decoration-zinc-400')}>
+          {label}{sub && <span className="ml-1 font-normal text-zinc-500 no-underline">{sub}</span>}
+        </span>
+        {hidden && <span className="shrink-0 rounded bg-zinc-200 px-1.5 text-[10px] font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200">Hidden</span>}
       </button>
-      {actions && <span className={cn('flex items-center opacity-0 group-hover/item:opacity-100', active && 'opacity-100')}>{actions}</span>}
+      {actions && <span className={cn('flex items-center text-zinc-600 opacity-0 group-hover/item:opacity-100 dark:text-zinc-300', (active || hidden) && 'opacity-100')}>{actions}</span>}
     </div>
   )
 }
 
-function SectionTree({ page, theme, sections, selected, onSelect, onSections, pickerOpen, setPickerOpen, onAdd }: {
+function SectionTree({ page, theme, sections, selected, onSelect, onSections, pickerOpen, setPickerOpen, onAdd, blocks, onBlocks, onAddBlock }: {
   page: Page; theme: StoreTheme; sections: ThemeSection[]; selected: string | null; onSelect: (id: string) => void; onSections: (s: ThemeSection[]) => void
   pickerOpen: boolean; setPickerOpen: (v: boolean) => void; onAdd: (t: SectionType) => void
+  blocks: ProductBlock[]; onBlocks: (b: ProductBlock[]) => void; onAddBlock: (t: Exclude<ProductBlock['type'], 'buttons'>) => void
 }) {
   const [dragging, setDragging] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
+  const [dragBlock, setDragBlock] = useState<number | null>(null)
+  const [overBlock, setOverBlock] = useState<number | null>(null)
+  const [blockPicker, setBlockPicker] = useState(false)
+  const moveBlock = (from: number, to: number) => {
+    const next = [...blocks]
+    const [item] = next.splice(from, 1)
+    next.splice(to > from ? to - 1 : to, 0, item)
+    onBlocks(next)
+  }
+  // Blocks inside Product information: drag above or below the buy buttons, show or hide, add.
+  const blockList = (
+    <div className="ml-4 border-l border-zinc-200 pl-1.5 dark:border-zinc-800">
+      {blocks.map((b, i) => {
+        const label = b.type === 'buttons' ? 'Buy buttons' : PRODUCT_BLOCKS[b.type].label
+        return (
+          <TreeItem key={b.id} icon={BLOCK_ICON[b.type]} label={label} active={selected === `block:${b.id}`} hidden={!b.enabled} onClick={() => onSelect(`block:${b.id}`)}
+            drag={{ onDragStart: () => setDragBlock(i), onDragOver: (e) => { e.preventDefault(); setOverBlock(i) },
+              onDrop: () => { if (dragBlock !== null && dragBlock !== i) moveBlock(dragBlock, i); setDragBlock(null); setOverBlock(null) }, over: overBlock === i && dragBlock !== null && dragBlock !== i }}
+            actions={b.type === 'buttons' ? undefined : (
+              <button type="button" aria-label={b.enabled ? 'Hide block' : 'Show block'} className="grid size-6 place-items-center rounded hover:bg-black/10"
+                onClick={() => onBlocks(blocks.map((x) => (x.id === b.id ? { ...x, enabled: !x.enabled } : x)))}>
+                {b.enabled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+              </button>
+            )} />
+        )
+      })}
+      <div onDragOver={(e) => { e.preventDefault(); setOverBlock(blocks.length) }} onDrop={() => { if (dragBlock !== null) moveBlock(dragBlock, blocks.length); setDragBlock(null); setOverBlock(null) }}
+        className={cn('h-1 rounded', overBlock === blocks.length && dragBlock !== null && 'bg-[#2c6ecb]')} />
+      <Popover open={blockPicker} onOpenChange={setBlockPicker}>
+        <PopoverTrigger asChild>
+          <button type="button" className="flex h-8 w-full items-center gap-2 rounded-lg px-2 font-medium text-[#2c6ecb] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <span className="grid size-4 place-items-center rounded-full border border-current"><Plus className="size-3" /></span> Add block
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="right" align="start" sideOffset={8} className="z-[70] w-auto border-0 bg-transparent p-0 shadow-none">
+          <BlockPicker has={(t) => blocks.some((b) => b.type === t)} onPick={(t) => { onAddBlock(t); setBlockPicker(false) }} />
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
   const move = (from: number, to: number) => {
     const next = [...sections]
     const [item] = next.splice(from, 1)
@@ -380,12 +457,16 @@ function SectionTree({ page, theme, sections, selected, onSelect, onSections, pi
           ) : page === 'product' ? (
             <>
               <TreeItem icon={<ShoppingBag className="size-4" />} label="Product information" active={selected === 'product-info'} onClick={() => onSelect('product-info')} />
+              {blockList}
               <TreeItem icon={<LayoutTemplate className="size-4" />} label="Related products" sub={theme.product_page.related_title ? `: ${theme.product_page.related_title}` : undefined}
                 active={selected === 'product-related'} hidden={!theme.product_page.show_related} onClick={() => onSelect('product-related')} />
               {sectionList}
             </>
           ) : (
-            <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">The cart uses your theme colours and font.</p>
+            <>
+              <TreeItem icon={<ShoppingCart className="size-4" />} label="Cart drawer" active={selected === 'cart-drawer'} onClick={() => onSelect('cart-drawer')} />
+              <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">Opens when something is added. The cart page uses your theme colours and font.</p>
+            </>
           )}
       </TreeGroup>
       {footerItems}
@@ -421,6 +502,8 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
         <ListField label="Menu" item={[{ key: 'label', label: 'Label' }, { key: 'link', label: 'Link, e.g. /collection/belts' }]} max={10}
           value={h.menu.map((m) => ({ label: m.label, link: m.link }))} onChange={(v) => setTheme({ header: { ...h, menu: toLinks(v) } })} />
         <p className="text-[11px] leading-snug text-zinc-500">Leave the menu empty to list your categories automatically, with sub-categories in a drop-down. The logo is set in Settings → Business profile.</p>
+        <SchemaField field={{ key: 'favicon_url', label: 'Favicon (browser tab icon)', type: 'image', hint: 'A square image, at least 48 × 48 px. Empty uses the default icon.' }}
+          settings={{ favicon_url: theme.favicon_url }} onChange={(_, v) => setTheme({ favicon_url: String(v ?? '') })} />
       </>
     )
   }
@@ -518,6 +601,25 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
           </>
         )}
         <p className="text-[11px] leading-snug text-zinc-500">Photos, options, prices and text are set on each product.</p>
+      </>
+    )
+  }
+  if (id === 'cart-drawer') {
+    const k = theme.cart
+    const set = (patch: Partial<StoreTheme['cart']>) => setTheme({ cart: { ...k, ...patch } })
+    return (
+      <>
+        <FieldRow label="Free delivery progress bar" inline><Switch checked={k.free_shipping_bar} onCheckedChange={(v) => set({ free_shipping_bar: v })} /></FieldRow>
+        {k.free_shipping_bar && (
+          <>
+            <FieldRow label="While below the amount" hint="{amount} is what is still missing. The amount is set in Settings → Delivery (free delivery over)."><input className={inputClass} value={k.free_shipping_text} onChange={(e) => set({ free_shipping_text: e.target.value })} /></FieldRow>
+            <FieldRow label="When reached"><input className={inputClass} value={k.unlocked_text} onChange={(e) => set({ unlocked_text: e.target.value })} /></FieldRow>
+          </>
+        )}
+        <FieldRow label="“You may also like” products" inline><Switch checked={k.upsell} onCheckedChange={(v) => set({ upsell: v })} /></FieldRow>
+        {k.upsell && <FieldRow label="Heading"><input className={inputClass} value={k.upsell_title} onChange={(e) => set({ upsell_title: e.target.value })} /></FieldRow>}
+        <FieldRow label="Show savings" inline><Switch checked={k.show_savings} onCheckedChange={(v) => set({ show_savings: v })} /></FieldRow>
+        <FieldRow label="Note above the checkout button"><input className={inputClass} value={k.note} placeholder="e.g. Delivery in 1–3 days" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
       </>
     )
   }

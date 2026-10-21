@@ -42,7 +42,7 @@ describe('the Fullfilio website pages', () => {
     expect(res.headers.get('Strict-Transport-Security')).toBe('max-age=31536000')
     expect(res.headers.get('X-Robots-Tag')).toBeNull()
     const html = await res.text()
-    expect(html).toContain('<title>Fullfilio — Order Management for COD Sellers in Bangladesh</title>')
+    expect(html).toContain('<title>Fullfilio | Order Management for COD Sellers in Bangladesh</title>')
     expect(html).not.toContain('Shop everyday essentials')
     expect(html).toContain('<link rel="canonical" href="https://fullfilio.com/" data-ff-seo>')
     expect(html).toContain('<meta property="og:image" content="https://fullfilio.com/media/fullfilio-og.png" data-ff-seo>')

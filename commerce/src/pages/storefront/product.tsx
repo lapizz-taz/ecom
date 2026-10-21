@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ErrorState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +10,8 @@ import { PriceTag, ProductGrid } from '@/features/storefront/product-card'
 import {
   BuyButtons, DeliveryTimeline, EdgeGallery, Highlights, OptionPicker, ProductAccordions, PromoNote, StockDot,
 } from '@/features/storefront/product-layouts'
+import { addCard, BlockWrapper, ProductBlocks, StickyAddToCart, type BlockContext } from '@/features/storefront/product-block-views'
+import { activeBlock } from '@/features/storefront/product-blocks'
 import { SectionFrame, ThemeSections } from '@/features/storefront/sections'
 import { adEvent } from '@/features/storefront/ad-pixels'
 import { useStoreTheme } from '@/features/storefront/theme-context'
@@ -17,7 +19,7 @@ import { useStoreConfig } from '@/hooks/use-store-config'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import { getProduct, trackEvent } from '@/services/storefront'
-import type { ProductDetail, ProductVariantPublic } from '@/types/domain'
+import type { ProductCard, ProductDetail, ProductVariantPublic } from '@/types/domain'
 
 function optionValues(product: ProductDetail, name: string): string[] {
   return [...new Set(product.variants.map((v) => v.option_values?.[name]).filter((v): v is string => Boolean(v)))]
@@ -41,6 +43,8 @@ export default function ProductPage() {
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [quantity, setQuantity] = useState(1)
   const [imageIndex, setImageIndex] = useState(0)
+  const [addons, setAddons] = useState<ProductCard[]>([])
+  const buttonsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!product) return
@@ -52,6 +56,7 @@ export default function ProductPage() {
     setSelected(first?.option_values ?? {})
     setImageIndex(0)
     setQuantity(1)
+    setAddons([])
   }, [product])
 
   const variant = useMemo(() => (product ? findVariant(product, selected) : undefined), [product, selected])
@@ -94,9 +99,12 @@ export default function ProductPage() {
       name: product.name,
       variantTitle: product.option_names.length ? variant.title : null,
       price: Number(variant.price),
+      compareAt: variant.compare_at_price ? Number(variant.compare_at_price) : null,
       image: image?.url ?? product.image?.url ?? null,
       maxQuantity: maxQty,
-    }, quantity)
+    }, quantity, !goToCheckout)
+    // Ticked add-ons go in with it.
+    for (const card of addons) void addCard(card, add, false)
     trackEvent('ADD_TO_CART', product.id)
     const price = Number(variant.price)
     adEvent('AddToCart', { value: price * quantity, currency, contents: [{ id: product.id, name: product.name, quantity, price }] })
@@ -107,9 +115,23 @@ export default function ProductPage() {
   }
 
   const sku = variant?.sku ?? product.sku
+  const blocks = pp.blocks
+  const look = activeBlock(blocks, 'atc_style')?.settings ?? null
+  const setQty = (v: number) => setQuantity(Math.max(1, Math.min(v, maxQty)))
+  const ctx: BlockContext = { product, variant, quantity, max: maxQty, setQuantity: setQty, addons, setAddons }
   const buttons = (
-    <BuyButtons pp={pp} quantity={quantity} max={maxQty} onQuantity={(v) => setQuantity(Math.max(1, Math.min(v, maxQty)))}
-      disabled={!canBuy} onAdd={() => addToCart(false)} onBuy={() => addToCart(true)} />
+    <>
+      <ProductBlocks blocks={blocks} place="above" ctx={ctx} />
+      <div ref={buttonsRef}>
+        <BuyButtons pp={pp} quantity={quantity} max={maxQty} onQuantity={setQty} look={look}
+          disabled={!canBuy} onAdd={() => addToCart(false)} onBuy={() => addToCart(true)} />
+      </div>
+      <ProductBlocks blocks={blocks} place="below" ctx={ctx} />
+    </>
+  )
+  const sticky = (
+    <StickyAddToCart blocks={blocks} watch={buttonsRef} product={product} price={Number(variant?.price ?? product.price)} disabled={!canBuy}
+      onAdd={() => addToCart(false)} label={typeof look?.label === 'string' && look.label.trim() ? look.label : 'Add to cart'} />
   )
   const related = pp.show_related && product.related.length > 0 && (
     <SectionFrame id="product-related" label="Related products">
@@ -134,7 +156,7 @@ export default function ProductPage() {
         <SectionFrame id="product-info" label="Product information">
           <div className="grid md:grid-cols-2">
             <EdgeGallery product={product} index={imageIndex} onIndex={setImageIndex} aspect={pp.image_aspect} background={theme.product_card.image_bg} />
-            <div className="mx-auto w-full max-w-[460px] space-y-5 px-4 py-6 md:py-10">
+            <BlockWrapper blocks={blocks} className="mx-auto my-0 w-full max-w-[460px] space-y-5 px-4 py-6 md:my-6 md:py-10">
               {bold ? (
                 <div className="space-y-3">
                   {pp.show_brand && product.brand && <p className="text-xs text-muted-foreground">{product.brand}</p>}
@@ -167,11 +189,12 @@ export default function ProductPage() {
               <Highlights items={pp.highlights} />
               <PromoNote text={pp.promo_text} />
               <ProductAccordions rows={pp.accordions} product={product} variant={bold ? 'chevron' : 'plus'} />
-            </div>
+            </BlockWrapper>
           </div>
         </SectionFrame>
         {related}
         <ThemeSections sections={theme.product_sections} />
+        {sticky}
       </div>
     )
   }
@@ -201,7 +224,7 @@ export default function ProductPage() {
               )}
             </div>
 
-            <div className="space-y-6">
+            <BlockWrapper blocks={blocks} className="space-y-6">
               <div className="space-y-2">
                 {pp.show_brand && product.brand && <p className="text-sm text-muted-foreground">{product.brand}</p>}
                 <h1 className="text-2xl font-semibold sm:text-3xl">{product.name}</h1>
@@ -270,13 +293,14 @@ export default function ProductPage() {
                   )}
                 </dl>
               )}
-            </div>
+            </BlockWrapper>
           </div>
         </div>
       </SectionFrame>
 
       {related}
       <ThemeSections sections={theme.product_sections} />
+      {sticky}
     </div>
   )
 }

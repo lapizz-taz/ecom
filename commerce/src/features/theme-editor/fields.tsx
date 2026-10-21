@@ -117,7 +117,8 @@ export function SchemaField({ field, settings, onChange }: { field: FieldDef; se
     case 'range':
       return <FieldRow label={field.label}><RangeInput value={Number(v ?? field.min)} onChange={set} min={field.min} max={field.max} step={field.step} unit={field.unit} /></FieldRow>
     case 'category':
-      return <CategoryField label={field.label} value={str} onChange={set} hidden={settings.source !== 'category'} />
+      // Shown when the products come from a category (sections use "source", the bundles block "scope").
+      return <CategoryField label={field.label} value={str} onChange={set} hidden={settings.source !== 'category' && settings.scope !== 'category'} />
     case 'categories':
       return <CategoriesField label={field.label} hint={field.hint} value={Array.isArray(v) ? (v as string[]) : []} onChange={set} />
     case 'list':
