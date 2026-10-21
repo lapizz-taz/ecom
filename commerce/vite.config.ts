@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, isSsrBuild }) => ({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
   server: {
@@ -17,7 +17,9 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  build: {
+  // The server build is the website's pages as HTML (src/site-prerender.tsx), run once by
+  // scripts/prerender-site.mjs: no public files, no browser chunks.
+  build: isSsrBuild ? { copyPublicDir: false, outDir: 'dist-ssr', emptyOutDir: true } : {
     sourcemap: true,
     rollupOptions: {
       output: {

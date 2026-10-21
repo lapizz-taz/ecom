@@ -3,7 +3,9 @@ import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react
 import { Link, useLocation } from 'react-router'
 import { Wordmark } from '@/components/brand/logo'
 import { SocialLinks } from '@/components/brand/social'
+import { applySeo } from '@/features/storefront/seo-head'
 import { captureNavigation } from '@/lib/attribution'
+import { siteHead } from './site-head'
 
 // The frame every page of the Fullfilio website shares: header, footer and
 // the page background. Section links point at the home page ("/#…") so they
@@ -129,9 +131,21 @@ export function SiteFooter() {
   )
 }
 
-/** A website page: header, content, footer; sets the tab title. */
+/**
+ * The page's head (title, description, canonical address, sharing tags, structured data) after a
+ * click; the first page's comes from the Worker (worker/site.ts). An address the website does
+ * not have keeps search engines out.
+ */
+export function useSiteHead(fallbackTitle: string) {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    applySeo(siteHead(pathname) ?? { status: 404, title: fallbackTitle, robots: 'noindex' })
+  }, [pathname, fallbackTitle])
+}
+
+/** A website page: header, content, footer; sets the page's head. */
 export function SitePage({ title, children }: { title: string; children: ReactNode }) {
-  useEffect(() => { document.title = title }, [title])
+  useSiteHead(title)
   return (
     <SiteRoot>
       <SiteHeader />

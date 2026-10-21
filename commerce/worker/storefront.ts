@@ -1,4 +1,5 @@
-// Store pages, sitemap.xml and robots.txt, answered by the Worker for each request.
+// Store pages, sitemap.xml and robots.txt, answered by the Worker for each request (the
+// Fullfilio website's own pages and files: worker/site.ts).
 //
 // Every page used to be the same static index.html ("<title>Store</title>" and a generic
 // description): the browser drew the built-in theme until the store's settings arrived, and
@@ -10,6 +11,7 @@
 // answer in time, the plain page is served and the app loads the store itself, with its own
 // loading and error states: never a stand-in store.
 import { database, type DbEnv, INTERNAL_ORIGIN, usesCloudflareDb } from './db/gateway.ts'
+import { isCanonicalHost, pageHead, prerendered, siteLlms, siteOrigin, siteRedirect, siteRobots, siteSitemap, withPage } from './site.ts'
 
 export interface StorefrontEnv extends DbEnv {
   ASSETS: Fetcher
@@ -150,35 +152,32 @@ function withHeaders(res: Response, body: string | null, status: number, extra: 
 
 const redirect = (to: string, status = 301) => new Response(null, { status, headers: { Location: to, 'Cache-Control': 'public, max-age=300' } })
 
-/** Fullfilio's own social pages (the same as src/components/brand/social.tsx). */
-const FULLFILIO_SOCIAL = ['https://www.facebook.com/fullfilio/', 'https://www.instagram.com/fullfiliohq/']
-
-/** Who runs the website, for search engines: on the platform's home page only (never on a store). */
-function platformLd(origin: string): unknown[] {
-  return [
-    { '@context': 'https://schema.org', '@type': 'Organization', name: 'Fullfilio', url: `${origin}/`, logo: `${origin}/icons/icon-512.png`, sameAs: FULLFILIO_SOCIAL },
-    { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Fullfilio', url: `${origin}/` },
-  ]
-}
-
 /** A page request: on a store's address, the page with the store's own head; elsewhere the app as it is. */
 export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv): Promise<Response> {
   const host = url.host.toLowerCase()
   const shell = () => env.ASSETS.fetch(new Request(new URL('/', url), req))
   if (isPlatformHost(host, env)) {
-    const res = await env.ASSETS.fetch(req)
+    // The Fullfilio website (worker/site.ts): one address per page, its own head and its HTML.
+    const moved = siteRedirect(req, url, env)
+    if (moved) return moved
+    const security: Record<string, string> = url.protocol === 'https:' ? { 'Strict-Transport-Security': 'max-age=31536000' } : {}
     // Admin and sign-up pages, and stores opened by path (their own address is the canonical one).
     if (PRIVATE.test(url.pathname) || url.pathname.startsWith('/s/')) {
+      const res = await env.ASSETS.fetch(req)
       const headers = new Headers(res.headers)
       headers.set('X-Robots-Tag', 'noindex, nofollow')
+      for (const [k, v] of Object.entries(security)) headers.set(k, v)
       return new Response(res.body, { status: res.status, headers })
     }
-    if (url.pathname === '/' && res.ok && (res.headers.get('content-type') ?? '').includes('text/html')) {
-      const ld = platformLd(url.origin).map((v) => `<script type="application/ld+json">${scriptJson(v)}</script>`).join('')
-      const html = (await res.text()).replace('</head>', `${ld}</head>`)
-      return withHeaders(res, req.method === 'HEAD' ? null : html, res.status, {})
-    }
-    return res
+    const res = await shell()
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('text/html')) return res
+    const head = pageHead(url, env)
+    // An address the website does not have: the app's "not found" page, with a real 404.
+    if (!head) return withHeaders(res, req.method === 'HEAD' ? null : await res.text(), 404, { ...security, 'X-Robots-Tag': 'noindex' })
+    const html = withPage(injectHead(await res.text(), { host, origin: url.origin, site: { kind: 'platform' }, seo: head }), await prerendered(env, url, head.path))
+    // Previews and other names of the website point search engines at fullfilio.com (canonical) and stay out of the index.
+    const extra = isCanonicalHost(url, env) ? security : { ...security, 'X-Robots-Tag': 'noindex' }
+    return withHeaders(res, req.method === 'HEAD' ? null : html, 200, extra)
   }
 
   let site: Site
@@ -221,23 +220,20 @@ const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const text = (body: string, status = 200, type = 'text/plain; charset=utf-8', maxAge = 300) =>
   new Response(body, { status, headers: { 'Content-Type': type, 'Cache-Control': `public, max-age=${maxAge}` } })
 
-/** The platform's own robots.txt: the website is public; admin, sign-up and path stores are not. */
-function platformRobots(origin: string): string {
-  return ['User-agent: *', 'Disallow: /admin', 'Disallow: /start', 'Disallow: /super-admin', 'Disallow: /s/', 'Allow: /', '',
-    `Sitemap: ${origin}/sitemap.xml`, ''].join('\n')
-}
-
-const PLATFORM_PAGES = ['/', '/contact', '/blog', '/privacy', '/terms', '/data-deletion']
-
-/** robots.txt and sitemap.xml, per address. */
-export async function storefrontFile(_req: Request, url: URL, env: StorefrontEnv): Promise<Response> {
+/** robots.txt, sitemap.xml and llms.txt, per address. */
+export async function storefrontFile(req: Request, url: URL, env: StorefrontEnv): Promise<Response> {
   const host = url.host.toLowerCase()
   const isRobots = url.pathname === '/robots.txt'
   if (isPlatformHost(host, env)) {
-    if (isRobots) return text(platformRobots(url.origin))
-    return text(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${
-      PLATFORM_PAGES.map((p) => `  <url><loc>${xml(url.origin + p)}</loc></url>`).join('\n')}\n</urlset>\n`, 200, 'application/xml; charset=utf-8', 3600)
+    const moved = siteRedirect(req, url, env)
+    if (moved) return moved
+    const origin = siteOrigin(env, url)
+    if (isRobots) return text(siteRobots(origin))
+    if (url.pathname === '/llms.txt') return text(siteLlms(origin), 200, 'text/markdown; charset=utf-8', 3600)
+    return text(siteSitemap(origin), 200, 'application/xml; charset=utf-8', 3600)
   }
+  // llms.txt is the website's; a store has none.
+  if (url.pathname === '/llms.txt') return text('Not found', 404)
   let site: Site
   try {
     site = await siteFor(env, host)
