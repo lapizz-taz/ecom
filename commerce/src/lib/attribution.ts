@@ -61,12 +61,25 @@ function randomId(): string {
   return crypto.randomUUID().replace(/-/g, '')
 }
 
+const VID = /^[A-Za-z0-9_-]{8,64}$/
+/** The same id in a first-party cookie (ff_vid), which the store's server refreshes on every page. */
+function vidCookie(): string {
+  if (typeof document === 'undefined') return ''
+  const m = document.cookie.match(/(?:^|; )ff_vid=([^;]*)/)
+  return m && VID.test(m[1]) ? m[1] : ''
+}
+
 /** A long-lived anonymous id for this browser (no personal data). */
 export function visitorId(): string {
   let id = read<string>(VISITOR_KEY)
-  if (!id || typeof id !== 'string' || id.length < 8) {
-    id = randomId()
+  if (!id || typeof id !== 'string' || !VID.test(id)) {
+    id = vidCookie() || randomId()
     write(VISITOR_KEY, id)
+  }
+  if (typeof document !== 'undefined' && vidCookie() !== id) {
+    try {
+      document.cookie = `ff_vid=${id}; path=/; max-age=${365 * 86_400}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`
+    } catch { /* cookies off */ }
   }
   return id
 }

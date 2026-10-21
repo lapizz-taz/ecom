@@ -6,7 +6,7 @@ import { HttpError } from '../http.ts'
 import { merchantOf, rpc } from '../supabase.ts'
 import {
   type AdPlatform, type AdTrackingConfig, type AdTrackingSecrets, type BrowserIds, type ContentLine, hashPerson, normalizeAdConfig,
-  type Person, purchaseEventId, purchaseSkipReason, type SendResult, sendServerEvent, type StoreEvent, type StoreEventName, testPlatform,
+  type HashedMatching, type Person, purchaseEventId, purchaseSkipReason, type SendResult, sendServerEvent, type StoreEvent, type StoreEventName, testPlatform,
 } from './store-tracking.ts'
 
 const SECRET_KEY = 'ad_tracking'
@@ -187,6 +187,10 @@ export interface BeaconInput {
   contents?: ContentLine[]
   browser?: { fbp?: string; fbc?: string; ttp?: string }
   click?: { fbclid?: string; ttclid?: string }
+  /** Search only. */
+  search?: string
+  /** A returning buyer's details, hashed in their own browser. */
+  user?: HashedMatching
 }
 
 interface TrackScope { hosts: string[]; prices: Record<string, number> }
@@ -217,11 +221,12 @@ export async function beaconEvent(admin: SupabaseClient, input: BeaconInput, ip:
   const ev: StoreEvent = {
     name: input.event, event_id: input.event_id, time: Math.floor(Date.now() / 1000), url: input.url,
     value, currency: value === undefined ? undefined : input.currency, contents,
+    search: input.event === 'Search' ? input.search?.trim().slice(0, 100) || undefined : undefined,
   }
   const ids: BrowserIds = {
     ip, ua, fbp: input.browser?.fbp, fbc: input.browser?.fbc, ttp: input.browser?.ttp,
     fbclid: input.click?.fbclid, ttclid: input.click?.ttclid,
   }
-  const results = await sendServerEvent(config, secrets, ev, { external_id: input.visitor_id }, ids, { fetchFn, timeoutMs: 6_000 })
+  const results = await sendServerEvent(config, secrets, ev, { external_id: input.visitor_id }, ids, { fetchFn, timeoutMs: 6_000 }, input.user)
   return { ok: Object.values(results).some((r) => r.ok), results }
 }

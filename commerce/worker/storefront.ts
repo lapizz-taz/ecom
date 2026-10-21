@@ -153,6 +153,76 @@ function storeFavicon(config: unknown): string | null {
   return /^(https:\/\/[^\s"'<>]+|\/files\/[^\s"'<>]+)$/.test(url) ? url : null
 }
 
+// --- first-party ad cookies (the "cookie keeper") ------------------------------------------------
+// The store's own server sets and refreshes Meta's _fbp / _fbc cookies and the store's visitor id on
+// every page, so they live their full time (browsers cut cookies written by scripts to 7 days or
+// less) and a click from an ad (fbclid) is kept even when the pixel is blocked. Only for stores that
+// turned Meta tracking on; the values are the formats Meta's own pixel writes.
+
+const FBP = /^fb\.\d\.\d{10,13}\.\d{1,25}$/
+const FBC = /^fb\.\d\.\d{10,13}\.[A-Za-z0-9_.-]{4,550}$/
+const FBCLID = /^[A-Za-z0-9_.-]{4,500}$/
+const VID = /^[A-Za-z0-9_-]{8,64}$/
+const AD_COOKIE_DAYS = 90
+const adOn = new Map<string, { at: number; meta: boolean }>()
+
+/** Whether the store tracks with a Meta pixel (cached a minute per store). */
+async function metaTracking(env: StorefrontEnv, merchant: string): Promise<boolean> {
+  const hit = adOn.get(merchant)
+  if (hit && Date.now() - hit.at < 60_000) return hit.meta
+  let meta = false
+  try {
+    const c = await rpc<{ enabled?: boolean; meta_pixel?: string | null } | null>(env, 'storefront_ad_tracking', {}, merchant, 1500)
+    meta = Boolean(c?.enabled && c.meta_pixel)
+  } catch {
+    return hit?.meta ?? false
+  }
+  adOn.set(merchant, { at: Date.now(), meta })
+  return meta
+}
+
+function cookieJar(req: Request): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const part of (req.headers.get('cookie') ?? '').split(';')) {
+    const i = part.indexOf('=')
+    if (i < 0) continue
+    const k = part.slice(0, i).trim()
+    if (!(k in out)) {
+      try { out[k] = decodeURIComponent(part.slice(i + 1).trim()) } catch { /* skip */ }
+    }
+  }
+  return out
+}
+
+/** The site the cookies belong to (atheron.shop for www.atheron.shop; host-only on a platform address). */
+function cookieDomain(host: string, env: Pick<StorefrontEnv, 'PLATFORM_URL'>): string | null {
+  const h = host.toLowerCase().replace(/:\d+$/, '')
+  let platform = ''
+  try { platform = env.PLATFORM_URL ? new URL(env.PLATFORM_URL).hostname.toLowerCase() : '' } catch { platform = '' }
+  if (!h.includes('.') || /^[\d.]+$/.test(h) || (platform && h.endsWith(`.${platform}`))) return null
+  const labels = h.split('.')
+  const two = labels.slice(-2).join('.')
+  return /^(com|co|net|org|gov|edu|ac)\.[a-z]{2}$/.test(two) && labels.length >= 3 ? labels.slice(-3).join('.') : two
+}
+
+/** Set-Cookie values for one store page: _fbp / _fbc when Meta tracking is on, and the visitor id. */
+export function adCookies(req: Request, url: URL, env: Pick<StorefrontEnv, 'PLATFORM_URL'>, meta: boolean, now = Date.now(), rand = Math.random): string[] {
+  const jar = cookieJar(req)
+  const domain = cookieDomain(url.host, env)
+  const attrs = (days: number) => `Path=/; Max-Age=${days * 86_400}; SameSite=Lax${url.protocol === 'https:' ? '; Secure' : ''}${domain ? `; Domain=${domain}` : ''}`
+  const out: string[] = []
+  if (VID.test(jar.ff_vid ?? '')) out.push(`ff_vid=${jar.ff_vid}; ${attrs(365)}`)
+  if (!meta) return out
+  const fbp = FBP.test(jar._fbp ?? '') ? jar._fbp : `fb.1.${now}.${1_000_000_000 + Math.floor(rand() * 9_000_000_000)}`
+  out.push(`_fbp=${fbp}; ${attrs(AD_COOKIE_DAYS)}`)
+  const fbclid = url.searchParams.get('fbclid') ?? ''
+  const fbc = FBCLID.test(fbclid) && (jar._fbc ?? '').split('.').slice(3).join('.') !== fbclid
+    ? `fb.1.${now}.${fbclid}`
+    : FBC.test(jar._fbc ?? '') ? jar._fbc : null
+  if (fbc) out.push(`_fbc=${fbc}; ${attrs(AD_COOKIE_DAYS)}`)
+  return out
+}
+
 function withHeaders(res: Response, body: string | null, status: number, extra: Record<string, string>): Response {
   const headers = new Headers(res.headers)
   headers.delete('content-length')
@@ -214,19 +284,20 @@ export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv)
     return withHeaders(res, await res.text(), 200, { 'X-Robots-Tag': 'noindex, nofollow' })
   }
 
-  let page: { config?: unknown; seo?: PageSeo | null } | null = null
-  try {
-    page = await rpc<{ config?: unknown; seo?: PageSeo | null }>(env, 'storefront_page', { p_path: url.pathname }, site.merchant_id)
-  } catch {
-    page = null
-  }
+  type PageInfo = { config?: unknown; seo?: PageSeo | null }
+  const [page, meta] = await Promise.all([
+    rpc<PageInfo>(env, 'storefront_page', { p_path: url.pathname }, site.merchant_id).catch((): PageInfo | null => null),
+    metaTracking(env, site.merchant_id ?? ''),
+  ])
   const seo = page?.seo ?? null
   if (seo?.status === 301 && seo.redirect && seo.redirect.startsWith('/')) return redirect(`${seo.redirect}${url.search}`)
   const res = await shell()
   const html = injectHead(await res.text(), { host, origin: url.origin, site, config: page?.config, seo })
   const extra: Record<string, string> = {}
   if (seo?.robots?.startsWith('noindex')) extra['X-Robots-Tag'] = seo.robots.replace(',', ', ')
-  return withHeaders(res, req.method === 'HEAD' ? null : html, seo?.status === 404 ? 404 : 200, extra)
+  const out = withHeaders(res, req.method === 'HEAD' ? null : html, seo?.status === 404 ? 404 : 200, extra)
+  for (const c of adCookies(req, url, env, meta)) out.headers.append('Set-Cookie', c)
+  return out
 }
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')

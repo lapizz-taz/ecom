@@ -44,7 +44,7 @@ export const attributionSchema = z.object({
 /** A browser ad event's server copy, sent by the storefront (public, rate-limited). */
 export const trackSchema = z.object({
   action: z.literal('track'),
-  event: z.enum(['PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout']),
+  event: z.enum(['PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout', 'Search', 'Contact', 'CompleteRegistration']),
   event_id: z.string().regex(/^ffs_[a-z]{2}_[A-Za-z0-9]{8,40}$/),
   url: z.string().max(500).regex(/^https?:\/\//),
   visitor_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional(),
@@ -55,6 +55,10 @@ export const trackSchema = z.object({
   })).max(50).optional(),
   browser: browserIdsSchema.omit({ ga: true }).optional().catch(undefined),
   click: z.object({ fbclid: z.string().max(500).regex(/^[A-Za-z0-9_.-]+$/), ttclid: z.string().max(500).regex(/^[A-Za-z0-9_.-]+$/) }).partial().optional().catch(undefined),
+  search: z.string().max(100).optional(),
+  // A returning buyer's details, SHA-256 hashed in their browser (never the plain values).
+  user: z.object(Object.fromEntries(['em', 'ph', 'ph_e164', 'fn', 'ln', 'ct', 'st'].map((k) => [k, z.string().regex(/^[0-9a-f]{64}$/)])))
+    .partial().optional().catch(undefined),
 })
 
 export const quoteSchema = z.object({

@@ -298,3 +298,40 @@ describe('browser Purchase and beacon', () => {
     expect(fetchFn).not.toHaveBeenCalled()
   })
 })
+
+describe('more events and returning buyers', () => {
+  const hex = (c: string) => c.repeat(64)
+  it('takes search, contact and sign-up events, and only hashed buyer details', () => {
+    const base = { action: 'track', event_id: 'ffs_se_AbCdEf1234567890', url: 'https://shop.example.com/search?q=shirt' }
+    expect(trackSchema.parse({ ...base, event: 'Search', search: 'linen shirt' }).search).toBe('linen shirt')
+    expect(trackSchema.safeParse({ ...base, event: 'Contact' }).success).toBe(true)
+    expect(trackSchema.safeParse({ ...base, event: 'CompleteRegistration' }).success).toBe(true)
+    expect(trackSchema.parse({ ...base, event: 'Contact', user: { ph: hex('a'), em: hex('b') } }).user).toEqual({ ph: hex('a'), em: hex('b') })
+    // A plain phone number is never accepted as "hashed".
+    expect(trackSchema.parse({ ...base, event: 'Contact', user: { ph: '01712345678' } }).user).toBeUndefined()
+  })
+
+  it('a search goes to Meta as search_string and to TikTok as query', () => {
+    const se: StoreEvent = { name: 'Search', event_id: 'ffs_se_x', time: 1_760_000_000, url: 'https://shop.example.com/search', search: 'belt' }
+    const meta = metaPayload(se, { country: 'c' }, {})
+    expect((meta.data[0] as any).custom_data).toEqual({ search_string: 'belt' })
+    const tt = tiktokPayload('C1A2B3C4D5E6F7G8H9I0', se, { country: 'c' }, {})
+    expect((tt.data[0] as any).event).toBe('Search')
+    expect((tt.data[0] as any).properties).toEqual({ query: 'belt' })
+  })
+
+  it('fills the browser-hashed details into the server event (advanced matching on), never over the order\'s own', async () => {
+    const fetchFn = platformsFetch()
+    const pv: StoreEvent = { name: 'ViewContent', event_id: 'ffs_vc_x', time: 1_760_000_000, url: 'https://shop.example.com/p' }
+    await sendServerEvent(config(), secrets, pv, { external_id: 'v1' }, {}, { fetchFn }, { ph: hex('a'), em: hex('b'), fn: 'not-a-hash' } as any)
+    const metaCall = fetchFn.mock.calls.find(([u]) => String(u).includes('graph.facebook.com'))!
+    const user = JSON.parse(String(metaCall[1]!.body)).data[0].user_data
+    expect(user.ph).toEqual([hex('a')])
+    expect(user.em).toEqual([hex('b')])
+    expect(user.fn).toBeUndefined()
+    fetchFn.mockClear()
+    await sendServerEvent(config({ advanced_matching: false }), secrets, pv, { external_id: 'v1' }, {}, { fetchFn }, { ph: hex('a') })
+    const off = JSON.parse(String(fetchFn.mock.calls.find(([u]) => String(u).includes('graph.facebook.com'))![1]!.body)).data[0].user_data
+    expect(off.ph).toBeUndefined()
+  })
+})

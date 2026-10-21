@@ -8,6 +8,11 @@
 //
 // Ids and switches come from storefront_ad_tracking (no tokens). Nothing loads
 // until the store has turned tracking on, and never inside the theme editor.
+//
+// Server copies go to our own server on the store's address (first-party, so ad
+// blockers leave them alone), which also keeps the _fbp / _fbc cookies alive
+// (worker/storefront.ts). A returning buyer's details are kept in their browser
+// only as SHA-256 hashes and sent with every event, for better matching.
 import { functionHeaders } from '@/lib/functions'
 import { functionsUrl } from '@/lib/env'
 import { lastClickIds, visitorId } from '@/lib/attribution'
@@ -16,8 +21,8 @@ import type { AdLine, AdPurchase, StoreAdConfig } from '@/services/storefront'
 
 export type { AdLine, AdPurchase, StoreAdConfig }
 
-export interface AdEventData { value?: number; currency?: string; contents?: AdLine[] }
-export type FunnelEvent = 'PageView' | 'ViewContent' | 'AddToCart' | 'InitiateCheckout'
+export interface AdEventData { value?: number; currency?: string; contents?: AdLine[]; search?: string }
+export type FunnelEvent = 'PageView' | 'ViewContent' | 'AddToCart' | 'InitiateCheckout' | 'Search' | 'Contact' | 'CompleteRegistration'
 
 type Fn = (...args: unknown[]) => void
 declare global {
@@ -31,7 +36,9 @@ declare global {
   }
 }
 
-const CODES: Record<FunnelEvent, string> = { PageView: 'pv', ViewContent: 'vc', AddToCart: 'ac', InitiateCheckout: 'ic' }
+const CODES: Record<FunnelEvent, string> = {
+  PageView: 'pv', ViewContent: 'vc', AddToCart: 'ac', InitiateCheckout: 'ic', Search: 'se', Contact: 'ct', CompleteRegistration: 'cr',
+}
 const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 let cfg: StoreAdConfig | null = null
@@ -92,6 +99,56 @@ async function sha256(value: string): Promise<string> {
   }
 }
 
+// --- a returning buyer, hashed ----------------------------------------------------------------
+
+/** SHA-256 of the buyer's details, normalised the way the server does it (store-tracking.ts hashPerson). */
+export interface ShopperHashes { em?: string; ph?: string; ph_e164?: string; fn?: string; ln?: string; ct?: string; st?: string }
+const SHOPPER_KEY = 'ff_am'
+const HEX64 = /^[0-9a-f]{64}$/
+
+/** 8801XXXXXXXXX for a Bangladeshi mobile number, else ''. */
+function phoneDigits(phone: string): string {
+  let d = phone.replace(/\D/g, '')
+  if (d.startsWith('00')) d = d.slice(2)
+  if (d.startsWith('880')) d = d.slice(3)
+  if (d.startsWith('0')) d = d.slice(1)
+  return /^1[3-9]\d{8}$/.test(d) ? `880${d}` : ''
+}
+const nameKey = (v?: string | null) => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[^\p{L}]/gu, '')
+
+/** The hashes kept from this browser's last order or sign-up (never the details themselves). */
+export function shopperHashes(): ShopperHashes {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SHOPPER_KEY) ?? 'null') as Record<string, unknown> | null
+    if (!raw || typeof raw !== 'object') return {}
+    return Object.fromEntries(Object.entries(raw).filter(([k, v]) => ['em', 'ph', 'ph_e164', 'fn', 'ln', 'ct', 'st'].includes(k) && typeof v === 'string' && HEX64.test(v)))
+  } catch {
+    return {}
+  }
+}
+
+/** After an order or sign-up: keep the buyer's details as hashes, for the next visits' events. */
+export async function rememberShopper(p: { phone?: string | null; email?: string | null; name?: string | null; city?: string | null; district?: string | null }) {
+  try {
+    const out: ShopperHashes = { ...shopperHashes() }
+    const email = String(p.email ?? '').trim().toLowerCase()
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) out.em = await sha256(email)
+    const ph = phoneDigits(String(p.phone ?? ''))
+    if (ph) { out.ph = await sha256(ph); out.ph_e164 = await sha256(`+${ph}`) }
+    const parts = String(p.name ?? '').trim().split(/\s+/).filter(Boolean)
+    if (parts.length) out.fn = await sha256(nameKey(parts[0]))
+    if (parts.length > 1) out.ln = await sha256(nameKey(parts[parts.length - 1]))
+    const city = nameKey(p.city || p.district)
+    if (city) out.ct = await sha256(city)
+    const st = nameKey(p.district)
+    if (st) out.st = await sha256(st)
+    const clean = Object.fromEntries(Object.entries(out).filter(([, v]) => v && HEX64.test(v)))
+    if (Object.keys(clean).length) localStorage.setItem(SHOPPER_KEY, JSON.stringify(clean))
+  } catch {
+    /* private mode: no memory, no harm */
+  }
+}
+
 function addScript(src: string) {
   const s = document.createElement('script')
   s.async = true
@@ -100,7 +157,7 @@ function addScript(src: string) {
 }
 
 // The platforms' standard loader stubs: calls made before the script arrives are queued.
-function loadMeta(pixel: string, externalId: string) {
+function loadMeta(pixel: string, externalId: string, am: ShopperHashes, country: string) {
   if (!window.fbq) {
     const n = function (...args: unknown[]) {
       if (n.callMethod) n.callMethod(...args)
@@ -114,10 +171,14 @@ function loadMeta(pixel: string, externalId: string) {
     if (!window._fbq) window._fbq = n
     addScript('https://connect.facebook.net/en_US/fbevents.js')
   }
-  window.fbq('init', pixel, externalId ? { external_id: externalId } : {})
+  // Advanced matching with hashed values only (Meta takes SHA-256 as is).
+  const match = Object.fromEntries(Object.entries({
+    external_id: externalId, em: am.em, ph: am.ph, fn: am.fn, ln: am.ln, ct: am.ct, st: am.st, country: am.ph || am.em ? country : undefined,
+  }).filter(([, v]) => v))
+  window.fbq('init', pixel, match)
 }
 
-function loadTikTok(pixel: string, externalId: string) {
+function loadTikTok(pixel: string, externalId: string, am: ShopperHashes) {
   if (!window.ttq) {
     // TikTok's own snippet, typed loosely: it builds the queue the real script picks up.
     const w = window as any
@@ -136,10 +197,11 @@ function loadTikTok(pixel: string, externalId: string) {
     }
     ttq.load(pixel)
   }
-  if (externalId) window.ttq!.identify({ external_id: externalId })
+  const who = Object.fromEntries(Object.entries({ external_id: externalId, email: am.em, phone_number: am.ph_e164 }).filter(([, v]) => v))
+  if (Object.keys(who).length) window.ttq!.identify(who)
 }
 
-function loadGoogle(c: StoreAdConfig) {
+function loadGoogle(c: StoreAdConfig, am: ShopperHashes) {
   if (window.gtag) return
   addScript(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(c.ga4_id || c.ads_id || '')}`)
   window.dataLayer = window.dataLayer || []
@@ -150,6 +212,8 @@ function loadGoogle(c: StoreAdConfig) {
   window.gtag('js', new Date())
   if (c.ga4_id) window.gtag('config', c.ga4_id, { send_page_view: false })
   if (c.ads_id) window.gtag('config', c.ads_id, { allow_enhanced_conversions: true })
+  const user = Object.fromEntries(Object.entries({ sha256_email_address: am.em, sha256_phone_number: am.ph_e164 }).filter(([, v]) => v))
+  if (Object.keys(user).length) window.gtag('set', 'user_data', user)
 }
 
 /** Loads the pixels the store turned on. Called once the settings arrive. */
@@ -160,9 +224,10 @@ export async function startAdPixels(c: StoreAdConfig | null | undefined) {
     try {
       if (cfg.meta_pixel) metaCookies()
       const ext = await sha256(visitorId())
-      if (cfg.meta_pixel) loadMeta(cfg.meta_pixel, ext)
-      if (cfg.tiktok_pixel) loadTikTok(cfg.tiktok_pixel, ext)
-      if (cfg.ga4_id || cfg.ads_id) loadGoogle(cfg)
+      const am = shopperHashes()
+      if (cfg.meta_pixel) loadMeta(cfg.meta_pixel, ext, am, await sha256('bd'))
+      if (cfg.tiktok_pixel) loadTikTok(cfg.tiktok_pixel, ext, am)
+      if (cfg.ga4_id || cfg.ads_id) loadGoogle(cfg, am)
     } catch {
       /* a blocked pixel never breaks the store */
     }
@@ -179,12 +244,24 @@ function whenReady(run: () => void) {
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
+const META_PLAIN: Partial<Record<FunnelEvent, true>> = { PageView: true, Contact: true, CompleteRegistration: true }
+const GA_NAMES: Record<FunnelEvent, string> = {
+  PageView: 'page_view', ViewContent: 'view_item', AddToCart: 'add_to_cart', InitiateCheckout: 'begin_checkout',
+  Search: 'search', Contact: 'generate_lead', CompleteRegistration: 'sign_up',
+}
+
 function browserFire(event: FunnelEvent, id: string, d: AdEventData) {
   if (!cfg || cfg.browser_events === false) return
+  if (event === 'Search') {
+    try { window.fbq?.('track', 'Search', { search_string: d.search }, { eventID: id }) } catch { /* ignore */ }
+    try { window.ttq?.track('Search', { query: d.search }, { event_id: id }) } catch { /* ignore */ }
+    try { if (cfg.ga4_id) window.gtag?.('event', 'search', { send_to: cfg.ga4_id, search_term: d.search }) } catch { /* ignore */ }
+    return
+  }
   const contents = d.contents ?? []
   const value = d.value === undefined ? undefined : round2(d.value)
   try {
-    window.fbq?.('track', event, event === 'PageView' ? {} : {
+    window.fbq?.('track', event, META_PLAIN[event] ? {} : {
       content_type: 'product', content_ids: contents.map((c) => c.id), value, currency: d.currency,
       ...(contents.length > 1 || event === 'InitiateCheckout' ? { num_items: contents.reduce((n, c) => n + c.quantity, 0) } : { content_name: contents[0]?.name }),
     }, { eventID: id })
@@ -192,6 +269,7 @@ function browserFire(event: FunnelEvent, id: string, d: AdEventData) {
   try {
     // TikTok's page() counts the page view itself (the server skips TikTok page views).
     if (event === 'PageView') window.ttq?.page()
+    else if (event === 'Contact' || event === 'CompleteRegistration') window.ttq?.track(event, {}, { event_id: id })
     else window.ttq?.track(event, {
       content_type: 'product', value, currency: d.currency,
       contents: contents.map((c) => ({ content_id: c.id, content_name: c.name, quantity: c.quantity, price: round2(c.price) })),
@@ -199,8 +277,8 @@ function browserFire(event: FunnelEvent, id: string, d: AdEventData) {
   } catch { /* ignore */ }
   try {
     const items = contents.map((c) => ({ item_id: c.id, item_name: c.name, quantity: c.quantity, price: round2(c.price) }))
-    const ga = { PageView: 'page_view', ViewContent: 'view_item', AddToCart: 'add_to_cart', InitiateCheckout: 'begin_checkout' }[event]
-    if (cfg.ga4_id) window.gtag?.('event', ga, event === 'PageView' ? { send_to: cfg.ga4_id } : { send_to: cfg.ga4_id, currency: d.currency, value, items })
+    const ga = GA_NAMES[event]
+    if (cfg.ga4_id) window.gtag?.('event', ga, META_PLAIN[event] ? { send_to: cfg.ga4_id } : { send_to: cfg.ga4_id, currency: d.currency, value, items })
   } catch { /* ignore */ }
 }
 
@@ -216,6 +294,8 @@ async function serverCopy(event: FunnelEvent, id: string, d: AdEventData) {
     contents: d.contents?.slice(0, 50).map((c) => ({ id: c.id.slice(0, 64), name: c.name?.slice(0, 120), quantity: c.quantity, price: round2(c.price) })),
     browser,
     click: Object.fromEntries(Object.entries({ fbclid: click.fbclid, ttclid: click.ttclid }).filter(([, v]) => v && CLICK.test(v))),
+    search: event === 'Search' ? d.search?.slice(0, 100) : undefined,
+    user: Object.keys(shopperHashes()).length ? shopperHashes() : undefined,
   }
   try {
     await merchantFetch(functionsUrl('checkout'), {
