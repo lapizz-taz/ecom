@@ -87,6 +87,17 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 | Tenant isolation | `tenant_isolation` is RESTRICTIVE on every merchant table; the only rows open to visitors are active delivery zones and settings marked public; `system_logs` read needs staff + `audit.view`, so platform rows (no merchant) never show to a store | live-read | as listed | PASS |
 | Security | Functions a visitor (anon) may call, live = the allowlist in `function-grants.test.ts` (34) | live-read + db | identical | PASS |
 | Security | Supabase security advisor: 0 errors; warnings are the known design (signed-in RPCs are security-definer with their own checks; 16 functions without a fixed search path; `pg_trgm` in public; leaked-password check off because sign-in is through Clerk) | live-read | 0 ERROR | PASS |
+| Orders (browser + Worker) | **Pass 3** — `scripts/audit/order-lifecycle-e2e.cjs`: real Worker, Cloudflare database seeded from all 171 migrations, Chromium; 31/31 | browser | below | PASS |
+| Orders | Storefront order (2 × ৳1,000); the same request sent twice → one order, stock reserved once (on hand 10, reserved 2) | browser | as expected | PASS |
+| Orders | Total = subtotal + delivery | browser | 2,000 + 80 = 2,080 | PASS |
+| Orders | Pending → Confirmed → Processing → Packing → courier → Ready → Shipped → Delivered, each saved; 6+ history rows; Delivered cannot go back to Pending | browser | as expected | PASS |
+| Stock | Delivered: on hand 10 → 8, reserved 2 → 0 (once) | browser | as expected | PASS |
+| Returns | Shipped → Failed delivery (reason) → Coming back → received (RESTOCK): order Returned, +1 on the shelf; receiving again adds nothing | browser | 7 → 8, then 8 | PASS |
+| Cancel | Cancel without a reason refused; with a reason the 3 reserved units are released | browser | reserved 3 → 0 | PASS |
+| Finance | P&L for the day, computed by hand: products 2,000 (delivered only) + delivery 80 − COGS 800 (2 × 400) − courier 140 (2 × 70) − return charge 50 = **1,090** | browser | report: 2,000 / 80 / 800 / 140 / 50 / **1,090**, gross margin 61.54 % | PASS |
+| Call role | Sees the 3 orders; cannot read order cost, item cost, product cost or the P&L; cannot move a delivered order; `/admin/finance` shows no money | browser | refused each | PASS |
+| Tenant isolation | A second store's owner, sending store one's id in `x-merchant-id`: 0 orders, 0 customers, no private settings, P&L without store one's sales, status change refused (order still Delivered) | browser | as expected | PASS |
+| Admin UI | Order page at 1440 and 390 px: number, Delivered, customer, items; survives reload; no sideways scroll; no page errors; finance page shows figures | browser | as expected | PASS |
 
 ## 5. Fixes this round
 
@@ -94,6 +105,7 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 |---|---|---|---|
 | 1 | Client errors keep their real message instead of "[object Object]" | `src/lib/monitoring.ts` | `src/lib/monitoring.test.ts` (2) |
 | 2 | PayStation "not confirmed" names PayStation's payment state | `supabase/functions/_shared/payments/paystation.ts` | `payments.test.ts` |
+| 3 | The Cloudflare database's reference data was generated on 19 Oct, before the newest migrations: a store created on the Cloudflare database would start with old settings rows. Regenerated from all 171 migrations | `worker/db/generated/seed.sql` | worker tests 85/85; pass 3 runs on it |
 
 ## 6. Needs the owner
 

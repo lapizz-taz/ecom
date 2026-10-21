@@ -1,0 +1,27 @@
+// Local-only: the real Worker with every backend function and the Cloudflare database, plus the
+// built site, on one address — for the audit's browser checkout. Never deployed.
+{
+  "name": "fullfilio-audit-r3",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "DATABASE_BACKEND": "cloudflare",
+    "SUPABASE_FUNCTIONS": "",
+    "SUPABASE_URL": "https://worker.internal",
+    "SUPABASE_ANON_KEY": "sb_publishable_e2e",
+    "SUPABASE_SERVICE_ROLE_KEY": "e2e-service-key-not-a-secret",
+    "PLATFORM_URL": "http://127.0.0.1",
+    "CUSTOM_DOMAIN_TARGET": "stores.example.test"
+  },
+  "durable_objects": { "bindings": [{ "name": "DATABASE", "class_name": "Database" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Database"] }],
+  "kv_namespaces": [{ "binding": "CACHE", "id": "local-cache" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "local-files" }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*", "/rest/*", "/auth/*", "/realtime/*", "/__seed", "/__as", "/__count", "/__copy"]
+  }
+}
