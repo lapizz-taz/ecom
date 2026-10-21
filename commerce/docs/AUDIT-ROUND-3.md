@@ -98,6 +98,10 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 | Call role | Sees the 3 orders; cannot read order cost, item cost, product cost or the P&L; cannot move a delivered order; `/admin/finance` shows no money | browser | refused each | PASS |
 | Tenant isolation | A second store's owner, sending store one's id in `x-merchant-id`: 0 orders, 0 customers, no private settings, P&L without store one's sales, status change refused (order still Delivered) | browser | as expected | PASS |
 | Admin UI | Order page at 1440 and 390 px: number, Delivered, customer, items; survives reload; no sideways scroll; no page errors; finance page shows figures | browser | as expected | PASS |
+| Queues (live) | Store sync jobs, status pushes to stores, courier webhook events, ad event queue, notification log, store webhook deliveries | live-read | all finished or empty; 0 failed. One Shopify INVENTORY job for atheron waits since 00:54 because atheron sells on its **own store** now (only one sales channel runs at a time); it runs if Shopify becomes the active channel again | PASS (by design) |
+| Stock | **Pass 4** — two shoppers buy the last unit at the same moment (two real transactions, own database): one order, the other refused "out of stock", stock 1 reserved / 0 available, never negative | db | new `supabase/tests/db/stock-race.test.ts` | PASS |
+| Integrations (code) | Existing mocked tests read for pass 4: store sync 39, channels 19, catalog 9, Shopify sync 7, WooCommerce plugin 29, couriers 19 + panel 41 + webhooks 12 + history 31 + ops 11, payments 38 + gateway 8 + billing 22, SMS 39, inbox 14, store tracking 52, Meta/ads 35 | unit + db | all in the 931 + 700 passing | PASS (mocked) |
+| Integrations (real providers) | Shopify, WooCommerce, Pathao, Steadfast, RedX, Carrybee, bKash, PayStation, SMS, Meta/TikTok/Google: this session cannot reach them; live usage records show Shopify webhooks arriving (8 deliveries 20 Oct, all handled) | live-read | — | BLOCKED — PROVIDER (from here) |
 
 ## 5. Fixes this round
 
