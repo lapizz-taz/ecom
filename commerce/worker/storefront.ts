@@ -291,7 +291,8 @@ export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv)
     metaTracking(env, site.merchant_id ?? ''),
   ])
   const seo = page?.seo ?? null
-  if (seo?.status === 301 && seo.redirect && seo.redirect.startsWith('/')) return redirect(`${seo.redirect}${url.search}`)
+  // Only a path on this store: never //host or /\host, which browsers read as another site.
+  if (seo?.status === 301 && seo.redirect && /^\/(?![/\\])/.test(seo.redirect)) return redirect(`${seo.redirect}${url.search}`)
   const res = await shell()
   const html = injectHead(await res.text(), { host, origin: url.origin, site, config: page?.config, seo })
   const extra: Record<string, string> = { ...security }

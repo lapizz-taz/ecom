@@ -9,7 +9,7 @@
 // The public proxy address (CLERK_PROXY_URL, the "proxy_url" of the auth.clerk
 // credential, or PLATFORM_URL + /__clerk) must match "Proxy URL" in Clerk → Domains.
 import { CLERK_FAPI, clerkProxySetting, clerkSecret, proxyRequest, proxyResponse } from '../_shared/clerk.ts'
-import { handle, HttpError } from '../_shared/http.ts'
+import { handle, HttpError, readBytes } from '../_shared/http.ts'
 
 async function proxyUrl(): Promise<string> {
   const url = await clerkProxySetting()
@@ -20,7 +20,8 @@ async function proxyUrl(): Promise<string> {
 export default (
   handle(async (req) => {
     const path = new URL(req.url).pathname.replace(/^(?:\/functions\/v1)?\/clerk-proxy\/?/, '')
-    const body = req.method === 'GET' || req.method === 'HEAD' ? null : await req.arrayBuffer()
+    // Clerk's sign-in requests are small forms: anything bigger is refused before it is read.
+    const body = req.method === 'GET' || req.method === 'HEAD' ? null : await readBytes(req, 1024 * 1024)
     const [target, init] = proxyRequest(req, path, await proxyUrl(), await clerkSecret(), body)
     let res: Response
     try {

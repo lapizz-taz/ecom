@@ -3,7 +3,7 @@
 // asking" from the request (context.ts), auth.* and vault.*, and the interpreter for
 // the rest. Also the bridge for business triggers the data layer fires.
 import { randomUUID } from 'node:crypto'
-import type { Context } from '../context.ts'
+import { Context } from '../context.ts'
 import { DbError } from '../errors.ts'
 import functionSources from '../generated/functions.json'
 import { table as tableMeta, view, type TriggerMeta } from '../meta.ts'
@@ -133,6 +133,13 @@ const NATIVE: Record<string, (ctx: Context, args: Typed[]) => Typed> = {
   // Another store's mode only for server code and platform staff, as in Postgres (20261109002600).
   merchant_access_mode: (ctx, a) => ({ t: 'text', v: ctx.accessMode(a[0]?.v != null && (ctx.isSystem() || ctx.isPlatformStaff()) ? String(a[0].v) : ctx.merchantId()) }),
   _device_ok: (ctx, a) => ({ t: 'bool', v: ctx.deviceOk(String(a[0].v), String(a[1].v)) }),
+}
+
+// has_permission's HRM gate is the migrated _hr_gate (it reads the store's HR settings and the
+// caller's attendance); run as the server so its own grants do not matter.
+Context.hrGate = (ctx, code) => {
+  const v = new PgEngine(ctx.sql, ctx, 'service_role').call('_hr_gate', [{ t: 'text', v: code }]).v
+  return v == null ? null : String(v)
 }
 
 export class PgEngine implements Engine {

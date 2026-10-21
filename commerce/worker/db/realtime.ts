@@ -152,3 +152,21 @@ export function deliveries(state: SocketState, changes: Change[], readAs: ReadAs
   }
   return out
 }
+
+// --- the per-visitor cap on live connections (database.ts) ---
+
+const MAX_SOCKETS_PER_IP = 20
+/** IPv6 visitors count per /48 network: one host can hold a whole /64 (or more), not one address. */
+const MAX_SOCKETS_PER_V6_NETWORK = 50
+
+/** Whose connection this is, for the per-visitor cap: an IPv4 address, or an IPv6 /48 network. */
+export function socketOwner(ip: string | null): { key: string; max: number } {
+  const a = (ip ?? '').trim().toLowerCase()
+  if (!a.includes(':')) return { key: a.slice(0, 64) || 'unknown', max: MAX_SOCKETS_PER_IP }
+  const [head, tail = ''] = a.split('::')
+  const left = head ? head.split(':') : []
+  const right = tail ? tail.split(':') : []
+  const full = a.includes('::') ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right] : left
+  const net = full.slice(0, 3).map((h) => (h || '0').replace(/^0+(?=.)/, '')).join(':')
+  return /^[0-9a-f]{1,4}(:[0-9a-f]{1,4}){2}$/.test(net) ? { key: `${net}::/48`, max: MAX_SOCKETS_PER_V6_NETWORK } : { key: 'unknown', max: MAX_SOCKETS_PER_IP }
+}

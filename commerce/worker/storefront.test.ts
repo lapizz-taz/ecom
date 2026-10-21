@@ -72,6 +72,16 @@ describe('store pages from the Worker', () => {
     expect(calls[0].body).toEqual({ p_host: 'atheron.shop' })
   })
 
+  it("a store's redirect never sends visitors to another site (//host, /\\host)", async () => {
+    for (const to of ['//evil.example/x', '/\\evil.example/x']) {
+      forgetSites()
+      database({ storefront_resolve: store, storefront_page: { config: {}, seo: { status: 301, redirect: to } } })
+      const res = await page('https://atheron.shop/product/old-name')
+      expect(res.status, to).not.toBe(301)
+      expect(res.headers.get('Location'), to).toBeNull()
+    }
+  })
+
   it('old addresses and secondary domains answer 301; a missing page 404 with noindex', async () => {
     database({ storefront_resolve: store, storefront_page: { config: {}, seo: { status: 301, redirect: '/product/new-name' } } })
     let res = await page('https://atheron.shop/product/old-name?ref=ig')

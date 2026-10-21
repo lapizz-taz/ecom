@@ -249,7 +249,7 @@ describe('new-business offer without a trial, with a one-time fee', () => {
       expect(Number(s.setup_fee)).toBe(1000)
     }))
 
-  it('the fee is not lost when its invoice is replaced by a plan change', () =>
+  it('the fee is not lost when its invoice is replaced by a plan change: the plan change carries it', () =>
     inTx(async (db) => {
       await onlinePayment(db)
       await offer(db, OFFER)
@@ -261,19 +261,20 @@ describe('new-business offer without a trial, with a one-time fee', () => {
       await db.query(`select public.billing_run()`)
       expect((await openInvoice(db, m.merchant))!.total).toBe(3490)
 
-      // Instead of paying it, the business moves to Starter: that payment replaces the open invoice.
+      // Instead of paying it, the business moves to Starter: that payment replaces the open invoice,
+      // so it carries the fee (security audit run 4: else each plan change put the fee off again).
       await asUser(db, m.id, m.email, m.merchant)
       const change = await value<{ id: string; total: number }>(db, `select public.billing_choose_plan('STARTER')`)
-      expect(Number(change.total)).toBe(990)
-      expect(await pay(db, m.merchant, change.id, 990)).toBe('succeeded')
+      expect(Number(change.total)).toBe(1990)
+      expect(await pay(db, m.merchant, change.id, 1990)).toBe('succeeded')
       expect(await openInvoice(db, m.merchant)).toBeUndefined()
 
-      // The next invoice carries the fee.
+      // The fee was charged once: the next invoice is the plan alone.
       await asSystem(db, null)
       await db.query(`update public.subscriptions set current_period_end = now() - interval '1 minute' where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const next = (await openInvoice(db, m.merchant))!
-      expect(lineKinds(next)).toEqual([['plan', 990], ['setup_fee', 1000]])
+      expect(lineKinds(next)).toEqual([['plan', 990]])
     }))
 
   it('WhatsApp sign-up: the team activating it is the 99 Tk payment; the next invoice has the fee', () =>

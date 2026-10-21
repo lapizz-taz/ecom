@@ -37,7 +37,7 @@ import { MetaApiError } from '../_shared/meta/graph.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
-import { adminClient, forEachMerchant, merchantFor, requireStaff, rpc } from '../_shared/supabase.ts'
+import { adminClient, forEachMerchant, merchantFor, optionalUser, requireStaff, rpc } from '../_shared/supabase.ts'
 
 const channelKey = (id: string) => `inbox.channel.${id.replace(/-/g, '')}`
 /** The token from a Facebook sign-in, kept for 30 minutes while the owner picks what to connect. */
@@ -414,9 +414,13 @@ export default (
     if (req.method === 'GET' || req.headers.has('x-hub-signature-256')) return webhook(req)
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
 
-    const body = await readJson(req, MAX_FILE_BASE64 + 64 * 1024)
+    // Who is asking comes before the body (up to a file upload's size) is read.
+    const user = await optionalUser(req)
+    const cron = !user && (await isCronRequest(req, adminClient()))
+    if (!user && !cron) throw new HttpError(401, 'Please sign in', 'UNAUTHENTICATED')
+    const body = await readJson(req, cron ? 64 * 1024 : MAX_FILE_BASE64 + 64 * 1024)
     if ((body as { action?: unknown } | null)?.action === 'automation_cron') {
-      if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Only the scheduler may run this', 'UNAUTHORIZED')
+      if (!cron) throw new HttpError(401, 'Only the scheduler may run this', 'UNAUTHORIZED')
       return json(req, await automationCron())
     }
     const input = parse(schema, body)

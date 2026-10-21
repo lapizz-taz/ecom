@@ -273,7 +273,7 @@ export function visitorIp(req: Request): string | null {
  * Builds the request Clerk expects from a proxy: same method, path, query,
  * body and cookies, plus the proxy address, our secret key and the visitor's IP.
  */
-export function proxyRequest(req: Request, path: string, proxyUrl: string, secret: string, body: ArrayBuffer | null): [string, RequestInit] {
+export function proxyRequest(req: Request, path: string, proxyUrl: string, secret: string, body: ArrayBuffer | Uint8Array | null): [string, RequestInit] {
   const source = new URL(req.url)
   const headers = new Headers()
   req.headers.forEach((value, key) => { if (!DROP_REQUEST.has(key.toLowerCase())) headers.set(key, value) })

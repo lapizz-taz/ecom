@@ -1,5 +1,5 @@
 {
-  "migrations": 171,
-  "last": "20261121002400_product_bundles.sql",
-  "sha256": "3bf10411527e3acc75721d0aeabc9c26b36bc7abf8245e27a02b1ef766c9125f"
+  "migrations": 172,
+  "last": "20261122000100_audit_run4_fixes.sql",
+  "sha256": "91320e794fab6ad67361f6e2c538ed9379872e5644df8fee744b720b281e1279"
 }

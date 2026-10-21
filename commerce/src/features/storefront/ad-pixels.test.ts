@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const merchantFetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{}', { status: 202 }))
-vi.mock('@/lib/merchant', () => ({ merchantFetch }))
+const site = { kind: 'store', merchant_id: 'aaaaaaaa-0000-4000-8000-000000000001' as string | null }
+vi.mock('@/lib/merchant', () => ({ merchantFetch, currentSite: () => site }))
 vi.mock('@/lib/functions', () => ({ functionHeaders: async () => ({ apikey: 'anon', Authorization: 'Bearer anon' }) }))
 vi.mock('@/lib/env', () => ({ functionsUrl: (n: string) => `https://fn.example.com/${n}` }))
 
@@ -17,7 +18,7 @@ function memoryStorage() {
 g.sessionStorage = memoryStorage()
 g.localStorage = memoryStorage()
 
-const { adEvent, adPurchase, browserIds, eventId, firstTime, resetAdPixelsForTest, startAdPixels } = await import('./ad-pixels')
+const { adEvent, adPurchase, browserIds, eventId, firstTime, rememberShopper, resetAdPixelsForTest, shopperHashes, startAdPixels } = await import('./ad-pixels')
 
 // The server's rule for funnel event ids (supabase/functions/_shared/schemas.ts trackSchema).
 const SERVER_ID = /^ffs_[a-z]{2}_[A-Za-z0-9]{8,40}$/
@@ -37,9 +38,12 @@ beforeEach(() => {
   ;(g.document as { cookie: string }).cookie = ''
   ;(g.sessionStorage as Storage).clear()
   ;(g.localStorage as Storage).clear()
+  site.merchant_id = STORE_A
 })
 afterEach(() => { delete g.fbq; delete g.gtag; delete g.ttq })
 
+const STORE_A = 'aaaaaaaa-0000-4000-8000-000000000001'
+const STORE_B = 'bbbbbbbb-0000-4000-8000-000000000002'
 const on = { enabled: true, browser_events: true, server_events: true, meta_pixel: '1234567890123456', tiktok_pixel: 'C1A2B3C4D5E6F7G8H9I0', ga4_id: 'G-ABC123', ads_id: 'AW-123456789', ads_label: 'AbCd1234' }
 
 describe('ad pixels', () => {
@@ -158,5 +162,54 @@ describe('one event per real action', () => {
     expect(gtag.mock.calls.filter((c) => c[1] === 'conversion')).toHaveLength(1)
     adPurchase({ ...p, event_id: 'ffs_pu_ISO-10010', order_id: 'ISO-10010' })
     expect(metaCalls('Purchase')).toHaveLength(2)
+  })
+})
+
+describe("a returning buyer's hashes", () => {
+  const buyer = { email: 'a@example.com', phone: '01712345678', name: 'Rahim Uddin', district: 'Dhaka' }
+  const metaInit = () => fbq.mock.calls.filter((c) => c[0] === 'init').at(-1)?.[2] as Record<string, string> | undefined
+
+  it("stay with the store that collected them: another store on the same address (/s/<name>) never gets them", async () => {
+    await startAdPixels(on)
+    await rememberShopper(buyer)
+    expect(shopperHashes().em).toMatch(/^[0-9a-f]{64}$/)
+    // A full page load of another merchant's store opened by path on the platform's origin.
+    resetAdPixelsForTest()
+    site.merchant_id = STORE_B
+    await startAdPixels(on)
+    expect(shopperHashes()).toEqual({})
+    expect(metaInit()?.em).toBeUndefined()
+    expect(ttq.identify.mock.calls.flat().some((c) => (c as Record<string, unknown>).email)).toBe(false)
+    // Back on the first store, they are used again.
+    resetAdPixelsForTest()
+    site.merchant_id = STORE_A
+    await startAdPixels(on)
+    expect(metaInit()?.em).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('are neither kept nor sent when the store turned Advanced matching off', async () => {
+    await startAdPixels({ ...on, advanced_matching: false })
+    await rememberShopper(buyer)
+    expect(shopperHashes()).toEqual({})
+    ;(g.localStorage as Storage).setItem(`ff_am:${STORE_A}`, JSON.stringify({ em: 'a'.repeat(64), ph_e164: 'b'.repeat(64) }))
+    resetAdPixelsForTest()
+    await startAdPixels({ ...on, advanced_matching: false })
+    adEvent('AddToCart', { value: 10, currency: 'BDT', contents: [{ id: 'p1', name: 'Shirt', quantity: 1, price: 10 }] })
+    await flush()
+    expect(metaInit()?.em).toBeUndefined()
+    expect(ttq.identify.mock.calls.flat().some((c) => (c as Record<string, unknown>).email)).toBe(false)
+    expect(gtag.mock.calls.some((c) => c[0] === 'set' && c[1] === 'user_data')).toBe(false)
+    expect(JSON.parse(String(merchantFetch.mock.calls[0][1]!.body)).user).toBeUndefined()
+  })
+
+  it('are not kept on a store with tracking off, nor on the platform site', async () => {
+    await startAdPixels({ ...on, enabled: false })
+    await rememberShopper(buyer)
+    expect(shopperHashes()).toEqual({})
+    resetAdPixelsForTest()
+    site.merchant_id = null
+    await startAdPixels(on)
+    await rememberShopper(buyer)
+    expect(shopperHashes()).toEqual({})
   })
 })

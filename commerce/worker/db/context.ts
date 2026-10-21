@@ -43,6 +43,9 @@ export class Context {
     this.now = now.toISOString()
   }
 
+  /** The HRM work gate: the migrated public._hr_gate, run by the engine (pg/engine.ts sets it). */
+  static hrGate: ((ctx: Context, code: string) => string | null) | null = null
+
   private once<T>(key: string, fn: () => T): T {
     if (!this.memo.has(key)) this.memo.set(key, fn())
     return this.memo.get(key) as T
@@ -271,6 +274,8 @@ export class Context {
           const mode = this.accessMode()
           own = mode === 'FULL' || (mode === 'READ_ONLY' && (code.endsWith('.view') || code.endsWith('.export')))
         }
+        // As in Postgres: not checked in (or on a break) while the store requires it, no changes.
+        if (own && Context.hrGate) own = Context.hrGate(this, code) === null
       }
       if (own) return true
       const support = this.supportSessionId()

@@ -92,14 +92,17 @@ const MAX_REGEX_PATTERN = 1000
 
 /**
  * True when the pattern repeats a group that can itself match in more than one way:
- * a group with an inner unbounded quantifier, repeated without bound (or more than
- * ten times), like (\d+)+ or (.*a){20}; or an alternation repeated without bound,
- * like (a|a)*. JavaScript's backtracking engine can take exponential time on those,
- * and here that would stall the one engine every store shares.
+ * a group with an inner unbounded quantifier that is itself repeated, like (\d+)+,
+ * (.*a){20} or ((\d*){10}){10}; an alternation repeated without bound, like (a|a)*;
+ * or more than three unbounded quantifiers in a row, like \d*\d*\d*\d*x. JavaScript's
+ * backtracking engine can take exponential (or high polynomial) time on those, and
+ * here that would stall the one engine every store shares.
  */
 export function nestedQuantifier(pattern: string): boolean {
   const stack: Array<{ inner: boolean; alt: boolean }> = []
-  let inClass = false
+  // Open-ended repeats one after another with nothing fixed between them (\d*\d+\d*…): each
+  // can take any share of the input, so a failing match tries every split.
+  let run = 0
   const quantAt = (i: number): { unbounded: boolean; max: number } | null => {
     const c = pattern[i]
     if (c === '*' || c === '+') return { unbounded: true, max: Infinity }
@@ -112,25 +115,41 @@ export function nestedQuantifier(pattern: string): boolean {
     }
     return null
   }
+  const quantified = (q: { unbounded: boolean; max: number } | null) => {
+    if (q?.unbounded) return ++run > 3
+    if (!q || q.max !== 1) run = 0
+    return false
+  }
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i]
-    if (c === '\\') { i++; continue }
-    if (inClass) { if (c === ']') inClass = false; continue }
-    if (c === '[') { inClass = true; continue }
     if (c === '(') { stack.push({ inner: false, alt: false }); continue }
-    if (c === '|' && stack.length) { stack[stack.length - 1].alt = true; continue }
+    if (c === '|') { if (stack.length) stack[stack.length - 1].alt = true; continue }
     if (c === ')') {
       const g = stack.pop()
       if (!g) continue
       const q = quantAt(i + 1)
-      if (q && g.inner && (q.unbounded || q.max > 10)) return true
+      if (q && g.inner && (q.unbounded || q.max > 1)) return true
       if (q && g.alt && q.unbounded) return true
       // The group's own quantifier counts as an inner one for the groups around it.
       if (stack.length && (g.inner || (q && q.unbounded))) stack[stack.length - 1].inner = true
+      if (q && quantified(q)) return true
       continue
     }
-    const q = quantAt(i)
+    if (quantAt(i)) continue // read with its atom
+    if (c === '^' || c === '$') { run = 0; continue }
+    // One atom: an escape, a character class or a character; then its quantifier, if any.
+    let end = i
+    if (c === '\\') end = i + 1
+    else if (c === '[') {
+      end = i + 1
+      if (pattern[end] === '^') end++
+      if (pattern[end] === ']') end++
+      while (end < pattern.length && pattern[end] !== ']') end += pattern[end] === '\\' ? 2 : 1
+    }
+    const q = quantAt(end + 1)
     if (q?.unbounded && stack.length) stack[stack.length - 1].inner = true
+    if (quantified(q)) return true
+    i = end
   }
   return false
 }
@@ -145,7 +164,7 @@ export function noteLiteral(s: string): void {
 /** A Postgres (ARE) regular expression as a JavaScript one. */
 export function pgRegex(pattern: string, flags = ''): RegExp {
   if (pattern.length > MAX_REGEX_PATTERN) return err('2201B', `invalid regular expression: pattern too long (max ${MAX_REGEX_PATTERN})`)
-  if (!schemaLiterals.has(pattern) && nestedQuantifier(pattern)) return err('2201B', 'invalid regular expression: nested repetition (like (a+)+) is not allowed')
+  if (!schemaLiterals.has(pattern) && nestedQuantifier(pattern)) return err('2201B', 'invalid regular expression: nested repetition (like (a+)+) or more than three open-ended repeats in a row is not allowed')
   let p = pattern
   let f = flags.replace(/[^gi]/g, '')
   const embedded = /^\(\?([a-z]+)\)/.exec(p)
