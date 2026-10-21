@@ -308,9 +308,42 @@ async function serverCopy(event: FunnelEvent, id: string, d: AdEventData) {
   }
 }
 
+// --- one event per real action -------------------------------------------------------------------
+// The pixel and the server copy share one event id, so the platforms count them once. What must not
+// happen is the same action fired twice with two ids (a page drawn twice, a reload of the checkout,
+// a double tap): each event has a key and a window, kept for the visit (sessionStorage).
+
+const ONCE_KEY = 'ff_ev_once'
+const MIN = 60_000
+function onceRule(event: FunnelEvent, d: AdEventData): [string, number] | null {
+  const ids = (d.contents ?? []).map((c) => `${c.id}x${c.quantity}`).sort().join(',')
+  switch (event) {
+    case 'PageView': return [`pv:${location.pathname}`, 3_000]
+    case 'ViewContent': return [`vc:${d.contents?.[0]?.id ?? location.pathname}`, MIN]
+    case 'AddToCart': return [`ac:${ids}`, 2_000]
+    case 'InitiateCheckout': return [`ic:${ids}`, 30 * MIN]
+    case 'Search': return [`se:${(d.search ?? '').trim().toLowerCase()}`, MIN]
+    case 'Contact': return ['ct', MIN]
+    case 'CompleteRegistration': return ['cr', 30 * MIN]
+  }
+}
+
+/** False when this same action was already sent within its window. */
+export function firstTime(key: string, windowMs: number, now = Date.now()): boolean {
+  let seen: Record<string, number> = {}
+  try { seen = JSON.parse(sessionStorage.getItem(ONCE_KEY) ?? '{}') ?? {} } catch { seen = {} }
+  for (const [k, t] of Object.entries(seen)) if (typeof t !== 'number' || now - t > 60 * MIN) delete seen[k]
+  if (typeof seen[key] === 'number' && now - seen[key] < windowMs) return false
+  seen[key] = now
+  try { sessionStorage.setItem(ONCE_KEY, JSON.stringify(seen)) } catch { /* private mode: no memory */ }
+  return true
+}
+
 /** A funnel event: the pixel and the server copy, one event id. */
 export function adEvent(event: FunnelEvent, data: AdEventData = {}) {
   if (typeof window === 'undefined') return
+  const rule = onceRule(event, data)
+  if (rule && !firstTime(rule[0], rule[1])) return
   whenReady(() => {
     if (!cfg) return
     const id = eventId(event)
@@ -322,6 +355,12 @@ export function adEvent(event: FunnelEvent, data: AdEventData = {}) {
 /** The Purchase on the pixels, with the order's own event id (the server sends its copy from the order). */
 export function adPurchase(p: AdPurchase | null | undefined) {
   if (!p || typeof window === 'undefined') return
+  // One order, one browser Purchase (the server sends its copy once per order, by the same id).
+  try {
+    const sent = JSON.parse(localStorage.getItem('ff_pu_sent') ?? '[]') as string[]
+    if (Array.isArray(sent) && sent.includes(p.event_id)) return
+    localStorage.setItem('ff_pu_sent', JSON.stringify([...(Array.isArray(sent) ? sent : []), p.event_id].slice(-30)))
+  } catch { /* no storage: still once per page */ }
   whenReady(() => {
     if (!cfg || cfg.browser_events === false) return
     const contents = p.contents ?? []

@@ -4,7 +4,7 @@
 //           on, also the browser pixels' Purchase (same event id as the server's).
 //   track — the server copy of a browser ad event (Meta Conversions API,
 //           TikTok Events API), same event id as the pixel so it counts once.
-import { beaconEvent, browserPurchase } from '../_shared/ads/store-tracking-service.ts'
+import { beaconEvent, browserPurchase, firstSend } from '../_shared/ads/store-tracking-service.ts'
 import { quoteCart, placeOrder } from '../_shared/checkout-flow.ts'
 import { dispatchNotificationsInBackground } from '../_shared/dispatch.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
@@ -43,6 +43,8 @@ export default (
       rateLimit(`track:${ip}`, 60)
       rateLimit(`track-store:${merchantId}`, 1500)
       const input = parse(trackSchema, body)
+      // The same event id twice (a retry, a replay) is sent once.
+      if (!firstSend(merchantId, input.event_id)) return json(req, { ok: true, duplicate: true }, 202)
       const r = await beaconEvent(admin, input, ip, req.headers.get('user-agent'), undefined, req.headers.get('origin'))
       return json(req, { ok: r.ok }, 202)
     }

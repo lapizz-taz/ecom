@@ -9,9 +9,15 @@ vi.mock('@/lib/env', () => ({ functionsUrl: (n: string) => `https://fn.example.c
 const g = globalThis as Record<string, unknown>
 g.window = globalThis
 g.document = { cookie: '', head: { appendChild: vi.fn() }, createElement: () => ({}) }
-g.location = { protocol: 'https:', href: 'https://shop.example.com/p/shirt#top', search: '' }
+g.location = { protocol: 'https:', href: 'https://shop.example.com/p/shirt#top', pathname: '/p/shirt', search: '' }
+function memoryStorage() {
+  const m = new Map<string, string>()
+  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, String(v)), removeItem: (k: string) => void m.delete(k), clear: () => m.clear() }
+}
+g.sessionStorage = memoryStorage()
+g.localStorage = memoryStorage()
 
-const { adEvent, adPurchase, browserIds, eventId, resetAdPixelsForTest, startAdPixels } = await import('./ad-pixels')
+const { adEvent, adPurchase, browserIds, eventId, firstTime, resetAdPixelsForTest, startAdPixels } = await import('./ad-pixels')
 
 // The server's rule for funnel event ids (supabase/functions/_shared/schemas.ts trackSchema).
 const SERVER_ID = /^ffs_[a-z]{2}_[A-Za-z0-9]{8,40}$/
@@ -29,6 +35,8 @@ beforeEach(() => {
   ttq = { page: vi.fn(), track: vi.fn(), identify: vi.fn() }
   Object.assign(g, { fbq, gtag, ttq })
   ;(g.document as { cookie: string }).cookie = ''
+  ;(g.sessionStorage as Storage).clear()
+  ;(g.localStorage as Storage).clear()
 })
 afterEach(() => { delete g.fbq; delete g.gtag; delete g.ttq })
 
@@ -97,5 +105,58 @@ describe('ad pixels', () => {
     expect(gtag).toHaveBeenCalledWith('set', 'user_data', { sha256_email_address: 'h1' })
     // The browser never sends a server copy of the Purchase; the order's queue does.
     expect(merchantFetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('one event per real action', () => {
+  const cart = { value: 1250, currency: 'BDT', contents: [{ id: 'p1', quantity: 2, price: 625 }] }
+  const metaCalls = (name: string) => fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === name)
+
+  it('remembers a key for its window', () => {
+    const t = 1_700_000_000_000
+    expect(firstTime('k', 3000, t)).toBe(true)
+    expect(firstTime('k', 3000, t + 1000)).toBe(false)
+    expect(firstTime('k', 3000, t + 3001)).toBe(true)
+  })
+
+  it('a page drawn twice is one page view', async () => {
+    await startAdPixels(on)
+    adEvent('PageView')
+    adEvent('PageView')
+    await flush()
+    expect(metaCalls('PageView')).toHaveLength(1)
+    expect(ttq.page).toHaveBeenCalledTimes(1)
+    expect(merchantFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('a reloaded checkout with the same cart is one InitiateCheckout; a changed cart counts again', async () => {
+    await startAdPixels(on)
+    adEvent('InitiateCheckout', cart)
+    adEvent('InitiateCheckout', cart)
+    await flush()
+    expect(metaCalls('InitiateCheckout')).toHaveLength(1)
+    adEvent('InitiateCheckout', { ...cart, contents: [{ id: 'p1', quantity: 3, price: 625 }] })
+    await flush()
+    expect(metaCalls('InitiateCheckout')).toHaveLength(2)
+    expect(merchantFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('a double tap is one AddToCart', async () => {
+    await startAdPixels(on)
+    adEvent('AddToCart', cart)
+    adEvent('AddToCart', cart)
+    await flush()
+    expect(metaCalls('AddToCart')).toHaveLength(1)
+  })
+
+  it('the success page shown again does not repeat the Purchase', async () => {
+    await startAdPixels(on)
+    const p = { event_id: 'ffs_pu_ISO-10009', order_id: 'ISO-10009', value: 1250, currency: 'BDT' }
+    adPurchase(p)
+    adPurchase(p)
+    expect(metaCalls('Purchase')).toHaveLength(1)
+    expect(gtag.mock.calls.filter((c) => c[1] === 'conversion')).toHaveLength(1)
+    adPurchase({ ...p, event_id: 'ffs_pu_ISO-10010', order_id: 'ISO-10010' })
+    expect(metaCalls('Purchase')).toHaveLength(2)
   })
 })

@@ -58,8 +58,11 @@ export default function StorefrontLayout() {
   useEffect(() => {
     captureNavigation(location)
     trackEvent('PAGE_VIEW')
-    if (!preview) adEvent('PageView')
   }, [location.pathname, location.search])
+  // Ad page views: one per page (a filter or sort change on the same page is not a new view).
+  useEffect(() => {
+    if (!preview) adEvent('PageView')
+  }, [location.pathname, preview])
 
   // The page's title, description and other head tags (the store's SEO, per page).
   useStoreSeo()
