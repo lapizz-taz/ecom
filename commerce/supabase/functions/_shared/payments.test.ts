@@ -216,7 +216,7 @@ describe('PayStation', () => {
 
   it('never takes the callback\'s word for success', async () => {
     const processing = vi.fn().mockResolvedValue(jsonResponse({ status_code: '200', status: 'success', data: { trx_status: 'Processing' } }))
-    await expect(ps(processing).verifyCallback({ status: 'Successful', invoice_number: 'PAY-1' })).rejects.toThrow(/not confirmed/)
+    await expect(ps(processing).verifyCallback({ status: 'Successful', invoice_number: 'PAY-1' })).rejects.toThrow(/not confirmed.*payment Processing/)
     const failed = vi.fn().mockResolvedValue(jsonResponse({ status_code: '200', data: { trx_status: 'Failed' } }))
     expect((await ps(failed).verifyCallback({ status: 'Successful', invoice_number: 'PAY-1' })).success).toBe(false)
     const cancelled = vi.fn().mockResolvedValue(jsonResponse({ status_code: '404', message: 'Transaction not found' }))

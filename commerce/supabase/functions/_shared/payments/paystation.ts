@@ -166,7 +166,10 @@ export class PaystationProvider implements PaymentProvider {
         raw: { callback: params, status: body },
       }
     }
-    throw new Error(`PayStation has not confirmed invoice ${invoice} yet (${text(body.message) ?? 'processing'})`)
+    // Say PayStation's own payment state ("Processing", "Pending"…) so staff reviewing it can tell.
+    const data = (body.data ?? {}) as Body
+    const state = text(data.trx_status) ?? text(data.status)
+    throw new Error(`PayStation has not confirmed invoice ${invoice} yet (${[text(body.message), state && `payment ${state}`].filter(Boolean).join(', ') || 'processing'})`)
   }
 
   async reconcile(session: string, _reference: string, ageMinutes: number): Promise<VerifiedPayment | null> {
