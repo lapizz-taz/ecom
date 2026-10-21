@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAuth } from '@/features/auth/auth-context'
 import { CartDrawer } from '@/features/cart/cart-drawer'
 import { MarqueeStrip, SectionFrame } from '@/features/storefront/sections'
-import { isThemePreview, type MenuLink, resolveTheme, type StoreTheme, themeStyle, useStorefront, useThemeFont } from '@/features/storefront/theme'
+import { isThemePreview, type MenuLink, resolveTheme, type StoreTheme, themeData, themeStyle, useStorefront, useThemeFont } from '@/features/storefront/theme'
 import { StoreThemeContext } from '@/features/storefront/theme-context'
 import type { StoreConfig } from '@/types/domain'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
@@ -32,7 +32,7 @@ export default function StorefrontLayout() {
   const { data: config, isError, isFetching, refetch } = useStoreConfig()
   const sf = useStorefront(config?.storefront)
   const theme = resolveTheme(sf)
-  useThemeFont(theme.font)
+  useThemeFont(theme.font, theme.heading_font)
   // The store's own browser-tab icon (theme builder → Header → Favicon).
   useStoreFavicon(theme.favicon_url)
   const wa = theme.whatsapp ? waNumber(theme.whatsapp) : null
@@ -86,7 +86,7 @@ export default function StorefrontLayout() {
   // the store off). Order tracking stays open for past customers.
   const closed = !!sf?.mode && sf.mode !== 'OWN' && !isThemePreview()
   if (closed && !location.pathname.startsWith('/track-order') && !location.pathname.startsWith('/policies')) {
-    return <StoreClosed name={storeName} logo={config?.store.logo_url} url={sf?.redirect_url ?? null} phone={config?.store.phone} style={themeStyle(theme)} />
+    return <StoreClosed name={storeName} logo={config?.store.logo_url} url={sf?.redirect_url ?? null} phone={config?.store.phone} style={themeStyle(theme)} data={themeData(theme)} />
   }
   const tops = (categories ?? []).filter((c) => !c.parent_id && c.product_count > 0).slice(0, 6)
   const childrenOf = (id: string) => (categories ?? []).filter((c) => c.parent_id === id && c.product_count > 0)
@@ -99,7 +99,7 @@ export default function StorefrontLayout() {
   const firstHero = theme.sections.find((x) => x.enabled)?.type === 'hero'
   const overlay = theme.header.transparent && home && firstHero && !scrolled && !searchOpen
   const centered = theme.logo_position === 'center'
-  const linkClass = cn('text-[11px] whitespace-nowrap transition-opacity hover:opacity-60 sm:text-xs', theme.header.uppercase && 'tracking-[0.08em] uppercase')
+  const linkClass = cn('text-[calc(11px*var(--fs-body,1))] whitespace-nowrap transition-opacity hover:opacity-60 sm:text-xs', theme.header.uppercase && 'tracking-[0.08em] uppercase')
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -116,13 +116,13 @@ export default function StorefrontLayout() {
 
   return (
     <StoreThemeContext.Provider value={theme}>
-    <div className="flex min-h-dvh flex-col" style={themeStyle(theme)}>
+    <div className="flex min-h-dvh flex-col" style={themeStyle(theme)} {...themeData(theme)}>
       <ScrollRestoration />
       {theme.announcement.enabled && theme.announcement.items.length > 0 && (
         theme.announcement.marquee
-          ? <MarqueeStrip items={theme.announcement.items} seconds={35} className="py-2 text-[11px] font-medium tracking-[0.12em] uppercase"
+          ? <MarqueeStrip items={theme.announcement.items} seconds={35} className="py-2 text-[calc(11px*var(--fs-body,1))] font-medium tracking-[0.12em] uppercase"
               style={{ background: theme.colors.announcement_bg, color: theme.colors.announcement_text }} />
-          : <div className="px-4 py-2 text-center text-[11px] tracking-[0.08em] uppercase" style={{ background: theme.colors.announcement_bg, color: theme.colors.announcement_text }}>{theme.announcement.items[0]}</div>
+          : <div className="px-4 py-2 text-center text-[calc(11px*var(--fs-body,1))] tracking-[0.08em] uppercase" style={{ background: theme.colors.announcement_bg, color: theme.colors.announcement_text }}>{theme.announcement.items[0]}</div>
       )}
       <header className={cn('z-40 transition-colors duration-300', theme.header.sticky && !overlay && 'sticky top-0',
         overlay ? 'absolute inset-x-0 top-auto text-white' : 'border-b border-foreground/10 bg-background/95 backdrop-blur')}>
@@ -143,7 +143,7 @@ export default function StorefrontLayout() {
             <button type="button" className="relative grid size-9 place-items-center" onClick={() => setOpen(true)} aria-label={`Cart, ${count} items`}>
               <ShoppingBag className="size-[18px]" strokeWidth={1.5} />
               {count > 0 && (
-                <span className="absolute top-0.5 right-0 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-medium text-primary-foreground">{count}</span>
+                <span className="absolute top-0.5 right-0 flex size-4 items-center justify-center rounded-full bg-primary text-[calc(9px*var(--fs-body,1))] font-medium text-primary-foreground">{count}</span>
               )}
             </button>
           </div>
@@ -161,7 +161,7 @@ export default function StorefrontLayout() {
       </header>
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetContent side="left" className="w-[85vw] max-w-sm" onOpenAutoFocus={(e) => e.preventDefault()}>
+        <SheetContent side="left" className="w-[85vw] max-w-sm" style={themeStyle(theme)} {...themeData(theme)} onOpenAutoFocus={(e) => e.preventDefault()}>
           <SheetHeader><SheetTitle>{storeName}</SheetTitle></SheetHeader>
           <nav className="grid gap-0.5 px-4 text-sm">
             {menu.flatMap((m) => [m, ...(m.children ?? []).map((c) => ({ ...c, child: true }))]).map((l) => (
@@ -269,7 +269,7 @@ function StoreFooter({ theme, config, storeName, footerText }: { theme: StoreThe
         </div>
         {theme.payment_badges && payments.length > 0 && (
           <div className="mx-auto flex max-w-[1600px] flex-wrap justify-center gap-2 px-4 pt-6 opacity-70">
-            {payments.map((p) => <span key={p} className="border border-current/30 px-2 py-1 text-[10px] tracking-wide uppercase">{p}</span>)}
+            {payments.map((p) => <span key={p} className="border border-current/30 px-2 py-1 text-[calc(10px*var(--fs-body,1))] tracking-wide uppercase">{p}</span>)}
           </div>
         )}
         <div className="space-y-2 px-4 py-6 text-center">
@@ -310,9 +310,9 @@ function StoreUnavailable({ onRetry, retrying, message }: { onRetry?: () => void
   )
 }
 
-function StoreClosed({ name, logo, url, phone, style }: { name: string; logo?: string | null; url: string | null; phone?: string | null; style: React.CSSProperties }) {
+function StoreClosed({ name, logo, url, phone, style, data }: { name: string; logo?: string | null; url: string | null; phone?: string | null; style: React.CSSProperties; data: Record<string, string | undefined> }) {
   return (
-    <div className="grid min-h-dvh place-items-center bg-background px-4" style={style}>
+    <div className="grid min-h-dvh place-items-center bg-background px-4" style={style} {...data}>
       <div className="w-full max-w-sm space-y-5 text-center animate-in fade-in-0 zoom-in-95 duration-500">
         <span className="mx-auto grid size-12 place-items-center rounded-full border"><Store className="size-5" /></span>
         <div className="space-y-1.5">

@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { ProductGrid } from '@/features/storefront/product-card'
 import { SectionFrame } from '@/features/storefront/sections'
+import { themeData, themeStyle } from '@/features/storefront/theme'
 import { useStoreTheme } from '@/features/storefront/theme-context'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatNumber } from '@/lib/format'
@@ -74,7 +75,7 @@ export default function ShopPage() {
       </SectionFrame>
 
       <div className="sticky top-16 z-30 border-b border-foreground/10 bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-5 px-4 py-3 text-[11px] tracking-[0.08em] uppercase sm:px-8">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-5 px-4 py-3 text-[calc(11px*var(--fs-body,1))] tracking-[0.08em] uppercase sm:px-8">
           <SlidersHorizontal className="size-3.5 sm:hidden" />
           <FilterMenu label="Availability" active={state.stock === '1'}>
             <label className="flex items-center justify-between gap-6 text-sm normal-case">In stock only
@@ -125,12 +126,13 @@ export default function ShopPage() {
 }
 
 function FilterMenu({ label, active, align = 'start', children }: { label: string; active?: boolean; align?: 'start' | 'end'; children: ReactNode }) {
+  const theme = useStoreTheme()
   return (
     <Popover>
       <PopoverTrigger className={cn('flex items-center gap-1 uppercase hover:opacity-70', active && 'underline underline-offset-4')}>
         {label} <ChevronDown className="size-3" />
       </PopoverTrigger>
-      <PopoverContent align={align} className="w-64 rounded-none p-3">{children}</PopoverContent>
+      <PopoverContent align={align} className="w-64 rounded-none p-3" style={themeStyle(theme)} {...themeData(theme)}>{children}</PopoverContent>
     </Popover>
   )
 }

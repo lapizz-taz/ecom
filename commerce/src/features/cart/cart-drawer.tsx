@@ -6,7 +6,7 @@ import { Money } from '@/components/common/money'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { addCard } from '@/features/storefront/product-block-views'
-import { themeStyle } from '@/features/storefront/theme'
+import { themeData, themeStyle } from '@/features/storefront/theme'
 import { useStoreTheme } from '@/features/storefront/theme-context'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney } from '@/lib/format'
@@ -58,7 +58,7 @@ export function CartDrawer() {
 
   return (
     <Sheet open={isOpen} onOpenChange={setOpen}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-[420px]" style={themeStyle(theme)}>
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-[420px]" style={themeStyle(theme)} {...themeData(theme)}>
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle className="text-lg font-medium">Cart <sup className="text-xs font-normal text-muted-foreground">{cartCount(items)}</sup></SheetTitle>
           <SheetDescription className="sr-only">Items in your cart</SheetDescription>
@@ -74,7 +74,7 @@ export function CartDrawer() {
           <>
             {bar && (
               <div className="border-b px-5 py-3.5">
-                <p className="text-center text-[13px]">
+                <p className="text-center text-[calc(13px*var(--fs-body,1))]">
                   {missing > 0 ? settings.free_shipping_text.split('{amount}').flatMap((part, i) => (i ? [<b key={i} className="font-semibold">{formatMoney(missing)}</b>, part] : [part]))
                     : settings.unlocked_text}
                 </p>
@@ -105,7 +105,7 @@ export function CartDrawer() {
                             <p className="line-clamp-2 text-sm">{item.name}</p>
                             {item.variantTitle && <p className="text-xs text-muted-foreground">{item.variantTitle}</p>}
                             {settings.show_savings && off > 0 && (
-                              <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Tag className="size-3" />{formatMoney(off)} OFF{l?.bundle_percent ? ` · bundle ${Number(l.bundle_percent)}%` : ''}</p>
+                              <p className="mt-1 inline-flex items-center gap-1 text-[calc(11px*var(--fs-body,1))] text-muted-foreground"><Tag className="size-3" />{formatMoney(off)} OFF{l?.bundle_percent ? ` · bundle ${Number(l.bundle_percent)}%` : ''}</p>
                             )}
                           </div>
                           <Button variant="ghost" size="icon-sm" className="-mt-1 -mr-1.5 text-muted-foreground" onClick={() => remove(item.variantId)} aria-label={`Remove ${item.name}`}><Trash2 /></Button>
@@ -138,7 +138,7 @@ export function CartDrawer() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">{settings.note || 'Delivery is added at checkout.'}</p>
-              <Button asChild variant="ink" size="lg" className="mt-1 h-12 text-[15px]" onClick={() => setOpen(false)} disabled={problems.size > 0}>
+              <Button asChild variant="ink" size="lg" className="mt-1 h-12 text-[calc(15px*var(--fs-body,1))]" onClick={() => setOpen(false)} disabled={problems.size > 0}>
                 <Link to="/checkout"><Lock className="size-4" /> Checkout · {formatMoney(pay)}</Link>
               </Button>
               <Link to="/cart" onClick={() => setOpen(false)} className="text-center text-xs text-muted-foreground underline-offset-2 hover:underline">View cart</Link>
@@ -160,14 +160,14 @@ function CartUpsell({ title, exclude, onAdd }: { title: string; exclude: string[
   if (!list.length) return null
   return (
     <div className="px-5 pt-2 pb-5">
-      <p className="mb-2.5 text-[13px] font-medium">{title}</p>
+      <p className="mb-2.5 text-[calc(13px*var(--fs-body,1))] font-medium">{title}</p>
       <div className="grid gap-2">
         {list.map((p) => (
           <div key={p.id} className="flex items-center gap-3 rounded-lg border p-2.5">
             {p.image && <img src={imageUrl(p.image.url, 120)} alt="" className="size-12 rounded object-cover" loading="lazy" />}
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-[13px]">{p.name}</p>
-              <p className="text-[13px] tabular-nums">
+              <p className="line-clamp-2 text-[calc(13px*var(--fs-body,1))]">{p.name}</p>
+              <p className="text-[calc(13px*var(--fs-body,1))] tabular-nums">
                 {p.compare_at_price && p.compare_at_price > p.price && <span className="mr-1.5 text-xs text-muted-foreground line-through">{formatMoney(p.compare_at_price)}</span>}
                 {formatMoney(p.price)}
               </p>

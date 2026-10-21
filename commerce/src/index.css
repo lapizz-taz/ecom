@@ -664,3 +664,8 @@
 .ff-anim-shake { animation: ff-shake 4s ease-in-out infinite; }
 .ff-ping { animation: ff-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
 @media (prefers-reduced-motion: reduce) { .ff-anim-pulse, .ff-anim-shake, .ff-ping { animation: none; } }
+
+/* A store's headings: the theme's heading font, and its heading weight when it picked one (theme.ts,
+   themeData). Unlayered so it wins over the font classes on the headings. */
+[data-store-theme] :is(h1, h2, h3, h4, h5, h6) { font-family: var(--store-font-heading); }
+[data-store-theme][data-heading-weight] :is(h1, h2, h3, h4, h5, h6) { font-weight: var(--store-heading-weight); }

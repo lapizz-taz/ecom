@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_THEME, makeSection, resolveTheme } from './theme'
+import { DEFAULT_THEME, fontsHref, makeSection, resolveTheme, themeData, themeStyle } from './theme'
 
 describe('store theme', () => {
   it('gives a new store the editorial default', () => {
@@ -64,5 +64,30 @@ describe('store theme', () => {
     expect([t.delivery_min_days, t.delivery_max_days]).toEqual([5, 5])
     expect(t.highlights).toEqual(['600+ Happy Customers'])
     expect(t.accordions).toEqual([{ title: 'Care', content: 'custom', text: 'Keep dry' }])
+  })
+
+  it('reads fonts and text sizes, keeping old themes as they were', () => {
+    const old = resolveTheme({ theme: { font: 'inter' } } as never)
+    expect([old.font, old.heading_font, old.heading_weight, old.text_size, old.heading_size]).toEqual(['inter', 'inter', 'default', 100, 100])
+    const t = resolveTheme({ theme: { font: 'lato', heading_font: 'playfair', heading_weight: '700', text_size: 112, heading_size: 400 } } as never)
+    expect([t.font, t.heading_font, t.heading_weight, t.text_size, t.heading_size]).toEqual(['lato', 'playfair', '700', 112, 150])
+    const bad = resolveTheme({ theme: { font: 'toString', heading_font: 'comic', heading_weight: '900', text_size: 'big' } } as never)
+    expect([bad.font, bad.heading_font, bad.heading_weight, bad.text_size]).toEqual(['poppins', 'poppins', 'default', 100])
+  })
+
+  it('scales body and heading sizes separately and marks the heading font', () => {
+    const t = resolveTheme({ theme: { heading_font: 'oswald', heading_weight: '500', text_size: 110, heading_size: 80 } } as never)
+    const css = themeStyle(t) as Record<string, unknown>
+    expect(css['--text-sm']).toBe('0.9625rem')
+    expect(css['--text-2xl']).toBe('1.2rem')
+    expect(css['--store-heading-weight']).toBe('500')
+    expect(String(css['--store-font-heading'])).toContain('Oswald')
+    expect(themeData(t)).toEqual({ 'data-store-theme': '', 'data-heading-weight': '' })
+    expect(themeData(resolveTheme({}))['data-heading-weight']).toBeUndefined()
+  })
+
+  it('loads only Google fonts the theme uses', () => {
+    expect(fontsHref(['poppins'])).toBeNull()
+    expect(fontsHref(['playfair', 'lato', 'playfair'])).toBe('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Lato:wght@400;700&display=swap')
   })
 })
