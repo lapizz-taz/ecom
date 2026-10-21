@@ -102,7 +102,7 @@ export function PaymentPanel({ order, phone, onSubmitted }: { order: PublicOrder
             <ul className="grid gap-2 sm:grid-cols-2">
               {manual.accounts.map((a) => (
                 <li key={`${a.channel}-${a.number}`} className="flex items-center justify-between rounded-md border p-3 text-sm">
-                  <div><p className="font-medium">{a.label}</p><p className="font-mono tabular-nums">{a.number}</p></div>
+                  <div><p className="font-medium">{a.label}</p><p className="tabular-nums">{a.number}</p></div>
                   <Button type="button" variant="ghost" size="icon-sm" aria-label={`Copy ${a.label} number`}
                     onClick={() => navigator.clipboard.writeText(a.number).then(() => toast.success('Number copied'))}><Copy /></Button>
                 </li>

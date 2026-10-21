@@ -99,7 +99,10 @@ export default function StorefrontLayout() {
   const firstHero = theme.sections.find((x) => x.enabled)?.type === 'hero'
   const overlay = theme.header.transparent && home && firstHero && !scrolled && !searchOpen
   const centered = theme.logo_position === 'center'
-  const linkClass = cn('text-[calc(11px*var(--fs-body,1))] whitespace-nowrap transition-opacity hover:opacity-60 sm:text-xs', theme.header.uppercase && 'tracking-[0.08em] uppercase')
+  // Uppercase: small spaced capitals; otherwise the menu reads like a shop's own (13px, medium).
+  const linkClass = cn('whitespace-nowrap transition-opacity hover:opacity-60', theme.header.uppercase
+    ? 'text-[calc(11px*var(--fs-body,1))] tracking-[0.08em] uppercase sm:text-xs'
+    : 'text-[calc(13px*var(--fs-body,1))] font-medium')
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -125,7 +128,7 @@ export default function StorefrontLayout() {
           : <div className="px-4 py-2 text-center text-[calc(11px*var(--fs-body,1))] tracking-[0.08em] uppercase" style={{ background: theme.colors.announcement_bg, color: theme.colors.announcement_text }}>{theme.announcement.items[0]}</div>
       )}
       <header className={cn('z-40 transition-colors duration-300', theme.header.sticky && !overlay && 'sticky top-0',
-        overlay ? 'absolute inset-x-0 top-auto text-white' : 'border-b border-foreground/10 bg-background/95 backdrop-blur')}>
+        overlay ? 'absolute inset-x-0 top-auto bg-gradient-to-b from-black/35 to-transparent text-white' : 'border-b border-foreground/10 bg-background/95 backdrop-blur')}>
         <div className={cn('relative mx-auto grid h-16 max-w-[1600px] items-center gap-4 px-4 sm:px-8',
           centered ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-[1fr_auto_1fr] lg:grid-cols-[auto_1fr_auto]')}>
           <div className="flex min-w-0 items-center gap-1">
@@ -204,7 +207,7 @@ function MainNav({ menu, linkClass }: { menu: NavItem[]; linkClass: string }) {
       const room = el.clientWidth - 70
       let used = 0
       let n = 0
-      for (const it of items) { used += it.offsetWidth + 24; if (used > room) break; n++ }
+      for (const it of items) { used += it.offsetWidth + 20; if (used > room) break; n++ }
       setFit(n >= menu.length ? menu.length : Math.max(n, 1))
     }
     measure()
@@ -214,7 +217,7 @@ function MainNav({ menu, linkClass }: { menu: NavItem[]; linkClass: string }) {
   }, [menu.length])
   const more = menu.slice(fit)
   return (
-    <nav ref={ref} className="relative hidden w-full min-w-0 flex-1 items-center gap-6 lg:flex" aria-label="Main">
+    <nav ref={ref} className="relative hidden w-full min-w-0 flex-1 items-center gap-5 lg:flex" aria-label="Main">
       {menu.map((m, i) => (
         <div key={m.label + m.link} data-nav-item className={cn('group/menu relative shrink-0', i >= fit && 'invisible absolute')}>
           <NavLink to={m.link} className={({ isActive }) => cn(linkClass, isActive && 'underline underline-offset-4')}>{m.label}</NavLink>

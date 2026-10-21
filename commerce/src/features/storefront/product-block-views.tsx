@@ -189,7 +189,7 @@ function Coupon({ code, text }: { code: string; text: string }) {
   return (
     <div className={cn(box, 'flex items-center gap-3 border border-dashed border-foreground/40 bg-foreground/[.03] px-3 py-2.5')}>
       <div className="min-w-0 flex-1">
-        <p className="font-mono text-sm font-semibold tracking-wider">{code}</p>
+        <p className="text-sm font-semibold tracking-wider">{code}</p>
         {text && <p className="text-xs text-muted-foreground">{text}</p>}
       </div>
       <button type="button" onClick={copy} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background">
