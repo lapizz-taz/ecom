@@ -57,7 +57,7 @@ System log, last 7 days, ERROR/WARN grouped (14 groups):
 | "Could not find the function public.inbox_channel_remove" (17 Oct 17:30) | Page shipped before its migration ran; function exists now (`inbox_channel_remove(uuid,uuid)`) | P3 | PASS (recovered) |
 | Cloudflare "Could not route to /zones/…%20/custom_hostnames" (16 Oct 14:24) | Space in the zone ID secret; fixed in `ee35509` 31 s later (`.trim()`) | P2 | PASS (recovered) |
 | Super Admin finance error logged as **"[object Object]"** (18 Oct) | (a) page shipped 4 min before `platform_ads_report` migration — recovered. (b) **The client error logger wrote plain error objects as "[object Object]"**, losing the message for every database error | P3 | **FIXED** — `errorText()` in `src/lib/monitoring.ts` keeps message, code and details; unit test `src/lib/monitoring.test.ts` |
-| "Could not verify a paystation billing return" (20 Oct 16:25, ৳99 subscription, merchant `64c2…e975`) | PayStation answered "Transaction found" without a final state; Super Admin rejected the payment by hand 10 min later; only one check on record. A later "paid" answer would still mark it paid (`billing_gateway_confirm` accepts success over REJECTED), but the reconcile job only re-asks PENDING payments | P2 | **BLOCKED — OWNER** (see §6). Improvement **FIXED**: the message now carries PayStation's own payment state (`payment Processing`), so the reviewer can tell; unit test in `payments.test.ts` |
+| "Could not verify a paystation billing return" (20 Oct 16:25, ৳99 subscription, merchant `64c2…e975`) | PayStation answered "Transaction found" without a final state; Super Admin rejected the payment by hand 10 min later; only one check on record. A later "paid" answer would still mark it paid (`billing_gateway_confirm` accepts success over REJECTED), but the reconcile job only re-asks PENDING payments | P2 | **PASS** — owner confirmed 21 Oct: a test, opened and left unpaid, so rejecting it was correct. Improvement **FIXED**: the message now carries PayStation's own payment state (`payment Processing`), so the reviewer can tell; unit test in `payments.test.ts` |
 | Steadfast firewall / 403, PayStation "Invalid Credential", Meta token revoked, Meta `phone_numbers` on a non-WhatsApp ID, Meta delete of a missing object, courier history slow | Outside answers shown to the user with the real reason, as designed | — | PASS (handled) |
 
 Scheduled jobs (16), live `cron.job_run_details`:
@@ -97,6 +97,4 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 
 ## 6. Needs the owner
 
-| What | Why | Where | What to send back |
-|---|---|---|---|
-| ৳99 PayStation payment `BP-D45C8D2CC16346` (invoice `BP-D45C8D2CC16346-TMVGW9MBT`, 20 Oct 16:25 UTC) was rejected 10 min after PayStation said "Transaction found" | This session cannot reach PayStation, and the payment was never re-checked | PayStation merchant panel → Transactions → search the invoice | Its status (Success / Failed / Processing). If Success: the merchant paid and needs the plan — tell me and I will say how to re-check it from Super Admin → Billing |
+Nothing open. Resolved: PayStation invoice `BP-D45C8D2CC16346-TMVGW9MBT` was the owner's own test, never paid (confirmed 21 Oct).
