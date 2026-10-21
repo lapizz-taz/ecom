@@ -177,6 +177,27 @@ export async function browserPurchase(admin: SupabaseClient, orderId: string, me
 
 // --- the storefront beacon (server copies of browser events) ---------------------------------------
 
+// Each browser event id is sent to the platforms once: a retried or replayed beacon is dropped here
+// (the platforms also merge the browser and server copies by this id). Per server instance, 30 minutes.
+const SENT_TTL_MS = 30 * 60_000
+const SENT_MAX = 20_000
+const sentIds = new Map<string, number>()
+
+/** True the first time a store's event id is seen (within 30 minutes); later copies are duplicates. */
+export function firstSend(merchantId: string, eventId: string, now = Date.now()): boolean {
+  const key = `${merchantId}:${eventId}`
+  const at = sentIds.get(key)
+  if (at !== undefined && now - at < SENT_TTL_MS) return false
+  if (sentIds.size >= SENT_MAX) {
+    for (const [k, t] of sentIds) {
+      if (now - t >= SENT_TTL_MS || sentIds.size >= SENT_MAX) sentIds.delete(k)
+      if (sentIds.size < SENT_MAX * 0.9) break
+    }
+  }
+  sentIds.set(key, now)
+  return true
+}
+
 export interface BeaconInput {
   event: Exclude<StoreEventName, 'Purchase'>
   event_id: string

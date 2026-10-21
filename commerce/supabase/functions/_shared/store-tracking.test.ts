@@ -7,7 +7,7 @@ import { attributionSchema, trackSchema } from './schemas.ts'
 
 const MERCHANT = '11111111-1111-4111-8111-111111111111'
 vi.mock('./supabase.ts', async (load) => ({ ...(await load<typeof import('./supabase.ts')>()), merchantOf: () => MERCHANT }))
-const { beaconEvent, browserPurchase, processAdEvents } = await import('./ads/store-tracking-service.ts')
+const { beaconEvent, browserPurchase, firstSend, processAdEvents } = await import('./ads/store-tracking-service.ts')
 
 const config = (over: Record<string, unknown> = {}) => normalizeAdConfig({
   enabled: true, purchase_on: 'placed',
@@ -333,5 +333,17 @@ describe('more events and returning buyers', () => {
     await sendServerEvent(config({ advanced_matching: false }), secrets, pv, { external_id: 'v1' }, {}, { fetchFn }, { ph: hex('a') })
     const off = JSON.parse(String(fetchFn.mock.calls.find(([u]) => String(u).includes('graph.facebook.com'))![1]!.body)).data[0].user_data
     expect(off.ph).toBeUndefined()
+  })
+})
+
+describe('one send per event id', () => {
+  it('drops a replayed beacon id for 30 minutes, per store', () => {
+    const t = 1_700_000_000_000
+    expect(firstSend('m1', 'ffs_pv_dedup1', t)).toBe(true)
+    expect(firstSend('m1', 'ffs_pv_dedup1', t + 1000)).toBe(false)
+    expect(firstSend('m1', 'ffs_pv_dedup1', t + 29 * 60_000)).toBe(false)
+    expect(firstSend('m2', 'ffs_pv_dedup1', t + 1000)).toBe(true)
+    expect(firstSend('m1', 'ffs_pv_dedup2', t + 1000)).toBe(true)
+    expect(firstSend('m1', 'ffs_pv_dedup1', t + 31 * 60_000)).toBe(true)
   })
 })
