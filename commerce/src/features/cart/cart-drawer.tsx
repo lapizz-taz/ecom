@@ -30,7 +30,7 @@ const PAD: Record<CartSettings['spacing'], { x: string; row: string; head: strin
 const TITLE: Record<CartSettings['title_size'], string> = { small: 'text-base', medium: 'text-lg', large: 'text-2xl' }
 
 /** Shown in the builder's preview when the cart is empty, so the drawer's look can be set. */
-const SAMPLE: CartItem[] = [
+export const CART_SAMPLE: CartItem[] = [
   { variantId: 'sample-1', productId: 'sample-1', slug: '', name: 'Sample product', variantTitle: 'Black / M', image: null, price: 1250, compareAt: 1490, quantity: 1, maxQuantity: 9 },
   { variantId: 'sample-2', productId: 'sample-2', slug: '', name: 'Another sample product', variantTitle: null, image: null, price: 890, compareAt: null, quantity: 2, maxQuantity: 9 },
 ]
@@ -55,7 +55,7 @@ export function CartDrawer() {
   const { selected } = usePreviewSelection()
   const previewOpen = preview && selected === 'cart-drawer'
   const sample = previewOpen && cartItems.length === 0
-  const items = sample ? SAMPLE : cartItems
+  const items = sample ? CART_SAMPLE : cartItems
   const { data: config } = useStoreConfig()
   const quote = useCartQuote(cartItems, couponCode)
   const q = quote.data

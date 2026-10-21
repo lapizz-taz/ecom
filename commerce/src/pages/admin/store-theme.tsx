@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import {
-  ACCENTS, CART_IMAGE_SIZE, CART_TEXT_SCALE, DEFAULT_THEME, FONTS, onColor, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
+  ACCENTS, CART_IMAGE_SIZE, CART_PAGE_IMAGE_SIZE, CART_TEXT_SCALE, RADIUS_PX, DEFAULT_THEME, FONTS, onColor, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
 import { applyPreset, findPreset } from '@/features/storefront/theme-presets'
@@ -29,7 +29,7 @@ type Tab = 'sections' | 'settings'
 type Page = 'home' | 'collection' | 'product' | 'cart'
 const FIXED: Record<string, string> = {
   announcement: 'Announcement bar', header: 'Header', footer: 'Footer', 'collection-banner': 'Collection banner', 'collection-grid': 'Product grid',
-  'product-info': 'Product information', 'product-related': 'Related products', 'cart-drawer': 'Cart drawer',
+  'product-info': 'Product information', 'product-related': 'Related products', 'cart-drawer': 'Cart drawer', 'cart-page': 'Cart page',
 }
 const PAGES: Array<{ value: Page; label: string; short?: string; icon: ReactNode }> = [
   { value: 'home', label: 'Home page', short: 'Home', icon: <Home className="size-3.5" /> },
@@ -519,8 +519,9 @@ function SectionTree({ page, theme, sections, selected, onSelect, onSections, pi
             </>
           ) : (
             <>
+              <TreeItem icon={<LayoutTemplate className="size-4" />} label="Cart page" sub={theme.cart_page.title ? `: ${theme.cart_page.title}` : undefined} active={selected === 'cart-page'} onClick={() => onSelect('cart-page')} />
               <TreeItem icon={<ShoppingCart className="size-4" />} label="Cart drawer" active={selected === 'cart-drawer'} onClick={() => onSelect('cart-drawer')} />
-              <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">Opens when something is added. The cart page uses your theme colours and font.</p>
+              <p className="px-2 py-1.5 text-xs leading-relaxed text-zinc-500">The cart page is /cart. The cart drawer opens when something is added.</p>
             </>
           )}
       </TreeGroup>
@@ -714,6 +715,46 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
       </>
     )
   }
+  if (id === 'cart-page') {
+    const k = theme.cart_page
+    const set = (patch: Partial<StoreTheme['cart_page']>) => setTheme({ cart_page: { ...k, ...patch } })
+    return (
+      <>
+        <PanelGroup>Content</PanelGroup>
+        <FieldRow label="Title"><input className={inputClass} value={k.title} placeholder="Cart" onChange={(e) => set({ title: e.target.value })} /></FieldRow>
+        <FieldRow label="“Continue shopping” link" inline><Switch checked={k.show_continue} onCheckedChange={(v) => set({ show_continue: v })} /></FieldRow>
+        <FieldRow label="Price of one (“each”)" inline><Switch checked={k.show_each_price} onCheckedChange={(v) => set({ show_each_price: v })} /></FieldRow>
+        <FieldRow label="Coupon box" inline><Switch checked={k.show_coupon} onCheckedChange={(v) => set({ show_coupon: v })} /></FieldRow>
+        {k.show_coupon && <FieldRow label="Coupon button"><input className={inputClass} value={k.coupon_button} onChange={(e) => set({ coupon_button: e.target.value })} /></FieldRow>}
+        <FieldRow label="Note under the button"><input className={inputClass} value={k.note} placeholder="e.g. Cash on delivery available" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
+        <FieldRow label="Empty cart title"><input className={inputClass} value={k.empty_title} onChange={(e) => set({ empty_title: e.target.value })} /></FieldRow>
+        <FieldRow label="Empty cart button"><input className={inputClass} value={k.empty_button} onChange={(e) => set({ empty_button: e.target.value })} /></FieldRow>
+
+        <PanelGroup>Layout</PanelGroup>
+        <FieldRow label="Summary"><SelectInput value={k.layout} onChange={(v) => set({ layout: v as 'side' | 'stacked' })}
+          options={[{ value: 'side', label: 'Beside the items' }, { value: 'stacked', label: 'Under the items' }]} /></FieldRow>
+        <FieldRow label="Page width"><SelectInput value={k.width} onChange={(v) => set({ width: v as StoreTheme['cart_page']['width'] })}
+          options={[{ value: 'narrow', label: 'Narrow' }, { value: 'standard', label: 'Standard' }, { value: 'wide', label: 'Wide' }]} /></FieldRow>
+        <FieldRow label="Photo size"><RangeInput value={k.image_size} min={CART_PAGE_IMAGE_SIZE.min} max={CART_PAGE_IMAGE_SIZE.max} step={4} unit="px" onChange={(v) => set({ image_size: v })} /></FieldRow>
+        <FieldRow label="Photo corners"><RangeInput value={k.image_radius} min={0} max={24} unit="px" onChange={(v) => set({ image_radius: v })} /></FieldRow>
+        <FieldRow label="Quantity box corners"><RangeInput value={k.stepper_radius} min={0} max={24} unit="px" onChange={(v) => set({ stepper_radius: v })} /></FieldRow>
+
+        <PanelGroup>Summary box</PanelGroup>
+        <FieldRow label="Heading" hint="e.g. Order summary. Empty: no heading."><input className={inputClass} value={k.summary_title} onChange={(e) => set({ summary_title: e.target.value })} /></FieldRow>
+        <FieldRow label="Background"><ThemeColor value={k.summary_bg} fallback={theme.colors.background} onChange={(v) => set({ summary_bg: v })} /></FieldRow>
+        <FieldRow label="Border" inline><Switch checked={k.summary_border} onCheckedChange={(v) => set({ summary_border: v })} /></FieldRow>
+        <FieldRow label="Corners"><RangeInput value={k.summary_radius} min={0} max={24} unit="px" onChange={(v) => set({ summary_radius: v })} /></FieldRow>
+
+        <PanelGroup>Checkout button</PanelGroup>
+        <FieldRow label="Label"><input className={inputClass} value={k.button_label} placeholder="Checkout" onChange={(e) => set({ button_label: e.target.value })} /></FieldRow>
+        <FieldRow label="Lock icon" inline><Switch checked={k.button_lock_icon} onCheckedChange={(v) => set({ button_lock_icon: v })} /></FieldRow>
+        <FieldRow label="Button colour"><ThemeColor value={k.button_bg} fallback={theme.accent} onChange={(v) => set({ button_bg: v })} /></FieldRow>
+        <FieldRow label="Button text" hint="Empty: white or black, whichever reads on the button."><ThemeColor value={k.button_text} fallback={onColor(k.button_bg || theme.accent)} onChange={(v) => set({ button_text: v })} /></FieldRow>
+        <FieldRow label="Button corners"><RangeInput value={k.button_radius} min={0} max={28} unit="px" onChange={(v) => set({ button_radius: v })} /></FieldRow>
+        <p className="text-[11px] leading-snug text-zinc-500">With an empty cart the preview shows two sample products.</p>
+      </>
+    )
+  }
   if (id === 'product-related') {
     const pp = theme.product_page
     return (
@@ -802,12 +843,15 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
       <Accordion title="Buttons and corners">
         <div className="grid grid-cols-3 gap-2">
           {Object.entries(RADII).map(([k, r]) => (
-            <button key={k} type="button" aria-pressed={theme.radius === k} onClick={() => setTheme({ radius: k as StoreTheme['radius'] })}
-              className={cn('grid justify-items-center gap-1.5 rounded-lg border px-2 py-2.5', theme.radius === k ? 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-black/[0.05]' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
+            <button key={k} type="button" aria-pressed={theme.radius_px === null && theme.radius === k} onClick={() => setTheme({ radius: k as StoreTheme['radius'], radius_px: null })}
+              className={cn('grid justify-items-center gap-1.5 rounded-lg border px-2 py-2.5', theme.radius_px === null && theme.radius === k ? 'border-zinc-900 bg-zinc-50 dark:border-zinc-100 dark:bg-black/[0.05]' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
               <span className="h-5 w-10 border-2 border-current" style={{ borderRadius: r.value }} /><span className="text-[11px] text-zinc-500">{r.label}</span>
             </button>
           ))}
         </div>
+        <FieldRow label="Exact corners" hint="For every page of the store: buttons, boxes, fields and photos. Picking Sharp, Soft or Round above goes back to it.">
+          <RangeInput value={theme.radius_px ?? Math.round(parseFloat(RADII[theme.radius].value) * 16)} min={RADIUS_PX.min} max={RADIUS_PX.max} unit="px" onChange={(v) => setTheme({ radius_px: v })} />
+        </FieldRow>
       </Accordion>
       <Accordion title="Product cards">
         <FieldRow label="Image shape"><SelectInput value={pc.aspect} onChange={(v) => setTheme({ product_card: { ...pc, aspect: v as typeof pc.aspect } })} options={[{ value: 'portrait', label: 'Portrait (4:5)' }, { value: 'square', label: 'Square' }]} /></FieldRow>

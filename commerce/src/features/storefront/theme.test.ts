@@ -104,4 +104,19 @@ describe('store theme', () => {
     expect(saved.cart).toEqual(look)
     expect(resolveTheme({ theme: JSON.parse(JSON.stringify(saved)) } as never).cart).toEqual(look)
   })
+
+  it('cart page settings and exact corners: defaults, limits, saved look read back', () => {
+    const d = resolveTheme({})
+    expect(d.radius_px).toBeNull()
+    expect(themeStyle(d)['--radius' as never]).toBe('0rem')
+    expect(themeStyle(resolveTheme({ theme: { radius_px: 14 } } as never))['--radius' as never]).toBe('14px')
+    expect(resolveTheme({ theme: { radius_px: 99 } } as never).radius_px).toBe(32)
+    expect(d.cart_page).toMatchObject({ title: 'Cart', layout: 'side', image_size: 96, show_coupon: true, button_label: 'Checkout', note: 'Cash on delivery available' })
+    const bad = resolveTheme({ theme: { cart_page: { layout: 'grid', image_size: 900, image_radius: -3, summary_bg: 'blue', button_label: '', width: 'huge' } } } as never).cart_page
+    expect(bad).toMatchObject({ layout: 'side', image_size: 160, image_radius: 0, summary_bg: '', button_label: 'Checkout', width: 'standard' })
+    const look = { ...d.cart_page, title: 'Your bag', layout: 'stacked', width: 'narrow', image_size: 120, image_radius: 16, stepper_radius: 20, show_each_price: false,
+      show_coupon: false, summary_title: 'Order summary', summary_bg: '#f5f5f4', summary_border: false, summary_radius: 20, button_label: 'Place order',
+      button_bg: '#2563eb', button_text: '#ffffff', button_radius: 24, button_lock_icon: true, note: '', show_continue: false } as const
+    expect(resolveTheme({ theme: { cart_page: look } } as never).cart_page).toEqual(look)
+  })
 })
