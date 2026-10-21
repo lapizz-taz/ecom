@@ -245,6 +245,14 @@ export async function storefrontPage(req: Request, url: URL, env: StorefrontEnv)
     // The Fullfilio website (worker/site.ts): one address per page, its own head and its HTML.
     const moved = siteRedirect(req, url, env)
     if (moved) return moved
+    // The theme editor's preview frame (?theme_preview=1) shows the signed-in staff's own store,
+    // resolved in the browser: the plain app page, never the website's HTML (which would show
+    // fullfilio.com until the store loads), and a 200 for every store page it opens.
+    if (url.searchParams.has('theme_preview')) {
+      const res = await shell()
+      return withHeaders(res, req.method === 'HEAD' ? null : await res.text(), res.ok ? 200 : res.status,
+        { ...security, 'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'no-store' })
+    }
     // Admin and sign-up pages, and stores opened by path (their own address is the canonical one).
     if (PRIVATE.test(url.pathname) || url.pathname.startsWith('/s/')) {
       const res = await env.ASSETS.fetch(req)

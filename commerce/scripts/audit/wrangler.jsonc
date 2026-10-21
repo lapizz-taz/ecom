@@ -22,6 +22,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/functions/*", "/__clerk", "/__clerk/*", "/oauth/*", "/files/*", "/rest/*", "/auth/*", "/realtime/*", "/__seed", "/__as", "/__count", "/__copy"]
+    // As in production (../../wrangler.jsonc): every page goes through the Worker first.
+    "run_worker_first": ["/*", "!/assets/*", "!/icons/*", "!/media/*", "!/downloads/*", "!/favicon.svg", "!/fullfilio-wordmark.svg", "!/site.webmanifest"]
   }
 }
