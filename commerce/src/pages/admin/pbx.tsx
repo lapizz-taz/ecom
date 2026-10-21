@@ -33,7 +33,7 @@ function PbxPageContent() {
   const { can } = useAuth()
   return (
     <div className="space-y-4">
-      <PageHeader title="VoiceDrive PBX"
+      <PageHeader title="PBX connection"
         description="Connect your cloud PBX: every call is logged against the customer and their latest order, and staff can call with one click." />
       {can('settings.view') && <PbxSetup canEdit={can('settings.manage')} />}
       <CallLog />
@@ -71,7 +71,7 @@ function PbxSetup({ canEdit }: { canEdit: boolean }) {
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base">Connection</CardTitle>
-            <CardDescription>Works with VoiceDrive and other Asterisk-based cloud PBXs (Issabel, FreePBX, most Bangladeshi providers).</CardDescription>
+            <CardDescription>Works with Asterisk-based cloud PBXs (Issabel, FreePBX, most Bangladeshi providers).</CardDescription>
           </div>
           <Switch checked={draft.enabled} disabled={!canEdit} onCheckedChange={(v) => set({ enabled: v })} aria-label="PBX on" />
         </CardHeader>

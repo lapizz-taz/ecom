@@ -36,7 +36,7 @@ const dot = (s: PhoneState) =>
 const statusText = (s: PhoneState) =>
   s.status === 'ready' ? (s.availability === 'AVAILABLE' ? 'Ready for calls' : 'Away — incoming calls go to others')
     : s.status === 'starting' ? 'Connecting…'
-      : s.status === 'reconnecting' ? 'PBX server connection is retrying. Try again in a few seconds.'
+      : s.status === 'reconnecting' ? 'Cloud Calling is reconnecting. Try again in a few seconds.'
         : s.status === 'error' ? s.error ?? 'The phone could not connect'
           : 'Phone off'
 
@@ -131,7 +131,7 @@ export function PhoneWidget() {
   return (
     <div ref={bar} style={{ right: at.right, bottom: at.bottom }} className="no-print fixed z-40 flex w-[min(380px,calc(100vw-1rem))] flex-col items-end gap-2">
       {showPanel && (
-        <div className="max-h-[min(70dvh,560px)] w-full overflow-y-auto rounded-2xl border bg-popover p-3 text-popover-foreground shadow-xl duration-200 animate-in fade-in-0 slide-in-from-bottom-1" role="dialog" aria-label="VoiceDrive phone">
+        <div className="max-h-[min(70dvh,560px)] w-full overflow-y-auto rounded-2xl border bg-popover p-3 text-popover-foreground shadow-xl duration-200 animate-in fade-in-0 slide-in-from-bottom-1" role="dialog" aria-label="Cloud Calling phone">
           {call ? <CallView key={call.callId ?? call.startedAt} state={state} autoShow={settings.autoShowCustomer} />
             : state.status !== 'ready' ? <PhoneOffPanel state={state} onStart={() => void engine.start()} />
               : panel === 'recent' ? <RecentCalls items={recent.data?.items ?? []} loading={recent.isLoading} combine={settings.combineRepeated} onDialed={() => setPanel(null)} />

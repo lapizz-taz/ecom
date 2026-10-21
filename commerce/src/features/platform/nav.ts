@@ -27,7 +27,7 @@ export const PLATFORM_NAV: PlatformNavItem[] = [
   { module: 'integrations', label: 'Other Integrations', to: '/super-admin/integrations', icon: Plug },
   { module: 'features', label: 'Features & Access', to: '/super-admin/features', icon: ToggleRight },
   { module: 'support', label: 'Support & Issues', to: '/super-admin/support', icon: LifeBuoy },
-  { module: 'pbx', label: 'PBX Setup', to: '/super-admin/pbx', icon: PhoneCall },
+  { module: 'pbx', label: 'Cloud Calling', to: '/super-admin/pbx', icon: PhoneCall },
   { module: 'usage', label: 'Usage & Analytics', to: '/super-admin/usage', icon: BarChart3 },
   { module: 'automation', label: 'Automation Rules', to: '/super-admin/automation', icon: Workflow },
   { module: 'health', label: 'System Health', to: '/super-admin/health', icon: Activity },

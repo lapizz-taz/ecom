@@ -280,11 +280,11 @@ export const pbxCallState = {
 
 // ------------------------------------------------------------------ labels
 export const LINE_PROBLEM: Record<LineProblem, string> = {
-  NOT_ENABLED: 'PBX is not switched on for this business yet (the platform team does this)',
+  NOT_ENABLED: 'Cloud Calling is not switched on for this business yet (the platform team does this)',
   NO_NUMBER: 'No phone number (DID) or SIP trunk yet (the platform team sets it up)',
   BRIDGE_NOT_READY: 'The line has not been tested yet (the platform team does this)',
   NO_PACKAGE: 'No active package — buy one under Package & Recharge',
-  MAINTENANCE: 'VoiceDrive is under maintenance',
+  MAINTENANCE: 'Cloud Calling is under maintenance',
   NOT_FOUND: 'Business not found',
 }
 
@@ -296,10 +296,10 @@ export const REJECT_REASON: Record<string, string> = {
   REQUEST_EXPIRED: 'The call request expired — try again',
   NO_REQUEST: 'The call was not requested from the app',
   REQUEST_USED: 'This call request was already used',
-  NOT_ENABLED: 'PBX is switched off',
-  BRIDGE_NOT_READY: 'The PBX bridge is not ready',
+  NOT_ENABLED: 'Cloud Calling is switched off',
+  BRIDGE_NOT_READY: 'The Cloud Calling bridge is not ready',
   NO_PACKAGE: 'No active package',
-  MAINTENANCE: 'VoiceDrive is under maintenance',
+  MAINTENANCE: 'Cloud Calling is under maintenance',
   REPLACED: 'Replaced by a newer call',
   CANCELLED_BY_AGENT: 'Cancelled',
   UNKNOWN_NUMBER: 'Unknown business number',

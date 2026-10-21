@@ -10,7 +10,7 @@ export const RELEASES: Release[] = [
     body: 'The WooCommerce plugin sends conversions to Meta (Pixel + CAPI), TikTok and Google — matched by click id, and held until the order is call-confirmed, never for a low-receive-rate customer. Turn it on under WooCommerce → Fullfilio → Ad tracking.', to: '/admin/channels' },
   { date: '2026-10-11', tag: 'New', area: 'Billing', title: 'Plan & Billing, SMS and courier checks without keys',
     body: 'SMS and the BD Courier history check now run on our accounts — no provider keys to enter. Free messages and checks come with your plan, then you buy credits online. See your plan, invoices and credits under Settings → Plan & Billing.', to: '/admin/settings/billing' },
-  { date: '2026-10-10', tag: 'New', area: 'Settings', title: 'Device approvals, app integrations and VoiceDrive PBX',
+  { date: '2026-10-10', tag: 'New', area: 'Settings', title: 'Device approvals, app integrations and Cloud Calling',
     body: 'Require admin approval when staff sign in from a new device. See every connected service on one page. Connect a cloud PBX for a call log and one-click calling.', to: '/admin/settings/devices' },
   { date: '2026-10-10', tag: 'New', area: 'Support', title: 'Bug reports, feedback and system status',
     body: 'Follow your bug reports and ideas with replies from the team, read the help center, and check that every part of the system is running.', to: '/admin/support/bugs' },

@@ -117,7 +117,7 @@ export function NewTicketDialog({ merchant, onClose, onCreated }: { merchant?: M
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {[['GENERAL', 'General'], ['ONBOARDING', 'Onboarding'], ['BILLING', 'Billing'], ['INTEGRATION', 'Integrations'], ['ORDERS', 'Orders'],
-                  ['COURIER', 'Courier'], ['SMS', 'SMS'], ['PBX', 'PBX']].map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                  ['COURIER', 'Courier'], ['SMS', 'SMS'], ['PBX', 'Cloud Calling']].map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>
