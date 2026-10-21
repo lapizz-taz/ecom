@@ -102,6 +102,37 @@ export const CART_WIDTHS: Record<CartSettings['width'], number> = { narrow: 380,
 export const CART_TEXT_SCALE = { min: 85, max: 120 } as const
 export const CART_IMAGE_SIZE = { min: 48, max: 120 } as const
 
+/** The cart page (/cart), edited under Cart → Cart page in the theme builder. Empty colours follow the theme. */
+export interface CartPageSettings {
+  title: string
+  /** side: the summary beside the items on computers; stacked: under them. */
+  layout: 'side' | 'stacked'
+  width: 'narrow' | 'standard' | 'wide'
+  image_size: number
+  image_radius: number
+  stepper_radius: number
+  show_each_price: boolean
+  show_coupon: boolean
+  coupon_button: string
+  summary_title: string
+  summary_bg: string
+  summary_border: boolean
+  summary_radius: number
+  button_label: string
+  button_bg: string
+  button_text: string
+  button_radius: number
+  button_lock_icon: boolean
+  note: string
+  show_continue: boolean
+  empty_title: string
+  empty_button: string
+}
+export const CART_PAGE_IMAGE_SIZE = { min: 56, max: 160 } as const
+export const CART_PAGE_WIDTHS: Record<CartPageSettings['width'], number> = { narrow: 900, standard: 1152, wide: 1320 }
+/** The exact corner radius a store can set instead of Sharp / Soft / Round, in px. */
+export const RADIUS_PX = { min: 0, max: 32 } as const
+
 export interface StoreTheme {
   accent: string
   /** Body text font. */
@@ -113,6 +144,8 @@ export interface StoreTheme {
   text_size: number
   heading_size: number
   radius: ThemeRadius
+  /** An exact corner radius in px for the whole store; null uses the Sharp / Soft / Round choice. */
+  radius_px: number | null
   logo_position: 'left' | 'center'
   colors: { background: string; text: string; footer_bg: string; footer_text: string; announcement_bg: string; announcement_text: string }
   announcement: { enabled: boolean; items: string[]; marquee: boolean }
@@ -130,6 +163,7 @@ export interface StoreTheme {
   whatsapp: string
   payment_badges: boolean
   cart: CartSettings
+  cart_page: CartPageSettings
   /** The browser-tab icon of the store (square image); the app icon when empty. */
   favicon_url: string
   /** The ready-made theme the look came from (theme-presets.ts); empty until the store picks one. */
@@ -400,8 +434,15 @@ export const DEFAULT_THEME: StoreTheme = {
     button_label: 'Checkout', button_bg: '', button_text: '', button_radius: 8, button_show_total: true, button_lock_icon: true,
     show_view_cart: true, empty_text: 'Your cart is empty.',
   },
+  cart_page: {
+    title: 'Cart', layout: 'side', width: 'standard', image_size: 96, image_radius: 6, stepper_radius: 6, show_each_price: true,
+    show_coupon: true, coupon_button: 'Apply', summary_title: '', summary_bg: '', summary_border: true, summary_radius: 12,
+    button_label: 'Checkout', button_bg: '', button_text: '', button_radius: 8, button_lock_icon: false,
+    note: 'Cash on delivery available', show_continue: true, empty_title: 'Your cart is empty', empty_button: 'Start shopping',
+  },
   favicon_url: '',
   preset: '',
+  radius_px: null,
 }
 
 const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)
@@ -546,6 +587,25 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
     })(),
     favicon_url: /^(https:\/\/|\/)/.test(str(t.favicon_url)) ? str(t.favicon_url) : '',
     preset: /^[a-z]{1,20}$/.test(str(t.preset)) ? str(t.preset) : '',
+    radius_px: typeof t.radius_px === 'number' && Number.isFinite(t.radius_px) ? pct(t.radius_px, RADIUS_PX.min, RADIUS_PX.max) : null,
+    cart_page: (() => {
+      const k = (t.cart_page ?? {}) as Partial<CartPageSettings>
+      const d = DEFAULT_THEME.cart_page
+      const text = (v: unknown, def: string, max: number) => str(v, def).slice(0, max)
+      return {
+        title: text(k.title, d.title, 40), layout: k.layout === 'stacked' ? 'stacked' : 'side',
+        width: k.width === 'narrow' || k.width === 'wide' ? k.width : 'standard',
+        image_size: typeof k.image_size === 'number' && Number.isFinite(k.image_size) ? pct(k.image_size, CART_PAGE_IMAGE_SIZE.min, CART_PAGE_IMAGE_SIZE.max) : d.image_size,
+        image_radius: corner(k.image_radius, d.image_radius), stepper_radius: corner(k.stepper_radius, d.stepper_radius),
+        show_each_price: bool(k.show_each_price, d.show_each_price), show_coupon: bool(k.show_coupon, d.show_coupon),
+        coupon_button: text(k.coupon_button, d.coupon_button, 24) || d.coupon_button, summary_title: text(k.summary_title, '', 40),
+        summary_bg: isHex(k.summary_bg) ? k.summary_bg : '', summary_border: bool(k.summary_border, d.summary_border), summary_radius: corner(k.summary_radius, d.summary_radius),
+        button_label: text(k.button_label, d.button_label, 40) || d.button_label, button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',
+        button_radius: typeof k.button_radius === 'number' && Number.isFinite(k.button_radius) ? Math.min(28, Math.max(0, Math.round(k.button_radius))) : d.button_radius,
+        button_lock_icon: bool(k.button_lock_icon, d.button_lock_icon), note: text(k.note, d.note, 120), show_continue: bool(k.show_continue, d.show_continue),
+        empty_title: text(k.empty_title, d.empty_title, 60) || d.empty_title, empty_button: text(k.empty_button, d.empty_button, 30) || d.empty_button,
+      }
+    })(),
   }
 }
 
@@ -577,7 +637,7 @@ export function themeStyle(t: StoreTheme): CSSProperties {
     // Every button in the store (the app's own are blue) takes the theme colour, black by default.
     '--brand': t.accent, '--brand-foreground': onColor(t.accent), '--brand-soft': `color-mix(in srgb, ${t.accent} 8%, transparent)`,
     '--background': t.colors.background, '--foreground': t.colors.text,
-    '--radius': RADII[t.radius].value, fontFamily: FONTS[t.font].family,
+    '--radius': t.radius_px === null ? RADII[t.radius].value : `${t.radius_px}px`, fontFamily: FONTS[t.font].family,
     '--store-font-heading': FONTS[t.heading_font].family, '--store-heading-weight': t.heading_weight === 'default' ? undefined : t.heading_weight,
     '--fs-body': body, '--fs-heading': heading, ...sizes,
     fontSize: `${body}rem`,

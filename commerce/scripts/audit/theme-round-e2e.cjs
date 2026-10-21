@@ -261,6 +261,33 @@ async function until(fn, ms = 15000) {
     const closed = await until(async () => !(await drawer().isVisible()))
     step('closing the settings closes the drawer in the preview', !!closed)
 
+    // --- Cart page: editable, sample items in an empty cart, a real subtotal ---
+    await page.getByRole('button', { name: 'Desktop' }).click()
+    frame = await previewFrame(page)
+    await page.getByRole('button', { name: /^Cart page/ }).click()
+    await field('Title').locator('input').fill('Shopping bag')
+    await field('Summary').locator('select').selectOption('stacked')
+    await field('Photo size').locator('input[type=range]').fill('140')
+    await field('Heading').locator('input').fill('Order summary')
+    await field('Corners').locator('input[type=range]').fill('20')
+    await field('Label').locator('input').fill('Place my order')
+    const cartPage = await until(async () => {
+      const root = frame.locator('[data-section-id="cart-page"]')
+      const t = await root.innerText()
+      const photoBox = await root.locator('li span[aria-hidden]').first().evaluate((el) => { const r = el.getBoundingClientRect(); return `${r.width}x${r.height}` })
+      const box = await root.getByRole('heading', { name: 'Order summary' }).evaluate((el) => getComputedStyle(el.parentElement).borderTopLeftRadius)
+      return /Shopping bag/.test(t) && /Place my order/.test(t) && /Sample product/.test(t) && /3,030/.test(t) && photoBox === '140x140' && box === '20px' ? { photoBox, box } : null
+    })
+    await page.screenshot({ path: join(S, 'round-cart-page.png') })
+    step('Cart page is editable: title, layout, photo size 140 px, summary heading and corners, button label; sample items with a real subtotal (৳3,030, not ৳0)', !!cartPage, JSON.stringify(cartPage))
+
+    // --- Exact corners for every store page ---
+    await page.getByRole('button', { name: 'Theme settings' }).click()
+    await page.getByRole('button', { name: 'Buttons and corners' }).click()
+    await field('Exact corners').locator('input[type=range]').fill('14')
+    const radius = await until(async () => (await frame.evaluate(() => getComputedStyle(document.querySelector('[data-store-theme]')).getPropertyValue('--radius').trim())) === '14px' ? '14px' : null)
+    step('Theme settings → exact corners (14 px) applies to the whole store', radius === '14px', String(radius))
+
     // Help: Fullfilio support's address, not the owner's own.
     await page.goto(`${base}/admin/help`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await settle(page, /Contact/, 20000)
