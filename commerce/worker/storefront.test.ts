@@ -162,6 +162,14 @@ describe('store pages from the Worker', () => {
     expect(store).not.toContain('fullfiliohq')
   })
 
+  it("a store's own address keeps browsers on HTTPS, like the website", async () => {
+    database({ storefront_resolve: { kind: 'store', merchant_id: MERCHANT, name: 'Isolation' }, storefront_page: { config: {}, seo: SEO } })
+    const store = await storefrontPage(new Request('https://atheron.shop/'), new URL('https://atheron.shop/'), env())
+    expect(store.headers.get('Strict-Transport-Security')).toBe('max-age=31536000')
+    const account = await storefrontPage(new Request('https://atheron.shop/account'), new URL('https://atheron.shop/account'), env())
+    expect(account.headers.get('Strict-Transport-Security')).toBe('max-age=31536000')
+  })
+
   it('the head is written safely whatever the store typed', () => {
     const html = injectHead(SHELL, { host: 'a.shop', origin: 'https://a.shop', site: { kind: 'store', merchant_id: MERCHANT },
       seo: { status: 200, title: '</title><script>x</script>', robots: 'noindex,follow', canonical: '/shop' } })

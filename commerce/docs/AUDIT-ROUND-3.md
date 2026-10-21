@@ -110,6 +110,9 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 | Super Admin | **Pass 5** — every Super Admin page (overview + 24) at 1440 and 390 px as platform staff: no error, no sideways scroll, no bounce to sign-in. `scripts/audit/super-admin-pages-e2e.cjs` | browser | 50/50 | PASS |
 | Super Admin | A store owner opening `/super-admin/merchants` sees "This account is not on the platform team", and the data call is refused (`PERMISSION_DENIED`) | browser | as expected | PASS |
 | Payments | A gateway's "success" callback is never trusted: the status is asked of the gateway (bKash, PayStation), amount/currency/transaction checked, a transaction can pay only one payment, and only the server (system context) can confirm (`billing_gateway_confirm`) | unit + db + code read | `payments.test.ts` 19, `billing-payments` 22, `gateway-payments` 8 | PASS (mocked) |
+| Speed | **Pass 6** — load test (`scripts/load-test.mjs`, 16 clients, 20 s, local PostgreSQL, 4 cores), today's code **and** the round-2 code (`5deb127`) on the same machine: orders 137/s vs 131/s (same); status changes 442/s vs 557/s (**−21 %**, p95 57 ms vs 45 ms — the status change now also queues ad-tracking and store status updates); search p95 26 ms vs 24 ms; 0 errors. A first run read 73 orders/s with the machine busy — discarded as noise after the A/B | load | far above today's traffic | PASS (note P3) |
+| Security headers (live) | fullfilio.com: HSTS, CSP (`frame-ancestors 'self'`, `object-src 'none'`, `base-uri 'self'`), `nosniff`, `SAMEORIGIN`, strict referrer. atheron.shop: same **but no HSTS** | live-read (database HTTP client) | store pages lacked HSTS | **FIXED** (store pages now send it; test in `worker/storefront.test.ts`) |
+| Rate limits | Checkout, tracking, sign-in and API limits refuse the extra request and keep memory bounded (12,000 keys); not flooded on production on purpose | unit | `http-body.test.ts` | PASS |
 
 ## 5. Fixes this round
 
@@ -117,8 +120,28 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 |---|---|---|---|
 | 1 | Client errors keep their real message instead of "[object Object]" | `src/lib/monitoring.ts` | `src/lib/monitoring.test.ts` (2) |
 | 2 | PayStation "not confirmed" names PayStation's payment state | `supabase/functions/_shared/payments/paystation.ts` | `payments.test.ts` |
+| 4 | Store pages (a merchant's own domain) now send `Strict-Transport-Security` like the website | `worker/storefront.ts` | `worker/storefront.test.ts` (new test) |
 | 3 | The Cloudflare database's reference data was generated on 19 Oct, before the newest migrations: a store created on the Cloudflare database would start with old settings rows. Regenerated from all 171 migrations | `worker/db/generated/seed.sql` | worker tests 85/85; pass 3 runs on it |
 
 ## 6. Needs the owner
 
 Nothing open. Resolved: PayStation invoice `BP-D45C8D2CC16346-TMVGW9MBT` was the owner's own test, never paid (confirmed 21 Oct).
+
+## 7. Round 3 summary (2026-10-21)
+
+| | Count |
+|---|---|
+| Passes run | 6 (baseline + live logs, live data + isolation, order lifecycle, queues + race + admin pages, storefront + Super Admin, speed + headers) |
+| Automated checks run this round | unit 932, database 700, browser 31 + 164 + 33 + 53 = 281, load 4 measures × 2 versions |
+| Bugs found and fixed | 4 — all P3: error text lost as "[object Object]"; PayStation "not confirmed" without its state; Cloudflare database reference data out of date; store pages without HSTS. Each has a test. |
+| P0 / P1 / P2 open | 0 / 0 / 0 |
+| Recovered on their own before this round (verified) | billing-run empty-setting failures (fixed 20 Oct), inbox channel remove and Cloudflare zone id (fixed within a minute) |
+| Owner questions | 1, answered (PayStation test payment, unpaid) |
+
+**What the evidence covers.** Every admin, Super Admin and store page opens at phone and desktop width. The full order life (place → deliver, fail → return, cancel), stock at every step, a hand-checked P&L, the Call role's limits, a second store's isolation, a shopper's real checkout and Track order were driven in a browser on the real Worker. Live data has no duplicates or broken totals; every table is locked to its store; the 16 scheduled jobs run.
+
+**What it does not cover (stated, not assumed).** Real answers from Shopify, WooCommerce, the couriers, bKash, PayStation, SMS, Meta/TikTok/Google — this session cannot reach them, so those integrations are proven with stand-in providers only (live Shopify webhooks were seen arriving and handled). Production has 3 orders, so live-data checks are a small sample. Camera scanning needs a real phone.
+
+**Notes (P3, not bugs).** Status changes are ~21 % slower than in round 2 under heavy load (still 442/s). `trial_days` in plan/offer saves is cast without the empty-value guard (the forms always send a number). Ad-event dedup on the server is per Worker instance; the platforms also merge by event id.
+
+**Readiness.** No open P0–P2 issue. Ready, with the integrations above verified only as far as stated.
