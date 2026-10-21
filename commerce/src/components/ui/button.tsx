@@ -8,9 +8,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Raised like a physical key (index.css, .btn-3d): the primary action is blue.
-        default: 'btn-3d btn-3d-brand bg-brand text-brand-foreground hover:bg-brand/95',
-        brand: 'btn-3d btn-3d-brand bg-brand text-brand-foreground hover:bg-brand/95',
+        // The primary action: the blue glow button (index.css, .btn-glow) in the app; flat in the
+        // store's colour on a store and in the theme editor.
+        default: 'btn-3d btn-3d-brand btn-glow bg-brand text-brand-foreground hover:bg-brand/95',
+        brand: 'btn-3d btn-3d-brand btn-glow bg-brand text-brand-foreground hover:bg-brand/95',
         // The old black/ink key, kept for the rare place that wants a neutral primary.
         ink: 'btn-3d btn-3d-ink bg-primary text-primary-foreground hover:bg-primary/92',
         destructive: 'btn-3d btn-3d-danger bg-destructive text-white hover:bg-destructive/92 focus-visible:ring-destructive/25',

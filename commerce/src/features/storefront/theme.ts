@@ -81,6 +81,8 @@ export interface CartSettings {
   /** Text in the drawer, in % of the theme's body size. */
   text_scale: number
   image_shape: 'square' | 'portrait'
+  /** Product photo size (its height), in px; portrait photos are a little narrower. */
+  image_size: number
   /** Corner radius of the product photos and of the quantity box, in px. */
   image_radius: number
   stepper_radius: number
@@ -98,6 +100,7 @@ export interface CartSettings {
 /** Cart drawer widths in px (phones always use the full width). */
 export const CART_WIDTHS: Record<CartSettings['width'], number> = { narrow: 380, standard: 420, wide: 480 }
 export const CART_TEXT_SCALE = { min: 85, max: 120 } as const
+export const CART_IMAGE_SIZE = { min: 48, max: 120 } as const
 
 export interface StoreTheme {
   accent: string
@@ -393,7 +396,7 @@ export const DEFAULT_THEME: StoreTheme = {
     free_shipping_bar: true, free_shipping_text: 'Add {amount} more for free delivery', unlocked_text: 'Your order qualifies for free delivery',
     upsell: true, upsell_title: 'You may also like', show_savings: true, note: '',
     side: 'right', width: 'standard', spacing: 'comfortable', background: '', text: '', bar_color: '',
-    title: 'Cart', title_size: 'medium', title_uppercase: false, text_scale: 100, image_shape: 'square', image_radius: 6, stepper_radius: 6,
+    title: 'Cart', title_size: 'medium', title_uppercase: false, text_scale: 100, image_shape: 'square', image_size: 80, image_radius: 6, stepper_radius: 6,
     button_label: 'Checkout', button_bg: '', button_text: '', button_radius: 8, button_show_total: true, button_lock_icon: true,
     show_view_cart: true, empty_text: 'Your cart is empty.',
   },
@@ -532,6 +535,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
         title_uppercase: bool(k.title_uppercase, d.title_uppercase),
         text_scale: typeof k.text_scale === 'number' && Number.isFinite(k.text_scale) ? pct(k.text_scale, CART_TEXT_SCALE.min, CART_TEXT_SCALE.max) : d.text_scale,
         image_shape: k.image_shape === 'portrait' ? 'portrait' : 'square',
+        image_size: typeof k.image_size === 'number' && Number.isFinite(k.image_size) ? pct(k.image_size, CART_IMAGE_SIZE.min, CART_IMAGE_SIZE.max) : d.image_size,
         image_radius: corner(k.image_radius, d.image_radius), stepper_radius: corner(k.stepper_radius, d.stepper_radius),
         button_label: str(k.button_label, d.button_label).slice(0, 40) || d.button_label,
         button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',

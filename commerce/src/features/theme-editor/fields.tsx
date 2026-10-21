@@ -51,7 +51,7 @@ function ImageInput({ value, onChange }: { value: string; onChange: (v: string) 
       <div className="relative grid aspect-[16/9] place-items-center overflow-hidden rounded-lg border border-dashed border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
         {value ? <img src={imageUrl(value, 600)} alt="" className="absolute inset-0 size-full object-cover" /> : null}
         <button type="button" onClick={() => file.current?.click()} disabled={busy}
-          className={cn('relative z-10 inline-flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-medium shadow-xs hover:bg-zinc-50 dark:bg-zinc-800', value && 'opacity-0 hover:opacity-100 focus:opacity-100')}>
+          className={cn('relative z-10 inline-flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-medium shadow-xs hover:bg-zinc-50 dark:bg-black/[0.07]', value && 'opacity-0 hover:opacity-100 focus:opacity-100')}>
           {busy ? <Spinner className="size-3.5" /> : <ImagePlus className="size-3.5" />} {value ? 'Change' : 'Select image'}
         </button>
         {value && (
@@ -159,7 +159,7 @@ export function ListField({ label, item, max, value, onChange, hint }: { label: 
     <FieldRow label={label} hint={hint}>
       <div className="grid gap-2">
         {value.map((row, i) => (
-          <div key={i} className="grid gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
+          <div key={i} className="grid gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-black/10">
             {item.map((f) => f.multiline
               ? <textarea key={f.key} rows={3} className={cn(inputClass, 'h-auto py-1.5')} aria-label={`${f.label} ${i + 1}`} placeholder={f.label} value={row[f.key] ?? ''}
                   onChange={(e) => onChange(value.map((r, j) => (j === i ? { ...r, [f.key]: e.target.value } : r)))} />
