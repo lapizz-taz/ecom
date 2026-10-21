@@ -46,34 +46,37 @@ export default function StoreThemesPage() {
       </div>
 
       {/* Current theme */}
-      <section className="overflow-hidden rounded-2xl bg-zinc-950 text-white shadow-sm">
-        <div className="relative aspect-[16/8] overflow-hidden sm:aspect-[16/7]">
+      <section className="overflow-hidden rounded-2xl bg-[#0b0b0c] text-white shadow-sm ring-1 ring-white/10">
+        <div className="relative aspect-[16/10] overflow-hidden bg-white sm:aspect-[16/7]">
           <ThemePreview />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-5">
-            <div className="min-w-0">
-              <p className="truncate text-lg font-semibold">{host ?? config?.store.name ?? 'Your store'}</p>
-              <p className="text-[13px] text-white/75">
-                {config?.store.name ?? 'Store'} · {s.unpublished ? 'Draft not published' : 'Live'}
-                {s.savedAt ? ` · Last saved: ${formatDateTime(s.savedAt)}` : s.publishedAt ? ` · Published: ${formatDateTime(s.publishedAt)}` : ''}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" asChild className="bg-white text-zinc-900 hover:bg-white/90"><Link to="/admin/store/theme/editor"><Paintbrush /> Edit theme</Link></Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" aria-label="More" className="grid size-8 place-items-center rounded-lg text-white hover:bg-white/15"><MoreHorizontal className="size-4" /></button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuItem asChild disabled={!store.url}><a href={store.url ?? undefined} target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
-                  <DropdownMenuItem asChild><Link to="/admin/store/seo">SEO</Link></DropdownMenuItem>
-                  <DropdownMenuItem asChild><Link to="/admin/store/website">Website & domains</Link></DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem disabled={!s.hasDraft || !s.canEdit || s.discardDraft.isPending}
-                    onClick={() => { if (window.confirm('Discard the saved draft? Your store keeps what is live now.')) s.discardDraft.mutate() }}>Discard draft</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-white/10 px-4 py-3.5 sm:px-5">
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold">{host ?? config?.store.name ?? 'Your store'}</p>
+            <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-white/70">
+              <span className={cn('size-1.5 rounded-full', s.unpublished ? 'bg-[#60a5fa]' : 'bg-emerald-400')} />
+              <span>{config?.store.name ?? 'Store'} · {s.unpublished ? 'Draft not published' : 'Live'}</span>
+              {(s.savedAt || s.publishedAt) && <span className="text-white/50">· {s.savedAt ? `Saved ${formatDateTime(s.savedAt)}` : `Published ${formatDateTime(s.publishedAt!)}`}</span>}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 max-[420px]:w-full">
+            <Link to="/admin/store/theme/editor"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-4 text-[13px] font-semibold whitespace-nowrap text-[#0b0b0c] shadow-sm transition-colors hover:bg-[#e4e4e7] max-[420px]:flex-1 [&_svg]:size-4">
+              <Paintbrush /> Edit theme
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="More" className="grid size-9 place-items-center rounded-lg border border-white/15 text-white hover:bg-white/10"><MoreHorizontal className="size-4" /></button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem asChild disabled={!store.url}><a href={store.url ?? undefined} target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link to="/admin/store/seo">SEO</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link to="/admin/store/website">Website & domains</Link></DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={!s.hasDraft || !s.canEdit || s.discardDraft.isPending}
+                  onClick={() => { if (window.confirm('Discard the saved draft? Your store keeps what is live now.')) s.discardDraft.mutate() }}>Discard draft</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </section>
@@ -138,7 +141,7 @@ function ThemePreview() {
   const [loaded, setLoaded] = useState(false)
   return (
     <div className="absolute inset-0">
-      {!loaded && <div className="grid size-full place-items-center"><Spinner className="text-white/60" /></div>}
+      {!loaded && <div className="grid size-full place-items-center"><Spinner className="text-[#a1a1aa]" /></div>}
       <iframe title="Your store" src="/?theme_preview=1" tabIndex={-1} aria-hidden onLoad={() => setLoaded(true)}
         className={cn('pointer-events-none absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4] border-0 bg-white transition-opacity', loaded ? 'opacity-100' : 'opacity-0')} />
     </div>

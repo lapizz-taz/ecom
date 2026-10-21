@@ -29,8 +29,8 @@ const FIXED: Record<string, string> = {
   announcement: 'Announcement bar', header: 'Header', footer: 'Footer', 'collection-banner': 'Collection banner', 'collection-grid': 'Product grid',
   'product-info': 'Product information', 'product-related': 'Related products', 'cart-drawer': 'Cart drawer',
 }
-const PAGES: Array<{ value: Page; label: string; icon: ReactNode }> = [
-  { value: 'home', label: 'Home page', icon: <Home className="size-3.5" /> },
+const PAGES: Array<{ value: Page; label: string; short?: string; icon: ReactNode }> = [
+  { value: 'home', label: 'Home page', short: 'Home', icon: <Home className="size-3.5" /> },
   { value: 'collection', label: 'Collections', icon: <LayoutTemplate className="size-3.5" /> },
   { value: 'product', label: 'Products', icon: <Package className="size-3.5" /> },
   { value: 'cart', label: 'Cart', icon: <ShoppingCart className="size-3.5" /> },
@@ -50,6 +50,8 @@ export default function StoreThemePage() {
   const [selected, setSelected] = useState<string | null>(() => (params.get('block') ? `block:${params.get('block')}` : null))
   const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
   const [inspect, setInspect] = useState(true)
+  // Phones show the panel or the preview, one at a time (lg and up: side by side).
+  const [mobileView, setMobileView] = useState<'edit' | 'preview'>('edit')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const history = useRef<{ past: Storefront[]; future: Storefront[]; last: number }>({ past: [], future: [], last: 0 })
@@ -76,7 +78,7 @@ export default function StoreThemePage() {
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return
       if (e.data?.type === 'theme-preview-ready') post({ type: 'theme-preview', storefront: draft, selected, inspect })
-      if (e.data?.type === 'theme-section-click') { setSelected(e.data.id); setTab('sections') }
+      if (e.data?.type === 'theme-section-click') { setSelected(e.data.id); setTab('sections'); setMobileView('edit') }
       if (e.data?.type === 'theme-preview-error') setPreviewError(typeof e.data.message === 'string' && e.data.message ? e.data.message : 'Unknown error')
     }
     window.addEventListener('message', onMessage)
@@ -168,13 +170,13 @@ export default function StoreThemePage() {
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#f1f1f1] text-[13px] text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-zinc-200 bg-white px-2 dark:border-zinc-800 dark:bg-zinc-900">
+      <header className="flex h-12 shrink-0 items-center gap-0.5 border-b border-zinc-200 bg-white px-1.5 whitespace-nowrap sm:gap-1 sm:px-2 dark:border-zinc-800 dark:bg-zinc-900">
         <IconButton label="Exit" onClick={exit}><ArrowLeft /></IconButton>
-        <div className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
-        <IconButton label="Sections" active={tab === 'sections'} onClick={() => setTab('sections')}><PanelTop /></IconButton>
-        <IconButton label="Theme settings" active={tab === 'settings'} onClick={() => setTab('settings')}><Paintbrush /></IconButton>
+        <div className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block dark:bg-zinc-800" />
+        <IconButton label="Sections" active={tab === 'sections'} onClick={() => { setTab('sections'); setMobileView('edit') }}><PanelTop /></IconButton>
+        <IconButton label="Theme settings" active={tab === 'settings'} onClick={() => { setTab('settings'); setMobileView('edit') }}><Paintbrush /></IconButton>
 
-        <div className="mx-auto flex min-w-0 items-center gap-2">
+        <div className="mx-auto flex min-w-0 flex-1 items-center justify-center gap-2 sm:flex-none">
           <span className="hidden items-center gap-1.5 font-medium sm:flex"><Store className="size-3.5 text-zinc-500" />{config?.store.name ?? 'Store'}</span>
           {store.state && (
             <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline', store.state.online
@@ -184,8 +186,8 @@ export default function StoreThemePage() {
             </span>
           )}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
-              {PAGES.find((p) => p.value === page)?.icon}{PAGES.find((p) => p.value === page)?.label}<ChevronDown className="size-3.5 text-zinc-500" />
+            <DropdownMenuTrigger className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 [&>svg]:shrink-0">
+              <span className="max-sm:hidden">{PAGES.find((p) => p.value === page)?.icon}</span><span className="truncate sm:hidden">{PAGES.find((p) => p.value === page)?.short ?? PAGES.find((p) => p.value === page)?.label}</span><span className="truncate max-sm:hidden">{PAGES.find((p) => p.value === page)?.label}</span><ChevronDown className="size-3.5 text-zinc-500" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" className="z-[70] w-48">
               {PAGES.map((p) => <DropdownMenuItem key={p.value} onClick={() => { setPage(p.value); setSelected(null) }}>{p.icon}{p.label}</DropdownMenuItem>)}
@@ -193,18 +195,27 @@ export default function StoreThemePage() {
           </DropdownMenu>
         </div>
 
-        <IconButton label={inspect ? 'Inspector on: click the preview to select' : 'Inspector off'} active={inspect} onClick={() => setInspect(!inspect)}><MousePointerClick /></IconButton>
+        <span className="hidden sm:contents">
+          <IconButton label={inspect ? 'Inspector on: click the preview to select' : 'Inspector off'} active={inspect} onClick={() => setInspect(!inspect)}><MousePointerClick /></IconButton>
+        </span>
         <div className="hidden items-center sm:flex">
           <IconButton label="Desktop" active={device === 'desktop'} onClick={() => setDevice('desktop')}><Monitor /></IconButton>
           <IconButton label="Mobile" active={device === 'mobile'} onClick={() => setDevice('mobile')}><Smartphone /></IconButton>
           <IconButton label="Full width" active={device === 'full'} onClick={() => setDevice('full')}><Maximize2 /></IconButton>
         </div>
-        <div className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
-        <IconButton label="Undo" disabled={!h.past.length} onClick={undo}><Undo2 /></IconButton>
-        <IconButton label="Redo" disabled={!h.future.length} onClick={redo}><Redo2 /></IconButton>
+        <div className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block dark:bg-zinc-800" />
+        <span className="hidden sm:contents">
+          <IconButton label="Undo" disabled={!h.past.length} onClick={undo}><Undo2 /></IconButton>
+          <IconButton label="Redo" disabled={!h.future.length} onClick={redo}><Redo2 /></IconButton>
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><button type="button" aria-label="More" className="grid size-8 place-items-center rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 [&_svg]:size-4"><MoreHorizontal /></button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="z-[70] w-52">
+            {/* On phones the bar has no room for these. */}
+            <DropdownMenuItem className="sm:hidden" disabled={!h.past.length} onSelect={(e) => { e.preventDefault(); undo() }}><Undo2 /> Undo</DropdownMenuItem>
+            <DropdownMenuItem className="sm:hidden" disabled={!h.future.length} onSelect={(e) => { e.preventDefault(); redo() }}><Redo2 /> Redo</DropdownMenuItem>
+            <DropdownMenuItem className="sm:hidden" onClick={() => setInspect(!inspect)}><MousePointerClick /> {inspect ? 'Turn off tap to select' : 'Turn on tap to select'}</DropdownMenuItem>
+            <DropdownMenuSeparator className="sm:hidden" />
             <DropdownMenuItem asChild disabled={!store.url}><a href={store.url ?? undefined} target="_blank" rel="noreferrer">View store</a></DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={!s.dirty} onClick={() => { s.reset(); history.current = { past: [], future: [], last: 0 }; bump((n) => n + 1) }}>Discard unsaved changes</DropdownMenuItem>
@@ -222,19 +233,35 @@ export default function StoreThemePage() {
         </span>
         <button type="button" onClick={() => s.save.mutate()} disabled={!s.dirty || !s.canEdit || s.save.isPending || s.publish.isPending}
           title="Save as a draft: your store does not change until you publish"
-          className="ml-1 flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-[13px] font-medium transition-opacity disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900">
-          {s.save.isPending && <Spinner className="size-3.5" />} Save draft
+          className="ml-1 flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 text-[13px] font-medium transition-opacity disabled:opacity-50 sm:px-3 dark:border-zinc-700 dark:bg-zinc-900">
+          {s.save.isPending && <Spinner className="size-3.5" />} <span className="sm:hidden">Save</span><span className="max-sm:hidden">Save draft</span>
         </button>
         <button type="button" onClick={() => { if (window.confirm('Publish these changes? Your store shows them straight away.')) s.publish.mutate() }}
           disabled={(!s.dirty && !s.unpublished) || !s.canEdit || s.publish.isPending || s.save.isPending}
-          className="ml-1 flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 text-[13px] font-medium text-white shadow-[inset_0_-1px_0_rgb(255_255_255/.15)] transition-opacity disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-zinc-900 dark:disabled:bg-zinc-800">
+          className="ml-1 flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 sm:px-3.5 text-[13px] font-medium text-white shadow-[inset_0_-1px_0_rgb(255_255_255/.15)] transition-opacity disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-zinc-900 dark:disabled:bg-zinc-800">
           {s.publish.isPending && <Spinner className="size-3.5" />} Publish
         </button>
       </header>
 
+      {/* Phones: edit or preview */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-2 py-1.5 lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
+        <div role="tablist" aria-label="View" className="grid flex-1 grid-cols-2 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-800">
+          {(['edit', 'preview'] as const).map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={mobileView === v} onClick={() => setMobileView(v)}
+              className={cn('h-8 rounded-md text-[13px] font-medium transition-colors', mobileView === v ? 'bg-white shadow-sm dark:bg-zinc-950' : 'text-zinc-500')}>
+              {v === 'edit' ? 'Edit' : 'Preview'}
+            </button>
+          ))}
+        </div>
+        <span className={cn('flex items-center gap-1.5 px-1 text-[12px]', s.dirty ? 'text-amber-700 dark:text-amber-400' : 'text-zinc-500')} role="status">
+          <span className={cn('size-1.5 rounded-full', s.dirty ? 'bg-amber-500' : s.unpublished ? 'bg-[#2c6ecb]' : 'bg-emerald-500')} />
+          {s.dirty ? 'Unsaved' : s.unpublished ? 'Draft' : 'Live'}
+        </span>
+      </div>
+
       <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left panel */}
-        <aside className="max-h-[42vh] shrink-0 overflow-y-auto border-b border-zinc-200 bg-white lg:max-h-none lg:w-[300px] lg:border-r lg:border-b-0 dark:border-zinc-800 dark:bg-zinc-900">
+        <aside className={cn('min-h-0 flex-1 overflow-y-auto bg-white lg:w-[300px] lg:flex-none lg:shrink-0 lg:border-r dark:border-zinc-800 dark:bg-zinc-900', mobileView === 'preview' && 'max-lg:hidden')}>
           <fieldset disabled={!s.canEdit} className="contents">
             {tab === 'sections' && (
               <SectionTree page={page} theme={theme} sections={sections} selected={selected} onSelect={setSelected} onSections={setSections}
@@ -245,7 +272,7 @@ export default function StoreThemePage() {
         </aside>
 
         {/* Preview */}
-        <div className="min-h-[50vh] min-w-0 flex-1 overflow-auto p-2 lg:p-3">
+        <div className={cn('min-h-0 min-w-0 flex-1 overflow-auto p-2 lg:p-3', mobileView === 'edit' && 'max-lg:hidden')}>
           {previewError && (
             <div role="alert" className="mx-auto mb-2 max-w-[1400px] rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
               The preview could not load your store: {previewError}
@@ -260,7 +287,7 @@ export default function StoreThemePage() {
 
         {/* Right panel: the selected item's settings */}
         {selected && (
-          <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-[320px] flex-col border-l border-zinc-200 bg-white shadow-xl lg:static lg:w-[300px] lg:shadow-none dark:border-zinc-800 dark:bg-zinc-900">
+          <aside className={cn('absolute inset-0 z-10 flex flex-col bg-white sm:left-auto sm:w-[340px] sm:border-l sm:border-zinc-200 sm:shadow-xl lg:static lg:w-[300px] lg:shadow-none dark:border-zinc-800 dark:bg-zinc-900', mobileView === 'preview' && 'max-lg:hidden')}>
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
               <span className="text-zinc-500">{current ? SECTION_ICON[current.type] : currentBlock ? BLOCK_ICON[currentBlock.type] : <PanelBottom className="size-4" />}</span>
               <p className="min-w-0 flex-1 truncate font-semibold">
@@ -664,9 +691,9 @@ function TypeSample({ theme }: { theme: StoreTheme }) {
   useThemeFont(theme.font, theme.heading_font)
   const weight = theme.heading_weight === 'default' ? 600 : Number(theme.heading_weight)
   return (
-    <div className="space-y-1 rounded-lg border border-zinc-200 bg-white p-3 text-zinc-900 dark:border-zinc-700">
+    <div className="space-y-1 rounded-lg border border-[#e4e4e7] bg-white p-3 text-[#18181b]">
       <p style={{ fontFamily: FONTS[theme.heading_font].family, fontWeight: weight, fontSize: `${1.25 * theme.heading_size / 100}rem` }} className="leading-tight">Summer linen shirt</p>
-      <p style={{ fontFamily: FONTS[theme.font].family, fontSize: `${0.875 * theme.text_size / 100}rem` }} className="leading-snug text-zinc-600">Breathable cotton-linen, cut for the heat. ৳1,250 · ক্যাশ অন ডেলিভারি</p>
+      <p style={{ fontFamily: FONTS[theme.font].family, fontSize: `${0.875 * theme.text_size / 100}rem` }} className="leading-snug text-[#52525b]">Breathable cotton-linen, cut for the heat. ৳1,250 · ক্যাশ অন ডেলিভারি</p>
     </div>
   )
 }

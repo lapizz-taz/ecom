@@ -5,7 +5,8 @@ import { FONT_GROUPS, FONTS, fontsHref, type ThemeFont } from '@/features/storef
 import { cn } from '@/lib/utils'
 
 // Picks one of the store fonts. Each name is shown in its own font: the list loads only the letters
-// of the names (Google Fonts "text="), so opening it stays light.
+// of the names (Google Fonts "text="), so opening it stays light. Fixed colours: the same in the light
+// and dark admin, like the block picker.
 
 const ALL = Object.keys(FONTS) as ThemeFont[]
 const LETTERS = [...new Set(ALL.map((f) => FONTS[f].label + FONTS[f].sample).join(''))].join('')
@@ -38,9 +39,9 @@ export function FontPicker({ value, onChange, label }: { value: ThemeFont; onCha
           <ChevronDown className="size-4 text-zinc-500" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="z-[70] w-[var(--radix-popover-trigger-width)] min-w-64 overflow-hidden p-0">
-        <label className="flex items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
-          <Search className="size-3.5 text-zinc-500" />
+      <PopoverContent align="start" className="z-[70] w-[var(--radix-popover-trigger-width)] min-w-64 overflow-hidden border-[#e4e4e7] bg-white p-0 text-[#18181b] shadow-xl">
+        <label className="flex items-center gap-2 border-b border-[#e4e4e7] px-3">
+          <Search className="size-3.5 text-[#71717a]" />
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search fonts" className="h-9 flex-1 bg-transparent text-[13px] outline-none" />
         </label>
         <div role="listbox" aria-label={label} className="max-h-72 overflow-y-auto p-1">
@@ -49,10 +50,10 @@ export function FontPicker({ value, onChange, label }: { value: ThemeFont; onCha
             if (!fonts.length) return null
             return (
               <div key={g}>
-                <p className="px-2 pt-2 pb-1 text-[10px] font-medium tracking-wider text-zinc-500 uppercase">{g}</p>
+                <p className="px-2 pt-2 pb-1 text-[10px] font-medium tracking-wider text-[#71717a] uppercase">{g}</p>
                 {fonts.map((f) => (
                   <button key={f} type="button" role="option" aria-selected={f === value} onClick={() => { onChange(f); setOpen(false) }}
-                    className={cn('flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800', f === value && 'bg-zinc-100 dark:bg-zinc-800')}>
+                    className={cn('flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left hover:bg-[#f4f4f5]', f === value && 'bg-[#f4f4f5]')}>
                     <span className="w-7 text-lg leading-none" style={{ fontFamily: FONTS[f].family }}>{FONTS[f].sample}</span>
                     <span className="min-w-0 flex-1 truncate text-[15px]" style={{ fontFamily: FONTS[f].family }}>{FONTS[f].label}</span>
                     {f === value && <Check className="size-3.5" />}
@@ -61,7 +62,7 @@ export function FontPicker({ value, onChange, label }: { value: ThemeFont; onCha
               </div>
             )
           })}
-          {!ALL.some((f) => FONTS[f].label.toLowerCase().includes(query)) && <p className="px-2 py-6 text-center text-xs text-zinc-500">No font matches “{q}”.</p>}
+          {!ALL.some((f) => FONTS[f].label.toLowerCase().includes(query)) && <p className="px-2 py-6 text-center text-xs text-[#71717a]">No font matches “{q}”.</p>}
         </div>
       </PopoverContent>
     </Popover>
