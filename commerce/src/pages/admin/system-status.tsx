@@ -16,7 +16,7 @@ const FUNCTIONS = [
   { name: 'checkout', label: 'Checkout' }, { name: 'courier', label: 'Courier booking' }, { name: 'courier-webhook', label: 'Courier webhooks' },
   { name: 'payments', label: 'Payments' }, { name: 'payment-webhook', label: 'Payment callbacks' }, { name: 'channels', label: 'Shopify / WooCommerce' },
   { name: 'sms', label: 'SMS' }, { name: 'notifications-dispatch', label: 'Message sender' }, { name: 'fraud-check', label: 'Fraud check' },
-  { name: 'site-api', label: 'Website API' }, { name: 'pbx', label: 'PBX' },
+  { name: 'site-api', label: 'Website API' }, { name: 'pbx', label: 'Cloud Calling' },
 ]
 const STATE: Record<HealthState, { label: string; icon: ReactNode; badge: 'success' | 'warning' | 'danger' | 'neutral'; bar: string }> = {
   ok: { label: 'Operational', icon: <CheckCircle2 className="size-5 text-emerald-600" />, badge: 'success', bar: 'bg-emerald-500' },

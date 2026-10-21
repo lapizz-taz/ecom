@@ -22,7 +22,7 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 |---|---|---|---|
 | Starter | ৳990 | 3 staff · 1 store · 300 products · 500 orders/month | Shopify, WooCommerce, SMS, reports, custom domain, courier history (fraud check) |
 | Growth | ৳2,490 | 10 staff · 3 stores · 3,000 products · 3,000 orders/month | + two-way stock sync, ad attribution, abandoned carts, website API, external API |
-| Pro | ৳5,990 | 30 staff · 10 stores · no product or order limit | + phone system (PBX) |
+| Pro | ৳5,990 | 30 staff · 10 stores · no product or order limit | + Cloud Calling (phone system) |
 | Founder | free, hidden | none | Everything. This is the original business on the platform. |
 
 - **New-business offer** (switched on): ৳99 for the first month plus 2 days. Then a one-time
@@ -89,7 +89,7 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 - Two-person approval to delete a merchant.
 
 **Coming soon / in progress**
-- The VoiceDrive phone system (PBX) is shown as "coming soon".
+- Cloud Calling (the built-in phone system; called VoiceDrive PBX in the code and database) is shown as "coming soon".
 - The move from Supabase to a Cloudflare-only database runs on staging only.
 
 ## Ideal customer

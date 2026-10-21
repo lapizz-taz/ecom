@@ -52,7 +52,7 @@ export type IncidentSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 export type IncidentStatus = 'INVESTIGATING' | 'IDENTIFIED' | 'MONITORING' | 'RESOLVED'
 export const INCIDENT_INTEGRATIONS = [
   { value: 'shopify', label: 'Shopify' }, { value: 'woocommerce', label: 'WooCommerce' }, { value: 'sms', label: 'SMS' },
-  { value: 'bd_courier', label: 'BD Courier (courier history)' }, { value: 'pbx', label: 'PBX calling' }, { value: 'payments', label: 'Payments' },
+  { value: 'bd_courier', label: 'BD Courier (courier history)' }, { value: 'pbx', label: 'Cloud Calling' }, { value: 'payments', label: 'Payments' },
   { value: 'couriers', label: 'Courier booking' }, { value: 'ads', label: 'Ads' }, { value: 'platform', label: 'The whole platform' },
 ] as const
 // Integrations the feature system can show as "temporarily unavailable".

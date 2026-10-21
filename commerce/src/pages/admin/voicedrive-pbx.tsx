@@ -61,12 +61,12 @@ function VoiceDrivePbxPageContent() {
   if (page.isLoading) return <LoadingState />
   if (page.error) return <ErrorState error={page.error} onRetry={() => page.refetch()} />
   const ov = page.data?.overview.result
-  if (!ov) return <ErrorState error={new Error(page.data?.overview.error?.message ?? 'VoiceDrive is not available')} onRetry={() => page.refetch()} />
+  if (!ov) return <ErrorState error={new Error(page.data?.overview.error?.message ?? 'Cloud Calling is not available')} onRetry={() => page.refetch()} />
   const packages = page.data?.packages.result
 
   return (
     <div className="space-y-4">
-      <PageHeader title="VoiceDrive PBX" description="Browser phone for your team. Outgoing calls use a prepaid balance; incoming calls are free." />
+      <PageHeader title="Cloud Calling" description="Browser phone for your team. Outgoing calls use a prepaid balance; incoming calls are free." />
       <StatusStrip ov={ov} />
       {ov.maintenance.state !== 'none' && (
         <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-sm dark:bg-amber-950/20">

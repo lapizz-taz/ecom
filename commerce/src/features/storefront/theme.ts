@@ -67,7 +67,34 @@ export interface CartSettings {
   show_savings: boolean
   /** A short line above the checkout button, e.g. delivery times. */
   note: string
+  // --- Look (empty colours follow the theme) ---
+  side: 'right' | 'left'
+  width: 'narrow' | 'standard' | 'wide'
+  spacing: 'compact' | 'comfortable' | 'spacious'
+  background: string
+  text: string
+  /** The free-delivery bar's fill. */
+  bar_color: string
+  title: string
+  title_size: 'small' | 'medium' | 'large'
+  title_uppercase: boolean
+  /** Text in the drawer, in % of the theme's body size. */
+  text_scale: number
+  image_shape: 'square' | 'portrait'
+  button_label: string
+  button_bg: string
+  button_text: string
+  /** Corner radius of the checkout button, in px. */
+  button_radius: number
+  button_show_total: boolean
+  button_lock_icon: boolean
+  show_view_cart: boolean
+  empty_text: string
 }
+
+/** Cart drawer widths in px (phones always use the full width). */
+export const CART_WIDTHS: Record<CartSettings['width'], number> = { narrow: 380, standard: 420, wide: 480 }
+export const CART_TEXT_SCALE = { min: 85, max: 120 } as const
 
 export interface StoreTheme {
   accent: string
@@ -362,6 +389,10 @@ export const DEFAULT_THEME: StoreTheme = {
   cart: {
     free_shipping_bar: true, free_shipping_text: 'Add {amount} more for free delivery', unlocked_text: 'Your order qualifies for free delivery',
     upsell: true, upsell_title: 'You may also like', show_savings: true, note: '',
+    side: 'right', width: 'standard', spacing: 'comfortable', background: '', text: '', bar_color: '',
+    title: 'Cart', title_size: 'medium', title_uppercase: false, text_scale: 100, image_shape: 'square',
+    button_label: 'Checkout', button_bg: '', button_text: '', button_radius: 8, button_show_total: true, button_lock_icon: true,
+    show_view_cart: true, empty_text: 'Your cart is empty.',
   },
   favicon_url: '',
   preset: '',
@@ -488,6 +519,20 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
         free_shipping_bar: bool(k.free_shipping_bar, d.free_shipping_bar), free_shipping_text: str(k.free_shipping_text, d.free_shipping_text).slice(0, 80),
         unlocked_text: str(k.unlocked_text, d.unlocked_text).slice(0, 80), upsell: bool(k.upsell, d.upsell),
         upsell_title: str(k.upsell_title, d.upsell_title).slice(0, 60), show_savings: bool(k.show_savings, d.show_savings), note: str(k.note).slice(0, 160),
+        side: k.side === 'left' ? 'left' : 'right',
+        width: k.width === 'narrow' || k.width === 'wide' ? k.width : 'standard',
+        spacing: k.spacing === 'compact' || k.spacing === 'spacious' ? k.spacing : 'comfortable',
+        background: isHex(k.background) ? k.background : '', text: isHex(k.text) ? k.text : '', bar_color: isHex(k.bar_color) ? k.bar_color : '',
+        title: str(k.title, d.title).slice(0, 40),
+        title_size: k.title_size === 'small' || k.title_size === 'large' ? k.title_size : 'medium',
+        title_uppercase: bool(k.title_uppercase, d.title_uppercase),
+        text_scale: typeof k.text_scale === 'number' && Number.isFinite(k.text_scale) ? pct(k.text_scale, CART_TEXT_SCALE.min, CART_TEXT_SCALE.max) : d.text_scale,
+        image_shape: k.image_shape === 'portrait' ? 'portrait' : 'square',
+        button_label: str(k.button_label, d.button_label).slice(0, 40) || d.button_label,
+        button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',
+        button_radius: typeof k.button_radius === 'number' && Number.isFinite(k.button_radius) ? Math.min(28, Math.max(0, Math.round(k.button_radius))) : d.button_radius,
+        button_show_total: bool(k.button_show_total, d.button_show_total), button_lock_icon: bool(k.button_lock_icon, d.button_lock_icon),
+        show_view_cart: bool(k.show_view_cart, d.show_view_cart), empty_text: str(k.empty_text, d.empty_text).slice(0, 120) || d.empty_text,
       }
     })(),
     favicon_url: /^(https:\/\/|\/)/.test(str(t.favicon_url)) ? str(t.favicon_url) : '',
@@ -496,7 +541,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
 }
 
 /** Text on the accent colour: white on dark colours, near-black on light ones. */
-function onColor(color: string): string {
+export function onColor(color: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(color.slice(i, i + 2), 16) / 255)
     .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#0b0b0c' : '#fafafa'

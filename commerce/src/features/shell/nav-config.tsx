@@ -214,7 +214,7 @@ export const NAV: NavSection[] = [
           { label: 'App Integration', to: '/admin/settings/apps' },
           { label: 'Developers & API', to: '/admin/settings/developers' },
           { label: 'Messaging Channels', to: '/admin/inbox/channels', permission: 'inbox.view' },
-          { label: 'VoiceDrive PBX', to: '/admin/settings/voicedrive-pbx', feature: 'pbx' },
+          { label: 'Cloud Calling', to: '/admin/settings/voicedrive-pbx', feature: 'pbx' },
           { label: 'Templates', to: '/admin/settings?tab=notifications' },
           { label: 'Order Sources', to: '/admin/settings?tab=sources' },
           { label: 'Deletion Logs', to: '/admin/audit-logs?view=deletions', permission: 'audit.view' },

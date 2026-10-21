@@ -44,7 +44,7 @@ function Platform({ p }: { p: IntegrationsOverview['platform'] }) {
             <>{formatNumber(p.bd_courier.succeeded_24h)} lookups, {formatNumber(p.bd_courier.failed_24h)} failed in 24 h{p.bd_courier.last_test_at && ` · last test ${timeAgo(p.bd_courier.last_test_at)} ${p.bd_courier.last_test_ok ? 'worked' : 'failed'}`}</>, '/super-admin/bd-courier')}
           {Object.entries(p.billing_gateways).map(([code, g]) => row(`Payments to the platform: ${code}`, <State value={g.connected ? (g.enabled ? 'connected' : 'switched off') : 'not connected'} />,
             <>{g.hint ?? ''}{g.sandbox ? ' · sandbox' : ''}</>, '/super-admin/subscriptions?tab=rules'))}
-          {row('VoiceDrive PBX gateway', <State value={p.pbx?.online ? 'online' : p.pbx?.last_seen_at ? 'offline' : 'never checked in'} error={!!p.pbx?.last_seen_at && !p.pbx?.online} />,
+          {row('Cloud Calling gateway', <State value={p.pbx?.online ? 'online' : p.pbx?.last_seen_at ? 'offline' : 'never checked in'} error={!!p.pbx?.last_seen_at && !p.pbx?.online} />,
             <>{p.pbx?.version ?? ''}{p.pbx?.last_seen_at && ` · last check-in ${timeAgo(p.pbx.last_seen_at)}`}</>, '/super-admin/pbx?tab=gateway')}
           {row('AI services', <Badge variant="neutral">none</Badge>, p.ai.note)}
         </TableBody>

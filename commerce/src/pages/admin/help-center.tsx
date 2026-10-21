@@ -38,7 +38,7 @@ const ARTICLES: Article[] = [
   { topic: 'Team', q: 'Someone signs in from a new phone and sees "waiting for approval"', to: '/admin/settings/devices', permission: 'devices.manage',
     a: 'Device approval is on. An admin opens Settings → Device Approvals and approves the device. Owners are never blocked.' },
   { topic: 'Calls', q: 'How do I call customers through the office PBX?', to: '/admin/settings/pbx',
-    a: 'An admin connects the PBX in Settings → VoiceDrive PBX and gives you an extension. Then the Call button rings your extension first and connects the customer; every call appears in the call log.' },
+    a: 'An admin connects the PBX in Settings → Cloud Calling and gives you an extension. Then the Call button rings your extension first and connects the customer; every call appears in the call log.' },
   { topic: 'Security', q: 'Where are API keys and passwords kept?',
     a: 'In the server vault. Pages show only whether a service is connected and the last 4 characters of a key. Every change to settings, roles and devices is in the Audit Log.' },
 ]

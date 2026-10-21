@@ -131,6 +131,19 @@ describe('store pages from the Worker', () => {
     expect(isPlatformHost('atheron.shop', env())).toBe(false)
   })
 
+  it('the theme editor preview gets the plain app page: never the website, never a 404', async () => {
+    database({})
+    for (const path of ['/', '/shop', '/product/linen-shirt', '/collection/belts', '/cart']) {
+      const res = await page(`https://fullfilio.com${path}?theme_preview=1`)
+      expect(res.status).toBe(200)
+      const html = await res.text()
+      expect(html).toContain('<div id="root"></div>')
+      expect(html).not.toContain('data-prerendered')
+      expect(res.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
+    }
+  })
+
   it('robots.txt and sitemap.xml are per store', async () => {
     database({
       storefront_resolve: store,

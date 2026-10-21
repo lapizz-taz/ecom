@@ -366,7 +366,7 @@ function MerchantSheet({ id, packages, onClose }: { id: string | null; packages:
         {d && (
           <>
             <ConfirmDialog open={dialog === 'enable' || dialog === 'disable'} onOpenChange={(o) => !o && setDialog(null)} reason reasonRequired
-              title={dialog === 'enable' ? 'Switch the PBX line on?' : 'Switch the PBX line off?'} confirmLabel={dialog === 'enable' ? 'Switch on' : 'Switch off'} destructive={dialog === 'disable'}
+              title={dialog === 'enable' ? 'Switch the Cloud Calling line on?' : 'Switch the Cloud Calling line off?'} confirmLabel={dialog === 'enable' ? 'Switch on' : 'Switch off'} destructive={dialog === 'disable'}
               description={dialog === 'enable' ? 'Their staff can call once the line is tested and a package is active.' : 'Calls stop at once for this merchant. Their balance and package are kept.'}
               onConfirm={async (reason) => {
                 try { await pbxSetEnabled(d.merchant.id, dialog === 'enable', reason); toast.success('Saved'); refresh() } catch (e) { toast.error((e as Error).message); throw e }
@@ -490,7 +490,7 @@ export default function PbxSetupPage() {
   const rows = (q.data?.merchants ?? []).filter((r) => !state.q || r.merchant.name.toLowerCase().includes(state.q.toLowerCase()) || String(r.merchant.number) === state.q.replace('#', ''))
   return (
     <div className="space-y-4">
-      <PageHeader title="PBX Setup" description="VoiceDrive lines for each merchant — number, SIP trunk, extensions, routing, package — and the shared gateway. Only setup: calls happen in each merchant's own app." />
+      <PageHeader title="Cloud Calling" description="Cloud Calling lines for each merchant — number, SIP trunk, extensions, routing, package — and the shared gateway. Only setup: calls happen in each merchant's own app." />
       <Tabs value={state.tab} onValueChange={(tab) => update({ tab })}>
         <TabsList>
           <TabsTrigger value="lines">Merchant lines</TabsTrigger>
@@ -502,7 +502,7 @@ export default function PbxSetupPage() {
             {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !q.data ? <TableSkeleton /> : rows.length === 0 ? <EmptyState title="No merchants" /> : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Merchant</TableHead><TableHead>PBX in plan</TableHead><TableHead>Line</TableHead><TableHead>Number</TableHead>
+                  <TableHeader><TableRow><TableHead>Merchant</TableHead><TableHead>Cloud Calling in plan</TableHead><TableHead>Line</TableHead><TableHead>Number</TableHead>
                     <TableHead>Trunk</TableHead><TableHead>Package</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-right">Calls 7d</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {rows.map((r) => (

@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import {
-  ACCENTS, DEFAULT_THEME, FONTS, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
+  ACCENTS, CART_TEXT_SCALE, DEFAULT_THEME, FONTS, onColor, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
 import { applyPreset, findPreset } from '@/features/storefront/theme-presets'
@@ -49,7 +49,7 @@ export default function StoreThemePage() {
   // Opened from Store → Theme: ?page=product&block=<id> starts on that page with the block selected.
   const [params, setParams] = useSearchParams()
   const [page, setPage] = useState<Page>(() => (PAGES.some((p) => p.value === params.get('page')) ? params.get('page') as Page : 'home'))
-  const [selected, setSelected] = useState<string | null>(() => (params.get('block') ? `block:${params.get('block')}` : null))
+  const [selected, setSelected] = useState<string | null>(() => (params.get('block') ? `block:${params.get('block')}` : params.get('section')))
   const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
   const [inspect, setInspect] = useState(true)
   // Phones show the panel or the preview, one at a time (lg and up: side by side).
@@ -118,6 +118,18 @@ export default function StoreThemePage() {
     h.past.push(draft); h.last = 0
     s.replace(next as Record<string, unknown>); bump((n) => n + 1)
   }, [draft, s])
+
+  // The address follows the page and selection, so a reload opens the editor where it was.
+  useEffect(() => {
+    setParams((p) => {
+      const next = new URLSearchParams(p)
+      if (page === 'home') next.delete('page'); else next.set('page', page)
+      next.delete('block'); next.delete('section')
+      if (selected?.startsWith('block:')) next.set('block', selected.slice(6))
+      else if (selected) next.set('section', selected)
+      return next.toString() === p.toString() ? p : next
+    }, { replace: true })
+  }, [page, selected, setParams])
 
   // Opened from a ready-made theme on Store → Theme (?preset=bloom): its look goes on the draft once, undoable.
   const presetParam = params.get('preset')
@@ -652,6 +664,8 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
     const set = (patch: Partial<StoreTheme['cart']>) => setTheme({ cart: { ...k, ...patch } })
     return (
       <>
+        <PanelGroup>Content</PanelGroup>
+        <FieldRow label="Title"><input className={inputClass} value={k.title} placeholder="Cart" onChange={(e) => set({ title: e.target.value })} /></FieldRow>
         <FieldRow label="Free delivery progress bar" inline><Switch checked={k.free_shipping_bar} onCheckedChange={(v) => set({ free_shipping_bar: v })} /></FieldRow>
         {k.free_shipping_bar && (
           <>
@@ -663,6 +677,37 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
         {k.upsell && <FieldRow label="Heading"><input className={inputClass} value={k.upsell_title} onChange={(e) => set({ upsell_title: e.target.value })} /></FieldRow>}
         <FieldRow label="Show savings" inline><Switch checked={k.show_savings} onCheckedChange={(v) => set({ show_savings: v })} /></FieldRow>
         <FieldRow label="Note above the checkout button"><input className={inputClass} value={k.note} placeholder="e.g. Delivery in 1–3 days" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
+        <FieldRow label="“View cart” link" inline><Switch checked={k.show_view_cart} onCheckedChange={(v) => set({ show_view_cart: v })} /></FieldRow>
+        <FieldRow label="Empty cart text"><input className={inputClass} value={k.empty_text} onChange={(e) => set({ empty_text: e.target.value })} /></FieldRow>
+
+        <PanelGroup>Layout</PanelGroup>
+        <FieldRow label="Opens from"><SelectInput value={k.side} onChange={(v) => set({ side: v as 'left' | 'right' })} options={[{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }]} /></FieldRow>
+        <FieldRow label="Width on computers" hint="Phones always use the full width."><SelectInput value={k.width} onChange={(v) => set({ width: v as StoreTheme['cart']['width'] })}
+          options={[{ value: 'narrow', label: 'Narrow (380 px)' }, { value: 'standard', label: 'Standard (420 px)' }, { value: 'wide', label: 'Wide (480 px)' }]} /></FieldRow>
+        <FieldRow label="Spacing"><SelectInput value={k.spacing} onChange={(v) => set({ spacing: v as StoreTheme['cart']['spacing'] })}
+          options={[{ value: 'compact', label: 'Compact' }, { value: 'comfortable', label: 'Comfortable' }, { value: 'spacious', label: 'Spacious' }]} /></FieldRow>
+        <FieldRow label="Product photos"><SelectInput value={k.image_shape} onChange={(v) => set({ image_shape: v as 'square' | 'portrait' })}
+          options={[{ value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }]} /></FieldRow>
+
+        <PanelGroup>Colours</PanelGroup>
+        <FieldRow label="Background"><ThemeColor value={k.background} fallback={theme.colors.background} onChange={(v) => set({ background: v })} /></FieldRow>
+        <FieldRow label="Text"><ThemeColor value={k.text} fallback={theme.colors.text} onChange={(v) => set({ text: v })} /></FieldRow>
+        {k.free_shipping_bar && <FieldRow label="Progress bar"><ThemeColor value={k.bar_color} fallback={k.text || theme.colors.text} onChange={(v) => set({ bar_color: v })} /></FieldRow>}
+
+        <PanelGroup>Text</PanelGroup>
+        <FieldRow label="Title size"><SelectInput value={k.title_size} onChange={(v) => set({ title_size: v as StoreTheme['cart']['title_size'] })}
+          options={[{ value: 'small', label: 'Small' }, { value: 'medium', label: 'Medium' }, { value: 'large', label: 'Large' }]} /></FieldRow>
+        <FieldRow label="Title in capitals" inline><Switch checked={k.title_uppercase} onCheckedChange={(v) => set({ title_uppercase: v })} /></FieldRow>
+        <FieldRow label="Text size" hint="Of the theme's text size (Theme settings → Typography)."><RangeInput value={k.text_scale} min={CART_TEXT_SCALE.min} max={CART_TEXT_SCALE.max} step={5} unit="%" onChange={(v) => set({ text_scale: v })} /></FieldRow>
+
+        <PanelGroup>Checkout button</PanelGroup>
+        <FieldRow label="Label"><input className={inputClass} value={k.button_label} placeholder="Checkout" onChange={(e) => set({ button_label: e.target.value })} /></FieldRow>
+        <FieldRow label="Show the total" inline><Switch checked={k.button_show_total} onCheckedChange={(v) => set({ button_show_total: v })} /></FieldRow>
+        <FieldRow label="Lock icon" inline><Switch checked={k.button_lock_icon} onCheckedChange={(v) => set({ button_lock_icon: v })} /></FieldRow>
+        <FieldRow label="Button colour"><ThemeColor value={k.button_bg} fallback={theme.accent} onChange={(v) => set({ button_bg: v })} /></FieldRow>
+        <FieldRow label="Button text" hint="Empty: white or black, whichever reads on the button."><ThemeColor value={k.button_text} fallback={onColor(k.button_bg || theme.accent)} onChange={(v) => set({ button_text: v })} /></FieldRow>
+        <FieldRow label="Button corners"><RangeInput value={k.button_radius} min={0} max={28} unit="px" onChange={(v) => set({ button_radius: v })} /></FieldRow>
+        <p className="text-[11px] leading-snug text-zinc-500">The drawer stays open in the preview while it is selected. With an empty cart it shows two sample products.</p>
       </>
     )
   }
@@ -777,6 +822,22 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
         <FieldRow label="Banner with the category image" inline><Switch checked={theme.collection.banner} onCheckedChange={(v) => setTheme({ collection: { ...theme.collection, banner: v } })} /></FieldRow>
         <FieldRow label="Products per row"><RangeInput value={theme.collection.columns} min={2} max={5} onChange={(v) => setTheme({ collection: { ...theme.collection, columns: v as 2 | 3 | 4 | 5 } })} /></FieldRow>
       </Accordion>
+    </div>
+  )
+}
+
+/** A heading between groups of settings in the right-hand panel. */
+function PanelGroup({ children }: { children: ReactNode }) {
+  return <p className="border-t border-zinc-200 pt-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase first:border-0 first:pt-0 dark:border-zinc-800">{children}</p>
+}
+
+/** A colour that follows the theme until one is picked; "Use theme colour" goes back. */
+function ThemeColor({ value, fallback, onChange }: { value: string; fallback: string; onChange: (v: string) => void }) {
+  return (
+    <div className="grid gap-1">
+      <ColorInput value={value || fallback} onChange={onChange} />
+      {value ? <button type="button" onClick={() => onChange('')} className="justify-self-start text-[11px] text-[#2c6ecb] hover:underline">Use theme colour</button>
+        : <span className="text-[11px] text-zinc-500">Theme colour</span>}
     </div>
   )
 }

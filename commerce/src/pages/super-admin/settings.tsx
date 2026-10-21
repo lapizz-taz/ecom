@@ -36,7 +36,7 @@ const CATALOG: Array<{ key: string; label: string; what: string; to?: string; sy
   { key: 'usage.bd_courier', label: 'BD Courier free use and limits', what: 'Free lookups, eligible plans and statuses, monthly cap', to: '/super-admin/bd-courier?tab=policy' },
   { key: 'support', label: 'Support', what: 'Response and resolution targets by priority, customer-view session length', to: '/super-admin/support?tab=settings' },
   { key: 'cost_assumptions', label: 'Cost assumptions', what: 'Estimated BD Courier cost per lookup and payment fee, used only where costs are not recorded', to: '/super-admin/usage?tab=revenue' },
-  { key: 'voicedrive', label: 'VoiceDrive PBX', what: 'SIP/WebRTC addresses, call rate, VAT, top-up limits, maintenance window', to: '/super-admin/pbx?tab=gateway' },
+  { key: 'voicedrive', label: 'Cloud Calling', what: 'SIP/WebRTC addresses, call rate, VAT, top-up limits, maintenance window', to: '/super-admin/pbx?tab=gateway' },
   { key: 'security', label: 'Staff sessions', what: 'Platform staff sign in again after this many hours' },
   { key: 'retention', label: 'Retention', what: 'How long resolved log entries and read notifications are kept; wait before an approved erasure' },
   { key: 'integration_health', label: 'Integrations shown as unavailable', what: 'Set by open incidents', to: '/super-admin/incidents', system: true },

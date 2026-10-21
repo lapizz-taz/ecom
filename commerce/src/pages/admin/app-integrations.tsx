@@ -76,7 +76,7 @@ function items(o: IntegrationsOverview): Item[] {
     to: '/admin/sms', platform: true,
   })
   out.push({
-    key: 'pbx', group: 'Messaging', icon: <Phone />, name: `${o.pbx?.provider || 'VoiceDrive'} PBX`,
+    key: 'pbx', group: 'Messaging', icon: <Phone />, name: o.pbx?.provider && o.pbx.provider !== 'VoiceDrive' ? `${o.pbx.provider} PBX` : 'Cloud Calling',
     state: o.pbx?.enabled ? 'connected' : 'off',
     detail: o.pbx?.enabled ? `${o.pbx.mode === 'api' ? 'Click-to-call' : 'Phone links'} · ${formatNumber(o.pbx.calls_7d)} calls in 7 days` : 'Call log and click-to-call',
     to: '/admin/settings/pbx',

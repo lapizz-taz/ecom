@@ -133,12 +133,12 @@ export default function PlatformOverviewPage() {
                   </div>
                 ))}
                 <div className="border-t pt-3">
-                  <div className="flex items-center justify-between"><span className="flex items-center gap-2"><PhoneCall className="size-4" /> PBX gateway</span>
+                  <div className="flex items-center justify-between"><span className="flex items-center gap-2"><PhoneCall className="size-4" /> Cloud Calling gateway</span>
                     <Badge variant={o.pbx.gateway_seen_at ? (gatewaySeen ? 'success' : 'danger') : 'neutral'}>
                       {o.pbx.gateway_seen_at ? (gatewaySeen ? 'Reporting' : `Last seen ${timeAgo(o.pbx.gateway_seen_at)}`) : 'Never reported'}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{formatNumber(o.pbx.businesses)} merchants with PBX switched on. Status is the gateway's own heartbeat.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatNumber(o.pbx.businesses)} merchants with Cloud Calling switched on. Status is the gateway's own heartbeat.</p>
                 </div>
                 <div className="flex items-center justify-between border-t pt-3">
                   <span className="flex items-center gap-2"><LifeBuoy className="size-4" /> Open support tickets</span>

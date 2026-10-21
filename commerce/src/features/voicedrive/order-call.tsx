@@ -51,7 +51,7 @@ export function OrderCallLink({ orderId, phone, name, kind, className, children 
   const content = children ?? <Phone className="size-3.5" />
   if (!canCall) return <a href={`tel:${phone}`} className={className} aria-label={`Call ${name}`}>{content}</a>
   return (
-    <button type="button" className={cn(className, call.isPending && 'animate-pulse')} disabled={call.isPending} aria-label={`Call ${name} with VoiceDrive`}
+    <button type="button" className={cn(className, call.isPending && 'animate-pulse')} disabled={call.isPending} aria-label={`Call ${name} with Cloud Calling`}
       onClick={(e) => { e.stopPropagation(); call.mutate() }}>
       {content}
     </button>
