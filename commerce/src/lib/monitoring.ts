@@ -54,12 +54,24 @@ function isExpected(error: unknown): boolean {
   return /permission denied|JWT expired|Failed to fetch|NetworkError|Load failed/i.test(message)
 }
 
+/** The text of an error, also for the plain objects Supabase returns ({ message, code, details }). */
+export function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  const e = error as { message?: unknown; code?: unknown; details?: unknown } | null
+  if (e && typeof e.message === 'string' && e.message) {
+    const extra = [e.code, e.details].filter((x) => typeof x === 'string' && x).join(' · ')
+    return extra ? `${e.message} (${extra})` : e.message
+  }
+  try { return JSON.stringify(error) ?? String(error) } catch { return String(error) }
+}
+
 export function reportError(error: unknown, context: Record<string, unknown> = {}) {
   if (!error || isExpected(error)) return
   if (env.isDev) console.error(error, context)
   withSentry((Sentry) => Sentry.captureException(error, { extra: context }))
   if (staff) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = errorText(error)
     void supabase.rpc('log_client_error', {
       p_message: message.slice(0, 2000),
       p_context: { ...context, path: window.location.pathname, stack: error instanceof Error ? error.stack?.split('\n').slice(0, 5).join('\n') : undefined },
