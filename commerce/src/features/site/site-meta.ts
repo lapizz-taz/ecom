@@ -13,6 +13,8 @@ export const SITE_ORIGIN = 'https://fullfilio.com'
 /** The picture shown when a page is shared (1200 × 630). */
 export const SITE_IMAGE = '/media/fullfilio-og.png'
 export const SITE_TAGLINE = 'Order management for cash-on-delivery sellers in Bangladesh'
+/** Where people write to Fullfilio: shown on the website, in the admin's help and in structured data. */
+export const SUPPORT_EMAIL = 'help@fullfilio.com'
 export const SITE_SOCIAL = ['https://www.facebook.com/fullfilio/', 'https://www.instagram.com/fullfiliohq/']
 
 export interface SitePageMeta {

@@ -185,7 +185,7 @@ export function ClerkSignUpForm({ fullName, phone, minPassword = 8, onDone }: {
           )}
           {unaskable.length > 0 && (
             <p className="rounded-xl border bg-muted/40 px-3 py-2 text-[13px] text-muted-foreground">
-              The sign-in service also asks for: {unaskable.map((f) => LABEL[f] ?? f.replace(/_/g, ' ')).join(', ')}. This page cannot collect that; please contact us and we will open your account.
+              The sign-in service also asks for: {unaskable.map((f) => LABEL[f] ?? f.replace(/_/g, ' ')).join(', ')}. This page cannot collect that; please e-mail help@fullfilio.com and we will open your account.
             </p>
           )}
           <Submit busy={busy} disabled={askable.length === 0}>Continue</Submit>

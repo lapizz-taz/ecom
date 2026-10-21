@@ -105,7 +105,7 @@ export function CreditsSection() {
                   </div>
                 )}
                 {!u?.unmetered && !canBuy && (
-                  <p className="text-xs text-muted-foreground">{d.can_pay ? 'Online payment is not available yet — contact the platform team to recharge.' : 'Only the owner or staff who manage settings can buy credits.'}</p>
+                  <p className="text-xs text-muted-foreground">{d.can_pay ? 'Online payment is not available yet — e-mail help@fullfilio.com to recharge.' : 'Only the owner or staff who manage settings can buy credits.'}</p>
                 )}
               </CardContent>
             </Card>

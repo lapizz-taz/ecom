@@ -1,4 +1,4 @@
-import { Menu, Moon, Sun, UserPlus, X } from 'lucide-react'
+import { Mail, Menu, Moon, Sun, UserPlus, X } from 'lucide-react'
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation } from 'react-router'
 import { Wordmark } from '@/components/brand/logo'
@@ -6,6 +6,7 @@ import { SocialLinks } from '@/components/brand/social'
 import { applySeo } from '@/features/storefront/seo-head'
 import { captureNavigation } from '@/lib/attribution'
 import { siteHead } from './site-head'
+import { SUPPORT_EMAIL } from './site-meta'
 
 // The frame every page of the Fullfilio website shares: header, footer and
 // the page background. Section links point at the home page ("/#…") so they
@@ -124,7 +125,10 @@ export function SiteFooter() {
         ))}
       </div>
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 pb-10">
-        <p className="text-[12px] text-(--s-subtle)">© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</p>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-(--s-subtle)">
+          <span>© {new Date().getFullYear()} Fullfilio. Made in Bangladesh.</span>
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="inline-flex items-center gap-1.5 text-(--s-muted) hover:text-(--s-fg)"><Mail className="size-3.5" />{SUPPORT_EMAIL}</a>
+        </p>
         <SocialLinks linkClassName="grid size-8 place-items-center rounded-full text-(--s-muted) hover:bg-(--s-tint-strong) hover:text-(--s-fg)" />
       </div>
     </footer>

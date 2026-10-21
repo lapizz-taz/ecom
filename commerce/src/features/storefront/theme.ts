@@ -81,6 +81,9 @@ export interface CartSettings {
   /** Text in the drawer, in % of the theme's body size. */
   text_scale: number
   image_shape: 'square' | 'portrait'
+  /** Corner radius of the product photos and of the quantity box, in px. */
+  image_radius: number
+  stepper_radius: number
   button_label: string
   button_bg: string
   button_text: string
@@ -390,7 +393,7 @@ export const DEFAULT_THEME: StoreTheme = {
     free_shipping_bar: true, free_shipping_text: 'Add {amount} more for free delivery', unlocked_text: 'Your order qualifies for free delivery',
     upsell: true, upsell_title: 'You may also like', show_savings: true, note: '',
     side: 'right', width: 'standard', spacing: 'comfortable', background: '', text: '', bar_color: '',
-    title: 'Cart', title_size: 'medium', title_uppercase: false, text_scale: 100, image_shape: 'square',
+    title: 'Cart', title_size: 'medium', title_uppercase: false, text_scale: 100, image_shape: 'square', image_radius: 6, stepper_radius: 6,
     button_label: 'Checkout', button_bg: '', button_text: '', button_radius: 8, button_show_total: true, button_lock_icon: true,
     show_view_cart: true, empty_text: 'Your cart is empty.',
   },
@@ -402,6 +405,7 @@ const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{
 const hex = (v: unknown, d: string) => (isHex(v) ? v : d)
 const str = (v: unknown, d = '') => (typeof v === 'string' ? v : d)
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
+const corner = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(24, Math.max(0, Math.round(v))) : d)
 const days = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(30, Math.max(0, Math.round(v))) : d)
 const links = (v: unknown): MenuLink[] => (Array.isArray(v) ? v : [])
   .filter((l): l is MenuLink => !!l && typeof l === 'object' && typeof (l as MenuLink).label === 'string')
@@ -528,6 +532,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
         title_uppercase: bool(k.title_uppercase, d.title_uppercase),
         text_scale: typeof k.text_scale === 'number' && Number.isFinite(k.text_scale) ? pct(k.text_scale, CART_TEXT_SCALE.min, CART_TEXT_SCALE.max) : d.text_scale,
         image_shape: k.image_shape === 'portrait' ? 'portrait' : 'square',
+        image_radius: corner(k.image_radius, d.image_radius), stepper_radius: corner(k.stepper_radius, d.stepper_radius),
         button_label: str(k.button_label, d.button_label).slice(0, 40) || d.button_label,
         button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',
         button_radius: typeof k.button_radius === 'number' && Number.isFinite(k.button_radius) ? Math.min(28, Math.max(0, Math.round(k.button_radius))) : d.button_radius,

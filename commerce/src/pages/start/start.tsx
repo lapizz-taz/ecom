@@ -135,7 +135,7 @@ export default function StartPage() {
       ) : !normalOpen && !whatsappOpen ? (
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.025em]">Sign-ups are paused</h1>
-          <p className="mt-2 text-sm text-muted-foreground">New businesses cannot open an account on their own right now. Contact us and we will set yours up.</p>
+          <p className="mt-2 text-sm text-muted-foreground">New businesses cannot open an account on their own right now. E-mail help@fullfilio.com and we will set yours up.</p>
           <Button asChild variant="outline" className="mt-6"><Link to="/admin/login">Sign in instead</Link></Button>
         </div>
       ) : step === 2 && mode === 'whatsapp' ? (

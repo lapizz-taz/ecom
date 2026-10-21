@@ -1,4 +1,4 @@
-import { ArrowRight, Bug, ChevronDown, Keyboard, LifeBuoy, Lightbulb, Mail, Sparkles } from 'lucide-react'
+import { ArrowRight, Bug, ChevronDown, Keyboard, LifeBuoy, Lightbulb, Mail, Sparkles, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { SocialLinks } from '@/components/brand/social'
@@ -11,6 +11,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { GO_SHORTCUTS } from '@/features/shell/nav-config'
 import { useStaffDirectory } from '@/hooks/use-staff-directory'
 import { cn } from '@/lib/utils'
+import { SUPPORT_EMAIL } from '@/features/site/site-meta'
 
 interface Article { topic: string; q: string; a: string; to?: string; permission?: string }
 
@@ -109,15 +110,18 @@ export default function HelpCenterPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><LifeBuoy className="size-4" /> Contact</CardTitle>
-              <CardDescription>Owners and admins can change roles, settings and integrations.</CardDescription></CardHeader>
+              <CardDescription>Write to Fullfilio support. Owners and admins can change roles, settings and integrations.</CardDescription></CardHeader>
             <CardContent className="grid gap-2">
-              {!admins.length && <p className="text-sm text-muted-foreground">No active owner or admin found.</p>}
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/40">
+                <Mail className="size-4 text-muted-foreground" />
+                <span className="min-w-0 flex-1"><span className="block truncate font-medium">Fullfilio support</span><span className="block truncate text-xs text-muted-foreground">{SUPPORT_EMAIL}</span></span>
+              </a>
               {admins.map((a) => (
-                <a key={a.id} href={`mailto:${a.email}`} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/40">
-                  <Mail className="size-4 text-muted-foreground" />
-                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{a.full_name}</span><span className="block truncate text-xs text-muted-foreground">{a.email}</span></span>
+                <div key={a.id} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <UserRound className="size-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate font-medium">{a.full_name}</span>
                   <Badge variant="neutral">{a.role === 'OWNER' ? 'Owner' : 'Admin'}</Badge>
-                </a>
+                </div>
               ))}
               <div className="mt-2 border-t pt-3">
                 <p className="text-xs text-muted-foreground">Fullfilio news, tips and updates</p>

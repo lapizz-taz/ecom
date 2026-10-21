@@ -50,7 +50,7 @@ export function DataDeletionCard() {
       {asking && (
         <ConfirmDialog open onOpenChange={setAsking} title="Ask to close the account and erase customer data?" destructive confirmLabel="Send the request"
           reason reasonRequired reasonLabel="Why are you leaving? (at least 5 characters)"
-          description="Ask the platform team for a copy of your data first if you need one. Your account keeps working until it is closed."
+          description="Ask Fullfilio support (help@fullfilio.com) for a copy of your data first if you need one. Your account keeps working until it is closed."
           onConfirm={async (reason) => { await requestDataDeletion(reason); toast.success('Request sent'); void refresh() }} />
       )}
       {withdrawing && (

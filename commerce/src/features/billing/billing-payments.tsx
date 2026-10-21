@@ -89,7 +89,7 @@ function BuyForm({ type, pricing, billing, onStarted }: { type: BuyType; pricing
       {canBuy ? (
         <p className="text-center text-xs text-muted-foreground">With {billing.gateways.map((g) => GATEWAY_SHORT[g]).join(', ')}</p>
       ) : (
-        <p className="text-xs text-muted-foreground">{billing.can_pay ? 'Online payment is not available yet — contact the platform team to recharge.' : 'Only the owner or staff who manage settings can pay.'}</p>
+        <p className="text-xs text-muted-foreground">{billing.can_pay ? 'Online payment is not available yet — e-mail help@fullfilio.com to recharge.' : 'Only the owner or staff who manage settings can pay.'}</p>
       )}
       {paying != null && (
         <PayDialog title={money ? `Top up ${formatMoney(paying)}` : `Buy ${formatNumber(paying)} ${type === 'SMS' ? 'SMS' : 'courier check'} credits`}
@@ -129,7 +129,7 @@ export function AddSmsBalanceDialog({ onClose }: { onClose: () => void }) {
         )}
         {billing.error ? <ErrorState error={billing.error} onRetry={() => billing.refetch()} />
           : !b ? <LoadingState />
-            : !b.pricing.SMS.enabled ? <p className="text-sm text-muted-foreground">SMS cannot be bought online right now — contact the platform team to recharge.</p>
+            : !b.pricing.SMS.enabled ? <p className="text-sm text-muted-foreground">SMS cannot be bought online right now — e-mail help@fullfilio.com to recharge.</p>
               : <BuyForm type="SMS" pricing={b.pricing.SMS} billing={b} />}
       </DialogContent>
     </Dialog>
@@ -263,7 +263,7 @@ const RESULT = {
   review: { icon: Clock, tone: 'border-amber-200 bg-amber-50 text-amber-900', title: 'Checking your payment', text: 'We have not been able to confirm it with the gateway yet. If money was taken, it is checked again automatically and applied within a few minutes.' },
   failed: { icon: XCircle, tone: 'border-red-200 bg-red-50 text-red-900', title: 'Payment did not go through', text: 'Nothing was charged. You can try again.' },
   cancelled: { icon: XCircle, tone: 'border-border bg-muted text-foreground', title: 'Payment cancelled', text: 'Nothing was charged.' },
-  unknown: { icon: Clock, tone: 'border-amber-200 bg-amber-50 text-amber-900', title: 'We could not match that payment', text: 'If money was taken, contact the platform team with the bKash transaction ID.' },
+  unknown: { icon: Clock, tone: 'border-amber-200 bg-amber-50 text-amber-900', title: 'We could not match that payment', text: 'If money was taken, e-mail help@fullfilio.com with the bKash transaction ID.' },
 } as const
 
 /**

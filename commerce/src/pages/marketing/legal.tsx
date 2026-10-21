@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router'
 import { SitePage } from '@/features/site/site-chrome'
+import { SUPPORT_EMAIL } from '@/features/site/site-meta'
 
 // Privacy policy, terms of service and data deletion instructions for the
 // Fullfilio website. Meta links to these from the "Continue with Facebook"
@@ -9,7 +10,7 @@ const UPDATED = '17 October 2026'
 
 type Doc = { title: string; intro: string; sections: Array<{ heading: string; body: Array<string | string[]> }> }
 
-const contact = 'Use the contact form at fullfilio.com/contact, or Support inside your Fullfilio admin.'
+const contact = `E-mail ${SUPPORT_EMAIL}, use the contact form at fullfilio.com/contact, or Support inside your Fullfilio admin.`
 
 const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
   privacy: {
@@ -78,7 +79,7 @@ const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
       ]] },
       { heading: 'Disconnect inside Fullfilio', body: ['Store owners can go to Messaging → Channels and choose Disconnect on any connected account. Its access token is deleted immediately.'] },
       { heading: 'Delete messages and other data', body: [[
-        'Send a deletion request through the contact form at fullfilio.com/contact, from the e-mail address on your Fullfilio account, saying which store and which data (for example: all Facebook and Instagram messages, or the whole account).',
+        `Send a deletion request to ${SUPPORT_EMAIL} or through the contact form at fullfilio.com/contact, from the e-mail address on your Fullfilio account, saying which store and which data (for example: all Facebook and Instagram messages, or the whole account).`,
         'We confirm the request and delete the data within 30 days. Records the law requires us to keep (such as invoices) are kept only for as long as required.',
       ]] },
       { heading: 'If you are a store’s customer', body: ['Ask the store you messaged to delete your conversation, or contact us with the store’s name and the Facebook, Instagram or WhatsApp account you used, and we will pass the request on and make sure it is completed.'] },

@@ -209,16 +209,20 @@ async function until(fn, ms = 15000) {
     await field('Label').locator('input').fill('Place order')
     await field('Button colour').locator('input.font-mono').fill('#ea580c')
     await field('Show the total').getByRole('switch').click()
+    await field('Photo corners').locator('input[type=range]').fill('18')
+    await field('Quantity box corners').locator('input[type=range]').fill('20')
     const live = await until(async () => {
       const d = drawer()
       const box = await d.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, width: r.width } })
       const t = await d.innerText()
       const bg = await d.evaluate((el) => getComputedStyle(el).backgroundColor)
       const btn = await d.getByRole('link', { name: /Place order/ }).evaluate((el) => getComputedStyle(el).backgroundColor)
-      return /Your bag/.test(t) && /Place order/.test(t) && !/Place order ·/.test(t) && bg === 'rgb(255, 247, 237)' && btn === 'rgb(234, 88, 12)' && box && box.x < 5 && Math.round(box.width) === 480 ? { box, bg, btn } : null
+      const photo = await d.locator('li span[aria-hidden]').first().evaluate((el) => getComputedStyle(el).borderTopLeftRadius)
+      const stepper = await d.getByRole('button', { name: 'Decrease quantity' }).first().evaluate((el) => getComputedStyle(el.parentElement).borderTopLeftRadius)
+      return /Your bag/.test(t) && /Place order/.test(t) && !/Place order ·/.test(t) && bg === 'rgb(255, 247, 237)' && btn === 'rgb(234, 88, 12)' && box && box.x < 5 && Math.round(box.width) === 480 && photo === '18px' && stepper === '20px' ? { box, bg, btn, photo, stepper } : null
     })
     await page.screenshot({ path: join(S, 'round-drawer-edited.png') })
-    step('edits show live: title, left side, 480 px wide, background, button label and colour, total hidden', !!live, JSON.stringify(live))
+    step('edits show live: title, left side, 480 px wide, background, button label and colour, total hidden, photo and quantity box corners', !!live, JSON.stringify(live))
 
     await page.getByRole('button', { name: /Save draft/ }).click()
     const saved = await settle(page, /Draft saved/, 15000)
@@ -253,6 +257,12 @@ async function until(fn, ms = 15000) {
     const closed = await until(async () => !(await drawer().isVisible()))
     step('closing the settings closes the drawer in the preview', !!closed)
 
+    // Help: Fullfilio support's address, not the owner's own.
+    await page.goto(`${base}/admin/help`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await settle(page, /Contact/, 20000)
+    const help = await text(page)
+    step('Help → Contact shows help@fullfilio.com and no personal e-mail', /help@fullfilio\.com/.test(help) && !/theme-round@example\.com/.test(help), help.match(/.{0,60}@.{0,40}/g)?.join(' | '))
+
     // Cloud Calling in the admin menu.
     await page.goto(`${base}/admin/settings/apps`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await settle(page, /App integration/i, 20000)
@@ -277,8 +287,10 @@ async function until(fn, ms = 15000) {
       const hover = await cta.evaluate((el) => getComputedStyle(el).backgroundImage)
       await p.locator('section').first().screenshot({ path: join(S, `round-site-${width}${light ? '-white' : ''}.png`) })
       const overflow = await p.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth)
-      const ok = /rgb\(250, 99, 34\)/.test(st.img) && st.border === 'rgb(217, 69, 16)' && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgb\(255, 114, 51\)/.test(hover) && overflow <= 1
-      step(`website ${width}px${light ? ' (white version)' : ''}: orange gradient, darker edge, white text, 10px corners, lighter on hover`, ok, JSON.stringify({ ...st, hover, overflow }))
+      const footer = await p.locator('footer').innerText()
+      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && st.border === 'rgb(11, 74, 184)' && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgb\(111, 182, 255\)/.test(hover) && overflow <= 1
+      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, brighter on hover`, ok, JSON.stringify({ ...st, hover, overflow }))
+      step(`website ${width}px${light ? ' (white version)' : ''}: footer shows help@fullfilio.com`, /help@fullfilio\.com/.test(footer))
       await c.close()
     }
     step('no browser errors', errors.length === 0, errors.join(' | '))

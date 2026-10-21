@@ -1,9 +1,10 @@
 import { useMutation } from '@tanstack/react-query'
-import { CheckCircle2, Loader2, MessageSquareText } from 'lucide-react'
+import { CheckCircle2, Loader2, Mail, MessageSquareText } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { SocialLinks } from '@/components/brand/social'
 import { SitePage } from '@/features/site/site-chrome'
+import { SUPPORT_EMAIL } from '@/features/site/site-meta'
 import { toUserMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import { type ContactInput, submitContact } from '@/services/onboarding'
@@ -41,7 +42,8 @@ export default function ContactPage() {
               <li key={t} className="flex items-center gap-2.5"><CheckCircle2 className="size-4 text-(--s-accent)" />{t}</li>
             ))}
           </ul>
-          <p className="mt-8 text-[13px] text-(--s-muted)">Already a customer? Sign in and use <span className="text-(--s-fg2)">Support</span> in the admin for the fastest answer.</p>
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="mt-8 inline-flex items-center gap-2 text-[15px] font-medium text-(--s-fg) hover:underline"><Mail className="size-4 text-(--s-accent)" />{SUPPORT_EMAIL}</a>
+          <p className="mt-3 text-[13px] text-(--s-muted)">Already a customer? Sign in and use <span className="text-(--s-fg2)">Support</span> in the admin for the fastest answer.</p>
           <div className="mt-8">
             <p className="text-[13px] text-(--s-muted)">Follow Fullfilio for updates and tips</p>
             <SocialLinks withHandles className="mt-3 gap-3"
