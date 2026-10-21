@@ -3,7 +3,7 @@
 // in the page it sends (worker/site.ts); the app applies the same head after a click
 // (site-chrome.tsx). Plain data only: the Worker imports it too.
 import { POSTS } from './blog-posts'
-import { SITE_IMAGE, SITE_NAME, SITE_ORIGIN, SITE_SOCIAL, SITE_TAGLINE, siteMeta, type SitePageMeta } from './site-meta'
+import { SITE_IMAGE, SITE_NAME, SITE_ORIGIN, SITE_SOCIAL, SITE_TAGLINE, siteMeta, type SitePageMeta, SUPPORT_EMAIL } from './site-meta'
 
 /** Same shape as a store page's head (PageSeo in services/seo.ts and worker/storefront.ts). */
 export interface SiteHead {
@@ -38,7 +38,7 @@ function graph(meta: SitePageMeta, origin: string): unknown {
       description: SITE_TAGLINE,
       areaServed: { '@type': 'Country', name: 'Bangladesh' },
       sameAs: SITE_SOCIAL,
-      contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', url: `${origin}/contact`, availableLanguage: ['English', 'Bengali'] },
+      contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: SUPPORT_EMAIL, url: `${origin}/contact`, availableLanguage: ['English', 'Bengali'] },
     },
     { '@type': 'WebSite', '@id': site, name: SITE_NAME, url: `${origin}/`, description: SITE_TAGLINE, publisher: { '@id': org }, inLanguage: 'en' },
   ]

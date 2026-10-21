@@ -688,6 +688,8 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
           options={[{ value: 'compact', label: 'Compact' }, { value: 'comfortable', label: 'Comfortable' }, { value: 'spacious', label: 'Spacious' }]} /></FieldRow>
         <FieldRow label="Product photos"><SelectInput value={k.image_shape} onChange={(v) => set({ image_shape: v as 'square' | 'portrait' })}
           options={[{ value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }]} /></FieldRow>
+        <FieldRow label="Photo corners"><RangeInput value={k.image_radius} min={0} max={24} unit="px" onChange={(v) => set({ image_radius: v })} /></FieldRow>
+        <FieldRow label="Quantity box corners"><RangeInput value={k.stepper_radius} min={0} max={24} unit="px" onChange={(v) => set({ stepper_radius: v })} /></FieldRow>
 
         <PanelGroup>Colours</PanelGroup>
         <FieldRow label="Background"><ThemeColor value={k.background} fallback={theme.colors.background} onChange={(v) => set({ background: v })} /></FieldRow>

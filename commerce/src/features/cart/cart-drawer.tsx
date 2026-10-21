@@ -35,10 +35,10 @@ const SAMPLE: CartItem[] = [
   { variantId: 'sample-2', productId: 'sample-2', slug: '', name: 'Another sample product', variantTitle: null, image: null, price: 890, compareAt: null, quantity: 2, maxQuantity: 9 },
 ]
 
-export function QuantityStepper({ value, max, onChange, size = 'sm' }: { value: number; max: number; onChange: (v: number) => void; size?: 'sm' | 'default' }) {
+export function QuantityStepper({ value, max, onChange, size = 'sm', radius }: { value: number; max: number; onChange: (v: number) => void; size?: 'sm' | 'default'; radius?: number }) {
   const btn = size === 'sm' ? 'icon-sm' : 'icon'
   return (
-    <div className="inline-flex items-center rounded-md border">
+    <div className="inline-flex items-center overflow-hidden rounded-md border" style={radius === undefined ? undefined : { borderRadius: radius }}>
       <Button type="button" variant="ghost" size={btn} onClick={() => onChange(value - 1)} aria-label="Decrease quantity"><Minus /></Button>
       <span className="w-8 text-center text-sm tabular-nums" aria-live="polite">{value}</span>
       <Button type="button" variant="ghost" size={btn} onClick={() => onChange(value + 1)} disabled={value >= max} aria-label="Increase quantity"><Plus /></Button>
@@ -136,8 +136,8 @@ export function CartDrawer() {
                   return (
                     <li key={item.variantId} className={cn('flex gap-3', pad.row)}>
                       <Link to={item.slug ? `/product/${item.slug}` : '/shop'} onClick={() => setOpen(false)} className="shrink-0">
-                        {item.image ? <img src={imageUrl(item.image, 160)} alt="" className={cn('rounded-[min(var(--radius),0.5rem)] bg-current/5 object-cover', photo)} loading="lazy" />
-                          : <span aria-hidden className={cn('block rounded-[min(var(--radius),0.5rem)] bg-current/10', photo)} />}
+                        {item.image ? <img src={imageUrl(item.image, 160)} alt="" className={cn('bg-current/5 object-cover', photo)} style={{ borderRadius: settings.image_radius }} loading="lazy" />
+                          : <span aria-hidden className={cn('block bg-current/10', photo)} style={{ borderRadius: settings.image_radius }} />}
                       </Link>
                       <div className="min-w-0 flex-1">
                         <div className="flex justify-between gap-2">
@@ -152,7 +152,7 @@ export function CartDrawer() {
                         </div>
                         {problems.get(item.variantId) && <p className="mt-1 text-xs text-destructive">{problems.get(item.variantId)}</p>}
                         <div className="mt-2 flex items-center justify-between">
-                          <QuantityStepper value={item.quantity} max={item.maxQuantity} onChange={(v) => setQuantity(item.variantId, v)} />
+                          <QuantityStepper value={item.quantity} max={item.maxQuantity} radius={settings.stepper_radius} onChange={(v) => setQuantity(item.variantId, v)} />
                           <div className="text-right">
                             {settings.show_savings && was > unit && <Money value={was * item.quantity} className="block text-xs line-through opacity-60" />}
                             <Money value={unit * item.quantity} className="text-sm font-medium" />
@@ -163,7 +163,7 @@ export function CartDrawer() {
                   )
                 })}
               </ul>
-              {settings.upsell && <CartUpsell title={settings.upsell_title} padX={pad.x} button={button} exclude={items.map((i) => i.productId)} onAdd={(card) => addCard(card, add, false)} />}
+              {settings.upsell && <CartUpsell title={settings.upsell_title} padX={pad.x} button={button} photoRadius={settings.image_radius} exclude={items.map((i) => i.productId)} onAdd={(card) => addCard(card, add, false)} />}
             </div>
 
             <div className={cn('grid gap-2 border-t pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] text-sm', pad.x)}>
@@ -191,7 +191,7 @@ export function CartDrawer() {
 }
 
 /** "You may also like": best sellers not already in the cart, with a quick Add. */
-function CartUpsell({ title, padX, button, exclude, onAdd }: { title: string; padX: string; button: CSSProperties; exclude: string[]; onAdd: (card: Parameters<typeof addCard>[0]) => Promise<'added' | 'choose'> }) {
+function CartUpsell({ title, padX, button, photoRadius, exclude, onAdd }: { title: string; padX: string; button: CSSProperties; photoRadius: number; exclude: string[]; onAdd: (card: Parameters<typeof addCard>[0]) => Promise<'added' | 'choose'> }) {
   const { data } = useQuery({ queryKey: ['cart-upsell'], queryFn: () => listProducts({ sort: 'best_selling', limit: 6, inStock: true }), staleTime: 5 * 60_000 })
   const [busy, setBusy] = useState<string | null>(null)
   const [choose, setChoose] = useState<string | null>(null)
@@ -204,7 +204,7 @@ function CartUpsell({ title, padX, button, exclude, onAdd }: { title: string; pa
       <div className="grid gap-2">
         {list.map((p) => (
           <div key={p.id} className="flex items-center gap-3 rounded-lg border border-current/10 p-2.5">
-            {p.image && <img src={imageUrl(p.image.url, 120)} alt="" className="size-12 rounded object-cover" loading="lazy" />}
+            {p.image && <img src={imageUrl(p.image.url, 120)} alt="" className="size-12 object-cover" style={{ borderRadius: photoRadius }} loading="lazy" />}
             <div className="min-w-0 flex-1">
               <p className="line-clamp-2 text-[calc(13px*var(--fs-body,1))]">{p.name}</p>
               <p className="text-[calc(13px*var(--fs-body,1))] tabular-nums">

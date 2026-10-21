@@ -11,6 +11,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useStaffDirectory } from '@/hooks/use-staff-directory'
 import { reportIssue } from '@/services/search'
 import { GO_SHORTCUTS } from './nav-config'
+import { SUPPORT_EMAIL } from '@/features/site/site-meta'
 
 const Key = ({ children }: { children: string }) => (
   <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground">{children}</kbd>
@@ -69,17 +70,20 @@ export function ContactDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Contact Support</DialogTitle>
-          <DialogDescription>Owners and admins can change roles, settings and integrations. For a problem with the system itself, use Support → My Bug Reports — you can follow the fix there.</DialogDescription>
+          <DialogDescription>Write to Fullfilio support, or ask your owners and admins: they can change roles, settings and integrations. For a problem with the system itself, use Support → My Bug Reports — you can follow the fix there.</DialogDescription>
         </DialogHeader>
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="flex items-center gap-3 rounded-lg border px-3 py-2.5 hover:bg-muted/40">
+          <Mail className="size-4 text-muted-foreground" />
+          <span className="min-w-0 flex-1"><span className="block text-sm font-medium">Fullfilio support</span><span className="block text-xs text-muted-foreground">Questions, setup help and problems</span></span>
+          <span className="text-sm text-brand">{SUPPORT_EMAIL}</span>
+        </a>
         <ul className="grid gap-2">
-          {admins.length === 0 && <li className="text-sm text-muted-foreground">No active owner or admin found.</li>}
           {admins.map((a) => (
             <li key={a.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{a.full_name}</span>
                 <span className="block text-xs text-muted-foreground">{a.role === 'OWNER' ? 'Owner' : 'Admin'}</span>
               </span>
-              <a href={`mailto:${a.email}`} className="flex items-center gap-1.5 text-sm text-brand hover:underline"><Mail className="size-4" />{a.email}</a>
             </li>
           ))}
         </ul>

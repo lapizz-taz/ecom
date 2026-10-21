@@ -105,7 +105,7 @@ export default function StartFinishPage() {
             <PlanPicker options={options.data} value={business.plan_code} onChange={(plan_code) => setBusiness({ ...business, plan_code })} />
           </div>
           <Button type="submit" size="lg" variant="brand" disabled={!options.data.enabled}>Open my business</Button>
-          {!options.data.enabled && <p className="-mt-5 text-sm text-muted-foreground">New sign-ups are paused at the moment; contact us to open an account.</p>}
+          {!options.data.enabled && <p className="-mt-5 text-sm text-muted-foreground">New sign-ups are paused at the moment; e-mail help@fullfilio.com to open an account.</p>}
         </form>
       )}
     </AuthShell>

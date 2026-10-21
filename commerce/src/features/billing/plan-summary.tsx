@@ -68,7 +68,7 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
           <p className="font-medium"><Badge variant={ACCESS_MODE[p.access_mode].variant}>{ACCESS_MODE[p.access_mode].label}</Badge> {reason}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {p.access_mode === 'READ_ONLY' ? 'You can view and export everything, but not change it. Your store keeps taking orders.' : 'The admin and new orders are paused until this is resolved.'}
-            {open.length > 0 ? (canPayOnline ? ' Pay the open invoice below to restore full access.' : ' To pay, contact the platform team (bank or bKash); the payment is applied once it is confirmed.') : ' Contact the platform team to change this.'}
+            {open.length > 0 ? (canPayOnline ? ' Pay the open invoice below to restore full access.' : ' To pay, e-mail help@fullfilio.com (bank or bKash); the payment is applied once it is confirmed.') : ' Contact the platform team to change this.'}
           </p>
         </Card>
       )}
