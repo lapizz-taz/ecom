@@ -139,6 +139,9 @@ export interface QuoteLine {
   sku: string
   image_url: string | null
   unit_price: number
+  /** Before a bundle / quantity-break discount (product page block); equals unit_price otherwise. */
+  regular_unit_price?: number
+  bundle_percent?: number
   quantity: number
   line_subtotal: number
   discount_amount: number
@@ -150,6 +153,8 @@ export interface QuoteLine {
 export interface Quote {
   lines: QuoteLine[]
   subtotal: number
+  /** What bundles / quantity breaks took off the regular prices. */
+  bundle_savings?: number
   coupon: { valid: boolean; code?: string; message: string; reason?: string; discount_amount?: number } | null
   coupon_discount: number
   discount_total: number

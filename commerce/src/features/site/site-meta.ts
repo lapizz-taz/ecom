@@ -4,7 +4,7 @@
 // head, sitemap.xml and llms.txt on fullfilio.com, worker/site.ts). Plain data only: the Worker
 // imports it too.
 //
-// Titles stay within about 60 characters and descriptions within about 155, which is what search
+// Title parts are separated with " | ". Titles stay within about 60 characters and descriptions within about 155, which is what search
 // results show.
 import { POSTS } from './blog-posts'
 
@@ -43,14 +43,14 @@ const POST_PAGES: SitePageMeta[] = POSTS.map((p) => ({
 export const SITE_PAGES: SitePageMeta[] = [
   {
     path: '/',
-    title: 'Fullfilio — Order Management for COD Sellers in Bangladesh',
+    title: 'Fullfilio | Order Management for COD Sellers in Bangladesh',
     description: 'Orders, courier booking, fraud checks, stock and profit in one place. Built for cash-on-delivery online sellers in Bangladesh. Works with Shopify and WooCommerce.',
     name: 'Fullfilio',
     kind: 'home',
   },
   {
     path: '/blog',
-    title: 'Fullfilio Blog — Guides for COD Sellers in Bangladesh',
+    title: 'Fullfilio Blog | Guides for COD Sellers in Bangladesh',
     description: 'Practical guides for online sellers in Bangladesh: stop fake COD orders, book couriers in bulk, handle returns (RTS) and sync Shopify or WooCommerce.',
     name: 'Blog',
     kind: 'blog',
@@ -59,7 +59,7 @@ export const SITE_PAGES: SitePageMeta[] = [
   ...POST_PAGES,
   {
     path: '/contact',
-    title: 'Contact Fullfilio — Plans, Setup and Support',
+    title: 'Contact Fullfilio | Plans, Setup and Support',
     description: 'Questions about plans, moving from another tool, or connecting Shopify or WooCommerce? Send the Fullfilio team a message and a person replies by e-mail or phone.',
     name: 'Contact',
     kind: 'contact',

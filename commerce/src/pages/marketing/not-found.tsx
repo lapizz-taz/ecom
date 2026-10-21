@@ -4,7 +4,7 @@ import { SiteRoot, useSiteHead } from '@/features/site/site-chrome'
 
 /** A page that does not exist on the Fullfilio website. */
 export default function MarketingNotFound() {
-  useSiteHead('Page not found — Fullfilio')
+  useSiteHead('Page not found | Fullfilio')
   return (
     <SiteRoot>
     <main className="grid min-h-dvh place-items-center px-6 text-center">

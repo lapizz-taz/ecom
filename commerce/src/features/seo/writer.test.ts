@@ -16,7 +16,7 @@ describe('SEO writer (no AI)', () => {
   it('product titles use the real facts, the keyword and the store name when it fits', () => {
     const ideas = titleIdeas('product', shirt, 'cotton overshirt')
     expect(ideas[0]).toBe('Twill Overshirt | Isolation')
-    expect(ideas).toContain('Twill Overshirt – Cotton Overshirt | Isolation')
+    expect(ideas).toContain('Twill Overshirt | Cotton Overshirt | Isolation')
     // The brand already names the store: no second "| Isolation".
     expect(ideas).toContain('Twill Overshirt by Isolation Studio')
     expect(ideas.every((t) => t.length <= TITLE_MAX)).toBe(true)
@@ -43,7 +43,7 @@ describe('SEO writer (no AI)', () => {
   })
 
   it('the home page uses the tagline; other pages their summary', () => {
-    expect(titleIdeas('page', { store: 'Isolation', name: 'Isolation', tagline: 'Everyday menswear' })[0]).toBe('Isolation – Everyday menswear')
+    expect(titleIdeas('page', { store: 'Isolation', name: 'Isolation', tagline: 'Everyday menswear' })[0]).toBe('Isolation | Everyday menswear')
     expect(descriptionIdeas('page', { store: 'Isolation', name: 'Track your order', summary: 'Track your Isolation order with your order number and mobile number.' })[0])
       .toBe('Track your Isolation order with your order number and mobile number.')
   })

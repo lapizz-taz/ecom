@@ -655,3 +655,12 @@
   [data-stack-tables] [data-slot='table'] td:not([data-label]) { justify-content: flex-start; text-align: left; }
   [data-stack-tables] [data-slot='table'] td > * { min-width: 0; }
 }
+
+/* Product page "Add to cart button" block (product-blocks.ts): a gentle pulse, or a short shake every few seconds. */
+@keyframes ff-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+@keyframes ff-shake { 0%, 88%, 100% { transform: translateX(0); } 90% { transform: translateX(-3px); } 92% { transform: translateX(3px); } 94% { transform: translateX(-3px); } 96% { transform: translateX(2px); } }
+@keyframes ff-ping { 0% { transform: scale(1); opacity: .6; } 80%, 100% { transform: scale(2.4); opacity: 0; } }
+.ff-anim-pulse { animation: ff-pulse 1.6s ease-in-out infinite; }
+.ff-anim-shake { animation: ff-shake 4s ease-in-out infinite; }
+.ff-ping { animation: ff-ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+@media (prefers-reduced-motion: reduce) { .ff-anim-pulse, .ff-anim-shake, .ff-ping { animation: none; } }

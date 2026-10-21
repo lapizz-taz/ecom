@@ -10,6 +10,8 @@ export interface CartItem {
   name: string
   variantTitle: string | null
   price: number
+  /** The regular price when the product is on sale (shows what the customer saves). */
+  compareAt?: number | null
   image: string | null
   quantity: number
   maxQuantity: number
@@ -19,7 +21,8 @@ interface CartState {
   items: CartItem[]
   couponCode: string
   isOpen: boolean
-  add: (item: Omit<CartItem, 'quantity'>, quantity?: number) => void
+  /** Adds to the cart and opens the cart drawer (unless open is false). */
+  add: (item: Omit<CartItem, 'quantity'>, quantity?: number, open?: boolean) => void
   setQuantity: (variantId: string, quantity: number) => void
   remove: (variantId: string) => void
   clear: () => void
@@ -33,18 +36,18 @@ export const useCart = create<CartState>()(
       items: [],
       couponCode: '',
       isOpen: false,
-      add: (item, quantity = 1) =>
+      add: (item, quantity = 1, open = true) =>
         set((state) => {
           const existing = state.items.find((i) => i.variantId === item.variantId)
           if (existing) {
             return {
-              isOpen: true,
+              isOpen: open || state.isOpen,
               items: state.items.map((i) =>
                 i.variantId === item.variantId ? { ...i, ...item, quantity: Math.min(i.quantity + quantity, item.maxQuantity) } : i,
               ),
             }
           }
-          return { isOpen: true, items: [...state.items, { ...item, quantity: Math.min(quantity, item.maxQuantity) }] }
+          return { isOpen: open || state.isOpen, items: [...state.items, { ...item, quantity: Math.min(quantity, item.maxQuantity) }] }
         }),
       setQuantity: (variantId, quantity) =>
         set((state) => ({

@@ -20,6 +20,9 @@ export function SectionFrame({ id, label, children }: { id: string; label: strin
   const active = selected === id
   return (
     <div data-section-id={id} className="group/section relative" onClickCapture={(e) => {
+      // A block inside this section (product page blocks) is selected by its own frame.
+      const inner = (e.target as HTMLElement).closest('[data-section-id]')
+      if (inner && inner !== e.currentTarget) return
       if (!active) { e.preventDefault(); e.stopPropagation(); selectInBuilder(id) }
     }}>
       {children}

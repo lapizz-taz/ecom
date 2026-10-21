@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useSyncExternalStore } from 'react'
 import { isPreviewFrame } from '@/lib/merchant'
 import type { StoreConfig } from '@/types/domain'
+import { DEFAULT_PRODUCT_BLOCKS, type ProductBlock, readBlocks } from './product-blocks'
 
 // The store's theme, edited in the theme builder (Shopify-style editor) and
 // saved in the public "storefront" setting as storefront.theme. Older saved
@@ -47,6 +48,23 @@ export interface ProductPageSettings {
   show_tags: boolean
   show_related: boolean
   related_title: string
+  /** Bundles, badges, timers, tabs, upsells… beside the photos (product-blocks.ts), in order; "buttons" marks the buy buttons. */
+  blocks: ProductBlock[]
+}
+
+/** The cart drawer that opens when something is added. */
+export interface CartSettings {
+  /** A progress bar to the store's free-delivery amount (Settings → Delivery), when it has one. */
+  free_shipping_bar: boolean
+  free_shipping_text: string
+  unlocked_text: string
+  /** "You may also like" products with a quick Add. */
+  upsell: boolean
+  upsell_title: string
+  /** Shows what the customer saves against the regular price. */
+  show_savings: boolean
+  /** A short line above the checkout button, e.g. delivery times. */
+  note: string
 }
 
 export interface StoreTheme {
@@ -69,6 +87,9 @@ export interface StoreTheme {
   banner: { title: string; text: string; image_url: string; link: string; label: string }
   whatsapp: string
   payment_badges: boolean
+  cart: CartSettings
+  /** The browser-tab icon of the store (square image); the app icon when empty. */
+  favicon_url: string
 }
 
 // --- field schema (drives the editor's settings panel) ---------------------------------
@@ -270,6 +291,7 @@ export const DEFAULT_THEME: StoreTheme = {
     image_aspect: 'portrait', show_brand: true, show_sale_badge: true, show_stock: true, show_quantity: true, show_buy_now: true,
     show_description: true, description_title: 'Description', show_details: true, show_sku: true, show_tags: true,
     show_related: true, related_title: 'You may also like',
+    blocks: DEFAULT_PRODUCT_BLOCKS,
   },
   footer: { contact_title: 'Contact information', contact_text: '', links: [], show_currency: true },
   sections: [
@@ -283,6 +305,11 @@ export const DEFAULT_THEME: StoreTheme = {
   banner: { title: '', text: '', image_url: '', link: '/shop', label: 'Shop now' },
   whatsapp: '',
   payment_badges: true,
+  cart: {
+    free_shipping_bar: true, free_shipping_text: 'Add {amount} more for free delivery', unlocked_text: 'Your order qualifies for free delivery',
+    upsell: true, upsell_title: 'You may also like', show_savings: true, note: '',
+  },
+  favicon_url: '',
 }
 
 const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)
@@ -386,6 +413,7 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
       description_title: str(pp.description_title, dp.description_title), show_details: bool(pp.show_details, dp.show_details),
       show_sku: bool(pp.show_sku, dp.show_sku), show_tags: bool(pp.show_tags, dp.show_tags),
       show_related: bool(pp.show_related, dp.show_related), related_title: str(pp.related_title, dp.related_title),
+      blocks: readBlocks(pp.blocks),
     },
     footer: { contact_title: str(f.contact_title, DEFAULT_THEME.footer.contact_title), contact_text: str(f.contact_text), links: links(f.links), show_currency: bool(f.show_currency, true) },
     sections,
@@ -394,6 +422,16 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
     banner,
     whatsapp: str(t.whatsapp),
     payment_badges: bool(t.payment_badges, true),
+    cart: (() => {
+      const k = (t.cart ?? {}) as Partial<CartSettings>
+      const d = DEFAULT_THEME.cart
+      return {
+        free_shipping_bar: bool(k.free_shipping_bar, d.free_shipping_bar), free_shipping_text: str(k.free_shipping_text, d.free_shipping_text).slice(0, 80),
+        unlocked_text: str(k.unlocked_text, d.unlocked_text).slice(0, 80), upsell: bool(k.upsell, d.upsell),
+        upsell_title: str(k.upsell_title, d.upsell_title).slice(0, 60), show_savings: bool(k.show_savings, d.show_savings), note: str(k.note).slice(0, 160),
+      }
+    })(),
+    favicon_url: /^(https:\/\/|\/)/.test(str(t.favicon_url)) ? str(t.favicon_url) : '',
   }
 }
 

@@ -93,7 +93,7 @@ export default function LegalPage() {
   const key = (pathname.replace(/^\/+|\/+$/g, '') || 'privacy') as keyof typeof DOCS
   const doc = DOCS[key] ?? DOCS.privacy
   return (
-    <SitePage title={`${doc.title} — Fullfilio`}>
+    <SitePage title={`${doc.title} | Fullfilio`}>
       <article className="mx-auto max-w-3xl px-5 pt-20 pb-24 md:pt-28">
         <p className="font-mono text-[12px] text-(--s-muted)">Legal · Last updated {UPDATED}</p>
         <h1 className="mt-4 text-[36px] leading-[1.1] font-medium tracking-[-0.03em] text-balance sm:text-[44px]">{doc.title}</h1>

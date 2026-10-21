@@ -33,6 +33,8 @@ export default function StorefrontLayout() {
   const sf = useStorefront(config?.storefront)
   const theme = resolveTheme(sf)
   useThemeFont(theme.font)
+  // The store's own browser-tab icon (theme builder → Header → Favicon).
+  useStoreFavicon(theme.favicon_url)
   const wa = theme.whatsapp ? waNumber(theme.whatsapp) : null
   const { data: categories } = useCategories()
   const items = useCart((s) => s.items)
@@ -343,4 +345,15 @@ function Facebook({ className }: { className?: string }) {
       <path d="M13.5 21v-7.5h2.5l.4-3h-2.9V8.6c0-.9.3-1.5 1.5-1.5h1.5V4.4c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2.4H8v3h2.6V21h2.9Z" />
     </svg>
   )
+}
+
+/** Points the page's icon links at the store's favicon while the store is shown (the Worker sends it in the page too). */
+function useStoreFavicon(url: string) {
+  useEffect(() => {
+    if (!url) return
+    const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"], link[rel="apple-touch-icon"]')]
+    const before = links.map((l) => [l.href, l.type] as const)
+    for (const l of links) { l.href = url; l.removeAttribute('type') }
+    return () => links.forEach((l, i) => { l.href = before[i][0]; if (before[i][1]) l.type = before[i][1] })
+  }, [url])
 }

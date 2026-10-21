@@ -28,7 +28,7 @@ export default function ContactPage() {
   const invalid = Object.values(problems).some(Boolean)
 
   return (
-    <SitePage title="Contact — Fullfilio">
+    <SitePage title="Contact | Fullfilio">
       <section className="mx-auto grid max-w-6xl gap-12 px-5 pt-20 pb-24 md:grid-cols-[1fr_1.2fr] md:pt-28">
         <div>
           <p className="font-mono text-[12px] text-(--s-muted)">Contact</p>

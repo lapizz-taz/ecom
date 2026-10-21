@@ -12,7 +12,7 @@ export default function BlogPostPage() {
   if (!post) return <MarketingNotFound />
   const more = POSTS.filter((p) => p.slug !== post.slug).slice(0, 2)
   return (
-    <SitePage title={`${post.title} — Fullfilio`}>
+    <SitePage title={`${post.title} | Fullfilio`}>
       <article className="mx-auto max-w-2xl px-5 pt-16 pb-20 sm:pt-24">
         <Link to="/blog" className="inline-flex items-center gap-1.5 text-[13px] text-(--s-muted) hover:text-(--s-fg)"><ArrowLeft className="size-3.5" /> All posts</Link>
         <div className="mt-8"><PostMeta tag={post.tag} date={post.date} minutes={post.minutes} /></div>

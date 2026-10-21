@@ -136,8 +136,21 @@ export function injectHead(html: string, opts: { host: string; origin: string; s
       if (ld) tags.push(`<script type="application/ld+json" data-ff-seo>${scriptJson(ld)}</script>`)
     }
   }
+  // The store's own browser-tab icon (theme builder → Header → Favicon) instead of the app's.
+  const favicon = storeFavicon(opts.config)
+  if (favicon) {
+    out = out.replace(/\s*<link\s+rel="(?:icon|apple-touch-icon)"[^>]*>/gi, '')
+    tags.push(`<link rel="icon" href="${attr(favicon)}">`, `<link rel="apple-touch-icon" href="${attr(favicon)}">`)
+  }
   tags.push(`<script type="application/json" id="ff-boot">${scriptJson({ host: opts.host, site: opts.site, config: opts.config ?? null, seo: seo ?? null })}</script>`)
   return out.replace(/<\/head>/i, `    ${tags.join('\n    ')}\n  </head>`)
+}
+
+/** The favicon in a store's settings (storefront.theme.favicon_url): a file of ours or an https link, else none. */
+function storeFavicon(config: unknown): string | null {
+  const theme = (config as { storefront?: { theme?: { favicon_url?: unknown } } } | null)?.storefront?.theme
+  const url = typeof theme?.favicon_url === 'string' ? theme.favicon_url.trim() : ''
+  return /^(https:\/\/[^\s"'<>]+|\/files\/[^\s"'<>]+)$/.test(url) ? url : null
 }
 
 function withHeaders(res: Response, body: string | null, status: number, extra: Record<string, string>): Response {
