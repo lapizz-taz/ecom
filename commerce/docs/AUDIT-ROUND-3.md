@@ -102,6 +102,7 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 | Stock | **Pass 4** — two shoppers buy the last unit at the same moment (two real transactions, own database): one order, the other refused "out of stock", stock 1 reserved / 0 available, never negative | db | new `supabase/tests/db/stock-race.test.ts` | PASS |
 | Integrations (code) | Existing mocked tests read for pass 4: store sync 39, channels 19, catalog 9, Shopify sync 7, WooCommerce plugin 29, couriers 19 + panel 41 + webhooks 12 + history 31 + ops 11, payments 38 + gateway 8 + billing 22, SMS 39, inbox 14, store tracking 52, Meta/ads 35 | unit + db | all in the 931 + 700 passing | PASS (mocked) |
 | Integrations (real providers) | Shopify, WooCommerce, Pathao, Steadfast, RedX, Carrybee, bKash, PayStation, SMS, Meta/TikTok/Google: this session cannot reach them; live usage records show Shopify webhooks arriving (8 deliveries 20 Oct, all handled) | live-read | — | BLOCKED — PROVIDER (from here) |
+| Admin UI | **Pass 4** — every admin page (82: dashboard + 81 routes in `router.tsx`) at 1440 and 390 px, signed in as owner with sample data: no JavaScript error, no "Something went wrong" / "Page not found", no sideways scroll, not sent back to sign-in. Script `scripts/audit/admin-pages-e2e.cjs`. Checks that each page *opens*; what each button does is covered by the module rows | browser | 164/164 | PASS |
 
 ## 5. Fixes this round
 
