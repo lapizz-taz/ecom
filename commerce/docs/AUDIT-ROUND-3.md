@@ -82,6 +82,11 @@ messaging, payments/Super Admin, security). Rows are added as they are executed.
 | Ad tracking | Page view / add-to-cart / checkout / purchase fire once per real action | unit | 5 tests in `ad-pixels.test.ts` | PASS |
 | Bundles | Live `_bundle_percent` with tiers 1/2/3 → 0/10/15/15 % for 1–4 pieces | live-read | as expected | PASS |
 | Bundles | Atheron has no published Bundles block, so prices unchanged | live-read | `_bundle_rule()` null | PASS |
+| Orders (data) | Duplicate store orders (same channel + external id, not merged); total ≠ subtotal − discounts + delivery + tax; subtotal ≠ sum of lines; >1 active shipment per order; same consignment twice; refunded > paid; returned/damaged > ordered | live-read | 0 of each (only 3 live orders — small sample; the db suite covers the logic) | PASS |
+| Tenant isolation | Every public table has row security on (168 tables with `merchant_id`, 0 without) | live-read | 0 tables without | PASS |
+| Tenant isolation | `tenant_isolation` is RESTRICTIVE on every merchant table; the only rows open to visitors are active delivery zones and settings marked public; `system_logs` read needs staff + `audit.view`, so platform rows (no merchant) never show to a store | live-read | as listed | PASS |
+| Security | Functions a visitor (anon) may call, live = the allowlist in `function-grants.test.ts` (34) | live-read + db | identical | PASS |
+| Security | Supabase security advisor: 0 errors; warnings are the known design (signed-in RPCs are security-definer with their own checks; 16 functions without a fixed search path; `pg_trgm` in public; leaked-password check off because sign-in is through Clerk) | live-read | 0 ERROR | PASS |
 
 ## 5. Fixes this round
 
