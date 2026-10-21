@@ -168,7 +168,7 @@ export default function ProductPage() {
               ) : (
                 <div className="space-y-3">
                   {(pp.show_stock || !variant?.in_stock) && <StockDot inStock={Boolean(variant?.in_stock)} available={variant?.available ?? null} missing={!variant} />}
-                  <div className="flex items-center justify-between gap-3 border-y px-2 py-2.5 text-[11px]">
+                  <div className="flex items-center justify-between gap-3 border-y px-2 py-2.5 text-[calc(11px*var(--fs-body,1))]">
                     <h1 className="min-w-0 font-medium uppercase">
                       {product.name}{countText && <span className="font-normal normal-case text-muted-foreground"> · {countText}</span>}
                     </h1>

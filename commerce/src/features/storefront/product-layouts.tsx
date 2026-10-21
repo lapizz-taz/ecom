@@ -25,7 +25,7 @@ export function BuyButtons({ pp, quantity, max, onQuantity, disabled, onAdd, onB
   const radius = { borderRadius: pp.button_radius }
   const filled = look ? { ...radius, background: hexColor(look.background), color: hexColor(look.text) } : radius
   const motion = look?.animation === 'pulse' ? 'ff-anim-pulse' : look?.animation === 'shake' ? 'ff-anim-shake' : ''
-  const action = cn('inline-flex h-12 w-full items-center justify-center gap-2 px-4 text-[13px] font-semibold tracking-wide uppercase transition-opacity disabled:cursor-not-allowed disabled:opacity-40')
+  const action = cn('inline-flex h-12 w-full items-center justify-center gap-2 px-4 text-[calc(13px*var(--fs-body,1))] font-semibold tracking-wide uppercase transition-opacity disabled:cursor-not-allowed disabled:opacity-40')
   return (
     <div className="grid gap-3">
       <div className="flex gap-3">
@@ -57,7 +57,7 @@ export function StockDot({ inStock, available, missing }: { inStock: boolean; av
   const [dot, halo, text] = missing ? ['bg-zinc-400', 'bg-zinc-400/25', 'Not available'] : !inStock ? ['bg-red-500', 'bg-red-500/25', 'Out of stock']
     : available !== null && available <= 5 ? ['bg-orange-400', 'bg-orange-400/25', `${available} left`] : ['bg-emerald-500', 'bg-emerald-500/25', 'In stock']
   return (
-    <p className="flex items-center gap-2 text-[13px]">
+    <p className="flex items-center gap-2 text-[calc(13px*var(--fs-body,1))]">
       <span className={cn('grid size-4 place-items-center rounded-full', halo)}>
         <span className={cn('size-2.5 rounded-full', dot)} />
       </span>
@@ -110,7 +110,7 @@ export function OptionPicker({ product, name, values, selected, onSelect, isAvai
   const usePhotos = values.length > 1 && photos.every(Boolean)
   return (
     <div className="space-y-2.5">
-      <p className="text-[11px] font-medium tracking-wide uppercase">{name} : <span className="font-normal text-muted-foreground">{selected}</span></p>
+      <p className="text-[calc(11px*var(--fs-body,1))] font-medium tracking-wide uppercase">{name} : <span className="font-normal text-muted-foreground">{selected}</span></p>
       <div className="flex flex-wrap gap-2">
         {values.map((value, i) => {
           const active = selected === value
@@ -160,7 +160,7 @@ export function ProductAccordions({ rows, product, variant }: { rows: ProductAcc
                 : isOpen ? <Minus className="size-4 shrink-0" /> : <Plus className="size-4 shrink-0" />}
             </button>
             {isOpen && (
-              <div className="pb-4 text-[13px] leading-relaxed whitespace-pre-line text-muted-foreground">
+              <div className="pb-4 text-[calc(13px*var(--fs-body,1))] leading-relaxed whitespace-pre-line text-muted-foreground">
                 {text || 'Nothing here on this product yet. The text comes from the product, or type it in the theme editor.'}
               </div>
             )}
@@ -203,7 +203,7 @@ export function DeliveryTimeline({ minDays, maxDays }: { minDays: number; maxDay
       <div className="mt-1.5 flex justify-between text-xs">
         {steps.map((s, i) => (
           <div key={s.label} className={cn(i === 1 ? 'text-center' : i === 2 ? 'text-right' : '')}>
-            <p className="text-[11px] font-semibold">{s.date}</p>
+            <p className="text-[calc(11px*var(--fs-body,1))] font-semibold">{s.date}</p>
             <p>{s.label}</p>
           </div>
         ))}
@@ -229,7 +229,7 @@ export function Highlights({ items }: { items: string[] }) {
   return (
     <div className="grid gap-4 py-2" style={{ gridTemplateColumns: `repeat(${list.length}, minmax(0, 1fr))` }}>
       {list.map((text) => (
-        <div key={text} className="grid justify-items-center gap-1.5 text-center text-[11px] sm:text-xs">
+        <div key={text} className="grid justify-items-center gap-1.5 text-center text-[calc(11px*var(--fs-body,1))] sm:text-xs">
           <span className="[&_svg]:size-5 [&_svg]:stroke-[1.5]">{highlightIcon(text)}</span>
           {text}
         </div>

@@ -28,7 +28,7 @@ export function SectionFrame({ id, label, children }: { id: string; label: strin
       {children}
       <div className={cn('pointer-events-none absolute inset-0 z-30 ring-2 ring-inset transition-opacity',
         active ? 'opacity-100 ring-[#2c6ecb]' : hovered === id ? 'opacity-100 ring-[#2c6ecb]/60' : 'opacity-0 ring-[#2c6ecb]/60 group-hover/section:opacity-100')}>
-        <span className={cn('absolute top-0 left-0 bg-[#2c6ecb] px-2 py-0.5 font-sans text-[11px] font-medium tracking-normal text-white normal-case', !active && 'bg-[#2c6ecb]/80')}>{label}</span>
+        <span className={cn('absolute top-0 left-0 bg-[#2c6ecb] px-2 py-0.5 font-sans text-[calc(11px*var(--fs-body,1))] font-medium tracking-normal text-white normal-case', !active && 'bg-[#2c6ecb]/80')}>{label}</span>
       </div>
     </div>
   )
@@ -132,7 +132,7 @@ function CollectionList({ st }: { st: Settings }) {
                   : <Placeholder label={c.name} />}
                 {overlay && <span className="absolute bottom-4 left-4 text-2xl font-medium text-white drop-shadow">{c.name}</span>}
               </div>
-              {!overlay && <p className="px-2 pt-1.5 pb-3 text-[11px] tracking-wide uppercase">{c.name}</p>}
+              {!overlay && <p className="px-2 pt-1.5 pb-3 text-[calc(11px*var(--fs-body,1))] tracking-wide uppercase">{c.name}</p>}
             </Link>
           ))}
       </div>
@@ -155,7 +155,7 @@ function ProductsSection({ st }: { st: Settings }) {
   return (
     <section className="pt-10 pb-4">
       <div className="mx-auto flex max-w-[1600px] items-end justify-between px-4 pb-4 sm:px-8">
-        {s(st.heading) && <h2 className="text-2xl font-medium italic sm:text-[28px]">{s(st.heading)}</h2>}
+        {s(st.heading) && <h2 className="text-2xl font-medium italic sm:text-[calc(28px*var(--fs-heading,1))]">{s(st.heading)}</h2>}
         {st.view_all !== false && <Link to={viewAll} className="text-xs tracking-wide uppercase underline-offset-4 hover:underline">View all</Link>}
       </div>
       <div className="mx-auto max-w-[1600px] sm:px-8">
@@ -208,7 +208,7 @@ function Testimonials({ st }: { st: Settings }) {
   const cols = Math.min(Math.max(n(st.columns, 3), 1), 3)
   return (
     <section className="mx-auto max-w-[1600px] px-4 py-14 sm:px-8">
-      {s(st.heading) && <h2 className="mb-8 text-center text-2xl font-medium sm:text-[28px]">{s(st.heading)}</h2>}
+      {s(st.heading) && <h2 className="mb-8 text-center text-2xl font-medium sm:text-[calc(28px*var(--fs-heading,1))]">{s(st.heading)}</h2>}
       <div className={cn('grid gap-4', cols === 2 && 'md:grid-cols-2', cols === 3 && 'md:grid-cols-2 lg:grid-cols-3')}>
         {items.map((r, i) => (
           <figure key={i} className="flex flex-col justify-between gap-5 rounded-[var(--radius)] border border-foreground/10 p-6">
@@ -229,7 +229,7 @@ function Faq({ st }: { st: Settings }) {
   if (!items.length) return isThemePreview() ? <EmptyHint text="Add questions and answers (FAQ → Add)." /> : null
   return (
     <section className="mx-auto max-w-3xl px-6 py-14">
-      {s(st.heading) && <h2 className="mb-6 text-2xl font-medium sm:text-[28px]">{s(st.heading)}</h2>}
+      {s(st.heading) && <h2 className="mb-6 text-2xl font-medium sm:text-[calc(28px*var(--fs-heading,1))]">{s(st.heading)}</h2>}
       <div className="divide-y divide-foreground/10 border-y border-foreground/10">
         {items.map((r, i) => (
           <details key={i} className="group py-4">
@@ -264,7 +264,7 @@ function Newsletter({ st }: { st: Settings }) {
   }
   return (
     <section className={cn('mx-auto max-w-2xl space-y-4 px-6 py-14', center && 'text-center')}>
-      {s(st.heading) && <h2 className="text-2xl font-medium sm:text-[28px]">{s(st.heading)}</h2>}
+      {s(st.heading) && <h2 className="text-2xl font-medium sm:text-[calc(28px*var(--fs-heading,1))]">{s(st.heading)}</h2>}
       {s(st.text) && <p className="leading-relaxed text-muted-foreground">{s(st.text)}</p>}
       {state === 'done'
         ? <p className="text-sm font-medium" role="status">Thank you. You are on the list.</p>

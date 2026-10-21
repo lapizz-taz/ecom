@@ -31,11 +31,11 @@ function ProductCard({ product }: { product: ProductCardData }) {
             className="size-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]" />
         )}
         <div className="absolute top-2 left-2 flex gap-1">
-          {onSale && t.sale_badge && <span className="bg-foreground px-2 py-1 text-[10px] font-medium tracking-wider text-background uppercase">Sale</span>}
-          {!product.in_stock && <span className="bg-background/90 px-2 py-1 text-[10px] font-medium tracking-wider uppercase">Sold out</span>}
+          {onSale && t.sale_badge && <span className="bg-foreground px-2 py-1 text-[calc(10px*var(--fs-body,1))] font-medium tracking-wider text-background uppercase">Sale</span>}
+          {!product.in_stock && <span className="bg-background/90 px-2 py-1 text-[calc(10px*var(--fs-body,1))] font-medium tracking-wider uppercase">Sold out</span>}
         </div>
       </div>
-      <div className={cn('mt-2 space-y-0.5 px-2 pb-3 text-[11px] leading-snug sm:text-xs', t.uppercase && 'tracking-wide uppercase')}>
+      <div className={cn('mt-2 space-y-0.5 px-2 pb-3 text-[calc(11px*var(--fs-body,1))] leading-snug sm:text-xs', t.uppercase && 'tracking-wide uppercase')}>
         <p className="line-clamp-2">{product.name}</p>
         <PriceTag price={product.price} compareAt={product.compare_at_price} className="tabular-nums" />
       </div>

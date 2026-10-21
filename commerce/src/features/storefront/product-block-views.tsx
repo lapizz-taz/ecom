@@ -83,7 +83,7 @@ function Bundles({ settings, ctx }: { settings: Record<string, unknown>; ctx: Bl
   return (
     <div className="space-y-2.5">
       {s(settings.heading) && (
-        <div className="flex items-center gap-3 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+        <div className="flex items-center gap-3 text-[calc(11px*var(--fs-body,1))] font-semibold tracking-wider text-muted-foreground uppercase">
           <span className="h-px flex-1 bg-border" />{s(settings.heading)}<span className="h-px flex-1 bg-border" />
         </div>
       )}
@@ -99,14 +99,14 @@ function Bundles({ settings, ctx }: { settings: Record<string, unknown>; ctx: Bl
             <button key={t.quantity} type="button" role="radio" aria-checked={on} onClick={() => ctx.setQuantity(t.quantity)}
               className={cn(box, 'relative flex items-center gap-3 border p-3 text-left transition-colors', on ? 'border-foreground bg-foreground/[.04] ring-1 ring-foreground' : 'hover:border-foreground/50',
                 grid && 'flex-col items-start gap-1.5')}>
-              {t.badge && <span className="absolute -top-2 right-3 rounded-full bg-foreground px-2 py-0.5 text-[10px] font-semibold text-background">{t.badge}</span>}
+              {t.badge && <span className="absolute -top-2 right-3 rounded-full bg-foreground px-2 py-0.5 text-[calc(10px*var(--fs-body,1))] font-semibold text-background">{t.badge}</span>}
               <span className={cn('grid size-4 shrink-0 place-items-center rounded-full border', on ? 'border-foreground' : 'border-muted-foreground/50', grid && 'hidden')}>
                 {on && <span className="size-2 rounded-full bg-foreground" />}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                   {t.title || `${t.quantity} ${t.quantity === 1 ? 'piece' : 'pieces'}`}
-                  {pct > 0 && saves > 0 && <span className="rounded bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 uppercase">Save {formatMoney(saves)}</span>}
+                  {pct > 0 && saves > 0 && <span className="rounded bg-emerald-600/10 px-1.5 py-0.5 text-[calc(10px*var(--fs-body,1))] font-semibold text-emerald-700 uppercase">Save {formatMoney(saves)}</span>}
                 </span>
                 {t.subtitle && <span className="mt-0.5 block text-xs text-muted-foreground">{t.subtitle}</span>}
               </span>
@@ -132,7 +132,7 @@ function PulseBadge({ settings, variant }: { settings: Record<string, unknown>; 
     : variant.available !== null && variant.available <= low ? s(settings.low_stock, 'Only {count} left in stock').replace('{count}', String(variant.available))
     : s(settings.in_stock, 'In stock & ready to ship')
   return (
-    <p className="flex items-center gap-2.5 text-[13px] font-medium" style={{ color }}>
+    <p className="flex items-center gap-2.5 text-[calc(13px*var(--fs-body,1))] font-medium" style={{ color }}>
       <span className="relative grid size-2.5 place-items-center">
         <span className="ff-ping absolute inset-0 rounded-full" style={{ background: color }} />
         <span className="relative size-2.5 rounded-full" style={{ background: color }} />
@@ -164,12 +164,12 @@ function Countdown({ settings }: { settings: Record<string, unknown> }) {
   const color = s(settings.color, '#b91c1c')
   return (
     <div className={cn(box, 'flex items-center justify-between gap-3 border px-3 py-2.5')} style={{ borderColor: `${color}55` }}>
-      <span className="flex items-center gap-2 text-[13px] font-medium" style={{ color }}><Clock className="size-4" />{s(settings.heading, 'Sale ends in')}</span>
+      <span className="flex items-center gap-2 text-[calc(13px*var(--fs-body,1))] font-medium" style={{ color }}><Clock className="size-4" />{s(settings.heading, 'Sale ends in')}</span>
       <span className="flex gap-1.5" aria-live="off">
         {parts.map(([v, l], i) => (i === 0 && v === 0 ? null : (
           <span key={l} className="grid min-w-10 justify-items-center rounded-md px-1.5 py-1 text-white" style={{ background: color }}>
             <span className="text-sm leading-none font-semibold tabular-nums">{String(v).padStart(2, '0')}</span>
-            <span className="text-[9px] leading-tight opacity-80">{l}</span>
+            <span className="text-[calc(9px*var(--fs-body,1))] leading-tight opacity-80">{l}</span>
           </span>
         )))}
       </span>
@@ -219,7 +219,7 @@ function ReviewSummary({ settings }: { settings: Record<string, unknown> }) {
   if (!Number.isFinite(rating) || rating <= 0 || rating > 5) return null
   const count = s(settings.count).trim()
   return (
-    <p className="flex flex-wrap items-center gap-2 text-[13px]">
+    <p className="flex flex-wrap items-center gap-2 text-[calc(13px*var(--fs-body,1))]">
       {s(settings.label) && <span className="font-semibold">{s(settings.label)}</span>}
       <Stars value={rating} />
       <span className="text-muted-foreground">{rating.toFixed(1)}{count && ` · ${count} reviews`}</span>
@@ -232,7 +232,7 @@ function Badges({ items }: { items: string[] }) {
   const tones = ['bg-sky-600/10 text-sky-800', 'bg-emerald-600/10 text-emerald-800', 'bg-rose-600/10 text-rose-800', 'bg-amber-500/15 text-amber-900', 'bg-violet-600/10 text-violet-800']
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((t, i) => <span key={t + i} className={cn('rounded-full px-2.5 py-1 text-[11px] font-medium', tones[i % tones.length])}>{t}</span>)}
+      {items.map((t, i) => <span key={t + i} className={cn('rounded-full px-2.5 py-1 text-[calc(11px*var(--fs-body,1))] font-medium', tones[i % tones.length])}>{t}</span>)}
     </div>
   )
 }
@@ -250,7 +250,7 @@ function ShippingInfo({ settings }: { settings: Record<string, unknown> }) {
   if (!zones.length && !dates) return null
   const at = (d: number) => dayFmt.format(new Date(Date.now() + d * 86400000))
   return (
-    <div className={cn(box, 'grid gap-2 border px-3 py-3 text-[13px]')}>
+    <div className={cn(box, 'grid gap-2 border px-3 py-3 text-[calc(13px*var(--fs-body,1))]')}>
       <p className="flex items-center gap-2 font-medium"><Truck className="size-4" />{s(settings.heading, 'Delivery')}</p>
       {dates && <p className="text-muted-foreground">Order now and get it between <span className="font-medium text-foreground">{at(minD)}</span> and <span className="font-medium text-foreground">{at(maxD)}</span>.</p>}
       {zones.length > 0 && (
@@ -267,7 +267,7 @@ function ShippingInfo({ settings }: { settings: Record<string, unknown> }) {
 function BenefitsList({ items }: { items: string[] }) {
   if (!items.length) return null
   return (
-    <ul className="grid gap-1.5 text-[13px]">
+    <ul className="grid gap-1.5 text-[calc(13px*var(--fs-body,1))]">
       {items.map((t, i) => <li key={t + i} className="flex items-start gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" />{t}</li>)}
     </ul>
   )
@@ -284,7 +284,7 @@ function Benefits({ settings }: { settings: Record<string, unknown> }) {
         return (
           <div key={i} className="flex items-start gap-3">
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground/[.06]"><Icon className="size-4" /></span>
-            <span><span className="block text-[13px] font-medium">{r.title}</span><span className="block text-xs text-muted-foreground">{r.text}</span></span>
+            <span><span className="block text-[calc(13px*var(--fs-body,1))] font-medium">{r.title}</span><span className="block text-xs text-muted-foreground">{r.text}</span></span>
           </div>
         )
       })}
@@ -301,7 +301,7 @@ function PaymentIcons({ settings }: { settings: Record<string, unknown> }) {
   if (settings.card === true) pills.push(['Visa', 'bg-[#1a1f71] text-white'], ['Mastercard', 'bg-[#eb001b] text-white'])
   if (!pills.length) return null
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+    <div className="flex flex-wrap items-center gap-1.5 text-[calc(11px*var(--fs-body,1))]">
       {s(settings.text) && <span className="mr-1 text-muted-foreground">{s(settings.text)}</span>}
       {pills.map(([l, c]) => <span key={l} className={cn('rounded px-2 py-1 font-semibold', c)}>{l}</span>)}
     </div>
@@ -318,13 +318,13 @@ function Tabs({ settings, product }: { settings: Record<string, unknown>; produc
   const cur = tabs[Math.min(open, tabs.length - 1)]
   return (
     <div>
-      <div role="tablist" className="flex gap-4 overflow-x-auto border-b text-[13px]">
+      <div role="tablist" className="flex gap-4 overflow-x-auto border-b text-[calc(13px*var(--fs-body,1))]">
         {tabs.map((t, i) => (
           <button key={t.title + i} type="button" role="tab" aria-selected={cur === t} onClick={() => setOpen(i)}
             className={cn('-mb-px shrink-0 border-b-2 pb-2 font-medium transition-colors', cur === t ? 'border-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>{t.title}</button>
         ))}
       </div>
-      <p role="tabpanel" className="pt-3 text-[13px] leading-relaxed whitespace-pre-line text-muted-foreground">{cur.text}</p>
+      <p role="tabpanel" className="pt-3 text-[calc(13px*var(--fs-body,1))] leading-relaxed whitespace-pre-line text-muted-foreground">{cur.text}</p>
     </div>
   )
 }
@@ -366,14 +366,14 @@ function Addons({ settings, ctx }: { settings: Record<string, unknown>; ctx: Blo
   const picked = new Set(ctx.addons.map((a) => a.id))
   return (
     <div className="space-y-2">
-      {s(settings.heading) && <p className="text-[13px] font-medium">{s(settings.heading)}</p>}
+      {s(settings.heading) && <p className="text-[calc(13px*var(--fs-body,1))] font-medium">{s(settings.heading)}</p>}
       {list.map((p) => (
         <label key={p.id} className={cn(box, 'flex cursor-pointer items-center gap-3 border p-2.5 transition-colors', picked.has(p.id) && 'border-foreground')}>
           <input type="checkbox" className="size-4 accent-foreground" checked={picked.has(p.id)}
             onChange={(e) => ctx.setAddons(e.target.checked ? [...ctx.addons, p] : ctx.addons.filter((a) => a.id !== p.id))} />
           {p.image && <img src={imageUrl(p.image.url, 120)} alt="" className="size-11 rounded object-cover" loading="lazy" />}
-          <span className="min-w-0 flex-1 truncate text-[13px]">{p.name}</span>
-          <span className="text-[13px] font-medium tabular-nums">+{formatMoney(p.price)}</span>
+          <span className="min-w-0 flex-1 truncate text-[calc(13px*var(--fs-body,1))]">{p.name}</span>
+          <span className="text-[calc(13px*var(--fs-body,1))] font-medium tabular-nums">+{formatMoney(p.price)}</span>
         </label>
       ))}
     </div>
@@ -388,13 +388,13 @@ function Upsell({ settings, product }: { settings: Record<string, unknown>; prod
   if (!list.length) return null
   return (
     <div className="space-y-2">
-      {s(settings.heading) && <p className="text-[13px] font-medium">{s(settings.heading)}</p>}
+      {s(settings.heading) && <p className="text-[calc(13px*var(--fs-body,1))] font-medium">{s(settings.heading)}</p>}
       {list.map((p) => (
         <div key={p.id} className={cn(box, 'flex items-center gap-3 border p-2.5')}>
           <Link to={`/product/${p.slug}`} className="shrink-0">{p.image && <img src={imageUrl(p.image.url, 120)} alt="" className="size-12 rounded object-cover" loading="lazy" />}</Link>
           <span className="min-w-0 flex-1">
-            <Link to={`/product/${p.slug}`} className="block truncate text-[13px] hover:underline">{p.name}</Link>
-            <span className="text-[13px] tabular-nums">
+            <Link to={`/product/${p.slug}`} className="block truncate text-[calc(13px*var(--fs-body,1))] hover:underline">{p.name}</Link>
+            <span className="text-[calc(13px*var(--fs-body,1))] tabular-nums">
               {formatMoney(p.price)}{p.compare_at_price && p.compare_at_price > p.price && <span className="ml-1.5 text-xs text-muted-foreground line-through">{formatMoney(p.compare_at_price)}</span>}
             </span>
           </span>
@@ -419,7 +419,7 @@ function SocialProof({ settings }: { settings: Record<string, unknown> }) {
   if (!text) return null
   const imgs = rows(settings.images).map((r) => s(r.url).trim()).filter((u) => /^(https:\/\/|\/)/.test(u)).slice(0, 4)
   return (
-    <div className="flex items-center gap-3 text-[13px]">
+    <div className="flex items-center gap-3 text-[calc(13px*var(--fs-body,1))]">
       {imgs.length > 0 && (
         <span className="flex -space-x-2">
           {imgs.map((u) => <img key={u} src={imageUrl(u, 80)} alt="" className="size-7 rounded-full border-2 border-background object-cover" loading="lazy" />)}
@@ -436,12 +436,12 @@ function Reviews({ settings }: { settings: Record<string, unknown> }) {
   if (!items.length) return null
   return (
     <div className="space-y-2.5">
-      {s(settings.heading) && <p className="text-[13px] font-medium">{s(settings.heading)}</p>}
+      {s(settings.heading) && <p className="text-[calc(13px*var(--fs-body,1))] font-medium">{s(settings.heading)}</p>}
       <div className="flex snap-x gap-2.5 overflow-x-auto pb-1">
         {items.map((r, i) => (
           <figure key={i} className={cn(box, 'w-64 shrink-0 snap-start border p-3')}>
             <Stars value={r.rating} size="size-3.5" />
-            <blockquote className="mt-2 text-[13px] leading-relaxed">{r.text}</blockquote>
+            <blockquote className="mt-2 text-[calc(13px*var(--fs-body,1))] leading-relaxed">{r.text}</blockquote>
             {r.name && <figcaption className="mt-2 text-xs text-muted-foreground">{r.name}</figcaption>}
           </figure>
         ))}
@@ -455,7 +455,7 @@ function VideoCarousel({ settings }: { settings: Record<string, unknown> }) {
   if (!urls.length) return null
   return (
     <div className="space-y-2.5">
-      {s(settings.heading) && <p className="text-[13px] font-medium">{s(settings.heading)}</p>}
+      {s(settings.heading) && <p className="text-[calc(13px*var(--fs-body,1))] font-medium">{s(settings.heading)}</p>}
       <div className="flex snap-x gap-2 overflow-x-auto pb-1">{urls.map((u) => <ClipVideo key={u} src={u} />)}</div>
     </div>
   )
@@ -480,7 +480,7 @@ function Banner({ settings }: { settings: Record<string, unknown> }) {
   if (!text) return null
   const tone = ({ info: 'border-sky-600/30 bg-sky-600/[.07] text-sky-900', success: 'border-emerald-600/30 bg-emerald-600/[.07] text-emerald-900',
     warning: 'border-amber-500/40 bg-amber-500/10 text-amber-900', neutral: 'border-border bg-muted text-foreground' } as Record<string, string>)[s(settings.tone, 'info')] ?? ''
-  return <p className={cn(box, 'border px-3 py-2.5 text-[13px] whitespace-pre-line', tone)}>{text}</p>
+  return <p className={cn(box, 'border px-3 py-2.5 text-[calc(13px*var(--fs-body,1))] whitespace-pre-line', tone)}>{text}</p>
 }
 
 // --- page-wide blocks: sticky bar and wrapper -------------------------------------------------------
@@ -505,11 +505,11 @@ export function StickyAddToCart({ blocks, watch, product, price, disabled, onAdd
       <div className="mx-auto flex max-w-6xl items-center gap-3">
         {product.image && <img src={imageUrl(product.image.url, 96)} alt="" className="hidden size-10 rounded object-cover sm:block" />}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium">{product.name}</p>
-          <p className="text-[13px] tabular-nums text-muted-foreground">{formatMoney(price)}</p>
+          <p className="truncate text-[calc(13px*var(--fs-body,1))] font-medium">{product.name}</p>
+          <p className="text-[calc(13px*var(--fs-body,1))] tabular-nums text-muted-foreground">{formatMoney(price)}</p>
         </div>
         <button type="button" disabled={disabled} onClick={onAdd} tabIndex={show ? 0 : -1}
-          className="inline-flex h-10 items-center rounded-md bg-foreground px-5 text-[13px] font-semibold text-background disabled:opacity-40">{label}</button>
+          className="inline-flex h-10 items-center rounded-md bg-foreground px-5 text-[calc(13px*var(--fs-body,1))] font-semibold text-background disabled:opacity-40">{label}</button>
       </div>
     </div>
   )

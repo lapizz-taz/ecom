@@ -8,7 +8,9 @@ import { DEFAULT_PRODUCT_BLOCKS, type ProductBlock, readBlocks } from './product
 // themes (a fixed list of sections) are read and upgraded by resolveTheme().
 
 export type Storefront = StoreConfig['storefront']
-export type ThemeFont = 'poppins' | 'inter' | 'hind'
+export type ThemeFont = 'poppins' | 'inter' | 'montserrat' | 'dm_sans' | 'manrope' | 'outfit' | 'jost' | 'lato' | 'roboto' | 'open_sans' | 'nunito'
+  | 'playfair' | 'lora' | 'cormorant' | 'dm_serif' | 'oswald' | 'hind' | 'noto_bengali' | 'anek_bangla'
+export type HeadingWeight = 'default' | '400' | '500' | '600' | '700'
 export type ThemeRadius = 'sharp' | 'soft' | 'round'
 
 export type SectionType = 'hero' | 'collections' | 'featured' | 'new' | 'best_sellers' | 'trust' | 'banner' | 'rich_text' | 'marquee' | 'image_text' | 'video'
@@ -69,7 +71,14 @@ export interface CartSettings {
 
 export interface StoreTheme {
   accent: string
+  /** Body text font. */
   font: ThemeFont
+  /** Headings (h1–h6): their own font and, unless "default", one weight. */
+  heading_font: ThemeFont
+  heading_weight: HeadingWeight
+  /** Text sizes in % of the theme's own: body text (and buttons, prices), and headings. */
+  text_size: number
+  heading_size: number
   radius: ThemeRadius
   logo_position: 'left' | 'center'
   colors: { background: string; text: string; footer_bg: string; footer_text: string; announcement_bg: string; announcement_text: string }
@@ -247,10 +256,49 @@ export const SECTIONS: Record<SectionType, SectionDef> = {
 SECTIONS.new.fields = SECTIONS.featured.fields
 SECTIONS.best_sellers.fields = SECTIONS.featured.fields
 
-export const FONTS: Record<ThemeFont, { label: string; sample: string; family: string; href: string | null }> = {
-  poppins: { label: 'Poppins', sample: 'Aa', family: '"Poppins", ui-sans-serif, system-ui, sans-serif', href: null },
-  inter: { label: 'Inter', sample: 'Aa', family: '"Inter", ui-sans-serif, system-ui, sans-serif', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' },
-  hind: { label: 'Hind Siliguri', sample: 'অআ', family: '"Hind Siliguri", "Noto Sans Bengali", ui-sans-serif, system-ui, sans-serif', href: 'https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap' },
+export type FontGroup = 'Sans serif' | 'Serif' | 'Display' | 'Bangla'
+interface FontDef { label: string; group: FontGroup; sample: string; family: string; /** Google Fonts css2 "family=" value; null for the font the app ships (Poppins). */ google: string | null }
+
+const sans = (name: string, bangla = false) => `"${name}", ${bangla ? '' : '"Hind Siliguri", '}ui-sans-serif, system-ui, "Noto Sans Bengali", sans-serif`
+const serif = (name: string) => `"${name}", ui-serif, Georgia, "Noto Serif Bengali", serif`
+const w = (name: string, weights = '400;500;600;700') => `${name.replaceAll(' ', '+')}:wght@${weights}`
+
+/** Google Fonts the store can use; each loads only when the theme uses it. */
+export const FONTS: Record<ThemeFont, FontDef> = {
+  poppins: { label: 'Poppins', group: 'Sans serif', sample: 'Aa', family: sans('Poppins'), google: null },
+  inter: { label: 'Inter', group: 'Sans serif', sample: 'Aa', family: sans('Inter'), google: w('Inter') },
+  montserrat: { label: 'Montserrat', group: 'Sans serif', sample: 'Aa', family: sans('Montserrat'), google: w('Montserrat') },
+  dm_sans: { label: 'DM Sans', group: 'Sans serif', sample: 'Aa', family: sans('DM Sans'), google: w('DM Sans') },
+  manrope: { label: 'Manrope', group: 'Sans serif', sample: 'Aa', family: sans('Manrope'), google: w('Manrope') },
+  outfit: { label: 'Outfit', group: 'Sans serif', sample: 'Aa', family: sans('Outfit'), google: w('Outfit') },
+  jost: { label: 'Jost', group: 'Sans serif', sample: 'Aa', family: sans('Jost'), google: w('Jost') },
+  lato: { label: 'Lato', group: 'Sans serif', sample: 'Aa', family: sans('Lato'), google: w('Lato', '400;700') },
+  roboto: { label: 'Roboto', group: 'Sans serif', sample: 'Aa', family: sans('Roboto'), google: w('Roboto', '400;500;700') },
+  open_sans: { label: 'Open Sans', group: 'Sans serif', sample: 'Aa', family: sans('Open Sans'), google: w('Open Sans') },
+  nunito: { label: 'Nunito', group: 'Sans serif', sample: 'Aa', family: sans('Nunito'), google: w('Nunito') },
+  playfair: { label: 'Playfair Display', group: 'Serif', sample: 'Aa', family: serif('Playfair Display'), google: w('Playfair Display') },
+  lora: { label: 'Lora', group: 'Serif', sample: 'Aa', family: serif('Lora'), google: w('Lora') },
+  cormorant: { label: 'Cormorant Garamond', group: 'Serif', sample: 'Aa', family: serif('Cormorant Garamond'), google: w('Cormorant Garamond') },
+  dm_serif: { label: 'DM Serif Display', group: 'Display', sample: 'Aa', family: serif('DM Serif Display'), google: 'DM+Serif+Display' },
+  oswald: { label: 'Oswald', group: 'Display', sample: 'Aa', family: sans('Oswald'), google: w('Oswald') },
+  hind: { label: 'Hind Siliguri', group: 'Bangla', sample: 'অআ', family: sans('Hind Siliguri', true), google: w('Hind Siliguri') },
+  noto_bengali: { label: 'Noto Sans Bengali', group: 'Bangla', sample: 'অআ', family: sans('Noto Sans Bengali', true), google: w('Noto Sans Bengali') },
+  anek_bangla: { label: 'Anek Bangla', group: 'Bangla', sample: 'অআ', family: sans('Anek Bangla', true), google: w('Anek Bangla') },
+}
+const isFont = (v: unknown): v is ThemeFont => typeof v === 'string' && Object.hasOwn(FONTS, v)
+export const FONT_GROUPS: FontGroup[] = ['Sans serif', 'Serif', 'Display', 'Bangla']
+export const HEADING_WEIGHTS: Array<{ value: HeadingWeight; label: string }> = [
+  { value: 'default', label: 'Theme default' }, { value: '400', label: 'Regular' }, { value: '500', label: 'Medium' }, { value: '600', label: 'Semibold' }, { value: '700', label: 'Bold' },
+]
+/** Size sliders, in %. */
+export const TEXT_SIZE = { min: 80, max: 130 } as const
+export const HEADING_SIZE = { min: 70, max: 150 } as const
+
+/** The stylesheet URL for some fonts (null when all ship with the app). `text` limits it to those letters (font pickers). */
+export function fontsHref(fonts: ThemeFont[], text?: string): string | null {
+  const families = [...new Set(fonts)].map((f) => FONTS[f]?.google).filter((g): g is string => !!g)
+  if (!families.length) return null
+  return `https://fonts.googleapis.com/css2?${families.map((g) => `family=${g}`).join('&')}&display=swap${text ? `&text=${encodeURIComponent(text)}` : ''}`
 }
 
 export const RADII: Record<ThemeRadius, { label: string; value: string }> = {
@@ -273,6 +321,10 @@ const DEFAULT_TRUST = [
 export const DEFAULT_THEME: StoreTheme = {
   accent: '#0b0b0c',
   font: 'poppins',
+  heading_font: 'poppins',
+  heading_weight: 'default',
+  text_size: 100,
+  heading_size: 100,
   radius: 'sharp',
   logo_position: 'center',
   colors: { background: '#ffffff', text: '#0b0b0c', footer_bg: '#000000', footer_text: '#ffffff', announcement_bg: '#000000', announcement_text: '#ffffff' },
@@ -375,7 +427,11 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
   const items = Array.isArray(a.items) ? a.items.filter((x): x is string => typeof x === 'string') : legacyText ? [legacyText] : []
   return {
     accent: hex(t.accent, DEFAULT_THEME.accent),
-    font: t.font && t.font in FONTS ? t.font : DEFAULT_THEME.font,
+    font: isFont(t.font) ? t.font : DEFAULT_THEME.font,
+    heading_font: isFont(t.heading_font) ? t.heading_font : isFont(t.font) ? t.font : DEFAULT_THEME.heading_font,
+    heading_weight: HEADING_WEIGHTS.some((x) => x.value === t.heading_weight) ? t.heading_weight! : 'default',
+    text_size: percent(t.text_size, TEXT_SIZE),
+    heading_size: percent(t.heading_size, HEADING_SIZE),
     radius: t.radius && t.radius in RADII ? t.radius : legacy && t.radius === undefined && Array.isArray(t.sections) ? 'soft' : DEFAULT_THEME.radius,
     logo_position: t.logo_position === 'left' ? 'left' : t.logo_position === 'center' ? 'center' : legacy && Array.isArray(t.sections) ? 'left' : 'center',
     colors: {
@@ -442,26 +498,52 @@ function onColor(color: string): string {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#0b0b0c' : '#fafafa'
 }
 
+const pct = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(n)))
+function percent(v: unknown, range: { min: number; max: number }): number {
+  return typeof v === 'number' && Number.isFinite(v) ? pct(v, range.min, range.max) : 100
+}
+
+// Tailwind's text sizes, in rem. Up to lg they are body text, from xl on headings (index.css, [data-store-theme]).
+const BODY_SIZES = { xs: 0.75, sm: 0.875, base: 1, lg: 1.125 }
+const HEADING_SIZES = { xl: 1.25, '2xl': 1.5, '3xl': 1.875, '4xl': 2.25, '5xl': 3, '6xl': 3.75, '7xl': 4.5, '8xl': 6, '9xl': 8 }
+
+/** The store's look as CSS variables, for its outermost element (with themeData). */
 export function themeStyle(t: StoreTheme): CSSProperties {
+  const body = t.text_size / 100
+  const heading = t.heading_size / 100
+  const sizes: Record<string, string> = {}
+  for (const [k, rem] of Object.entries(BODY_SIZES)) sizes[`--text-${k}`] = `${+(rem * body).toFixed(4)}rem`
+  for (const [k, rem] of Object.entries(HEADING_SIZES)) sizes[`--text-${k}`] = `${+(rem * heading).toFixed(4)}rem`
   return {
     '--primary': t.accent, '--primary-foreground': onColor(t.accent), '--ring': t.accent,
     '--background': t.colors.background, '--foreground': t.colors.text,
     '--radius': RADII[t.radius].value, fontFamily: FONTS[t.font].family,
+    '--store-font-heading': FONTS[t.heading_font].family, '--store-heading-weight': t.heading_weight === 'default' ? undefined : t.heading_weight,
+    '--fs-body': body, '--fs-heading': heading, ...sizes,
+    fontSize: `${body}rem`,
     background: t.colors.background, color: t.colors.text,
   } as CSSProperties
 }
 
-/** Loads the web font the theme uses (Poppins ships with the app). */
-export function useThemeFont(font: ThemeFont) {
+/** Data attributes for the same element: headings take the heading font (and weight) from them. */
+export function themeData(t: StoreTheme): Record<string, string | undefined> {
+  return { 'data-store-theme': '', 'data-heading-weight': t.heading_weight === 'default' ? undefined : '' }
+}
+
+/** Loads the web fonts the theme uses (Poppins ships with the app). */
+export function useThemeFont(...fonts: ThemeFont[]) {
+  const key = [...new Set(fonts)].sort().join(',')
   useEffect(() => {
-    const href = FONTS[font].href
-    if (!href || document.querySelector(`link[data-theme-font="${font}"]`)) return
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = href
-    link.dataset.themeFont = font
-    document.head.appendChild(link)
-  }, [font])
+    for (const font of key.split(',') as ThemeFont[]) {
+      const href = FONTS[font] && fontsHref([font])
+      if (!href || document.querySelector(`link[data-theme-font="${font}"]`)) continue
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = href
+      link.dataset.themeFont = font
+      document.head.appendChild(link)
+    }
+  }, [key])
 }
 
 // --- live preview inside the theme builder ------------------------------------------

@@ -10,12 +10,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import {
-  ACCENTS, DEFAULT_THEME, FONTS, makeSection, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
+  ACCENTS, DEFAULT_THEME, FONTS, HEADING_SIZE, HEADING_WEIGHTS, makeSection, TEXT_SIZE, useThemeFont, RADII, resolveTheme, SECTIONS, type MenuLink, type ProductAccordion, type SectionType, type StoreTheme, type Storefront, type ThemeSection,
 } from '@/features/storefront/theme'
 import { PRODUCT_BLOCKS, toggleBlock, type ProductBlock } from '@/features/storefront/product-blocks'
 import { BLOCK_ICON, BlockPicker } from '@/features/theme-editor/block-library'
 import { ColorInput, FieldRow, inputClass, ListField, RangeInput, SchemaField, SelectInput } from '@/features/theme-editor/fields'
 import { SECTION_ICON, SectionPicker } from '@/features/theme-editor/section-picker'
+import { FontPicker } from '@/features/theme-editor/font-picker'
 import { useThemeDraft } from '@/features/theme-editor/use-theme-draft'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { cn } from '@/lib/utils'
@@ -658,6 +659,18 @@ function Accordion({ title, children, defaultOpen }: { title: string; children: 
   )
 }
 
+/** How the two fonts and sizes look together (the store preview shows the real thing). */
+function TypeSample({ theme }: { theme: StoreTheme }) {
+  useThemeFont(theme.font, theme.heading_font)
+  const weight = theme.heading_weight === 'default' ? 600 : Number(theme.heading_weight)
+  return (
+    <div className="space-y-1 rounded-lg border border-zinc-200 bg-white p-3 text-zinc-900 dark:border-zinc-700">
+      <p style={{ fontFamily: FONTS[theme.heading_font].family, fontWeight: weight, fontSize: `${1.25 * theme.heading_size / 100}rem` }} className="leading-tight">Summer linen shirt</p>
+      <p style={{ fontFamily: FONTS[theme.font].family, fontSize: `${0.875 * theme.text_size / 100}rem` }} className="leading-snug text-zinc-600">Breathable cotton-linen, cut for the heat. ৳1,250 · ক্যাশ অন ডেলিভারি</p>
+    </div>
+  )
+}
+
 function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: Partial<StoreTheme>) => void }) {
   const c = theme.colors
   const pc = theme.product_card
@@ -682,15 +695,19 @@ function ThemeSettings({ theme, setTheme }: { theme: StoreTheme; setTheme: (p: P
         <FieldRow label="Text"><ColorInput value={c.text} onChange={(v) => setTheme({ colors: { ...c, text: v } })} /></FieldRow>
         <FieldRow label="Footer background"><ColorInput value={c.footer_bg} onChange={(v) => setTheme({ colors: { ...c, footer_bg: v } })} /></FieldRow>
       </Accordion>
-      <Accordion title="Typography">
-        <div className="grid grid-cols-3 gap-2">
-          {Object.entries(FONTS).map(([k, f]) => (
-            <button key={k} type="button" aria-pressed={theme.font === k} onClick={() => setTheme({ font: k as StoreTheme['font'] })}
-              className={cn('grid justify-items-center gap-1 rounded-lg border px-2 py-2.5', theme.font === k ? 'border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800' : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700')}>
-              <span className="text-xl" style={{ fontFamily: f.family }}>{f.sample}</span><span className="text-[11px] text-zinc-500">{f.label}</span>
-            </button>
-          ))}
-        </div>
+      <Accordion title="Typography" defaultOpen>
+        <FieldRow label="Headings font"><FontPicker label="Headings font" value={theme.heading_font} onChange={(f) => setTheme({ heading_font: f })} /></FieldRow>
+        <FieldRow label="Heading weight">
+          <SelectInput value={theme.heading_weight} onChange={(v) => setTheme({ heading_weight: v as StoreTheme['heading_weight'] })} options={HEADING_WEIGHTS} />
+        </FieldRow>
+        <FieldRow label="Heading size"><RangeInput value={theme.heading_size} min={HEADING_SIZE.min} max={HEADING_SIZE.max} step={5} unit="%" onChange={(v) => setTheme({ heading_size: v })} /></FieldRow>
+        <div className="h-px bg-zinc-200 dark:bg-zinc-800" />
+        <FieldRow label="Body font"><FontPicker label="Body font" value={theme.font} onChange={(f) => setTheme({ font: f })} /></FieldRow>
+        <FieldRow label="Body text size" hint="Also buttons, prices and menus."><RangeInput value={theme.text_size} min={TEXT_SIZE.min} max={TEXT_SIZE.max} step={5} unit="%" onChange={(v) => setTheme({ text_size: v })} /></FieldRow>
+        <TypeSample theme={theme} />
+        {(theme.text_size !== 100 || theme.heading_size !== 100) && (
+          <button type="button" onClick={() => setTheme({ text_size: 100, heading_size: 100 })} className="text-xs font-medium text-[#2c6ecb] hover:underline">Reset sizes to 100%</button>
+        )}
       </Accordion>
       <Accordion title="Buttons and corners">
         <div className="grid grid-cols-3 gap-2">

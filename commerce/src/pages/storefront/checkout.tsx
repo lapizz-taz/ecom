@@ -370,7 +370,7 @@ export default function CheckoutPage() {
           <li key={item.variantId} className="flex items-center gap-4 text-sm">
             <div className="relative shrink-0">
               <img src={imageUrl(item.image, 120)} alt="" className="size-16 rounded-[6px] border bg-background object-cover" />
-              <span className="absolute -top-2 -right-2 flex size-5 items-center justify-center rounded-full bg-foreground text-[11px] font-medium text-background">{item.quantity}</span>
+              <span className="absolute -top-2 -right-2 flex size-5 items-center justify-center rounded-full bg-foreground text-[calc(11px*var(--fs-body,1))] font-medium text-background">{item.quantity}</span>
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{item.name}</p>
@@ -487,7 +487,7 @@ export default function CheckoutPage() {
                 <Controller control={form.control} name="district" render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
                     <SelectTrigger ref={field.ref} id="district" className={cn(box, 'relative w-full data-[size=default]:h-11', field.value && 'pt-3.5')} aria-label="District" aria-invalid={!!err.district}>
-                      {field.value && <span className="pointer-events-none absolute top-1 left-3 text-[11px] text-muted-foreground">District / City</span>}
+                      {field.value && <span className="pointer-events-none absolute top-1 left-3 text-[calc(11px*var(--fs-body,1))] text-muted-foreground">District / City</span>}
                       <SelectValue placeholder="District / City" />
                     </SelectTrigger>
                     <SelectContent className="max-h-72">{districts.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
@@ -629,7 +629,7 @@ export default function CheckoutPage() {
                 <span className="block text-xs text-muted-foreground">{itemCount} item{itemCount === 1 ? '' : 's'}</span>
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="text-[10px] text-muted-foreground">{currency}</span>
+                <span className="text-[calc(10px*var(--fs-body,1))] text-muted-foreground">{currency}</span>
                 <span className="text-lg font-semibold">{districtChosen ? <Money value={total} /> : <Money value={subtotal} />}</span>
                 <ChevronDown className={cn('size-4 transition-transform', summaryOpen && 'rotate-180')} />
               </span>
