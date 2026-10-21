@@ -622,6 +622,30 @@
   .btn-3d-site-ghost { --b3d-rest: var(--b3d-site-ghost); --b3d-hover: var(--b3d-site-ghost); --b3d-press: var(--b3d-site-ghost-press); }
 }
 
+/* The website's call-to-action button (fullfilio.com only, inside .site): the orange of the
+   reference — a top-to-bottom gradient, a darker 1px edge, a light line inside the top and a
+   soft orange glow. Outside any layer, so it wins over the colour utilities on the element.
+   The quiet partner (btn-3d-site-ghost) keeps the page's own colours with the same shape. */
+.site .btn-3d-site {
+  color: #ffffff;
+  border: 1px solid #d94510;
+  background: linear-gradient(180deg, #fa6322 0%, #ff5a0d 55%, #fc5409 100%);
+  box-shadow: inset 0 1px 0 #ff9356, inset 0 -1px 0 #ff6a2a, 0 1px 2px rgb(217 69 16 / 0.3), 0 8px 18px -8px rgb(255 90 13 / 0.55);
+  transition: background 160ms var(--ease-out), box-shadow 160ms var(--ease-out), translate 120ms var(--ease-out);
+}
+.site .btn-3d-site:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: linear-gradient(180deg, #ff7233 0%, #ff6316 55%, #fd5b10 100%);
+  box-shadow: inset 0 1px 0 #ffa06a, inset 0 -1px 0 #ff7436, 0 2px 4px rgb(217 69 16 / 0.3), 0 12px 24px -10px rgb(255 90 13 / 0.65);
+}
+.site .btn-3d-site:active:not(:disabled):not([aria-disabled="true"]) {
+  background: linear-gradient(180deg, #ef520f 0%, #f75710 100%);
+  box-shadow: inset 0 1px 3px rgb(140 40 0 / 0.35), 0 1px 1px rgb(217 69 16 / 0.25);
+  translate: 0 1px;
+}
+.site .btn-3d-site:focus-visible, .site .btn-3d-site-ghost:focus-visible { outline: 2px solid #ff5a0d; outline-offset: 2px; }
+.site .btn-3d-site:disabled { opacity: 0.6; }
+.site .btn-3d-site-ghost { transition: background-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), translate 120ms var(--ease-out); }
+
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
