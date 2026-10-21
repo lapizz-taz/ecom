@@ -114,6 +114,41 @@ const PATHS = ['', 'merchants', 'live', 'domains', 'merchants/new', 'employees',
         JSON.stringify({ url: page.url(), text: t.slice(0, 200), rpc: rpc.error?.message ?? 'returned data' }))
       await ctx.close()
     }
+    // A dropdown inside a dialog opens above it and can be picked (Plan & billing → Change plan).
+    {
+      const subs = await call('GET', `/rest/v1/subscriptions?merchant_id=eq.${M1}&ended_at=is.null&select=id,status,plan_id`, { merchant: null })
+      console.log('M1 subscription', JSON.stringify(subs.body))
+      if (subs.body?.[0]) await call('PATCH', `/rest/v1/subscriptions?id=eq.${subs.body[0].id}`, { merchant: null, body: { status: 'PAST_DUE', grace_until: new Date(Date.now() + 7 * 864e5).toISOString() } })
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+      const page = await ctx.newPage()
+      await page.goto(`${base}/super-admin/login`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      await page.evaluate(([k, s]) => localStorage.setItem(k, s), [key, JSON.stringify(platform.session)])
+      await page.goto(`${base}/super-admin/merchants/${M1}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      await page.getByRole('tab', { name: 'Plan & billing' }).click({ timeout: 30000 })
+      await page.getByRole('button', { name: /^(Change plan|Start a subscription)$/ }).click({ timeout: 30000 })
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('combobox').click()
+      const option = page.getByRole('option').first()
+      const label = await option.innerText({ timeout: 10000 })
+      await page.waitForTimeout(400)
+      const onTop = await option.evaluate((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return { hit: hit?.outerHTML.slice(0, 120), mine: el.contains(hit), dialogZ: getComputedStyle(document.querySelector('[role=dialog]')).zIndex, listZ: getComputedStyle(el.closest('[data-radix-popper-content-wrapper]') ?? el).zIndex } })
+      console.log('ONTOP', JSON.stringify(onTop))
+      await page.screenshot({ path: join(S, 'sa-change-plan-open.png') })
+      await option.click({ timeout: 5000 }) // fails when the list is under the dialog
+      const shown = await dialog.getByRole('combobox').innerText()
+      await dialog.locator('textarea').fill('Audit: dropdown in a dialog')
+      const submit = dialog.getByRole('button', { name: /^(Change plan|Start a subscription)$/ })
+      step('a dropdown inside a dialog can be picked (Super Admin change plan)', shown.trim() === label.trim() && await submit.isEnabled(),
+        JSON.stringify({ label, shown }))
+      const answer = page.waitForResponse((r) => /platform_subscription_action|subscription/.test(r.url()) && r.request().method() === 'POST', { timeout: 20000 }).catch(() => null)
+      await submit.click()
+      const res = await answer
+      await page.waitForTimeout(1500)
+      const after = await text(page)
+      step('Super Admin change plan is saved', Boolean(res) && res.status() < 300 && !(await dialog.isVisible().catch(() => false)),
+        JSON.stringify({ url: res?.url(), status: res?.status(), body: res ? (await res.text().catch(() => '')).slice(0, 400) : 'no request', page: after.slice(0, 300) }))
+      await ctx.close()
+    }
     const summary = []
     for (const width of [1440, 390]) {
       const ctx = await browser.newContext({ viewport: { width, height: width > 500 ? 900 : 844 }, isMobile: width < 500, hasTouch: width < 500 })
