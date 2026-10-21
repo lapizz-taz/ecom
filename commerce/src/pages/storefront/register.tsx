@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router'
+import { adEvent, rememberShopper } from '@/features/storefront/ad-pixels'
 import { toast } from '@/lib/toast'
 import { z } from 'zod'
 import { Field } from '@/components/common/field'
@@ -36,7 +37,9 @@ export default function RegisterPage() {
       if (error) throw error
       return data
     },
-    onSuccess: (data) => {
+    onSuccess: (data, v) => {
+      adEvent('CompleteRegistration')
+      void rememberShopper({ phone: v.phone, email: v.email, name: v.full_name })
       if (data.session) navigate('/account')
       else toast.success('Check your email to confirm your account.')
     },

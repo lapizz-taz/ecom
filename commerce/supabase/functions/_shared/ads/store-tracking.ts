@@ -151,7 +151,7 @@ export function fbcFrom(ids: BrowserIds, at = Date.now()): string | null {
 
 // --- events ------------------------------------------------------------------------------------
 
-export type StoreEventName = 'PageView' | 'ViewContent' | 'AddToCart' | 'InitiateCheckout' | 'Purchase'
+export type StoreEventName = 'PageView' | 'ViewContent' | 'AddToCart' | 'InitiateCheckout' | 'Search' | 'Contact' | 'CompleteRegistration' | 'Purchase'
 
 export interface ContentLine { id: string; name?: string; quantity: number; price: number }
 
@@ -166,10 +166,13 @@ export interface StoreEvent {
   contents?: ContentLine[]
   /** The store's order number (Purchase only). */
   order_id?: string
+  /** What the shopper searched for (Search only). */
+  search?: string
 }
 
 const TIKTOK_NAMES: Record<StoreEventName, string> = {
-  PageView: 'Pageview', ViewContent: 'ViewContent', AddToCart: 'AddToCart', InitiateCheckout: 'InitiateCheckout', Purchase: 'CompletePayment',
+  PageView: 'Pageview', ViewContent: 'ViewContent', AddToCart: 'AddToCart', InitiateCheckout: 'InitiateCheckout',
+  Search: 'Search', Contact: 'Contact', CompleteRegistration: 'CompleteRegistration', Purchase: 'CompletePayment',
 }
 
 export interface SendResult { ok: boolean; error?: string; skipped?: string }
@@ -177,6 +180,7 @@ export interface SendResult { ok: boolean; error?: string; skipped?: string }
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 function metaCustom(ev: StoreEvent): Record<string, unknown> | null {
+  if (ev.search) return { search_string: ev.search }
   if (ev.value === undefined && !ev.contents?.length) return null
   const contents = ev.contents ?? []
   return Object.fromEntries(Object.entries({
@@ -217,6 +221,7 @@ export function tiktokPayload(pixel: string, ev: StoreEvent, m: Matching, ids: B
     props.contents = ev.contents.map((c) => ({ content_id: c.id, content_name: c.name, quantity: c.quantity, price: round2(c.price) }))
   }
   if (ev.order_id) props.order_id = ev.order_id
+  if (ev.search) props.query = ev.search
   const row: Record<string, unknown> = { event: TIKTOK_NAMES[ev.name], event_time: ev.time, event_id: ev.event_id, user, page: { url: ev.url ?? '' } }
   if (Object.keys(props).length) row.properties = props
   return { event_source: 'web', event_source_id: pixel, data: [row], ...(testCode ? { test_event_code: testCode } : {}) }
@@ -315,9 +320,22 @@ export async function sendGa4(c: AdTrackingConfig, s: AdTrackingSecrets, ev: Sto
   }
 }
 
-/** Sends one event to every platform that is set up. One platform failing does not stop the others. */
-export async function sendServerEvent(c: AdTrackingConfig, s: AdTrackingSecrets, ev: StoreEvent, person: Person, ids: BrowserIds, d: SendDeps = {}) {
+/** Matching values the shopper's own browser hashed (a returning buyer); only SHA-256 hex is taken. */
+export type HashedMatching = Partial<Pick<Matching, 'em' | 'ph' | 'ph_e164' | 'fn' | 'ln' | 'ct' | 'st'>>
+const HEX64 = /^[0-9a-f]{64}$/
+
+/**
+ * Sends one event to every platform that is set up. One platform failing does not stop the others.
+ * `hashed` fills in what the person record lacks (with advanced matching on).
+ */
+export async function sendServerEvent(c: AdTrackingConfig, s: AdTrackingSecrets, ev: StoreEvent, person: Person, ids: BrowserIds, d: SendDeps = {}, hashed?: HashedMatching | null) {
   const m = await hashPerson(person, c.advanced_matching)
+  if (c.advanced_matching && hashed) {
+    for (const k of ['em', 'ph', 'ph_e164', 'fn', 'ln', 'ct', 'st'] as const) {
+      const v = hashed[k]
+      if (!m[k] && typeof v === 'string' && HEX64.test(v)) m[k] = v
+    }
+  }
   const [meta, tiktok, google] = await Promise.all([
     sendMeta(c, s, ev, m, ids, d), sendTikTok(c, s, ev, m, ids, d), sendGa4(c, s, ev, m, ids, d),
   ])

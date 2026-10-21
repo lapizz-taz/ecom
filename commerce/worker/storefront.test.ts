@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { forgetSites, injectHead, isPlatformHost, type PageSeo, storefrontFile, storefrontPage, type StorefrontEnv } from './storefront.ts'
+import { adCookies, forgetSites, injectHead, isPlatformHost, type PageSeo, storefrontFile, storefrontPage, type StorefrontEnv } from './storefront.ts'
 
 const SHELL = `<!doctype html>
 <html lang="en">
@@ -68,7 +68,7 @@ describe('store pages from the Worker', () => {
     const boot = JSON.parse(/<script type="application\/json" id="ff-boot">([\s\S]*?)<\/script>/.exec(html)![1])
     expect(boot).toMatchObject({ host: 'atheron.shop', site: { merchant_id: MERCHANT }, config: { store: { name: 'Isolation' } } })
     // The page is asked for this store only.
-    expect(calls.map((c) => [c.fn, c.merchant])).toEqual([['storefront_resolve', null], ['storefront_page', MERCHANT]])
+    expect(calls.map((c) => [c.fn, c.merchant])).toEqual([['storefront_resolve', null], ['storefront_page', MERCHANT], ['storefront_ad_tracking', MERCHANT]])
     expect(calls[0].body).toEqual({ p_host: 'atheron.shop' })
   })
 
@@ -170,3 +170,27 @@ describe('store pages from the Worker', () => {
     expect(html).toContain('<meta name="robots" content="noindex,follow" data-ff-seo>')
   })
 })
+
+describe('first-party ad cookies', () => {
+  const env = { PLATFORM_URL: 'https://fullfilio.com' }
+  const req = (cookie = '') => new Request('https://www.atheron.shop/', { headers: cookie ? { cookie } : {} })
+  it('creates _fbp, keeps it for 90 days on the whole site, and refreshes the visitor id', () => {
+    const out = adCookies(req('ff_vid=abcdef123456'), new URL('https://www.atheron.shop/'), env, true, 1_760_000_000_000, () => 0.5)
+    expect(out).toEqual([
+      'ff_vid=abcdef123456; Path=/; Max-Age=31536000; SameSite=Lax; Secure; Domain=atheron.shop',
+      '_fbp=fb.1.1760000000000.5500000000; Path=/; Max-Age=7776000; SameSite=Lax; Secure; Domain=atheron.shop',
+    ])
+  })
+  it('turns an ad click (fbclid) into _fbc and keeps an existing _fbp', () => {
+    const out = adCookies(req('_fbp=fb.1.1700000000000.1234567890'), new URL('https://atheron.shop/p/x?fbclid=IwAR123abc'), env, true, 1_760_000_000_000)
+    expect(out[0]).toContain('_fbp=fb.1.1700000000000.1234567890;')
+    expect(out[1]).toBe('_fbc=fb.1.1760000000000.IwAR123abc; Path=/; Max-Age=7776000; SameSite=Lax; Secure; Domain=atheron.shop')
+  })
+  it('sets no Meta cookies when the store does not track with Meta, and none for the whole platform domain', () => {
+    expect(adCookies(req(), new URL('https://atheron.shop/'), env, false)).toEqual([])
+    const sub = adCookies(req(), new URL('https://isolation.fullfilio.com/'), env, true)
+    expect(sub[0]).not.toContain('Domain=')
+    expect(adCookies(req(), new URL('https://shop.example.com.bd/'), env, true)[0]).toContain('Domain=example.com.bd')
+  })
+})
+

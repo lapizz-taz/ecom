@@ -75,7 +75,7 @@ export function AdTrackingDialog({ manage, onClose }: { manage: boolean; onClose
 
   return (
     <FormDialog open onOpenChange={(o) => !o && onClose()} wide title="Ad tracking"
-      description="Meta, TikTok and Google pixels on your store, with a server copy of every event. Each event has one id in the browser and on the server, so it counts once."
+      description="Meta, TikTok and Google pixels in the browser, plus a copy of every event from our own server on your store's address. Each event has one id in both places, so it counts once."
       submitLabel={manage ? 'Save' : 'Close'} busy={save.isPending} disabled={manage && !c}
       onSubmit={() => (manage ? save.mutate() : onClose())}>
       {!c ? <div className="grid place-items-center py-10"><Spinner /></div> : (
@@ -88,6 +88,13 @@ export function AdTrackingDialog({ manage, onClose }: { manage: boolean; onClose
             </span>
             <Switch checked={c.enabled} onCheckedChange={(v) => set({ enabled: v })} aria-label="Track ads on my store" />
           </label>
+
+          <ul className="grid gap-1.5 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground sm:grid-cols-2">
+            <li><b className="font-medium text-foreground">Events:</b> page view, product view, add to cart, checkout, search, contact, sign-up and purchase.</li>
+            <li><b className="font-medium text-foreground">Ad blockers:</b> the server copy goes through your store's own address, so blockers do not stop it.</li>
+            <li><b className="font-medium text-foreground">Cookies kept:</b> your store's server keeps Meta's click and browser cookies for 90 days (browsers cut them to 7).</li>
+            <li><b className="font-medium text-foreground">Returning buyers:</b> their phone, email and name are kept in their own browser, hashed only, to match later visits.</li>
+          </ul>
 
           <Section title="When a Purchase counts">
             <div className="grid gap-2 sm:grid-cols-3">

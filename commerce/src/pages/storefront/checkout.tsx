@@ -20,7 +20,7 @@ import { AdvancePay } from '@/features/checkout/advance-pay'
 import { type CheckoutFieldModes, checkoutFieldModes } from '@/features/checkout/fields'
 import { type AdvancePaymentValues, validateAdvancePayment } from '@/features/checkout/advance-payment-fields'
 import { PhoneCheckIcon, PhoneCheckStatus, phoneCheckState } from '@/features/checkout/phone-check'
-import { adEvent, adPurchase, browserIds } from '@/features/storefront/ad-pixels'
+import { adEvent, adPurchase, browserIds, rememberShopper } from '@/features/storefront/ad-pixels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { currentAttribution } from '@/lib/attribution'
@@ -246,6 +246,8 @@ export default function CheckoutPage() {
       sessionStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ order_number: order.order_number, phone }))
       trackEvent('PURCHASE')
       adPurchase(tracking?.purchase)
+      // Hashed in this browser, for better matching of this buyer's next visits.
+      void rememberShopper({ phone, email: values.email, name: fullName(values), district: values.district })
       clear()
       setIdempotencyKey(crypto.randomUUID())
       if (payment_error) toast.warning(`Order placed, but your payment details need another look: ${payment_error}`)

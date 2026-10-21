@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Check, ClipboardCopy, Clock, Plus, ShieldCheck, Star, Truck, Volume2, VolumeX } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { adEvent } from '@/features/storefront/ad-pixels'
 import { useCart } from '@/features/cart/cart-store'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney } from '@/lib/format'
@@ -345,7 +346,7 @@ function useBlockProducts(settings: Record<string, unknown>, product: ProductDet
 }
 
 /** Adds a product's first in-stock option to the cart (one with several options opens its page instead). */
-export async function addCard(card: ProductCard, add: ReturnType<typeof useCart.getState>['add'], open = true): Promise<'added' | 'choose'> {
+export async function addCard(card: ProductCard, add: ReturnType<typeof useCart.getState>['add'], open = true, currency = 'BDT'): Promise<'added' | 'choose'> {
   const detail = await getProduct(card.slug)
   if (!detail) return 'choose'
   const variants = detail.variants.filter((v) => v.in_stock)
@@ -357,6 +358,7 @@ export async function addCard(card: ProductCard, add: ReturnType<typeof useCart.
     price: Number(v.price), compareAt: v.compare_at_price ? Number(v.compare_at_price) : null, image: detail.image?.url ?? null,
     maxQuantity: Math.max(1, Math.min(detail.max_quantity, v.available ?? detail.max_quantity)),
   }, 1, open)
+  adEvent('AddToCart', { value: Number(v.price), currency, contents: [{ id: detail.id, name: detail.name, quantity: 1, price: Number(v.price) }] })
   return 'added'
 }
 

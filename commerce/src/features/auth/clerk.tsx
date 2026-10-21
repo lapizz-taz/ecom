@@ -4,8 +4,10 @@ import { dark } from '@clerk/themes'
 import type { Session } from '@supabase/supabase-js'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '@/lib/env'
+import { setSessionRenewer } from '@/lib/functions'
 import { currentSite } from '@/lib/merchant'
 import { reportError } from '@/lib/monitoring'
+import { supabase } from '@/lib/supabase'
 import { currentClerkLink, endSupabaseSession, exchangeClerkSession } from '@/services/clerk-auth'
 
 // Clerk handles sign-up, e-mail codes, sign-in (password, e-mail code, Google)
@@ -173,6 +175,24 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
       return () => window.clearTimeout(t)
     }
   }, [isLoaded, isSignedIn, userId, linkedTo, sync, clerk])
+
+  // A function said "please sign in" while Clerk is signed in: the database session ended under
+  // this page (closed elsewhere). Refresh it, or open a new one from the Clerk sign-in.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return
+    setSessionRenewer(async () => {
+      const refreshed = await supabase.auth.refreshSession().catch(() => null)
+      if (refreshed?.data.session && !refreshed.error) {
+        const { error } = await supabase.auth.getUser()
+        if (!error) return true
+      }
+      const token = await getToken()
+      if (!token) return false
+      await exchangeClerkSession(token)
+      return true
+    })
+    return () => setSessionRenewer(null)
+  }, [isLoaded, isSignedIn, getToken])
 
   // Opened (here or by another tab): an error from an earlier try no longer applies.
   useEffect(() => {

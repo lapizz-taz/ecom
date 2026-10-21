@@ -11,7 +11,7 @@ vi.mock('@/lib/merchant', () => ({
   },
 }))
 
-const { invokeFunction } = await import('./functions')
+const { invokeFunction, setSessionRenewer } = await import('./functions')
 const { functionsUrl } = await import('./env')
 
 afterEach(() => vi.unstubAllGlobals())
@@ -49,5 +49,31 @@ describe('invokeFunction', () => {
   it('returns text answers as text', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('done', { headers: { 'Content-Type': 'text/plain' } })))
     expect(await invokeFunction('sms', {})).toBe('done')
+  })
+
+  it('renews an ended session once and tries again', async () => {
+    let n = 0
+    vi.stubGlobal('fetch', vi.fn(async () => (++n === 1
+      ? Response.json({ error: { code: 'UNAUTHENTICATED', message: 'Please sign in' } }, { status: 401 })
+      : Response.json({ ok: true }))))
+    const renew = vi.fn(async () => true)
+    setSessionRenewer(renew)
+    try {
+      expect(await invokeFunction('channels', { action: 'ad_tracking_get' })).toEqual({ ok: true })
+      expect(renew).toHaveBeenCalledTimes(1)
+      expect(n).toBe(2)
+    } finally {
+      setSessionRenewer(null)
+    }
+  })
+
+  it('says "please sign in" when the session cannot be renewed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: { code: 'UNAUTHENTICATED', message: 'Please sign in' } }, { status: 401 })))
+    setSessionRenewer(async () => false)
+    try {
+      await expect(invokeFunction('channels', {})).rejects.toMatchObject({ code: 'UNAUTHENTICATED' })
+    } finally {
+      setSessionRenewer(null)
+    }
   })
 })

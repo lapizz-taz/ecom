@@ -9,12 +9,13 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { toUserMessage } from '@/lib/errors'
+import { adEvent } from '@/features/storefront/ad-pixels'
 import { submitContact } from '@/services/storefront'
 
 export default function ContactPage() {
   const { data: config } = useStoreConfig()
   const [values, setValues] = useState({ name: '', phone: '', email: '', subject: '', message: '' })
-  const send = useMutation({ meta: { silent: true }, mutationFn: () => submitContact(values) })
+  const send = useMutation({ meta: { silent: true }, mutationFn: () => submitContact(values), onSuccess: () => adEvent('Contact') })
   const set = (k: keyof typeof values) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValues((v) => ({ ...v, [k]: e.target.value }))
   const store = config?.store
   return (

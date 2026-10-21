@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronDown, LayoutGrid, SlidersHorizontal, Square } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router'
+import { adEvent } from '@/features/storefront/ad-pixels'
 import { EmptyState, ErrorState } from '@/components/common/states'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
@@ -48,6 +49,12 @@ export default function ShopPage() {
       offset: (page - 1) * PAGE_SIZE,
     }),
   })
+
+  // Each new search, once (the pixels and our server copy).
+  useEffect(() => {
+    const q = state.q.trim()
+    if (q) adEvent('Search', { search: q.slice(0, 100) })
+  }, [state.q])
 
   const title = slug ? category?.name ?? 'Collection' : state.q ? `Results for “${state.q}”` : 'All products'
   const total = products.data?.total ?? 0
