@@ -109,18 +109,19 @@ export function nestedQuantifier(pattern: string): boolean {
   // can split the input, bounded or not; a data-supplied pattern may have at most MAX_VARIABLE.
   let variable = 0
   const MAX_VARIABLE = 8
-  type Quant = { unbounded: boolean; min: number; max: number }
+  // len: the quantifier's characters, so the digits of {0,2} are not read as atoms.
+  type Quant = { unbounded: boolean; min: number; max: number; len: number }
   const quantAt = (i: number): Quant | null => {
     const c = pattern[i]
-    if (c === '*') return { unbounded: true, min: 0, max: Infinity }
-    if (c === '+') return { unbounded: true, min: 1, max: Infinity }
-    if (c === '?') return { unbounded: false, min: 0, max: 1 }
+    if (c === '*') return { unbounded: true, min: 0, max: Infinity, len: 1 }
+    if (c === '+') return { unbounded: true, min: 1, max: Infinity, len: 1 }
+    if (c === '?') return { unbounded: false, min: 0, max: 1, len: 1 }
     if (c === '{') {
       const m = /^\{(\d*)(,?)(\d*)\}/.exec(pattern.slice(i))
       if (!m) return null
       const min = Number(m[1] || 0)
-      if (m[2] && !m[3]) return { unbounded: true, min, max: Infinity }
-      return { unbounded: false, min, max: m[2] ? Number(m[3]) : min }
+      if (m[2] && !m[3]) return { unbounded: true, min, max: Infinity, len: m[0].length }
+      return { unbounded: false, min, max: m[2] ? Number(m[3]) : min, len: m[0].length }
     }
     return null
   }
@@ -144,9 +145,10 @@ export function nestedQuantifier(pattern: string): boolean {
       // The group's own quantifier counts as an inner one for the groups around it.
       if (stack.length && (g.inner || (q && q.unbounded))) stack[stack.length - 1].inner = true
       if (q && quantified(q)) return true
+      if (q) i += q.len
       continue
     }
-    if (quantAt(i)) continue // read with its atom
+    if (quantAt(i)) continue // a quantifier with no atom (e.g. a lazy marker): nothing to count
     if (c === '^' || c === '$') { run = 0; continue }
     // One atom: an escape, a character class or a character; then its quantifier, if any.
     let end = i
@@ -160,7 +162,7 @@ export function nestedQuantifier(pattern: string): boolean {
     const q = quantAt(end + 1)
     if (q?.unbounded && stack.length) stack[stack.length - 1].inner = true
     if (quantified(q)) return true
-    i = end
+    i = end + (q?.len ?? 0)
   }
   return false
 }

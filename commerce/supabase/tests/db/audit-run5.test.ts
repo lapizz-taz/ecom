@@ -101,12 +101,13 @@ describe('store phone pattern (run 5)', () => {
       const save = (pattern: string) => db.query(`insert into public.settings (key, value) values ('store', jsonb_build_object('phone_pattern', $1::text))
         on conflict (merchant_id, key) do update set value = public.settings.value || excluded.value`, [pattern])
       for (const p of [`^${'\\d*\\d*\\d*a{0}'.repeat(15)}x$`, `^${'\\d*\\d*\\d*\\d{0,2}'.repeat(12)}x$`,
-        '^\\d*\\d?\\d*\\d?\\d*\\d?\\d*x$', `^${'\\d{0,9}'.repeat(9)}x$`, '^(\\d*)(\\d*)(\\d*)(\\d*)x$']) {
+        '^\\d*\\d?\\d*\\d?\\d*\\d?\\d*x$', `^${'\\d{0,9}'.repeat(9)}x$`, '^(\\d*)(\\d*)(\\d*)(\\d*)x$',
+        '^\\d*a{0}\\d*a{0}\\d*a{0}\\d*x$', '^\\d*\\d{0,2}\\d*\\d{0,2}\\d*\\d{0,2}\\d*x$']) {
         await db.query('savepoint p')
         await expect(save(p), p).rejects.toThrow(/nested repetition/)
         await db.query('rollback to savepoint p')
       }
-      for (const p of ['^(?:01|8801)[3-9]\\d{8}$', '^\\+?(88)?0?1[3-9]\\d{8}$', '^01[3-9][0-9]{8}$', '^\\d{3}\\d*$']) {
+      for (const p of ['^(?:01|8801)[3-9]\\d{8}$', '^\\+?(88)?0?1[3-9]\\d{8}$', '^01[3-9][0-9]{8}$', '^\\d{3}\\d*$', '^01[3-9]\\d{8}\\d{0,2}$']) {
         await save(p)
         expect(await value(db, `select public.setting_text('store', array['phone_pattern'], '')`)).toBe(p)
       }

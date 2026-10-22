@@ -28,6 +28,9 @@ These depend on Cloudflare settings or on the Cloudflare database (staging only 
 - **Store phone patterns** (Cloudflare database): `a{0}`, `\d?` or `\d{0,2}` between open-ended
   repeats no longer count as separators, and a pattern may have at most 8 variable repeats (JS
   engine and Postgres trigger). Tests: `worker/db/pg/regex-guard.test.ts`, `audit-run5.test.ts`.
+  Follow-up after the live check: the guard read `{0}` / `{0,2}` one character at a time, so the
+  digits inside reset the "in a row" count (`^\d*a{0}\d*a{0}\d*a{0}\d*x$` passed). It now skips
+  the whole quantifier.
 - **Live-update connections** (Cloudflare database): sockets that never join close after 30 s,
   visitor sockets after 30 minutes, at most 1,000 visitor sockets at once. Test: `worker/db/realtime-expiry.test.ts`.
 - **Inbox uploads**: staff access is checked before the body is read; only staff who may reply get
@@ -42,8 +45,10 @@ body size, WAF/rate rules for `/functions/v1/*`, `/__clerk/*` and `/realtime/v1`
 ## Migration
 
 `supabase/migrations/20261123000100_audit_run5_fixes.sql` (safe to re-run): setup fee on plan
-changes, phone-pattern rule, inbox thread lookup. The Cloudflare database snapshot
-(`worker/db/generated/`) is regenerated from all 173 migrations.
+changes, phone-pattern rule, inbox thread lookup. Applied.
+`supabase/migrations/20261123000200_audit_run5_regex_quantifier.sql` (safe to re-run): the
+phone-pattern follow-up. The Cloudflare database snapshot (`worker/db/generated/`) is regenerated
+from all 174 migrations.
 
 ## Verification
 
