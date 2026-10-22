@@ -59,6 +59,8 @@ function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
         baseTheme: isDark ? dark : undefined,
         layout: { logoImageUrl: '/favicon.svg', socialButtonsPlacement: 'top', socialButtonsVariant: 'blockButton' },
         variables: { colorPrimary: '#2563eb', borderRadius: '0.75rem', fontFamily: 'inherit' },
+        // Clerk's Continue button is the app's blue glow button too (index.css, .btn-glow).
+        elements: { formButtonPrimary: 'btn-glow' },
       }}
     >
       {children}
