@@ -580,7 +580,8 @@
 
 /* Horizontal tab rows that scroll on narrow screens without a visible bar. */
 /* The Fullfilio website (marketing pages). Dark by default; visitors can switch to the white
-   version with the toggle in the header (data-site-theme="light"). Product demos stay dark. */
+   version with the toggle in the header (data-site-theme="light"). The product demos follow the
+   version through the --d-* tokens. */
 .site {
   --s-bg: #08090a; --s-panel: #0f1011; --s-fg: #f7f8f8; --s-fg2: #d0d6e0; --s-muted: #8a8f98;
   --s-subtle: #62666d; --s-art: #3e4248; --s-accent: #7b8fff;
@@ -592,13 +593,45 @@
   --b3d-site-press: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 -1px 0 rgb(0 0 0 / 0.2), 0 1px 1px rgb(0 0 0 / 0.5);
   --b3d-site-ghost: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -2px 0 rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 14px -8px rgb(0 0 0 / 0.9);
   --b3d-site-ghost-press: inset 0 1px 0 rgb(255 255 255 / 0.04), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.5);
+  /* Cards (pricing) and the page's background art. */
+  --s-card: var(--s-tint); --s-card-shadow: 0 0 #0000; --s-surface: var(--s-panel);
+  --s-hero-bg: radial-gradient(ellipse 60% 50% at 30% 0%, rgb(33 66 231 / 0.18), transparent);
+  --s-cta-band: none;
+  /* The product demos (features/site): a miniature of the app, dark like the app. */
+  --d-panel: #0f1011; --d-canvas: #1a1b1e; --d-pop: #16171a;
+  --d-strong: #ffffff; --d-fg: #f7f8f8; --d-fg2: #d0d6e0; --d-muted: #8a8f98; --d-subtle: #62666d;
+  --d-line: rgb(255 255 255 / 0.08); --d-line-2: rgb(255 255 255 / 0.06); --d-line-3: rgb(255 255 255 / 0.05);
+  --d-line-strong: rgb(255 255 255 / 0.1); --d-line-x: rgb(255 255 255 / 0.15);
+  --d-tint-1: rgb(255 255 255 / 0.02); --d-tint-2: rgb(255 255 255 / 0.04); --d-tint-3: rgb(255 255 255 / 0.06); --d-tint-4: rgb(255 255 255 / 0.1);
+  --d-ok: #4cb782; --d-bad: #eb5757; --d-warn: #f2c94c; --d-info: #7b8fff; --d-sky: #56ccf2; --d-bar-hi: #ffffff;
+  --d-shadow: 0 0 0 1px rgb(0 0 0 / 0.4), 0 30px 80px -20px rgb(0 0 0 / 0.8);
+  --d-shadow-soft: 0 30px 80px -20px rgb(0 0 0 / 0.8);
   color-scheme: dark;
 }
+/* The white version: a cool paper white, ink text, and the demos as light app windows with soft
+   blue-grey shadows (not the black version's drop shadows). */
 .site[data-site-theme="light"] {
-  --s-bg: #ffffff; --s-panel: #f6f6f7; --s-fg: #0b0c0e; --s-fg2: #3a3f47; --s-muted: #666b73;
-  --s-subtle: #8b9098; --s-art: #c9ccd2; --s-accent: #2142e7;
-  --s-line: rgb(8 9 10 / 0.08); --s-line-strong: rgb(8 9 10 / 0.14);
-  --s-tint: rgb(8 9 10 / 0.025); --s-tint-strong: rgb(8 9 10 / 0.05);
+  --s-bg: #ffffff; --s-panel: #f6f7f9; --s-fg: #0b0d12; --s-fg2: #30353e; --s-muted: #5b616b;
+  --s-subtle: #858b95; --s-art: #b3bac6; --s-accent: #2142e7;
+  --s-line: rgb(15 23 42 / 0.08); --s-line-strong: rgb(15 23 42 / 0.13);
+  --s-tint: rgb(15 23 42 / 0.025); --s-tint-strong: rgb(15 23 42 / 0.05);
+  --s-card: #ffffff; --s-surface: #ffffff;
+  --s-card-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 12px 32px -16px rgb(30 41 82 / 0.18);
+  --s-hero-bg:
+    radial-gradient(ellipse 55% 60% at 22% -8%, rgb(59 110 245 / 0.16), transparent 70%),
+    radial-gradient(ellipse 40% 45% at 88% 0%, rgb(124 92 255 / 0.10), transparent 70%),
+    linear-gradient(to bottom, #f5f7ff, #ffffff 75%);
+  --s-cta-band:
+    radial-gradient(ellipse 50% 80% at 50% 100%, rgb(59 110 245 / 0.14), transparent 70%),
+    linear-gradient(to bottom, #ffffff, #f5f7ff);
+  --d-panel: #ffffff; --d-canvas: #f2f4f7; --d-pop: #ffffff;
+  --d-strong: #0b0d12; --d-fg: #161a22; --d-fg2: #3a404a; --d-muted: #697080; --d-subtle: #9aa1ad;
+  --d-line: rgb(15 23 42 / 0.09); --d-line-2: rgb(15 23 42 / 0.07); --d-line-3: rgb(15 23 42 / 0.06);
+  --d-line-strong: rgb(15 23 42 / 0.11); --d-line-x: rgb(15 23 42 / 0.16);
+  --d-tint-1: rgb(15 23 42 / 0.02); --d-tint-2: rgb(15 23 42 / 0.035); --d-tint-3: rgb(15 23 42 / 0.05); --d-tint-4: rgb(15 23 42 / 0.07);
+  --d-ok: #16925a; --d-bad: #d23f3b; --d-warn: #b7791f; --d-info: #2142e7; --d-sky: #0b86b5; --d-bar-hi: #2142e7;
+  --d-shadow: 0 0 0 1px rgb(15 23 42 / 0.03), 0 1px 2px rgb(15 23 42 / 0.05), 0 28px 70px -30px rgb(30 41 82 / 0.32);
+  --d-shadow-soft: 0 1px 2px rgb(15 23 42 / 0.05), 0 28px 70px -30px rgb(30 41 82 / 0.32);
   --s-cta: #0b0c0e; --s-cta-fg: #ffffff; --s-cta-hover: #25262a;
   --b3d-site: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 18px -8px rgb(0 0 0 / 0.55);
   --b3d-site-hover: inset 0 1px 0 rgb(255 255 255 / 0.2), inset 0 -2.5px 0 rgb(0 0 0 / 0.55), 0 2px 4px rgb(0 0 0 / 0.16), 0 12px 24px -10px rgb(0 0 0 / 0.6);
