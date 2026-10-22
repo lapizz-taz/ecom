@@ -167,6 +167,14 @@ secret), `FILES_SIGNING_KEY` (otherwise derived from the service key),
 `CRON_SECRET` (otherwise the copy in Supabase Vault is used), and provider
 fallbacks such as `RESEND_API_KEY` if you set them in Supabase.
 
+For the website's own Meta pixel (fullfilio.com, `worker/site-events.ts`):
+`SITE_META_CAPI_TOKEN` (Events Manager → the Fullfilio website dataset →
+Settings → Conversions API → Generate access token). Without it the browser
+pixel still runs, but the server copies are not sent. While testing, a
+`SITE_META_TEST_CODE` (Events Manager → Test events) sends them to the Test
+events tab instead; remove it afterwards. The pixel id itself is public and
+lives in `src/features/site/site-meta.ts` (`SITE_META_PIXEL`).
+
 The public settings (`SUPABASE_URL`, the publishable `SUPABASE_ANON_KEY`,
 `PLATFORM_URL=https://fullfilio.com`, `FUNCTIONS_URL`, `CLERK_PROXY_URL`,
 `CLERK_AUTHORIZED_PARTIES`, `CUSTOM_DOMAIN_TARGET`, `SUPABASE_FUNCTIONS`) are

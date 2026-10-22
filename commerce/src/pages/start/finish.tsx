@@ -9,6 +9,8 @@ import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker } from '@/features/onboarding/signup-parts'
+import { useSitePageView } from '@/features/site/site-chrome'
+import { trackSignup } from '@/features/site/site-pixel'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
 import { normalizePhone, normalizeWhatsapp } from '@/lib/phone'
@@ -22,6 +24,7 @@ import { clearSignupDraft, readSignupDraft, selfOnboard, signupOptions, type Sig
  */
 export default function StartFinishPage() {
   useAdminTheme()
+  useSitePageView()
   const linkError = useAuthLinkError()
   const { session, user, access, loading, accessLoading, usesClerk } = useAuth()
   const linkPending = useClerkLinkPending()
@@ -35,7 +38,8 @@ export default function StartFinishPage() {
   const open = useMutation({
     meta: { silent: true },
     mutationFn: (b: SignupBusiness) => selfOnboard({ ...b, phone: normalizePhone(b.phone), whatsapp: normalizeWhatsapp(b.whatsapp ?? '') }),
-    onSuccess: async () => {
+    onSuccess: async (_r, b) => {
+      trackSignup(options.data?.plans.find((p) => p.code === b.plan_code), { email: user?.email, phone: b.phone, name: b.full_name })
       clearSignupDraft()
       await queryClient.invalidateQueries({ queryKey: ['my-access'] })
       navigate('/admin?welcome=1', { replace: true })

@@ -9,6 +9,7 @@
 //
 //   /robots.txt, /sitemap.xml  per address: the store's own, or the website's (storefront.ts, site.ts)
 //   /llms.txt                  the website's, for AI assistants (site.ts)
+//   /__site/event              the server copy of a website pixel event (site-events.ts)
 //
 // Pages are the site itself (Workers Static Assets, single-page app); on a store's address the
 // page carries that store's settings and head (title, meta tags, structured data).
@@ -17,9 +18,11 @@ import type { CopyEnv } from './copy.ts'
 import { database, type DbEnv } from './db/gateway.ts'
 import { filesApi, serveFile, type FilesEnv } from './files.ts'
 import { FUNCTIONS, type Handler } from './functions.ts'
+import { SITE_EVENT_PATH } from '../src/features/site/site-meta.ts'
+import { siteEvent, type SiteEventsEnv } from './site-events.ts'
 import { isPageRequest, storefrontFile, storefrontPage } from './storefront.ts'
 
-export interface Env extends FilesEnv, DbEnv, Omit<CopyEnv, 'DATABASE'> {
+export interface Env extends FilesEnv, DbEnv, SiteEventsEnv, Omit<CopyEnv, 'DATABASE'> {
   ASSETS: Fetcher
   CACHE?: KVNamespace
   /** "on" during the switch-over: pages and the API answer "back in a few minutes" (503). */
@@ -149,6 +152,7 @@ export function createRouter(env: Env, fns: Record<string, Handler> = FUNCTIONS)
     // The website's pages made at build time are read by the Worker only (worker/site.ts).
     if (path.startsWith('/_site/')) return Promise.resolve(new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain' } }))
     if (path === '/robots.txt' || path === '/sitemap.xml' || path === '/llms.txt') return storefrontFile(req, url, env)
+    if (path === SITE_EVENT_PATH) return siteEvent(req, url, env)
     if (isPageRequest(req, url)) return storefrontPage(req, url, env)
     return env.ASSETS.fetch(req)
   }

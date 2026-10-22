@@ -6,6 +6,7 @@ import { ShopifyLogo, WooLogo } from '@/components/brand/platform-logos'
 import { DashboardDemo } from '@/features/site/dashboard-demo'
 import { IntegrationDemo } from '@/features/site/integration-demo'
 import { SiteFooter, SiteHeader, SiteRoot, useSiteHead } from '@/features/site/site-chrome'
+import { trackSite } from '@/features/site/site-pixel'
 import { CourierBooking, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from '@/features/site/mockups'
 import { ThemeEditorDemo } from '@/features/site/theme-editor-demo'
 import { TourVideo } from '@/features/site/tour-video'
@@ -216,8 +217,21 @@ function Feature({ id, n, tag, title, text, subs, children }: { id: string; n: s
 function Pricing() {
   const q = useQuery({ queryKey: ['signup-options'], queryFn: signupOptions, staleTime: 5 * 60_000 })
   const plans = q.data?.plans ?? []
+  // A visitor who reached the prices (for "saw pricing" audiences): once per visit to the page.
+  const ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const seen = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return
+      seen.disconnect()
+      trackSite('ViewContent', { content_name: 'Pricing' })
+    }, { threshold: 0.3 })
+    seen.observe(el)
+    return () => seen.disconnect()
+  }, [])
   return (
-    <section id="pricing" className="border-t border-(--s-line)">
+    <section ref={ref} id="pricing" className="border-t border-(--s-line)">
       <div className="mx-auto max-w-6xl px-5 py-24">
         <div className="grid gap-6 md:grid-cols-2 md:gap-16">
           <h2 className="text-[30px] leading-[1.1] font-medium tracking-[-0.025em] sm:text-[40px]">Simple plans<br />that grow with you</h2>
