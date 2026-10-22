@@ -1,5 +1,5 @@
 {
-  "migrations": 173,
-  "last": "20261123000100_audit_run5_fixes.sql",
-  "sha256": "3ade71d62dd17b0e1fbf841483b4243c83754237f01b97e5f56f48bbdee1226a"
+  "migrations": 174,
+  "last": "20261123000200_audit_run5_regex_quantifier.sql",
+  "sha256": "cf5e9398655a6bf75082b6309c3e1d5dbdf834fd2745d0c47ede3c499b827cf7"
 }
