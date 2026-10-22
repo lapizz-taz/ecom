@@ -300,6 +300,22 @@ async function until(fn, ms = 15000) {
     const adminPrimary = await page.locator('[data-slot="button"][data-variant="default"]').first().evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, text: el.textContent.trim() })).catch((e) => ({ img: String(e), text: '' }))
     step('admin primary buttons get the blue glow', /radial-gradient/.test(adminPrimary.img) && /rgb\(93, 170, 255\)/.test(adminPrimary.img), JSON.stringify(adminPrimary))
 
+    // Sales channels while the stores are still loading: no "Not connected" + Connect that then
+    // flips to "Add store" (the buttons that came and went on reload).
+    await page.route('**/rpc/sales_channels_list*', async (r) => { await new Promise((ok) => setTimeout(ok, 2500)); await r.continue().catch(() => {}) })
+    await page.goto(`${base}/admin/channels`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await settle(page, /Where do customers buy/, 20000)
+    await page.waitForTimeout(300)
+    const during = await text(page)
+    const duringConnect = await page.locator('button').filter({ hasText: /^\s*(Connect|Add store)\s*$/ }).count()
+    await page.unroute('**/rpc/sales_channels_list*')
+    await settle(page, /Not connected|store connected/, 20000)
+    const after = await text(page)
+    const afterConnect = await page.locator('button').filter({ hasText: /^\s*(Connect|Add store)\s*$/ }).count()
+    step('sales channels: while stores load, no "Not connected" or Connect/Add store buttons; they appear once, after loading',
+      /Checking…/.test(during) && !/Not connected/.test(during) && !/Connect your (Shopify|WooCommerce) store below/.test(during) && duringConnect === 0 && afterConnect === 2 && !/Checking…/.test(after),
+      JSON.stringify({ duringConnect, afterConnect, during: during.match(/(Shopify|WooCommerce)\s+\S+ ?\S*/g) }))
+
     // Cloud Calling in the admin menu.
     await page.goto(`${base}/admin/settings/apps`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await settle(page, /App integration/i, 20000)
@@ -339,17 +355,27 @@ async function until(fn, ms = 15000) {
       const st = await cta.evaluate((el) => { const s = getComputedStyle(el); return { img: s.backgroundImage, border: s.borderTopColor, color: s.color, radius: s.borderTopLeftRadius, h: el.getBoundingClientRect().height } })
       const box = await cta.boundingBox()
       await p.mouse.move(box.x + 12, box.y + box.height / 2)
-      await p.waitForTimeout(150)
+      // The light fades in: part-way after a moment, full a little later (not an on/off switch).
+      await p.waitForTimeout(60)
+      const fadeEarly = await cta.evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--glow-a')))
+      await p.waitForTimeout(600)
+      const fadeFull = await cta.evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--glow-a')))
       const left = await cta.evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
       await p.mouse.move(box.x + box.width - 12, box.y + box.height / 2)
-      await p.waitForTimeout(150)
+      // The light glides after the cursor rather than jumping to it.
+      await p.waitForTimeout(40)
+      const glideX = await cta.evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue('--glow-x')))
+      await p.waitForTimeout(600)
       const right = await cta.evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
-      const hover = width < 500 ? 'rgb(190, 225, 255) (phone: no cursor)' : (parseInt(left.x) < 30 && parseInt(right.x) > box.width - 30 ? right.img : `glow did not follow: ${left.x} → ${right.x}`)
+      const smooth = fadeEarly > 0 && fadeEarly < 1 && fadeFull === 1 && glideX > 12 && glideX < box.width - 12
+      const hover = width < 500 ? 'rgb(195, 228, 255) (phone: no cursor)'
+        : !smooth ? `not smooth: ${JSON.stringify({ fadeEarly, fadeFull, glideX })}`
+          : (parseInt(left.x) < 30 && parseInt(right.x) > box.width - 30 ? right.img : `glow did not follow: ${left.x} → ${right.x}`)
       await p.locator('section').first().screenshot({ path: join(S, `round-site-${width}${light ? '-white' : ''}.png`) })
       const overflow = await p.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth)
       const footer = await p.locator('footer').innerText()
-      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && st.border === 'rgb(11, 74, 184)' && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgba?\(190, 225, 255/.test(hover) && overflow <= 1
-      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, a light that follows the cursor`, ok, JSON.stringify({ ...st, hover, overflow }))
+      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && /^rgba\(255, 255, 255, 0\.07\)$/.test(st.border) && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgba?\(195, 228, 255/.test(hover) && overflow <= 1
+      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, see-through border, a light that fades in and glides after the cursor`, ok, JSON.stringify({ ...st, hover, overflow }))
       step(`website ${width}px${light ? ' (white version)' : ''}: footer shows help@fullfilio.com`, /help@fullfilio\.com/.test(footer))
       await c.close()
     }

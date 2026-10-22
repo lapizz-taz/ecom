@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/features/auth/auth-context'
 import { AdTrackingDialog, adPlatformsOn, useAdTracking } from '@/features/channels/ad-tracking'
@@ -68,16 +69,19 @@ export default function SalesChannelsPage() {
   const storeOpen = mode === 'OWN'
   const live = (channels.data ?? []).filter((c) => c.status !== 'DISCONNECTED')
   const old = (channels.data ?? []).filter((c) => c.status === 'DISCONNECTED')
+  // Until the stores have loaded we don't know what is connected: show nothing rather than
+  // "Not connected" + Connect, which would flip to "Add store" a moment later.
+  const known = channels.data !== undefined
 
   return (
     <div className="space-y-5">
       <PageHeader title="Sales channels" description="Where your orders come from. Orders from a connected store land in Web Orders like any other order." />
 
-      <StoreModeCard manage={manage} channels={live} />
+      <StoreModeCard manage={manage} channels={live} known={known} />
 
       <div className="grid gap-3 md:grid-cols-3">
         <SourceCard mark={<LogoMark className="size-6" />} title="Your store" subtitle={store.url ? store.url.replace(/^https?:\/\//, '') : 'No store address'}
-          status={storeOpen ? <Pill className="bg-foreground text-background">Online</Pill> : <Pill className="bg-muted text-muted-foreground">Off</Pill>}
+          status={!config.data ? null : storeOpen ? <Pill className="bg-foreground text-background">Online</Pill> : <Pill className="bg-muted text-muted-foreground">Off</Pill>}
           actions={<>
             {manage && <Button size="sm" asChild><Link to="/admin/store/theme">Edit theme</Link></Button>}
             {can('settings.view') && <Button size="sm" variant="outline" onClick={() => setDialog('ADS')}><Radar /> Ad tracking</Button>}
@@ -94,11 +98,12 @@ export default function SalesChannelsPage() {
             <SourceCard key={p} mark={PLATFORM[p].mark} title={PLATFORM[p].name}
               onOpen={manage ? () => setDialog(p) : undefined}
               flow={<SyncFlow platform={p} live={!paused && mine.some((c) => c.status === 'CONNECTED')} />}
-              subtitle={mine.length ? `${mine.length} store${mine.length === 1 ? '' : 's'} connected${paused ? ' · paused' : ''}` : 'Not connected'}
-              status={paused ? <Pill className="bg-muted text-muted-foreground">Paused</Pill>
+              subtitle={!known ? 'Checking…' : mine.length ? `${mine.length} store${mine.length === 1 ? '' : 's'} connected${paused ? ' · paused' : ''}` : 'Not connected'}
+              status={!known ? null : paused ? <Pill className="bg-muted text-muted-foreground">Paused</Pill>
                 : mine.length ? <Pill className={STATUS[mine.some((c) => c.status !== 'CONNECTED') ? 'ERROR' : 'CONNECTED'].className}>{mine.some((c) => c.status !== 'CONNECTED') ? 'Check' : 'Connected'}</Pill> : null}
               actions={<>
-                {manage && <Button size="sm" variant={mine.length ? 'outline' : 'default'} onClick={() => setDialog(p)}><Plug /> {mine.length ? 'Add store' : 'Connect'}</Button>}
+                {manage && !known && <Skeleton aria-hidden className="h-8 w-[104px] rounded-[10px]" />}
+                {manage && known && <Button size="sm" variant={mine.length ? 'outline' : 'default'} onClick={() => setDialog(p)}><Plug /> {mine.length ? 'Add store' : 'Connect'}</Button>}
                 {p === 'WOOCOMMERCE' && <Button size="sm" variant="outline" asChild><a href={WOO_PLUGIN_DOWNLOAD} download><Download /> Plugin</a></Button>}
               </>}>
               {p === 'SHOPIFY' ? 'Orders arrive in seconds; shipping, delivery and returns go back to Shopify.'
@@ -137,7 +142,7 @@ const MODES: Array<{ value: StoreMode; title: string; detail: string; mark: Reac
 
 /** Which store customers buy from. Only that one runs: anything but "Our store" closes this
  *  website (the database refuses website orders), and the other connected stores pause. */
-function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesChannel[] }) {
+function StoreModeCard({ manage, channels, known }: { manage: boolean; channels: SalesChannel[]; known: boolean }) {
   const queryClient = useQueryClient()
   const config = useStoreConfig()
   const saved = config.data?.storefront.mode ?? 'OWN'
@@ -165,7 +170,7 @@ function StoreModeCard({ manage, channels }: { manage: boolean; channels: SalesC
     onError: (e) => toast.error((e as Error).message),
   })
   const dirty = mode !== saved || (platform !== null && url.trim() !== savedUrl)
-  const notConnected = platform && !channels.some((c) => c.platform === platform && c.status === 'CONNECTED')
+  const notConnected = known && platform && !channels.some((c) => c.platform === platform && c.status === 'CONNECTED')
 
   return (
     <Card className="gap-3">
