@@ -151,7 +151,7 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 - Messaging uses Meta app 1653473169830242. Do not change that app.
 - fullfilio.com has its own Meta pixel, sent from the browser and from our server with one event id:
   PageView, ViewContent (the prices), Lead (contact form, WhatsApp sign-up), CompleteRegistration and
-  StartTrial (a new store). Pixel id: `SITE_META_PIXEL` in `src/features/site/site-meta.ts`; server
+  StartTrial (a new store). Pixel: the "FullFilio" dataset, 1871039407582107 (`SITE_META_PIXEL` in `src/features/site/site-meta.ts`); server
   token: Worker secret `SITE_META_CAPI_TOKEN`. Not on the admin or on stores.
 - fullfilio.com must never point at 144.24.232.70.
 - Security: five audits so far (the last one is `docs/SECURITY-AUDIT-RUN-5.md`). Nothing critical, high or medium is open.

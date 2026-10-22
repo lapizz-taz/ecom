@@ -17,10 +17,10 @@ export const SITE_TAGLINE = 'Order management for cash-on-delivery sellers in Ba
 export const SUPPORT_EMAIL = 'help@fullfilio.com'
 export const SITE_SOCIAL = ['https://www.facebook.com/fullfilio/', 'https://www.instagram.com/fullfiliohq/']
 /**
- * The website's Meta pixel (dataset) id, in the Fullfilio business's Events Manager. Public: the
- * browser sends it with every event. Empty: no pixel and no server events (site-pixel.ts).
+ * The website's Meta pixel: the "FullFilio" dataset in the Fullfilio business's Events Manager.
+ * Public: the browser sends it with every event. Empty: no pixel and no server events (site-pixel.ts).
  */
-export const SITE_META_PIXEL: string = ''
+export const SITE_META_PIXEL: string = '1871039407582107'
 /** The website's pixel events; two letters each in the event id, and the server takes only these. */
 export type SiteEvent = 'PageView' | 'ViewContent' | 'Lead' | 'CompleteRegistration' | 'StartTrial'
 export const SITE_EVENT_CODES: Record<SiteEvent, string> = { PageView: 'pv', ViewContent: 'vc', Lead: 'ld', CompleteRegistration: 'cr', StartTrial: 'st' }
