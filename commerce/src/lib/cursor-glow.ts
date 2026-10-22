@@ -1,43 +1,46 @@
 // The blue glow buttons (index.css: .btn-glow in the app, .btn-3d-site on the website) light up
-// under the cursor: the pointer's position inside the button, as --glow-x / --glow-y.
-// A mouse lights them by hovering (CSS :hover). A finger or pen has no hover, and iOS Safari
-// shows no :active either, so a press marks the button data-glow-on until it is let go.
+// under the pointer: its position inside the button, as --glow-x / --glow-y, and the light's
+// size from the button's height, as --glow-r.
+// Any pointer moves the light, whatever the browser calls it: some mice report as a pen or touch
+// (virtual machines, tablet drivers, remote desktops). A finger or pen has no hover, and iOS
+// Safari shows no :active, so a press also marks the button data-glow-on until it is let go.
+// The listeners run in the capture phase so nothing on the page can swallow the events first.
 const GLOW = '.btn-glow, .btn-3d-site'
 /** A quick tap still shows the light for a moment before it fades. */
 const MIN_PRESS_MS = 220
 
-function place(el: HTMLElement, e: PointerEvent) {
+function place(el: HTMLElement, x: number, y: number) {
   const r = el.getBoundingClientRect()
-  el.style.setProperty('--glow-x', `${Math.round(e.clientX - r.left)}px`)
-  el.style.setProperty('--glow-y', `${Math.round(e.clientY - r.top)}px`)
+  el.style.setProperty('--glow-x', `${Math.round(x - r.left)}px`)
+  el.style.setProperty('--glow-y', `${Math.round(y - r.top)}px`)
   // A spot about one and a half times the button's height, so it reads as a light on a small
   // button and does not wash out a big one.
   el.style.setProperty('--glow-r', `${Math.round(Math.min(80, Math.max(36, r.height * 1.5)))}px`)
 }
 
-const glowAt = (e: PointerEvent) => (e.target as Element | null)?.closest?.(GLOW) as HTMLElement | null
+const glowAt = (target: EventTarget | null) => (target as Element | null)?.closest?.(GLOW) as HTMLElement | null
 
 export function installCursorGlow() {
   if (typeof document === 'undefined') return
   let pressed: { el: HTMLElement; at: number } | null = null
+  const opts = { passive: true, capture: true } as const
 
-  document.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'mouse') {
-      const el = glowAt(e)
-      if (el) place(el, e)
-    } else if (pressed) {
-      place(pressed.el, e)
-    }
-  }, { passive: true })
+  const move = (e: MouseEvent) => {
+    const el = glowAt(e.target) ?? pressed?.el
+    if (el) place(el, e.clientX, e.clientY)
+  }
+  document.addEventListener('pointermove', move, opts)
+  // Browsers without pointer events still send mouse events.
+  if (typeof window.PointerEvent === 'undefined') document.addEventListener('mousemove', move, opts)
 
   document.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse') return
-    const el = glowAt(e)
+    const el = glowAt(e.target)
     if (!el) return
-    place(el, e)
+    place(el, e.clientX, e.clientY)
+    if (e.pointerType === 'mouse') return // a mouse already lights it by hovering
     el.setAttribute('data-glow-on', '')
     pressed = { el, at: performance.now() }
-  }, { passive: true })
+  }, opts)
 
   const release = () => {
     if (!pressed) return
@@ -45,6 +48,6 @@ export function installCursorGlow() {
     pressed = null
     window.setTimeout(() => el.removeAttribute('data-glow-on'), Math.max(0, MIN_PRESS_MS - (performance.now() - at)))
   }
-  document.addEventListener('pointerup', release, { passive: true })
-  document.addEventListener('pointercancel', release, { passive: true })
+  document.addEventListener('pointerup', release, opts)
+  document.addEventListener('pointercancel', release, opts)
 }
