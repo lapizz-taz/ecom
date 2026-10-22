@@ -6,6 +6,7 @@ import { Spinner } from '@/components/common/states'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDebounce } from '@/hooks/use-debounce'
+import { hasAccess } from '@/lib/access'
 import { formatDate, formatMoney } from '@/lib/format'
 import { COURIER_INVOICE_STATUS, ORDER_STATUS, SHIPMENT_STATUS } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -79,10 +80,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     if (!t) return []
     return NAV.flatMap((s) => s.items.flatMap((item) => [
       ...(item.to && (!item.permission || can(item.permission)) ? [{ label: item.label, to: item.to, parent: s.label }] : []),
-      ...(item.children ?? []).filter((c) => (!item.permission || can(item.permission)) && (!c.permission || can(c.permission)))
+      ...(item.children ?? []).filter((c) => (!item.permission || can(item.permission)) && hasAccess(can, c.permission))
         .map((c) => ({ label: c.label, to: c.to, parent: item.label })),
     ]))
-      .concat(MORE_PAGES.filter((p) => !p.permission || can(p.permission)).map((p) => ({ label: p.label, to: p.to, parent: p.parent })))
+      .concat(MORE_PAGES.filter((p) => hasAccess(can, p.permission)).map((p) => ({ label: p.label, to: p.to, parent: p.parent })))
       .filter((p) => p.label.toLowerCase().includes(t))
       .slice(0, 5)
       .map((p) => ({ key: `nav${p.to}`, group: 'Pages', icon: <CornerDownLeft />, title: p.label, detail: p.parent, to: p.to }))

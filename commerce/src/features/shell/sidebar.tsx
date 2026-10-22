@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/features/auth/auth-context'
 import { useMerchantFeatures } from '@/features/billing/use-features'
+import { hasAccess } from '@/lib/access'
 import { cn } from '@/lib/utils'
 import { linkMatches, MORE_PAGES, NAV, type NavCounts, type NavItem } from './nav-config'
 
@@ -58,7 +59,7 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
     ...section,
     items: section.items
       .filter((item) => !item.permission || can(item.permission))
-      .map((item) => ({ ...item, children: item.children?.filter((c) => !c.permission || can(c.permission)) })),
+      .map((item) => ({ ...item, children: item.children?.filter((c) => hasAccess(can, c.permission)) })),
   })).filter((s) => s.items.length), [can])
 
   // Menu search: a flat list of every page whose name matches.
@@ -67,7 +68,7 @@ export function SidebarNav({ counts, collapsed, onToggleCollapsed, onNavigate, o
     ? sections.flatMap((s) => s.items.flatMap((item) => [
       ...(item.label.toLowerCase().includes(term) ? [{ label: item.label, to: item.to, action: item.action, parent: s.label }] : []),
       ...(item.children ?? []).filter((c) => c.label.toLowerCase().includes(term)).map((c) => ({ label: c.label, to: c.to, action: undefined, parent: item.label })),
-    ])).concat(MORE_PAGES.filter((p) => (!p.permission || can(p.permission)) && p.label.toLowerCase().includes(term))
+    ])).concat(MORE_PAGES.filter((p) => hasAccess(can, p.permission) && p.label.toLowerCase().includes(term))
       .map((p) => ({ label: p.label, to: p.to, action: undefined, parent: p.parent })))
     : []
 

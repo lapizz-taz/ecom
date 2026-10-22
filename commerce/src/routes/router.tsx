@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router'
+import { type Access, MESSAGING_SETUP } from '@/lib/access'
 import { currentSite, storeBasename } from '@/lib/merchant'
 import { SUPER_ADMIN_ENTRY, unlockSuperAdmin } from '@/lib/super-admin-gate'
 import { RouteError } from '@/routes/route-error'
@@ -8,7 +9,7 @@ import { RouteError } from '@/routes/route-error'
 type Loader = () => Promise<{ default: ComponentType }>
 const page = (load: Loader) => ({ lazy: async () => ({ Component: (await load()).default }) })
 
-const admin = (path: string, load: Loader, permission?: string): RouteObject => ({
+const admin = (path: string, load: Loader, permission?: Access): RouteObject => ({
   path,
   handle: { permission },
   ...page(load),
@@ -164,9 +165,9 @@ const shared: RouteObject[] = [
       admin('marketing', () => import('@/pages/admin/marketing'), 'marketing.view'),
       admin('sms', () => import('@/pages/admin/sms'), 'sms.view'),
       admin('inbox', () => import('@/pages/admin/inbox'), 'inbox.view'),
-      admin('inbox/channels', () => import('@/pages/admin/inbox-channels'), 'inbox.view'),
+      admin('inbox/channels', () => import('@/pages/admin/inbox-channels'), MESSAGING_SETUP),
       admin('inbox/comments', () => import('@/pages/admin/inbox-comments'), 'inbox.view'),
-      admin('inbox/auto-replies', () => import('@/pages/admin/inbox-auto-replies'), 'inbox.view'),
+      admin('inbox/auto-replies', () => import('@/pages/admin/inbox-auto-replies'), MESSAGING_SETUP),
       admin('inbox/meta-callback', () => import('@/pages/admin/inbox-meta-callback'), 'inbox.manage'),
       admin('coupons', () => import('@/pages/admin/coupons'), 'coupons.manage'),
       admin('settings', () => import('@/pages/admin/settings'), 'settings.view'),
