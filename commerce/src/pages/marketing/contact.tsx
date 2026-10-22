@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { SocialLinks } from '@/components/brand/social'
 import { SitePage } from '@/features/site/site-chrome'
 import { SUPPORT_EMAIL } from '@/features/site/site-meta'
+import { trackSite } from '@/features/site/site-pixel'
 import { toUserMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import { type ContactInput, submitContact } from '@/services/onboarding'
@@ -19,7 +20,11 @@ export default function ContactPage() {
   const [form, setForm] = useState<ContactInput>(EMPTY)
   const [touched, setTouched] = useState(false)
   const set = <K extends keyof ContactInput>(k: K, v: ContactInput[K]) => setForm((f) => ({ ...f, [k]: v }))
-  const send = useMutation({ meta: { silent: true }, mutationFn: () => submitContact(form) })
+  const send = useMutation({
+    meta: { silent: true },
+    mutationFn: () => submitContact(form),
+    onSuccess: () => trackSite('Lead', { content_name: `Contact: ${form.topic.toLowerCase()}` }, { email: form.email, phone: form.phone, name: form.name }),
+  })
 
   const problems = {
     name: form.name.trim().length < 2 ? 'Enter your name' : null,

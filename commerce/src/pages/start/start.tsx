@@ -13,7 +13,8 @@ import { useAuth } from '@/features/auth/auth-context'
 import { ClerkSignUpForm } from '@/features/auth/clerk-signup'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker, Steps } from '@/features/onboarding/signup-parts'
-import { useTrackVisit } from '@/features/site/site-chrome'
+import { useSitePageView, useTrackVisit } from '@/features/site/site-chrome'
+import { trackSignup, trackSite } from '@/features/site/site-pixel'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
 import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
@@ -36,6 +37,7 @@ const EMPTY: SignupBusiness = {
 export default function StartPage() {
   useAdminTheme()
   useTrackVisit()
+  useSitePageView()
   const { session, access, loading, accessLoading, usesClerk } = useAuth()
   const linkPending = useClerkLinkPending()
   const minPassword = 8
@@ -76,6 +78,7 @@ export default function StartPage() {
     },
     onSuccess: async (r) => {
       if ('confirm' in r && r.confirm) { setSentTo(r.confirm); return }
+      trackSignup(options.data?.plans.find((p) => p.code === business.plan_code), { email: email || session?.user?.email, phone: business.phone, name: business.full_name })
       clearSignupDraft()
       await queryClient.invalidateQueries({ queryKey: ['my-access'] })
       navigate('/admin?welcome=1', { replace: true })
@@ -140,7 +143,7 @@ export default function StartPage() {
         </div>
       ) : step === 2 && mode === 'whatsapp' ? (
         <WhatsappStep steps={<Steps steps={stepsLabels} current={step} />} chooser={chooser} business={payload()} email={requestEmail} onEmail={setRequestEmail}
-          planLabel={planLabel(options.data, business)} sent={requested} onSent={setRequested} onBack={() => { setRequested(null); setStep(1) }} />
+          planLabel={planLabel(options.data, business)} sent={requested} onSent={(r) => { setRequested(r); trackSite('Lead', { content_name: 'WhatsApp sign-up' }, { email: requestEmail, phone: business.phone, name: business.full_name }) }} onBack={() => { setRequested(null); setStep(1) }} />
       ) : step === 2 && !session && usesClerk ? (
         // The account on Clerk (e-mail with a 6-digit code). The details above are
         // saved in this browser and the business opens on /start/finish.

@@ -6,6 +6,7 @@ import { SocialLinks } from '@/components/brand/social'
 import { applySeo } from '@/features/storefront/seo-head'
 import { captureNavigation } from '@/lib/attribution'
 import { siteHead } from './site-head'
+import { trackSite } from './site-pixel'
 import { SUPPORT_EMAIL } from './site-meta'
 
 // The frame every page of the Fullfilio website shares: header, footer and
@@ -48,9 +49,16 @@ export function useTrackVisit() {
   useEffect(() => { captureNavigation(location) }, [location.pathname, location.search])
 }
 
+/** A Meta page view for each page of the website and the sign-up (site-pixel.ts). */
+export function useSitePageView() {
+  const { pathname } = useLocation()
+  useEffect(() => { trackSite('PageView') }, [pathname])
+}
+
 export function SiteRoot({ children }: { children: ReactNode }) {
   const theme = useSiteTheme()
   useTrackVisit()
+  useSitePageView()
   useEffect(() => {
     // The browser chrome (overscroll, mobile address bar) follows the page.
     const prev = document.body.style.backgroundColor

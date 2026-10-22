@@ -29,7 +29,7 @@ const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
         [
           'We use this access to show the store’s messages and comments in its Fullfilio inbox, to send the replies its staff write, and to show the customer’s name and picture next to the conversation.',
           'Access tokens are stored encrypted and are never shown to anyone, including the store’s own staff.',
-          'We do not use Meta data for advertising, do not sell it, and do not share it with anyone other than the store that owns the conversation.',
+          'We do not use messages or any other data from connected Facebook, Instagram or WhatsApp accounts for advertising, do not sell it, and do not share it with anyone other than the store that owns the conversation.',
           'A store can disconnect an account at any time under Messaging → Channels, or remove Fullfilio from its Facebook settings (Settings → Business integrations).',
         ],
       ] },
@@ -38,8 +38,16 @@ const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
         'To protect stores from fraud and abuse, and to keep the service secure.',
         'To provide support and tell store owners about changes to the service.',
       ]] },
+      { heading: 'Our website and our ads', body: [
+        'On fullfilio.com itself (not in a store’s admin and not on stores’ websites) we use the Meta Pixel and Meta’s Conversions API to measure our own Facebook and Instagram ads and to show Fullfilio ads to people who visited our website.',
+        [
+          'They record the pages you visit, when you reach our prices, send the contact form or sign up, with your IP address, browser details and the cookies Meta sets.',
+          'When you sign up or send the contact form, your e-mail address, phone number and name go to Meta only as one-way hashes, so Meta can match the visit to a Facebook or Instagram account.',
+          'Meta uses this information under its own Data Policy. You can limit ads based on it in your Facebook or Instagram settings (Accounts Center → Ad preferences), or block cookies in your browser.',
+        ],
+      ] },
       { heading: 'Sharing', body: [
-        'We share information only to run the service: with the couriers, payment providers, SMS providers and Meta services a store chooses to use, and with our hosting providers. We do not sell personal information.',
+        'We share information only to run the service: with the couriers, payment providers, SMS providers and Meta services a store chooses to use, with Meta for our own website’s ads as described above, and with our hosting providers. We do not sell personal information.',
       ] },
       { heading: 'Keeping and deleting information', body: [
         'We keep a store’s information for as long as its account is open. When a store disconnects a messaging account, we delete that account’s access token immediately. See the data deletion instructions at fullfilio.com/data-deletion for how to have messages and other data removed.',
