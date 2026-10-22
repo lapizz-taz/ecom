@@ -166,7 +166,8 @@ export function CustomerPanel({ id, onDraft, onOpen, onClose, onOrderDraft }: {
           </section>
         )}
 
-        <section className="space-y-2">
+        {/* Orders and customer profiles are for staff who may see them; a Moderator only creates orders. */}
+        {can('orders.view') && <section className="space-y-2">
           <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Orders</h3>
           {orders.length === 0 ? (
             <p className="text-xs text-muted-foreground">No orders yet{form.phone ? ' for this number' : ' (add the mobile number to find them)'}.</p>
@@ -191,16 +192,16 @@ export function CustomerPanel({ id, onDraft, onOpen, onClose, onOrderDraft }: {
               ))}
             </ul>
           )}
-        </section>
+        </section>}
 
-        <LinkSearch title="Linked order" placeholder="Type an order number or phone to link…" empty="No order is linked to this chat yet."
+        {can('orders.view') && <LinkSearch title="Linked order" placeholder="Type an order number or phone to link…" empty="No order is linked to this chat yet."
           current={orders.find((o) => o.linked)?.order_number ?? null}
           find={async (q) => (await findOrdersToLink(q)).map((o) => ({ id: o.id, label: o.order_number, hint: `${o.customer_name} · ${formatMoney(o.total_amount)}` }))}
-          onPick={(oid) => update.mutate({ linked_order_id: oid })} onClear={() => update.mutate({ linked_order_id: null })} />
-        <LinkSearch title="Linked profile" placeholder="Search a customer by name or phone…" empty="No customer profile is linked yet."
+          onPick={(oid) => update.mutate({ linked_order_id: oid })} onClear={() => update.mutate({ linked_order_id: null })} />}
+        {can('customers.view') && <LinkSearch title="Linked profile" placeholder="Search a customer by name or phone…" empty="No customer profile is linked yet."
           current={customer ? `${customer.full_name} · ${customer.phone}` : null}
           find={async (q) => (await findCustomersToLink(q)).map((x) => ({ id: x.id, label: x.full_name, hint: `${x.phone} · ${x.total_orders} orders` }))}
-          onPick={(cid) => update.mutate({ customer_id: cid })} onClear={c.customer_id ? () => update.mutate({ customer_id: null }) : undefined} />
+          onPick={(cid) => update.mutate({ customer_id: cid })} onClear={c.customer_id ? () => update.mutate({ customer_id: null }) : undefined} />}
 
         <section className="space-y-2">
           <h3 className="flex items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"><Tag className="size-3" /> Labels</h3>

@@ -177,7 +177,7 @@ export default function NewOrderPage({ draft, onCreated }: { draft?: ChatOrderDr
         else navigate(`/admin/inbox?c=${conversationId}`)
         return
       }
-      navigate(`/admin/orders/${order?.id}`)
+      navigate(can('orders.view') ? `/admin/orders/${order?.id}` : '/admin/inbox')
     },
   })
 

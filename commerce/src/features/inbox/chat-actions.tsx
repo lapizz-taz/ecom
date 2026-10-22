@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
+import { useAuth } from '@/features/auth/auth-context'
 import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
@@ -25,6 +26,7 @@ export function ChatActions({ data, onInsert, onOrderDraft, onTogglePanel }: {
   onTogglePanel: () => void
 }) {
   const qc = useQueryClient()
+  const { can } = useAuth()
   const c = data.conversation
   const order = data.orders.find((o) => o.linked) ?? data.orders[0]
   const refresh = () => {
@@ -43,12 +45,17 @@ export function ChatActions({ data, onInsert, onOrderDraft, onTogglePanel }: {
       <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none]">
         {c.kind === 'MESSAGE' && (
           <>
-            <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('STATUS')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
-              {write.isPending && write.variables === 'STATUS' ? <Loader2 className="size-3.5 animate-spin" /> : <PackageCheck className="size-3.5" />} Status
-            </button>
-            <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('INVOICE')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
-              {write.isPending && write.variables === 'INVOICE' ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />} Invoice
-            </button>
+            {/* An order's status and invoice are for staff who may see orders. */}
+            {can('orders.view') && (
+              <>
+                <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('STATUS')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
+                  {write.isPending && write.variables === 'STATUS' ? <Loader2 className="size-3.5 animate-spin" /> : <PackageCheck className="size-3.5" />} Status
+                </button>
+                <button type="button" className={chip} disabled={!order || write.isPending} onClick={() => write.mutate('INVOICE')} title={order ? `Order ${order.order_number}` : 'No order yet'}>
+                  {write.isPending && write.variables === 'INVOICE' ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />} Invoice
+                </button>
+              </>
+            )}
             <FollowUpPopover id={c.id} minutesLeft={win.minutes} onDone={refresh} disabled={!win.open} className={chip} />
             <span className="mx-0.5 h-4 w-px shrink-0 bg-border" />
           </>

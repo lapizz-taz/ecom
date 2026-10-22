@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router'
 import { useAuth } from '@/features/auth/auth-context'
+import { hasAccess, MESSAGING_SETUP } from '@/lib/access'
 import { cn } from '@/lib/utils'
 
 /** Messaging: inbox, comments, auto replies and the connected channels. */
@@ -9,8 +10,8 @@ export function MessagingTabs({ unread, comments }: { unread?: number; comments?
   const tabs = [
     { to: '/admin/inbox', label: 'Inbox', show: can('inbox.view'), badge: unread },
     { to: '/admin/inbox/comments', label: 'Comments', show: can('inbox.view'), badge: comments },
-    { to: '/admin/inbox/auto-replies', label: 'Auto Replies', show: can('inbox.view') },
-    { to: '/admin/inbox/channels', label: 'Channels', show: can('inbox.view') },
+    { to: '/admin/inbox/auto-replies', label: 'Auto Replies', show: hasAccess(can, MESSAGING_SETUP) },
+    { to: '/admin/inbox/channels', label: 'Channels', show: hasAccess(can, MESSAGING_SETUP) },
   ].filter((t) => t.show)
   return (
     <nav className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 [scrollbar-width:none]" aria-label="Messaging">

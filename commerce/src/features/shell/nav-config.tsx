@@ -3,6 +3,7 @@ import {
   ShoppingBag, Store, TrendingUp, UserCog, Users, Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { type Access, MESSAGING_SETUP } from '@/lib/access'
 import type { QueueCounts } from '@/types/domain'
 
 /** Counts shown as badges next to menu items (refreshed while the admin is open). */
@@ -18,7 +19,7 @@ const some = (n: number | undefined) => n || undefined
 export interface NavChild {
   label: string
   to: string
-  permission?: string
+  permission?: Access
   /** Shown as "Soon" while this platform feature is off for the business. */
   feature?: string
   badge?: (c: NavCounts) => number | undefined
@@ -115,8 +116,8 @@ export const NAV: NavSection[] = [
         children: [
           { label: 'Inbox', to: '/admin/inbox', badge: (c) => some(c.inbox?.messages) },
           { label: 'Comments', to: '/admin/inbox/comments', badge: (c) => some(c.inbox?.comments) },
-          { label: 'Auto Replies', to: '/admin/inbox/auto-replies' },
-          { label: 'Channels', to: '/admin/inbox/channels' },
+          { label: 'Auto Replies', to: '/admin/inbox/auto-replies', permission: MESSAGING_SETUP },
+          { label: 'Channels', to: '/admin/inbox/channels', permission: MESSAGING_SETUP },
         ],
       },
       {

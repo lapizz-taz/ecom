@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 21 Oct 2026.
+Last updated: 22 Oct 2026.
 
 ## What Fullfilio is
 
@@ -80,7 +80,8 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 - Multi-branch.
 
 **Team**
-- Roles and permissions, including the Call role, which sees no costs or profit.
+- Roles and permissions, including the Call role, which sees no costs or profit, and the Moderator
+  role, which only answers messages and comments and creates orders from them.
 - HR: attendance, breaks, shifts, an SOP checklist, "must check in to work", the live team.
 - Device approval.
 

@@ -29,6 +29,7 @@ import { MajorUpdateNotice } from '@/features/shell/major-update-notice'
 import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
+import { type Access, hasAccess } from '@/lib/access'
 import { deviceLabel } from '@/lib/device'
 import { batcher } from '@/lib/batch'
 import { usePresence } from '@/lib/presence'
@@ -286,12 +287,13 @@ export default function AdminLayout() {
     return <AccountRestricted email={access.email} onSignOut={() => void signOut().then(() => navigate('/admin/login'))} />
   }
 
-  // Staff without the dashboard (sales figures) start on their work instead, e.g. the Call role on Web Orders.
+  // Staff without the dashboard (sales figures) start on their work instead, e.g. the Call role on
+  // Web Orders and the Moderator on Messaging.
   if (location.pathname.replace(/\/+$/, '') === '/admin' && !can('dashboard.view')) {
-    return <Navigate to={can('orders.view') ? '/admin/orders/web' : '/admin/hr/attendance'} replace />
+    return <Navigate to={can('orders.view') ? '/admin/orders/web' : can('inbox.view') ? '/admin/inbox' : '/admin/hr/attendance'} replace />
   }
-  const required = [...matches].reverse().map((m) => (m.handle as { permission?: string } | undefined)?.permission).find(Boolean)
-  const allowed = !required || can(required)
+  const required = [...matches].reverse().map((m) => (m.handle as { permission?: Access } | undefined)?.permission).find(Boolean)
+  const allowed = hasAccess(can, required)
   const onAction = (action: ShellAction) => { setMobileOpen(false); setDialog(action) }
   const ThemeIcon = THEMES.find((t) => t.value === theme)?.icon ?? Moon
 
