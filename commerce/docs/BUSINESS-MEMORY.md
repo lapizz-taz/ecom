@@ -149,4 +149,4 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 - Payments to Fullfilio: bKash, PayStation, SSLCommerz. The currency is BDT.
 - Messaging uses Meta app 1653473169830242. Do not change that app.
 - fullfilio.com must never point at 144.24.232.70.
-- Security: four audits so far (the last one is `docs/SECURITY-AUDIT-RUN-4.md`). Nothing critical, high or medium is open.
+- Security: five audits so far (the last one is `docs/SECURITY-AUDIT-RUN-5.md`). Nothing critical, high or medium is open.

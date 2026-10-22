@@ -11,10 +11,11 @@ import { WhatsAppConfirm } from '@/features/storefront/whatsapp-confirm'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { normalizePhone } from '@/lib/phone'
 import { trackOrder } from '@/services/storefront'
+import { lastOrderKey } from '@/features/cart/last-order'
 
 function storedPhone(orderNumber: string): string {
   try {
-    const last = JSON.parse(sessionStorage.getItem('last_order') ?? 'null') as { order_number: string; phone: string } | null
+    const last = JSON.parse(sessionStorage.getItem(lastOrderKey()) ?? 'null') as { order_number: string; phone: string } | null
     return last?.order_number === orderNumber ? last.phone : ''
   } catch {
     return ''

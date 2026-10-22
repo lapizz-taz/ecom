@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import { checkoutQuote, initiatePayment, placeOrder, trackEvent } from '@/services/storefront'
 import type { CheckoutFieldMode, PaymentMethod } from '@/types/domain'
+import { lastOrderKey } from '@/features/cart/last-order'
 
 /** A box the store can switch off, make optional or make required (Settings → Checkout fields). */
 const text = (mode: CheckoutFieldMode, max: number, message: string) =>
@@ -58,7 +59,6 @@ const fullName = (v: { first_name?: string; last_name?: string }) => [v.first_na
 const fullAddress = (v: { address?: string; apartment?: string }) => [v.address?.trim(), v.apartment?.trim()].filter(Boolean).join(', ')
 type CheckoutValues = z.infer<ReturnType<typeof buildSchema>>
 
-export const LAST_ORDER_KEY = 'last_order'
 
 function Section({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
   return (
@@ -243,7 +243,7 @@ export default function CheckoutPage() {
       // callback, and an empty cart would otherwise redirect to /cart first.
       placed.current = true
       const phone = normalizePhone(values.phone)
-      sessionStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ order_number: order.order_number, phone }))
+      sessionStorage.setItem(lastOrderKey(), JSON.stringify({ order_number: order.order_number, phone }))
       trackEvent('PURCHASE')
       adPurchase(tracking?.purchase)
       // Hashed in this browser, for better matching of this buyer's next visits.

@@ -2,14 +2,16 @@
 // asks who is calling first; the Clerk proxy and webhook read through the bounded readers.
 import { describe, expect, it, vi } from 'vitest'
 
-const H = vi.hoisted(() => ({ pulled: 0, fetched: false, secret: false }))
+const H = vi.hoisted(() => ({ pulled: 0, fetched: false, secret: false, user: null as null | { id: string }, staffAtPull: -1 }))
 
 vi.mock('./monitoring.ts', async (importOriginal) => ({ ...(await importOriginal<typeof import('./monitoring.ts')>()), logEvent: () => Promise.resolve() }))
 vi.mock('./cron.ts', async (importOriginal) => ({ ...(await importOriginal<typeof import('./cron.ts')>()), isCronRequest: async () => false }))
 vi.mock('./supabase.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./supabase.ts')>()),
   adminClient: () => ({}),
-  optionalUser: async () => null,
+  optionalUser: async () => H.user,
+  // A signed-in account that is nobody's staff (a shopper who registered on a store).
+  requireStaff: async () => { H.staffAtPull = H.pulled; throw new (await import('./http.ts')).HttpError(403, 'Staff access required', 'PERMISSION_DENIED') },
 }))
 vi.mock('./clerk.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./clerk.ts')>()),
@@ -40,6 +42,17 @@ describe('large anonymous bodies', () => {
     const inbox = (await import('../inbox/handler.ts')).default
     const res = await inbox(post('https://fullfilio.test/functions/v1/inbox', 14 * MB))
     expect(res.status).toBe(401)
+    expect(H.pulled).toBe(0)
+  })
+
+  it('a signed-in account that is not staff is refused before the body is read (audit run 5)', async () => {
+    H.pulled = 0
+    H.user = { id: '00000000-0000-4000-8000-0000000000aa' }
+    const inbox = (await import('../inbox/handler.ts')).default
+    const res = await inbox(post('https://fullfilio.test/functions/v1/inbox', 14 * MB))
+    H.user = null
+    expect(res.status).toBe(403)
+    expect(H.staffAtPull).toBe(0)
     expect(H.pulled).toBe(0)
   })
 

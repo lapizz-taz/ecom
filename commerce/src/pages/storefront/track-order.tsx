@@ -12,6 +12,7 @@ import { toUserMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { normalizePhone } from '@/lib/phone'
 import { trackOrder } from '@/services/storefront'
+import { lastOrderKey } from '@/features/cart/last-order'
 
 // Track an order with its number and the phone used at checkout: a centred form like the checkout's
 // boxes, then the order's status, timeline and items.
@@ -73,7 +74,7 @@ export default function TrackOrderPage() {
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
                   A payment is needed to confirm this order.{' '}
                   <Link className="font-medium underline" to={`/order-success?order=${order.order_number}`}
-                    onClick={() => sessionStorage.setItem('last_order', JSON.stringify({ order_number: order.order_number, phone: normalizePhone(phone) }))}>
+                    onClick={() => sessionStorage.setItem(lastOrderKey(), JSON.stringify({ order_number: order.order_number, phone: normalizePhone(phone) }))}>
                     Pay now
                   </Link>
                 </div>

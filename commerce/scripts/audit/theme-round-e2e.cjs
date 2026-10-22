@@ -327,7 +327,7 @@ async function until(fn, ms = 15000) {
     for (const [qty, expect, what] of [[15, /Only \d+ of Linen Shirt left in stock/, 'more than in stock'], [50, /You can order at most 20 of Linen Shirt/, 'over the per-order limit']]) {
       const sctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
       const spage = await sctx.newPage()
-      await spage.addInitScript(([v, n]) => localStorage.setItem('cart-v1', JSON.stringify({ state: { items: [{ variantId: v, productId: 'p', slug: 'linen-shirt', name: 'Linen Shirt', variantTitle: null, price: 1250, image: null, quantity: n, maxQuantity: n }], couponCode: '' }, version: 0 })), [sv, qty])
+      await spage.addInitScript(([v, n]) => localStorage.setItem('cart-v1@my-store', JSON.stringify({ state: { items: [{ variantId: v, productId: 'p', slug: 'linen-shirt', name: 'Linen Shirt', variantTitle: null, price: 1250, image: null, quantity: n, maxQuantity: n }], couponCode: '' }, version: 0 })), [sv, qty])
       await spage.goto(`${base}/s/my-store/cart`, { waitUntil: 'domcontentloaded', timeout: 60000 })
       const blocked = await until(async () => {
         const t = await spage.locator('body').innerText().catch(() => '')
@@ -340,6 +340,26 @@ async function until(fn, ms = 15000) {
       await spage.screenshot({ path: join(S, `round-cart-${qty}.png`) })
       await sctx.close()
       step(`cart ${what} (${qty}): the reason is shown and Checkout is a disabled button (no checkout link)`, !!blocked, JSON.stringify(blocked ?? diag))
+    }
+
+    // Each store opened by path keeps its own cart (security audit run 5): another store's cart and
+    // the old shared key are not shown here, and the old key is removed.
+    {
+      const octx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+      const op = await octx.newPage()
+      await op.addInitScript((v) => {
+        if (sessionStorage.getItem('seeded')) return
+        sessionStorage.setItem('seeded', '1')
+        const cart = (name) => JSON.stringify({ state: { items: [{ variantId: v, productId: 'p', slug: 'linen-shirt', name, variantTitle: null, price: 1250, image: null, quantity: 1, maxQuantity: 5 }], couponCode: '' }, version: 0 })
+        localStorage.setItem('cart-v1@other-store', cart('Other store shirt'))
+        localStorage.setItem('cart-v1', cart('Old shared shirt'))
+      }, sv)
+      await op.goto(`${base}/s/my-store/cart`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      const empty = await until(async () => /Your cart is empty/.test(await op.locator('body').innerText().catch(() => '')) || null, 20000)
+      const keys = await op.evaluate(() => ({ shared: localStorage.getItem('cart-v1'), other: !!localStorage.getItem('cart-v1@other-store') }))
+      const shown = await op.locator('body').innerText()
+      await octx.close()
+      step('a store opened by path shows only its own cart (not another store\'s, not the old shared one)', !!empty && keys.shared === null && keys.other && !/Other store shirt|Old shared shirt/.test(shown), JSON.stringify(keys))
     }
 
     // Sales channels while the stores are still loading: no "Not connected" + Connect that then

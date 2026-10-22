@@ -49,7 +49,12 @@ export default function StoreThemePage() {
   // Opened from Store → Theme: ?page=product&block=<id> starts on that page with the block selected.
   const [params, setParams] = useSearchParams()
   const [page, setPage] = useState<Page>(() => (PAGES.some((p) => p.value === params.get('page')) ? params.get('page') as Page : 'home'))
-  const [selected, setSelected] = useState<string | null>(() => (params.get('block') ? `block:${params.get('block')}` : params.get('section')))
+  // The selection a link or reload opens with: only id-shaped values (no __proto__-style keys or junk).
+  const [selected, setSelected] = useState<string | null>(() => {
+    const id = (v: string | null) => (v && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(v) && !/^(__proto__|constructor|prototype)$/.test(v) ? v : null)
+    const block = id(params.get('block'))
+    return block ? `block:${block}` : id(params.get('section'))
+  })
   const [device, setDevice] = useState<'desktop' | 'mobile' | 'full'>('desktop')
   const [inspect, setInspect] = useState(true)
   // Phones show the panel or the preview, one at a time (lg and up: side by side).
@@ -318,7 +323,7 @@ export default function StoreThemePage() {
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-black/10">
               <span className="text-zinc-500">{current ? SECTION_ICON[current.type] : currentBlock ? BLOCK_ICON[currentBlock.type] : <PanelBottom className="size-4" />}</span>
               <p className="min-w-0 flex-1 truncate font-semibold">
-                {current ? SECTIONS[current.type].label : currentBlock ? (currentBlock.type === 'buttons' ? 'Buy buttons' : PRODUCT_BLOCKS[currentBlock.type].label) : FIXED[selected] ?? 'Settings'}
+                {current ? SECTIONS[current.type].label : currentBlock ? (currentBlock.type === 'buttons' ? 'Buy buttons' : PRODUCT_BLOCKS[currentBlock.type].label) : (selected && Object.hasOwn(FIXED, selected) ? FIXED[selected] : 'Settings')}
               </p>
               {current && (
                 <DropdownMenu>
