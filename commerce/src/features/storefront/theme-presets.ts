@@ -157,6 +157,8 @@ export function applyPreset(current: StoreTheme, preset: ThemePreset): StoreThem
     preset: preset.id,
     accent: look.accent, font: look.font, heading_font: look.heading_font, heading_weight: look.heading_weight,
     text_size: look.text_size, heading_size: look.heading_size, radius: look.radius, logo_position: look.logo_position,
+    // The preset's corners, not an exact value set before it.
+    radius_px: null,
     colors: { ...look.colors },
     header: { ...current.header, ...look.header },
     product_card: { ...look.product_card },

@@ -132,6 +132,8 @@ export const CART_PAGE_IMAGE_SIZE = { min: 56, max: 160 } as const
 export const CART_PAGE_WIDTHS: Record<CartPageSettings['width'], number> = { narrow: 900, standard: 1152, wide: 1320 }
 /** The exact corner radius a store can set instead of Sharp / Soft / Round, in px. */
 export const RADIUS_PX = { min: 0, max: 32 } as const
+/** Cart texts the store shows when the merchant leaves the field empty. */
+export const CART_TEXT_DEFAULTS = { button: 'Checkout', empty: 'Your cart is empty.', coupon: 'Apply', empty_title: 'Your cart is empty', empty_button: 'Start shopping' } as const
 
 export interface StoreTheme {
   accent: string
@@ -578,11 +580,11 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
         image_shape: k.image_shape === 'portrait' ? 'portrait' : 'square',
         image_size: typeof k.image_size === 'number' && Number.isFinite(k.image_size) ? pct(k.image_size, CART_IMAGE_SIZE.min, CART_IMAGE_SIZE.max) : d.image_size,
         image_radius: corner(k.image_radius, d.image_radius), stepper_radius: corner(k.stepper_radius, d.stepper_radius),
-        button_label: str(k.button_label, d.button_label).slice(0, 40) || d.button_label,
+        button_label: str(k.button_label, d.button_label).slice(0, 40),
         button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',
         button_radius: typeof k.button_radius === 'number' && Number.isFinite(k.button_radius) ? Math.min(28, Math.max(0, Math.round(k.button_radius))) : d.button_radius,
         button_show_total: bool(k.button_show_total, d.button_show_total), button_lock_icon: bool(k.button_lock_icon, d.button_lock_icon),
-        show_view_cart: bool(k.show_view_cart, d.show_view_cart), empty_text: str(k.empty_text, d.empty_text).slice(0, 120) || d.empty_text,
+        show_view_cart: bool(k.show_view_cart, d.show_view_cart), empty_text: str(k.empty_text, d.empty_text).slice(0, 120),
       }
     })(),
     favicon_url: /^(https:\/\/|\/)/.test(str(t.favicon_url)) ? str(t.favicon_url) : '',
@@ -598,12 +600,12 @@ export function resolveTheme(sf: Storefront | undefined | null): StoreTheme {
         image_size: typeof k.image_size === 'number' && Number.isFinite(k.image_size) ? pct(k.image_size, CART_PAGE_IMAGE_SIZE.min, CART_PAGE_IMAGE_SIZE.max) : d.image_size,
         image_radius: corner(k.image_radius, d.image_radius), stepper_radius: corner(k.stepper_radius, d.stepper_radius),
         show_each_price: bool(k.show_each_price, d.show_each_price), show_coupon: bool(k.show_coupon, d.show_coupon),
-        coupon_button: text(k.coupon_button, d.coupon_button, 24) || d.coupon_button, summary_title: text(k.summary_title, '', 40),
+        coupon_button: text(k.coupon_button, d.coupon_button, 24), summary_title: text(k.summary_title, '', 40),
         summary_bg: isHex(k.summary_bg) ? k.summary_bg : '', summary_border: bool(k.summary_border, d.summary_border), summary_radius: corner(k.summary_radius, d.summary_radius),
-        button_label: text(k.button_label, d.button_label, 40) || d.button_label, button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',
+        button_label: text(k.button_label, d.button_label, 40), button_bg: isHex(k.button_bg) ? k.button_bg : '', button_text: isHex(k.button_text) ? k.button_text : '',
         button_radius: typeof k.button_radius === 'number' && Number.isFinite(k.button_radius) ? Math.min(28, Math.max(0, Math.round(k.button_radius))) : d.button_radius,
         button_lock_icon: bool(k.button_lock_icon, d.button_lock_icon), note: text(k.note, d.note, 120), show_continue: bool(k.show_continue, d.show_continue),
-        empty_title: text(k.empty_title, d.empty_title, 60) || d.empty_title, empty_button: text(k.empty_button, d.empty_button, 30) || d.empty_button,
+        empty_title: text(k.empty_title, d.empty_title, 60), empty_button: text(k.empty_button, d.empty_button, 30),
       }
     })(),
   }

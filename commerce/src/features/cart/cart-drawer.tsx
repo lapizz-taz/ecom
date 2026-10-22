@@ -6,7 +6,7 @@ import { Money } from '@/components/common/money'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { addCard } from '@/features/storefront/product-block-views'
-import { CART_WIDTHS, isThemePreview, onColor, themeData, themeStyle, usePreviewSelection, type CartSettings } from '@/features/storefront/theme'
+import { CART_TEXT_DEFAULTS, CART_WIDTHS, isThemePreview, onColor, themeData, themeStyle, usePreviewSelection, type CartSettings } from '@/features/storefront/theme'
 import { useStoreTheme } from '@/features/storefront/theme-context'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney } from '@/lib/format'
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import { listProducts } from '@/services/storefront'
 import { cartCount, useCart, type CartItem } from './cart-store'
-import { useCartQuote } from './use-cart-quote'
+import { cartBlocker, useCartQuote } from './use-cart-quote'
 
 // The cart drawer: opens when something is added. Prices come from the server's quote (bundles and
 // coupons included), with the cart's own numbers only until it answers. Set up in the theme builder
@@ -60,6 +60,7 @@ export function CartDrawer() {
   const quote = useCartQuote(cartItems, couponCode)
   const q = quote.data
   const problems = new Map((q?.stock_errors ?? []).map((e) => [e.variant_id, e.message]))
+  const blocker = sample ? null : cartBlocker(quote.error)
   const lines = new Map((q?.lines ?? []).map((l) => [l.variant_id, l]))
 
   // Totals: the server's when it has answered, else the cart's own.
@@ -72,6 +73,7 @@ export function CartDrawer() {
   }, 0)
   const pay = Math.max(0, subtotal - coupon)
   const savings = Math.max(0, regular - pay)
+  const checkoutLabel = <>{settings.button_lock_icon && <Lock className="size-4" />} {settings.button_label || CART_TEXT_DEFAULTS.button}{settings.button_show_total ? ` · ${formatMoney(pay)}` : ''}</>
 
   const threshold = Number(config?.delivery.free_delivery_threshold ?? 0)
   const bar = settings.free_shipping_bar && threshold > 0
@@ -105,7 +107,7 @@ export function CartDrawer() {
         {items.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <ShoppingBag className="size-8 opacity-50" />
-            <p className="text-sm opacity-70">{settings.empty_text}</p>
+            <p className="text-sm opacity-70">{settings.empty_text || CART_TEXT_DEFAULTS.empty}</p>
             <Button asChild variant="ink" style={button} onClick={() => setOpen(false)}><Link to="/shop">Continue shopping</Link></Button>
           </div>
         ) : (
@@ -178,9 +180,11 @@ export function CartDrawer() {
                 </span>
               </div>
               <p className="text-xs opacity-60">{settings.note || 'Delivery is added at checkout.'}</p>
-              <Button asChild variant="ink" size="lg" className="mt-1 h-12 text-[calc(15px*var(--fs-body,1))]" style={button} onClick={() => setOpen(false)} disabled={problems.size > 0}>
-                <Link to="/checkout">{settings.button_lock_icon && <Lock className="size-4" />} {settings.button_label}{settings.button_show_total ? ` · ${formatMoney(pay)}` : ''}</Link>
-              </Button>
+              {/* A link can't be disabled: while an item can't be bought, it's a disabled button. */}
+              {blocker && <p role="alert" className="text-xs text-destructive">{blocker}</p>}
+              {problems.size > 0 || blocker
+                ? <Button type="button" variant="ink" size="lg" className="mt-1 h-12 text-[calc(15px*var(--fs-body,1))]" style={button} disabled>{checkoutLabel}</Button>
+                : <Button asChild variant="ink" size="lg" className="mt-1 h-12 text-[calc(15px*var(--fs-body,1))]" style={button} onClick={() => setOpen(false)}><Link to="/checkout">{checkoutLabel}</Link></Button>}
               {settings.show_view_cart && <Link to="/cart" onClick={() => setOpen(false)} className="text-center text-xs opacity-60 underline-offset-2 hover:underline">View cart</Link>}
             </div>
           </>
