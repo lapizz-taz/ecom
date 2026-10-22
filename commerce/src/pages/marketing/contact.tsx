@@ -51,7 +51,7 @@ export default function ContactPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-(--s-line) bg-(--s-panel) p-5 sm:p-7">
+        <div className="rounded-2xl border border-(--s-line) bg-(--s-surface) p-5 shadow-(--s-card-shadow) sm:p-7">
           {send.isSuccess ? (
             <div className="grid min-h-[420px] place-items-center text-center">
               <div>

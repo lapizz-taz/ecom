@@ -52,7 +52,7 @@ export default function MarketingHome() {
       <main id="top">
         {/* Hero */}
         <section className="relative overflow-hidden" id="product">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-[600px] bg-[radial-gradient(ellipse_60%_50%_at_30%_0%,rgb(33_66_231/.18),transparent)]" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[600px] [background:var(--s-hero-bg)]" />
           <div className="relative mx-auto max-w-6xl px-5 pt-24 pb-14 sm:pt-32">
             <h1 className="max-w-4xl text-[40px] leading-[1.05] font-medium tracking-[-0.035em] text-balance sm:text-[64px]">
               The order system for online sellers in Bangladesh
@@ -175,7 +175,7 @@ export default function MarketingHome() {
         </section>
 
         {/* Final call to action */}
-        <section className="border-t border-(--s-line)">
+        <section className="border-t border-(--s-line) [background:var(--s-cta-band)]">
           <div className="mx-auto max-w-6xl px-5 py-28 text-center sm:py-36">
             <Reveal>
               <h2 className="text-[36px] leading-[1.05] font-medium tracking-[-0.035em] sm:text-[56px]">Built for how you sell.<br />Available today.</h2>
@@ -228,7 +228,7 @@ function Pricing() {
           {plans.map((p) => {
             const highlight = p.code === q.data?.default_plan
             return (
-              <div key={p.code} className={cn('flex flex-col rounded-2xl border p-6', highlight ? 'border-[#2142e7]/60 bg-[#2142e7]/[0.06]' : 'border-(--s-line) bg-(--s-tint)')}>
+              <div key={p.code} className={cn('flex flex-col rounded-2xl border p-6', highlight ? 'border-[#2142e7]/60 bg-[#2142e7]/[0.06] shadow-(--s-card-shadow)' : 'border-(--s-line) bg-(--s-card) shadow-(--s-card-shadow)')}>
                 <div className="flex items-center justify-between">
                   <p className="text-[15px] font-medium">{p.name}</p>
                   {p.trial_days && !p.offer?.trial_price ? <span className="rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}

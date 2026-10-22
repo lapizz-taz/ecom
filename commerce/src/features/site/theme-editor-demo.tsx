@@ -80,7 +80,7 @@ const initial = (): State => ({
   seq: 1,
 })
 
-const muted = 'text-[#8a8f98]'
+const muted = 'text-(--d-muted)'
 
 export function ThemeEditorDemo() {
   const [state, dispatch] = useReducer(reducer, undefined, initial)
@@ -90,28 +90,28 @@ export function ThemeEditorDemo() {
   const set = (key: string, value: string | number | boolean) => current && dispatch({ type: 'set', id: current.id, key, value })
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0f1011] text-[11px] shadow-[0_0_0_1px_rgb(0_0_0/.4),0_30px_80px_-20px_rgb(0_0_0/.8)]">
-      <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2">
-        <span className="text-[#f7f8f8]">Isolation · Theme</span>
-        <span className="rounded-full border border-white/10 px-1.5 py-px text-[10px] text-[#4cb782]">Live preview</span>
-        <div className="ml-auto flex rounded-md border border-white/10 p-0.5" role="radiogroup" aria-label="Preview size">
+    <div className="overflow-hidden rounded-xl border border-(--d-line) bg-(--d-panel) text-[11px] text-(--d-fg2) shadow-(--d-shadow)">
+      <div className="flex items-center gap-2 border-b border-(--d-line-2) px-3 py-2">
+        <span className="text-(--d-fg)">Isolation · Theme</span>
+        <span className="rounded-full border border-(--d-line-strong) px-1.5 py-px text-[10px] text-(--d-ok)">Live preview</span>
+        <div className="ml-auto flex rounded-md border border-(--d-line-strong) p-0.5" role="radiogroup" aria-label="Preview size">
           {([['desktop', Monitor], ['mobile', Smartphone]] as const).map(([d, Icon]) => (
             <button key={d} type="button" role="radio" aria-checked={device === d} aria-label={d === 'desktop' ? 'Desktop' : 'Phone'} onClick={() => setDevice(d)}
-              className={cn('grid size-6 place-items-center rounded', device === d ? 'bg-white/10 text-white' : muted)}><Icon className="size-3.5" /></button>
+              className={cn('grid size-6 place-items-center rounded', device === d ? 'bg-(--d-tint-4) text-(--d-strong)' : muted)}><Icon className="size-3.5" /></button>
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[170px_minmax(0,1fr)_200px]">
         {/* Sections */}
-        <div className="border-b border-white/[0.06] p-2.5 lg:border-r lg:border-b-0">
-          <p className="mb-1.5 px-1 text-[#f7f8f8]">Home page</p>
+        <div className="border-b border-(--d-line-2) p-2.5 lg:border-r lg:border-b-0">
+          <p className="mb-1.5 px-1 text-(--d-fg)">Home page</p>
           <ul className="flex gap-1 overflow-x-auto lg:block lg:space-y-0.5 [scrollbar-width:none]">
             {state.sections.map((x, i) => (
               <li key={x.id} className="group relative shrink-0">
                 <button type="button" onClick={() => dispatch({ type: 'select', id: x.id })} aria-pressed={x.id === state.selected}
                   className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-                    x.id === state.selected ? 'bg-[#2142e7] text-white' : 'text-[#8a8f98] hover:bg-white/[0.05] hover:text-[#d0d6e0]', x.hidden && 'opacity-50')}>
+                    x.id === state.selected ? 'bg-[#2142e7] text-white' : 'text-(--d-muted) hover:bg-(--d-tint-3) hover:text-(--d-fg2)', x.hidden && 'opacity-50')}>
                   <LayoutGrid className="size-3 shrink-0" /><span className="truncate">{NAMES[x.kind]}</span>
                 </button>
                 <span className="absolute top-1/2 right-1 hidden -translate-y-1/2 items-center gap-0.5 lg:group-hover:flex">
@@ -122,12 +122,12 @@ export function ThemeEditorDemo() {
               </li>
             ))}
             <li className="relative shrink-0">
-              <button type="button" onClick={() => setAdding(!adding)} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[#7b8fff] hover:bg-white/[0.04]"><Plus className="size-3" /> Add section</button>
+              <button type="button" onClick={() => setAdding(!adding)} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-(--d-info) hover:bg-(--d-tint-2)"><Plus className="size-3" /> Add section</button>
               {adding && (
-                <div className="absolute top-full left-0 z-10 mt-1 w-36 rounded-lg border border-white/10 bg-[#16171a] p-1 shadow-xl">
+                <div className="absolute top-full left-0 z-10 mt-1 w-36 rounded-lg border border-(--d-line-strong) bg-(--d-pop) p-1 shadow-xl">
                   {ADDABLE.map((k) => (
                     <button key={k} type="button" onClick={() => { dispatch({ type: 'add', kind: k }); setAdding(false) }}
-                      className="block w-full rounded-md px-2 py-1.5 text-left text-[#d0d6e0] hover:bg-white/[0.06]">{NAMES[k]}</button>
+                      className="block w-full rounded-md px-2 py-1.5 text-left text-(--d-fg2) hover:bg-(--d-tint-3)">{NAMES[k]}</button>
                   ))}
                 </div>
               )}
@@ -136,7 +136,7 @@ export function ThemeEditorDemo() {
         </div>
 
         {/* Preview */}
-        <div className="bg-[#1a1b1e] p-3">
+        <div className="bg-(--d-canvas) p-3">
           <div className={cn('mx-auto overflow-hidden bg-white transition-[max-width] duration-500', device === 'mobile' ? 'max-w-[280px] rounded-[18px] ring-4 ring-black' : 'max-w-full')}>
             {state.sections.filter((x) => !x.hidden).map((x) => (
               <Block key={x.id} name={NAMES[x.kind]} active={x.id === state.selected} onSelect={() => dispatch({ type: 'select', id: x.id })}>
@@ -147,17 +147,17 @@ export function ThemeEditorDemo() {
         </div>
 
         {/* Settings */}
-        <div className="space-y-2.5 border-t border-white/[0.06] p-3 lg:border-t-0 lg:border-l">
+        <div className="space-y-2.5 border-t border-(--d-line-2) p-3 lg:border-t-0 lg:border-l">
           {current ? (
             <>
               <div className="flex items-center gap-2">
-                <p className="text-[#f7f8f8]">{NAMES[current.kind]}</p>
+                <p className="text-(--d-fg)">{NAMES[current.kind]}</p>
                 {!START.includes(current.id as Kind) && (
-                  <button type="button" aria-label="Remove section" onClick={() => dispatch({ type: 'remove', id: current.id })} className="ml-auto text-[#8a8f98] hover:text-[#eb5757]"><Trash2 className="size-3.5" /></button>
+                  <button type="button" aria-label="Remove section" onClick={() => dispatch({ type: 'remove', id: current.id })} className="ml-auto text-(--d-muted) hover:text-(--d-bad)"><Trash2 className="size-3.5" /></button>
                 )}
               </div>
               <Settings section={current} set={set} />
-              <label className="flex items-center gap-2 pt-1 text-[#8a8f98]">
+              <label className="flex items-center gap-2 pt-1 text-(--d-muted)">
                 <input type="checkbox" checked={!current.hidden} onChange={() => dispatch({ type: 'toggle', id: current.id })} className="accent-[#2142e7]" /> Show on the page
               </label>
             </>
@@ -281,7 +281,7 @@ function Settings({ section: x, set }: { section: Section; set: (key: string, va
       return <>
         <Text label="Title" value={String(s.title)} onChange={(v) => set('title', v)} />
         <Range label="Products" value={Number(s.count)} min={2} max={8} step={2} onChange={(v) => set('count', v)} />
-        <label className="flex items-center gap-2 text-[#8a8f98]"><input type="checkbox" checked={Boolean(s.prices)} onChange={(e) => set('prices', e.target.checked)} className="accent-[#2142e7]" /> Show prices</label>
+        <label className="flex items-center gap-2 text-(--d-muted)"><input type="checkbox" checked={Boolean(s.prices)} onChange={(e) => set('prices', e.target.checked)} className="accent-[#2142e7]" /> Show prices</label>
       </>
     case 'richtext':
       return <>
@@ -293,11 +293,11 @@ function Settings({ section: x, set }: { section: Section; set: (key: string, va
   }
 }
 
-const field = 'mt-1 w-full rounded-md border border-white/10 bg-transparent px-2 py-1.5 text-[#f7f8f8] outline-none focus:border-[#2142e7]'
+const field = 'mt-1 w-full rounded-md border border-(--d-line-strong) bg-transparent px-2 py-1.5 text-(--d-fg) outline-none focus:border-[#2142e7]'
 
 function Text({ label, value, onChange, long }: { label: string; value: string; onChange: (v: string) => void; long?: boolean }) {
   return (
-    <label className="block text-[#8a8f98]">{label}
+    <label className="block text-(--d-muted)">{label}
       {long ? <textarea value={value} rows={3} maxLength={160} onChange={(e) => onChange(e.target.value)} className={cn(field, 'resize-none')} />
         : <input value={value} maxLength={60} onChange={(e) => onChange(e.target.value)} className={field} />}
     </label>
@@ -306,8 +306,8 @@ function Text({ label, value, onChange, long }: { label: string; value: string; 
 
 function Range({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
   return (
-    <label className="block text-[#8a8f98]">
-      <span className="flex justify-between">{label}<span className="tabular-nums text-[#d0d6e0]">{value}</span></span>
+    <label className="block text-(--d-muted)">
+      <span className="flex justify-between">{label}<span className="tabular-nums text-(--d-fg2)">{value}</span></span>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1.5 w-full accent-[#2142e7]" />
     </label>
   )
@@ -315,11 +315,11 @@ function Range({ label, value, min, max, step = 1, onChange }: { label: string; 
 
 function Chips({ label, value, options, onChange }: { label: string; value: string; options: Array<[string, string]>; onChange: (v: string) => void }) {
   return (
-    <div className="text-[#8a8f98]">{label}
+    <div className="text-(--d-muted)">{label}
       <div className="mt-1 flex flex-wrap gap-1" role="radiogroup" aria-label={label}>
         {options.map(([v, l]) => (
           <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
-            className={cn('rounded-md border px-2 py-1', value === v ? 'border-[#2142e7] bg-[#2142e7]/15 text-white' : 'border-white/10 hover:text-[#d0d6e0]')}>{l}</button>
+            className={cn('rounded-md border px-2 py-1', value === v ? 'border-[#2142e7] bg-[#2142e7]/15 text-(--d-strong)' : 'border-(--d-line-strong) hover:text-(--d-fg2)')}>{l}</button>
         ))}
       </div>
     </div>

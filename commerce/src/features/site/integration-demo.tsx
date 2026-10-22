@@ -66,7 +66,7 @@ function reducer(s: State, a: Action): State {
   }
 }
 
-const muted = 'text-[#8a8f98]'
+const muted = 'text-(--d-muted)'
 
 export function IntegrationDemo() {
   const [s, dispatch] = useReducer(reducer, { platform: 'SHOPIFY', path: 'RETURNED', step: 0, playing: false })
@@ -85,21 +85,21 @@ export function IntegrationDemo() {
   const active = (l: Lane) => step.from === l || step.to === l
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0f1011] text-[12px] shadow-[0_30px_80px_-20px_rgb(0_0_0/.8)]">
+    <div className="overflow-hidden rounded-xl border border-(--d-line) bg-(--d-panel) text-[12px] text-(--d-fg2) shadow-(--d-shadow-soft)">
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] px-3 py-2.5">
-        <div className="flex rounded-lg border border-white/10 p-0.5" role="radiogroup" aria-label="Store">
+      <div className="flex flex-wrap items-center gap-2 border-b border-(--d-line-2) px-3 py-2.5">
+        <div className="flex rounded-lg border border-(--d-line-strong) p-0.5" role="radiogroup" aria-label="Store">
           {(['SHOPIFY', 'WOOCOMMERCE'] as const).map((p) => (
             <button key={p} type="button" role="radio" aria-checked={s.platform === p} onClick={() => dispatch({ type: 'platform', platform: p })}
-              className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1', s.platform === p ? 'bg-white/10 text-white' : muted)}>
+              className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1', s.platform === p ? 'bg-(--d-tint-4) text-(--d-strong)' : muted)}>
               {p === 'SHOPIFY' ? <ShopifyLogo className="size-4" /> : <WooLogo className="h-3.5 w-5" />}{p === 'SHOPIFY' ? 'Shopify' : 'WooCommerce'}
             </button>
           ))}
         </div>
-        <div className="flex rounded-lg border border-white/10 p-0.5" role="radiogroup" aria-label="What happens to the parcel">
+        <div className="flex rounded-lg border border-(--d-line-strong) p-0.5" role="radiogroup" aria-label="What happens to the parcel">
           {([['DELIVERED', 'Delivered'], ['RETURNED', 'Returned (RTS)']] as const).map(([p, l]) => (
             <button key={p} type="button" role="radio" aria-checked={s.path === p} onClick={() => dispatch({ type: 'path', path: p })}
-              className={cn('rounded-md px-2.5 py-1', s.path === p ? 'bg-white/10 text-white' : muted)}>{l}</button>
+              className={cn('rounded-md px-2.5 py-1', s.path === p ? 'bg-(--d-tint-4) text-(--d-strong)' : muted)}>{l}</button>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-1">
@@ -124,23 +124,23 @@ export function IntegrationDemo() {
         </Panel>
         <Wire lanes={lanes} from={step.from} to={step.to} at={0} stepKey={`${s.path}-${s.step}`} />
         <Panel lit={active('app')} title="Fullfilio" icon={<LogoMark className="size-4" />}>
-          <p key={v.app.status} className="animate-[enter_.3s_ease-out] text-[15px] font-medium text-white">{v.app.status}</p>
+          <p key={v.app.status} className="animate-[enter_.3s_ease-out] text-[15px] font-medium text-(--d-strong)">{v.app.status}</p>
           <p key={v.app.detail} className={cn('mt-1 animate-[enter_.3s_ease-out]', muted)}>{v.app.detail}</p>
         </Panel>
         <Wire lanes={lanes} from={step.from} to={step.to} at={1} stepKey={`${s.path}-${s.step}`} />
-        <Panel lit={active('courier')} title="Courier · Steadfast" icon={<Truck className="size-4 text-[#d0d6e0]" />}>
-          <p key={v.courier.status} className="animate-[enter_.3s_ease-out] text-[15px] font-medium text-white">{v.courier.status}</p>
+        <Panel lit={active('courier')} title="Courier · Steadfast" icon={<Truck className="size-4 text-(--d-fg2)" />}>
+          <p key={v.courier.status} className="animate-[enter_.3s_ease-out] text-[15px] font-medium text-(--d-strong)">{v.courier.status}</p>
           {v.courier.detail && <p className={cn('mt-1 font-mono text-[11px]', muted)}>{v.courier.detail}</p>}
         </Panel>
       </div>
 
       {/* Steps */}
-      <ol className="grid gap-1 border-t border-white/[0.06] p-3 sm:grid-cols-2 lg:grid-cols-4">
+      <ol className="grid gap-1 border-t border-(--d-line-2) p-3 sm:grid-cols-2 lg:grid-cols-4">
         {steps.map((st, i) => (
           <li key={i}>
             <button type="button" onClick={() => dispatch({ type: 'step', step: i })} aria-current={i === s.step ? 'step' : undefined}
-              className={cn('flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors', i === s.step ? 'bg-white/[0.06] text-white' : i < s.step ? 'text-[#d0d6e0]' : muted, 'hover:bg-white/[0.04]')}>
-              <span className={cn('mt-px grid size-4 shrink-0 place-items-center rounded-full text-[9px] tabular-nums', i <= s.step ? 'bg-[#2142e7] text-white' : 'border border-white/15')}>{i + 1}</span>
+              className={cn('flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors', i === s.step ? 'bg-(--d-tint-3) text-(--d-strong)' : i < s.step ? 'text-(--d-fg2)' : muted, 'hover:bg-(--d-tint-2)')}>
+              <span className={cn('mt-px grid size-4 shrink-0 place-items-center rounded-full text-[9px] tabular-nums', i <= s.step ? 'bg-[#2142e7] text-white' : 'border border-(--d-line-x)')}>{i + 1}</span>
               {st.title(storeName)}
             </button>
           </li>
@@ -153,27 +153,27 @@ export function IntegrationDemo() {
 function IconBtn({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" aria-label={label} disabled={disabled} onClick={onClick}
-      className="grid size-7 place-items-center rounded-md border border-white/10 text-[#d0d6e0] hover:bg-white/[0.05] disabled:opacity-30 [&_svg]:size-3.5">{children}</button>
+      className="grid size-7 place-items-center rounded-md border border-(--d-line-strong) text-(--d-fg2) hover:bg-(--d-tint-3) disabled:opacity-30 [&_svg]:size-3.5">{children}</button>
   )
 }
 
 function Panel({ lit, title, icon, children }: { lit: boolean; title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className={cn('rounded-lg border p-3 transition-[border-color,background-color,box-shadow] duration-300',
-      lit ? 'border-[#2142e7]/60 bg-[#2142e7]/[0.06] shadow-[0_0_0_3px_rgb(33_66_231/.12)]' : 'border-white/[0.08]')}>
-      <p className="mb-2 flex items-center gap-2 text-[11px] tracking-wide text-[#d0d6e0] uppercase">{icon}{title}</p>
+      lit ? 'border-[#2142e7]/60 bg-[#2142e7]/[0.06] shadow-[0_0_0_3px_rgb(33_66_231/.12)]' : 'border-(--d-line)')}>
+      <p className="mb-2 flex items-center gap-2 text-[11px] tracking-wide text-(--d-fg2) uppercase">{icon}{title}</p>
       {children}
     </div>
   )
 }
 
-const TONE = { ok: 'text-[#4cb782]', bad: 'text-[#eb5757]', wait: 'text-[#f2c94c]', info: 'text-[#7b8fff]' } as const
+const TONE = { ok: 'text-(--d-ok)', bad: 'text-(--d-bad)', wait: 'text-(--d-warn)', info: 'text-(--d-info)' } as const
 
 function Row({ k, v, tone }: { k: string; v: string; tone?: keyof typeof TONE }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-white/[0.05] py-1.5 last:border-0">
+    <div className="flex items-center justify-between gap-2 border-b border-(--d-line-3) py-1.5 last:border-0">
       <span className={muted}>{k}</span>
-      <span key={v} className={cn('animate-[enter_.3s_ease-out] text-right text-white', tone && TONE[tone])}>{v}</span>
+      <span key={v} className={cn('animate-[enter_.3s_ease-out] text-right text-(--d-strong)', tone && TONE[tone])}>{v}</span>
     </div>
   )
 }
@@ -186,9 +186,9 @@ function Wire({ lanes, from, to, at, stepKey }: { lanes: Lane[]; from: Lane; to:
   const forward = b > a
   return (
     <div className="flex items-center justify-center md:w-14" aria-hidden>
-      <div className="relative h-8 w-px bg-white/10 md:h-px md:w-full">
+      <div className="relative h-8 w-px bg-(--d-tint-4) md:h-px md:w-full">
         {crosses && (
-          <span key={stepKey} className={cn('absolute size-2 rounded-full bg-[#7b8fff] shadow-[0_0_12px_#7b8fff]',
+          <span key={stepKey} className={cn('absolute size-2 rounded-full bg-(--d-info) shadow-[0_0_12px_var(--d-info)]',
             'left-[-3.5px] md:top-[-3.5px] md:left-auto',
             forward ? 'animate-[wire-down_1.1s_ease-in-out_infinite] md:animate-[wire-right_1.1s_ease-in-out_infinite]' : 'animate-[wire-up_1.1s_ease-in-out_infinite] md:animate-[wire-left_1.1s_ease-in-out_infinite]')} />
         )}

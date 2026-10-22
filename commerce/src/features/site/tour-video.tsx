@@ -18,7 +18,7 @@ export function TourVideo({ className }: { className?: string }) {
   }
 
   return (
-    <div className={cn('relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0f1011] shadow-[0_30px_80px_-20px_rgb(0_0_0/.8)]', className)}>
+    <div className={cn('relative overflow-hidden rounded-2xl border border-(--d-line) bg-(--d-panel) shadow-(--d-shadow-soft)', className)}>
       {/* MP4 for Safari and most browsers, WebM where H.264 is missing. */}
       <video ref={video} poster={POSTER} preload="none" playsInline controls={playing} onEnded={() => setPlaying(false)}
         className="aspect-video w-full bg-[#eef2fb] object-cover" aria-label="Fullfilio product tour">
