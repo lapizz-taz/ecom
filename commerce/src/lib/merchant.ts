@@ -117,6 +117,19 @@ export function currentSite(): SiteInfo {
 }
 
 /** The router's base path: "/s/<name>" for a store opened by path, else "". */
+/**
+ * A browser-storage key for the store on this page. Stores opened by path (/s/<name>) share the
+ * platform's origin, so their keys carry the store name: one store never reads another's cart,
+ * visitor id, ad clicks or last order. On a store's own domain the key is the plain name. The
+ * plain key on a path store is an old, shared one and is dropped.
+ */
+export function storeKey(name: string): string {
+  const slug = storeSlugInPath()
+  if (!slug) return name
+  try { localStorage.removeItem(name); sessionStorage.removeItem(name) } catch { /* storage off */ }
+  return `${name}@${slug}`
+}
+
 export function storeBasename(): string {
   const slug = storeSlugInPath()
   return slug ? `/s/${slug}` : ''

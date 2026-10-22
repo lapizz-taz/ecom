@@ -17,7 +17,7 @@
 import { functionHeaders } from '@/lib/functions'
 import { functionsUrl } from '@/lib/env'
 import { lastClickIds, visitorId } from '@/lib/attribution'
-import { currentSite, merchantFetch } from '@/lib/merchant'
+import { currentSite, merchantFetch, storeKey } from '@/lib/merchant'
 import type { AdLine, AdPurchase, StoreAdConfig } from '@/services/storefront'
 
 export type { AdLine, AdPurchase, StoreAdConfig }
@@ -324,7 +324,7 @@ async function serverCopy(event: FunnelEvent, id: string, d: AdEventData) {
 // happen is the same action fired twice with two ids (a page drawn twice, a reload of the checkout,
 // a double tap): each event has a key and a window, kept for the visit (sessionStorage).
 
-const ONCE_KEY = 'ff_ev_once'
+const ONCE_KEY = storeKey('ff_ev_once')
 const MIN = 60_000
 function onceRule(event: FunnelEvent, d: AdEventData): [string, number] | null {
   const ids = (d.contents ?? []).map((c) => `${c.id}x${c.quantity}`).sort().join(',')
@@ -368,9 +368,9 @@ export function adPurchase(p: AdPurchase | null | undefined) {
   if (!p || typeof window === 'undefined') return
   // One order, one browser Purchase (the server sends its copy once per order, by the same id).
   try {
-    const sent = JSON.parse(localStorage.getItem('ff_pu_sent') ?? '[]') as string[]
+    const sent = JSON.parse(localStorage.getItem(storeKey('ff_pu_sent')) ?? '[]') as string[]
     if (Array.isArray(sent) && sent.includes(p.event_id)) return
-    localStorage.setItem('ff_pu_sent', JSON.stringify([...(Array.isArray(sent) ? sent : []), p.event_id].slice(-30)))
+    localStorage.setItem(storeKey('ff_pu_sent'), JSON.stringify([...(Array.isArray(sent) ? sent : []), p.event_id].slice(-30)))
   } catch { /* no storage: still once per page */ }
   whenReady(() => {
     if (!cfg || cfg.browser_events === false) return

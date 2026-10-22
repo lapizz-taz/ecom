@@ -78,6 +78,10 @@ export interface SocketState {
   exp: number
   subs: Sub[]
   next: number
+  /** When the socket was opened (ms), and whether it has joined a channel: unjoined sockets are
+   *  closed after a short wait and visitors' after a while (database.ts alarm). */
+  at?: number
+  joined?: boolean
 }
 
 export type VerifyToken = (token: string) => Promise<{ uid: string; sid: string; exp: number } | null>
@@ -100,6 +104,7 @@ export async function handle(state: SocketState, m: Message, verify: VerifyToken
   if (m.topic === 'phoenix' && m.event === 'heartbeat') return [reply(m, 'ok')]
   if (m.event === 'phx_join') {
     if (!(await useToken(state, m.payload.access_token, verify))) return [reply(m, 'error', { reason: 'Invalid token' })]
+    state.joined = true
     const config = (m.payload.config ?? {}) as { postgres_changes?: Array<{ event?: string; schema?: string; table?: string; filter?: string }> }
     state.subs = state.subs.filter((s) => s[0] !== m.topic)
     const bindings = (config.postgres_changes ?? []).map((b) => {

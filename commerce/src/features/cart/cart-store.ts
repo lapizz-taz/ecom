@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { storeKey } from '@/lib/merchant'
 
 // The cart only remembers what the customer picked. Prices shown here are a
 // preview; the server recalculates everything at checkout.
@@ -60,7 +61,8 @@ export const useCart = create<CartState>()(
       setCoupon: (code) => set({ couponCode: code.trim().toUpperCase() }),
       setOpen: (open) => set({ isOpen: open }),
     }),
-    { name: 'cart-v1', partialize: (s) => ({ items: s.items, couponCode: s.couponCode }) },
+    // One cart per store (storeKey: stores opened by path share the platform's origin).
+    { name: storeKey('cart-v1'), partialize: (s) => ({ items: s.items, couponCode: s.couponCode }) },
   ),
 )
 

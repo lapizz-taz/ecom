@@ -8,6 +8,8 @@
 // Both travel with the order; the server classifies them (Facebook Ads,
 // Organic, Direct, …) — the browser never decides the source on its own.
 
+import { storeKey } from '@/lib/merchant'
+
 export interface Touch {
   at: string
   landing: string
@@ -30,9 +32,10 @@ const TOUCH_PARAMS = [
   'campaign_id', 'adset_id', 'ad_id', 'campaign_name', 'adset_name', 'ad_name', 'placement', 'site_source_name', 'ref',
 ] as const
 
-const KEY = 'sf_attr'
-const VISITOR_KEY = 'sf_vid'
-const SESSION_KEY = 'sf_sess'
+// Per store (storeKey): a click or visitor id from one store never travels with another store's order.
+const KEY = storeKey('sf_attr')
+const VISITOR_KEY = storeKey('sf_vid')
+const SESSION_KEY = storeKey('sf_sess')
 const FIRST_TOUCH_DAYS = 90
 const LAST_TOUCH_DAYS = 30
 const SESSION_MINUTES = 30

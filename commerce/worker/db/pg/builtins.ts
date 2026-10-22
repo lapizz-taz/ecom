@@ -101,23 +101,34 @@ const MAX_REGEX_PATTERN = 1000
 export function nestedQuantifier(pattern: string): boolean {
   const stack: Array<{ inner: boolean; alt: boolean }> = []
   // Open-ended repeats one after another with nothing fixed between them (\d*\d+\d*…): each
-  // can take any share of the input, so a failing match tries every split.
+  // can take any share of the input, so a failing match tries every split. Only a fixed-width
+  // atom (no quantifier, or {n} with n >= 1) separates them: a{0}, \d? or \d{0,2} does not
+  // (security audit run 5: '\d*\d*\d*a{0}' repeated slipped through).
   let run = 0
-  const quantAt = (i: number): { unbounded: boolean; max: number } | null => {
+  // Every variable-width repeat (*, +, ?, {m,n} with m < n) multiplies the ways a failing match
+  // can split the input, bounded or not; a data-supplied pattern may have at most MAX_VARIABLE.
+  let variable = 0
+  const MAX_VARIABLE = 8
+  type Quant = { unbounded: boolean; min: number; max: number }
+  const quantAt = (i: number): Quant | null => {
     const c = pattern[i]
-    if (c === '*' || c === '+') return { unbounded: true, max: Infinity }
-    if (c === '?') return { unbounded: false, max: 1 }
+    if (c === '*') return { unbounded: true, min: 0, max: Infinity }
+    if (c === '+') return { unbounded: true, min: 1, max: Infinity }
+    if (c === '?') return { unbounded: false, min: 0, max: 1 }
     if (c === '{') {
       const m = /^\{(\d*)(,?)(\d*)\}/.exec(pattern.slice(i))
       if (!m) return null
-      if (m[2] && !m[3]) return { unbounded: true, max: Infinity }
-      return { unbounded: false, max: Number(m[3] || m[1] || 0) }
+      const min = Number(m[1] || 0)
+      if (m[2] && !m[3]) return { unbounded: true, min, max: Infinity }
+      return { unbounded: false, min, max: m[2] ? Number(m[3]) : min }
     }
     return null
   }
-  const quantified = (q: { unbounded: boolean; max: number } | null) => {
+  const quantified = (q: Quant | null) => {
+    if (q && q.max === 0) return false // matches nothing: neither a repeat nor a separator
+    if (q && q.max > q.min && ++variable > MAX_VARIABLE) return true
     if (q?.unbounded) return ++run > 3
-    if (!q || q.max !== 1) run = 0
+    if (!q || q.min === q.max) run = 0 // fixed width: a real separator
     return false
   }
   for (let i = 0; i < pattern.length; i++) {
@@ -164,7 +175,7 @@ export function noteLiteral(s: string): void {
 /** A Postgres (ARE) regular expression as a JavaScript one. */
 export function pgRegex(pattern: string, flags = ''): RegExp {
   if (pattern.length > MAX_REGEX_PATTERN) return err('2201B', `invalid regular expression: pattern too long (max ${MAX_REGEX_PATTERN})`)
-  if (!schemaLiterals.has(pattern) && nestedQuantifier(pattern)) return err('2201B', 'invalid regular expression: nested repetition (like (a+)+) or more than three open-ended repeats in a row is not allowed')
+  if (!schemaLiterals.has(pattern) && nestedQuantifier(pattern)) return err('2201B', 'invalid regular expression: nested repetition (like (a+)+), more than three open-ended repeats in a row or more than 8 variable repeats is not allowed')
   let p = pattern
   let f = flags.replace(/[^gi]/g, '')
   const embedded = /^\(\?([a-z]+)\)/.exec(p)

@@ -418,7 +418,12 @@ export default (
     const user = await optionalUser(req)
     const cron = !user && (await isCronRequest(req, adminClient()))
     if (!user && !cron) throw new HttpError(401, 'Please sign in', 'UNAUTHENTICATED')
-    const body = await readJson(req, cron ? 64 * 1024 : MAX_FILE_BASE64 + 64 * 1024)
+    // Staff come before the body too: a signed-in shopper or other account is refused unread, and
+    // only staff who may send replies (a file) get the upload's size; everyone else 64 KB.
+    // (Security audit run 5: any account could have a 14 MB body read before the staff check.)
+    const pre = user ? await requireStaff(req, 'inbox.view') : null
+    const uploads = !!pre && (pre.role === 'OWNER' || pre.permissions.includes('inbox.reply'))
+    const body = await readJson(req, uploads ? MAX_FILE_BASE64 + 64 * 1024 : 64 * 1024)
     if ((body as { action?: unknown } | null)?.action === 'automation_cron') {
       if (!cron) throw new HttpError(401, 'Only the scheduler may run this', 'UNAUTHORIZED')
       return json(req, await automationCron())

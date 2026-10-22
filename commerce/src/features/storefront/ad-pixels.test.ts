@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const merchantFetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{}', { status: 202 }))
 const site = { kind: 'store', merchant_id: 'aaaaaaaa-0000-4000-8000-000000000001' as string | null }
-vi.mock('@/lib/merchant', () => ({ merchantFetch, currentSite: () => site }))
+vi.mock('@/lib/merchant', () => ({ merchantFetch, currentSite: () => site, storeKey: (name: string) => name }))
 vi.mock('@/lib/functions', () => ({ functionHeaders: async () => ({ apikey: 'anon', Authorization: 'Bearer anon' }) }))
 vi.mock('@/lib/env', () => ({ functionsUrl: (n: string) => `https://fn.example.com/${n}` }))
 

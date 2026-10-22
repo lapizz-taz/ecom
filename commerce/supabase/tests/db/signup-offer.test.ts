@@ -434,11 +434,12 @@ describe('choosing another plan before the first payment', () => {
       await asUser(db, m.id, m.email, m.merchant)
       await expectError(db, `select public.billing_choose_plan('STARTER')`, [], /already on the Starter plan/)
 
-      // Paid: open; a later plan change is the usual one (paid at the plan's price).
+      // Paid: open; a later plan change is paid at the plan's price, with the one-time setup fee
+      // while it is still due (security audit run 5: else switching plans each period skipped it).
       expect(await pay(db, m.merchant, r.activation_invoice_id, 99)).toBe('succeeded')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
       await asUser(db, m.id, m.email, m.merchant)
-      expect(await value(db, `select public.billing_choose_plan('GROWTH')`)).toMatchObject({ applied: false, total: 2490 })
+      expect(await value(db, `select public.billing_choose_plan('GROWTH')`)).toMatchObject({ applied: false, total: 2490 + 1000 })
     }))
 
   it('not while a payment was just started', () =>

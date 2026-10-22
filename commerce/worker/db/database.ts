@@ -19,6 +19,20 @@ import { authAdmin, type AuthAdminRequest } from './users.ts'
 export type { Caller }
 
 const MAX_SOCKETS = 5000
+// Sockets cannot be held forever (security audit run 5): one that has not joined a channel within
+// JOIN_DEADLINE is closed, a visitor's (no sign-in) after VISITOR_LIFETIME (the client reconnects),
+// and at most MAX_VISITOR_SOCKETS visitors' sockets are joined at once.
+const JOIN_DEADLINE_MS = 30_000
+const VISITOR_LIFETIME_MS = 30 * 60_000
+const MAX_VISITOR_SOCKETS = 1000
+
+function close(ws: WebSocket, reason: string): void {
+  try {
+    ws.close(1008, reason)
+  } catch {
+    // already closed
+  }
+}
 
 export class Database extends DurableObject {
   protected readonly sql: Sql
@@ -102,8 +116,9 @@ export class Database extends DurableObject {
     const pair = new WebSocketPair()
     const [client, server] = Object.values(pair)
     this.ctx.acceptWebSocket(server, [`ip:${owner.key}`])
-    const state: SocketState = { vsn: url.searchParams.get('vsn') ?? '1.0.0', uid: null, sid: null, exp: 0, subs: [], next: 0 }
+    const state: SocketState = { vsn: url.searchParams.get('vsn') ?? '1.0.0', uid: null, sid: null, exp: 0, subs: [], next: 0, at: Date.now(), joined: false }
     server.serializeAttachment(state)
+    await this.sweepLater()
     return new Response(null, { status: 101, webSocket: client })
   }
 
@@ -115,6 +130,35 @@ export class Database extends DurableObject {
     const replies = await live.handle(state, m, (token) => this.verifyLiveToken(token))
     ws.serializeAttachment(state)
     for (const r of replies) ws.send(live.encode(r, state.vsn))
+    if (state.joined && !state.uid && this.visitorSockets() > MAX_VISITOR_SOCKETS) close(ws, 'Too many live connections')
+  }
+
+  private visitorSockets(): number {
+    let n = 0
+    for (const ws of this.ctx.getWebSockets()) {
+      const st = ws.deserializeAttachment() as SocketState | null
+      if (st?.joined && !st.uid) n++
+    }
+    return n
+  }
+
+  private async sweepLater(): Promise<void> {
+    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + JOIN_DEADLINE_MS)
+  }
+
+  /** Closes sockets that never joined, and visitors' sockets past their lifetime. */
+  async alarm(): Promise<void> {
+    const now = Date.now()
+    let open = 0
+    for (const ws of this.ctx.getWebSockets()) {
+      const st = ws.deserializeAttachment() as SocketState | null
+      const at = st?.at ?? now // sockets from before this rule start their clock now
+      if (st && st.at === undefined) ws.serializeAttachment({ ...st, at: now, joined: st.joined ?? st.subs.length > 0 })
+      const stale = !st || (!(st.joined ?? st.subs.length > 0) ? now - at > JOIN_DEADLINE_MS : !st.uid && now - at > VISITOR_LIFETIME_MS)
+      if (stale) close(ws, 'Live connection timed out')
+      else open++
+    }
+    if (open) await this.ctx.storage.setAlarm(now + JOIN_DEADLINE_MS)
   }
 
   /** A session access token (tokens.ts) of an account that is not blocked; null otherwise. */
