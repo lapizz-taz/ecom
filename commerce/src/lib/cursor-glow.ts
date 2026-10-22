@@ -10,6 +10,9 @@ function place(el: HTMLElement, e: PointerEvent) {
   const r = el.getBoundingClientRect()
   el.style.setProperty('--glow-x', `${Math.round(e.clientX - r.left)}px`)
   el.style.setProperty('--glow-y', `${Math.round(e.clientY - r.top)}px`)
+  // A spot about one and a half times the button's height, so it reads as a light on a small
+  // button and does not wash out a big one.
+  el.style.setProperty('--glow-r', `${Math.round(Math.min(80, Math.max(36, r.height * 1.5)))}px`)
 }
 
 const glowAt = (e: PointerEvent) => (e.target as Element | null)?.closest?.(GLOW) as HTMLElement | null
