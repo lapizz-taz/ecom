@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CART_SAMPLE, QuantityStepper } from '@/features/cart/cart-drawer'
 import { useCart } from '@/features/cart/cart-store'
-import { useCartQuote } from '@/features/cart/use-cart-quote'
+import { cartBlocker, useCartQuote } from '@/features/cart/use-cart-quote'
 import { useCartRestore } from '@/features/cart/use-cart-sync'
 import { SectionFrame } from '@/features/storefront/sections'
-import { CART_PAGE_WIDTHS, isThemePreview, onColor } from '@/features/storefront/theme'
+import { CART_PAGE_WIDTHS, CART_TEXT_DEFAULTS, isThemePreview, onColor } from '@/features/storefront/theme'
 import { useStoreTheme } from '@/features/storefront/theme-context'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
@@ -27,6 +27,7 @@ export default function CartPage() {
   const quote = useCartQuote(cartItems, couponCode)
   const [coupon, setCouponInput] = useState(couponCode)
   const problems = new Map((quote.data?.stock_errors ?? []).map((e) => [e.variant_id, e.message]))
+  const blocker = sample ? null : cartBlocker(quote.error)
   const lines = new Map((quote.data?.lines ?? []).map((l) => [l.variant_id, l]))
   const couponState = quote.data?.coupon
   const restoring = useCartRestore()
@@ -36,6 +37,13 @@ export default function CartPage() {
   const photo: CSSProperties = { width: k.image_size, height: k.image_size, borderRadius: k.image_radius }
   const buttonBg = k.button_bg || theme.accent
   const button: CSSProperties = { background: buttonBg, color: k.button_text || onColor(buttonBg), borderRadius: k.button_radius }
+  // A coloured summary box gets text that reads on it (dark box → light text and fields).
+  const summaryText = k.summary_bg ? onColor(k.summary_bg) : ''
+  const summary = { borderRadius: k.summary_radius, ...(k.summary_bg && {
+    background: k.summary_bg, color: summaryText, '--foreground': summaryText,
+    '--muted-foreground': `color-mix(in srgb, ${summaryText} 65%, transparent)`, '--border': `color-mix(in srgb, ${summaryText} 18%, transparent)`,
+    '--input': `color-mix(in srgb, ${summaryText} 22%, transparent)`,
+  }) } as CSSProperties
 
   if (restoring) return <div className="px-4 py-24 text-center text-sm text-muted-foreground">Bringing back your cart…</div>
   if (!items.length) {
@@ -43,8 +51,8 @@ export default function CartPage() {
       <SectionFrame id="cart-page" label="Cart page">
         <div className="mx-auto flex max-w-md flex-col items-center gap-3 px-4 py-24 text-center">
           <ShoppingBag className="size-10 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">{k.empty_title}</h1>
-          <Button asChild style={button}><Link to="/shop">{k.empty_button}</Link></Button>
+          <h1 className="text-xl font-semibold">{k.empty_title || CART_TEXT_DEFAULTS.empty_title}</h1>
+          <Button asChild style={button}><Link to="/shop">{k.empty_button || CART_TEXT_DEFAULTS.empty_button}</Link></Button>
         </div>
       </SectionFrame>
     )
@@ -87,12 +95,12 @@ export default function CartPage() {
             })}
           </ul>
 
-          <div className={cn('h-fit space-y-4 p-5', k.summary_border && 'border')} style={{ borderRadius: k.summary_radius, background: k.summary_bg || undefined }}>
+          <div className={cn('h-fit space-y-4 p-5', k.summary_border && 'border')} style={summary}>
             {k.summary_title && <h2 className="text-base font-semibold">{k.summary_title}</h2>}
             {k.show_coupon && (
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); setCoupon(coupon) }}>
                 <Input value={coupon} onChange={(e) => setCouponInput(e.target.value.toUpperCase())} placeholder="Coupon code" aria-label="Coupon code" />
-                <Button type="submit" variant="outline">{k.coupon_button}</Button>
+                <Button type="submit" variant="outline">{k.coupon_button || CART_TEXT_DEFAULTS.coupon}</Button>
               </form>
             )}
             {couponCode && couponState && (
@@ -108,9 +116,11 @@ export default function CartPage() {
               )}
               <div className="flex justify-between"><dt className="text-muted-foreground">Delivery</dt><dd className="text-muted-foreground">Calculated at checkout</dd></div>
             </dl>
-            <Button asChild size="lg" className="w-full" style={button} disabled={problems.size > 0}>
-              <Link to="/checkout">{k.button_lock_icon && <Lock />}{k.button_label}</Link>
-            </Button>
+            {/* A link can't be disabled: while an item can't be bought, it's a disabled button. */}
+            {blocker && <p role="alert" className="text-sm text-destructive">{blocker}</p>}
+            {problems.size > 0 || blocker
+              ? <Button type="button" size="lg" className="w-full" style={button} disabled>{k.button_lock_icon && <Lock />}{k.button_label || CART_TEXT_DEFAULTS.button}</Button>
+              : <Button asChild size="lg" className="w-full" style={button}><Link to="/checkout">{k.button_lock_icon && <Lock />}{k.button_label || CART_TEXT_DEFAULTS.button}</Link></Button>}
             {k.note && <p className="text-center text-xs text-muted-foreground">{k.note}</p>}
           </div>
         </div>

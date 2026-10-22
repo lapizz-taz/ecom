@@ -666,20 +666,20 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
     return (
       <>
         <PanelGroup>Content</PanelGroup>
-        <FieldRow label="Title"><input className={inputClass} value={k.title} placeholder="Cart" onChange={(e) => set({ title: e.target.value })} /></FieldRow>
+        <FieldRow label="Title"><input className={inputClass} maxLength={40} value={k.title} placeholder="Cart" onChange={(e) => set({ title: e.target.value })} /></FieldRow>
         <FieldRow label="Free delivery progress bar" inline><Switch checked={k.free_shipping_bar} onCheckedChange={(v) => set({ free_shipping_bar: v })} /></FieldRow>
         {k.free_shipping_bar && (
           <>
-            <FieldRow label="While below the amount" hint="{amount} is what is still missing. The amount is set in Settings → Delivery (free delivery over)."><input className={inputClass} value={k.free_shipping_text} onChange={(e) => set({ free_shipping_text: e.target.value })} /></FieldRow>
-            <FieldRow label="When reached"><input className={inputClass} value={k.unlocked_text} onChange={(e) => set({ unlocked_text: e.target.value })} /></FieldRow>
+            <FieldRow label="While below the amount" hint="{amount} is what is still missing. The amount is set in Settings → Delivery (free delivery over)."><input className={inputClass} maxLength={80} value={k.free_shipping_text} onChange={(e) => set({ free_shipping_text: e.target.value })} /></FieldRow>
+            <FieldRow label="When reached"><input className={inputClass} maxLength={80} value={k.unlocked_text} onChange={(e) => set({ unlocked_text: e.target.value })} /></FieldRow>
           </>
         )}
         <FieldRow label="“You may also like” products" inline><Switch checked={k.upsell} onCheckedChange={(v) => set({ upsell: v })} /></FieldRow>
-        {k.upsell && <FieldRow label="Heading"><input className={inputClass} value={k.upsell_title} onChange={(e) => set({ upsell_title: e.target.value })} /></FieldRow>}
+        {k.upsell && <FieldRow label="Heading"><input className={inputClass} maxLength={60} value={k.upsell_title} onChange={(e) => set({ upsell_title: e.target.value })} /></FieldRow>}
         <FieldRow label="Show savings" inline><Switch checked={k.show_savings} onCheckedChange={(v) => set({ show_savings: v })} /></FieldRow>
-        <FieldRow label="Note above the checkout button"><input className={inputClass} value={k.note} placeholder="e.g. Delivery in 1–3 days" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
+        <FieldRow label="Note above the checkout button"><input className={inputClass} maxLength={160} value={k.note} placeholder="e.g. Delivery in 1–3 days" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
         <FieldRow label="“View cart” link" inline><Switch checked={k.show_view_cart} onCheckedChange={(v) => set({ show_view_cart: v })} /></FieldRow>
-        <FieldRow label="Empty cart text"><input className={inputClass} value={k.empty_text} onChange={(e) => set({ empty_text: e.target.value })} /></FieldRow>
+        <FieldRow label="Empty cart text"><input className={inputClass} maxLength={120} value={k.empty_text} placeholder="Your cart is empty." onChange={(e) => set({ empty_text: e.target.value })} /></FieldRow>
 
         <PanelGroup>Layout</PanelGroup>
         <FieldRow label="Opens from"><SelectInput value={k.side} onChange={(v) => set({ side: v as 'left' | 'right' })} options={[{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }]} /></FieldRow>
@@ -705,7 +705,7 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
         <FieldRow label="Text size" hint="Of the theme's text size (Theme settings → Typography)."><RangeInput value={k.text_scale} min={CART_TEXT_SCALE.min} max={CART_TEXT_SCALE.max} step={5} unit="%" onChange={(v) => set({ text_scale: v })} /></FieldRow>
 
         <PanelGroup>Checkout button</PanelGroup>
-        <FieldRow label="Label"><input className={inputClass} value={k.button_label} placeholder="Checkout" onChange={(e) => set({ button_label: e.target.value })} /></FieldRow>
+        <FieldRow label="Label"><input className={inputClass} maxLength={40} value={k.button_label} placeholder="Checkout" onChange={(e) => set({ button_label: e.target.value })} /></FieldRow>
         <FieldRow label="Show the total" inline><Switch checked={k.button_show_total} onCheckedChange={(v) => set({ button_show_total: v })} /></FieldRow>
         <FieldRow label="Lock icon" inline><Switch checked={k.button_lock_icon} onCheckedChange={(v) => set({ button_lock_icon: v })} /></FieldRow>
         <FieldRow label="Button colour"><ThemeColor value={k.button_bg} fallback={theme.accent} onChange={(v) => set({ button_bg: v })} /></FieldRow>
@@ -721,14 +721,14 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
     return (
       <>
         <PanelGroup>Content</PanelGroup>
-        <FieldRow label="Title"><input className={inputClass} value={k.title} placeholder="Cart" onChange={(e) => set({ title: e.target.value })} /></FieldRow>
+        <FieldRow label="Title"><input className={inputClass} maxLength={40} value={k.title} placeholder="Cart" onChange={(e) => set({ title: e.target.value })} /></FieldRow>
         <FieldRow label="“Continue shopping” link" inline><Switch checked={k.show_continue} onCheckedChange={(v) => set({ show_continue: v })} /></FieldRow>
         <FieldRow label="Price of one (“each”)" inline><Switch checked={k.show_each_price} onCheckedChange={(v) => set({ show_each_price: v })} /></FieldRow>
         <FieldRow label="Coupon box" inline><Switch checked={k.show_coupon} onCheckedChange={(v) => set({ show_coupon: v })} /></FieldRow>
-        {k.show_coupon && <FieldRow label="Coupon button"><input className={inputClass} value={k.coupon_button} onChange={(e) => set({ coupon_button: e.target.value })} /></FieldRow>}
-        <FieldRow label="Note under the button"><input className={inputClass} value={k.note} placeholder="e.g. Cash on delivery available" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
-        <FieldRow label="Empty cart title"><input className={inputClass} value={k.empty_title} onChange={(e) => set({ empty_title: e.target.value })} /></FieldRow>
-        <FieldRow label="Empty cart button"><input className={inputClass} value={k.empty_button} onChange={(e) => set({ empty_button: e.target.value })} /></FieldRow>
+        {k.show_coupon && <FieldRow label="Coupon button"><input className={inputClass} maxLength={24} value={k.coupon_button} placeholder="Apply" onChange={(e) => set({ coupon_button: e.target.value })} /></FieldRow>}
+        <FieldRow label="Note under the button"><input className={inputClass} maxLength={120} value={k.note} placeholder="e.g. Cash on delivery available" onChange={(e) => set({ note: e.target.value })} /></FieldRow>
+        <FieldRow label="Empty cart title"><input className={inputClass} maxLength={60} value={k.empty_title} placeholder="Your cart is empty" onChange={(e) => set({ empty_title: e.target.value })} /></FieldRow>
+        <FieldRow label="Empty cart button"><input className={inputClass} maxLength={30} value={k.empty_button} placeholder="Start shopping" onChange={(e) => set({ empty_button: e.target.value })} /></FieldRow>
 
         <PanelGroup>Layout</PanelGroup>
         <FieldRow label="Summary"><SelectInput value={k.layout} onChange={(v) => set({ layout: v as 'side' | 'stacked' })}
@@ -740,13 +740,13 @@ function FixedSettings({ id, theme, setTheme, draft, setSf }: { id: string; them
         <FieldRow label="Quantity box corners"><RangeInput value={k.stepper_radius} min={0} max={24} unit="px" onChange={(v) => set({ stepper_radius: v })} /></FieldRow>
 
         <PanelGroup>Summary box</PanelGroup>
-        <FieldRow label="Heading" hint="e.g. Order summary. Empty: no heading."><input className={inputClass} value={k.summary_title} onChange={(e) => set({ summary_title: e.target.value })} /></FieldRow>
+        <FieldRow label="Heading" hint="e.g. Order summary. Empty: no heading."><input className={inputClass} maxLength={40} value={k.summary_title} onChange={(e) => set({ summary_title: e.target.value })} /></FieldRow>
         <FieldRow label="Background"><ThemeColor value={k.summary_bg} fallback={theme.colors.background} onChange={(v) => set({ summary_bg: v })} /></FieldRow>
         <FieldRow label="Border" inline><Switch checked={k.summary_border} onCheckedChange={(v) => set({ summary_border: v })} /></FieldRow>
         <FieldRow label="Corners"><RangeInput value={k.summary_radius} min={0} max={24} unit="px" onChange={(v) => set({ summary_radius: v })} /></FieldRow>
 
         <PanelGroup>Checkout button</PanelGroup>
-        <FieldRow label="Label"><input className={inputClass} value={k.button_label} placeholder="Checkout" onChange={(e) => set({ button_label: e.target.value })} /></FieldRow>
+        <FieldRow label="Label"><input className={inputClass} maxLength={40} value={k.button_label} placeholder="Checkout" onChange={(e) => set({ button_label: e.target.value })} /></FieldRow>
         <FieldRow label="Lock icon" inline><Switch checked={k.button_lock_icon} onCheckedChange={(v) => set({ button_lock_icon: v })} /></FieldRow>
         <FieldRow label="Button colour"><ThemeColor value={k.button_bg} fallback={theme.accent} onChange={(v) => set({ button_bg: v })} /></FieldRow>
         <FieldRow label="Button text" hint="Empty: white or black, whichever reads on the button."><ThemeColor value={k.button_text} fallback={onColor(k.button_bg || theme.accent)} onChange={(v) => set({ button_text: v })} /></FieldRow>

@@ -78,6 +78,12 @@ describe('ready-made themes', () => {
     expect(applyPreset(t, bloom).sections.map((s) => s.type)).toEqual(bloom.sections.map(([type]) => type))
   })
 
+  it('a preset brings its own corners, replacing an exact corner value', () => {
+    const t = applyPreset(resolveTheme({ theme: { radius_px: 3 } } as never), bloom)
+    expect(t.radius_px).toBeNull()
+    expect(t.radius).toBe('round')
+  })
+
   it('an unknown preset id from a saved theme is cleaned', () => {
     expect(resolveTheme({ theme: { preset: '<b>x</b>' } } as never).preset).toBe('')
   })

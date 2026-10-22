@@ -206,7 +206,14 @@ async function until(fn, ms = 15000) {
     await field('Opens from').locator('select').selectOption('left')
     await field('Width on computers').locator('select').selectOption('wide')
     await field('Background').locator('input.font-mono').fill('#fff7ed')
-    await field('Label').locator('input').fill('Place order')
+    // Clearing a text field keeps it empty while editing (it used to snap back to "Checkout"); the drawer shows the default meanwhile.
+    const labelInput = field('Label').locator('input')
+    await labelInput.click(); await labelInput.press('ControlOrMeta+a'); await labelInput.press('Backspace')
+    await page.waitForTimeout(300)
+    const cleared = await labelInput.inputValue()
+    const clearedDrawer = await until(async () => /Checkout/.test(await drawer().innerText()) || null, 5000)
+    await labelInput.pressSequentially('Place order', { delay: 10 })
+    step('a cleared text field stays empty while editing (the store shows "Checkout" until a new label is typed)', cleared === '' && !!clearedDrawer, JSON.stringify({ cleared }))
     await field('Button colour').locator('input.font-mono').fill('#ea580c')
     await field('Show the total').getByRole('switch').click()
     await field('Photo size').locator('input[type=range]').fill('112')
@@ -299,6 +306,41 @@ async function until(fn, ms = 15000) {
     await settle(page, /Products/, 20000)
     const adminPrimary = await page.locator('[data-slot="button"][data-variant="default"]').first().evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, text: el.textContent.trim() })).catch((e) => ({ img: String(e), text: '' }))
     step('admin primary buttons get the blue glow', /radial-gradient/.test(adminPrimary.img) && /rgb\(93, 170, 255\)/.test(adminPrimary.img), JSON.stringify(adminPrimary))
+
+    // Browsers without @property (older Safari/Firefox): the glow button must still be blue.
+    const css = await page.evaluate(() => [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.href).find((h) => /\/assets\/.*\.css/.test(h)))
+    const oldCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+    const oldPage = await oldCtx.newPage()
+    await oldPage.route('**/assets/*.css', async (r) => {
+      const res = await r.fetch()
+      await r.fulfill({ response: res, body: (await res.text()).replace(/@property\s+--glow-[axy]\s*\{[^}]*\}/g, '') })
+    })
+    await oldPage.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 60000 })
+    const oldCta = await oldPage.getByRole('link', { name: 'Start for free' }).first().evaluate((el) => getComputedStyle(el).backgroundImage).catch((e) => String(e))
+    await oldCtx.close()
+    step('without @property the glow button keeps its blue (no transparent button)', !!css && /rgb\(93, 170, 255\)/.test(oldCta), oldCta.slice(0, 160))
+
+    // The store's cart with more than is in stock: Checkout is a disabled button, not a link.
+    const sv = (await call('GET', `/rest/v1/product_variants?product_id=eq.${product.data?.id}&select=id`)).body?.[0]?.id
+    const sfNow = await call('GET', `/rest/v1/settings?merchant_id=eq.${M1}&key=eq.storefront&select=value`)
+    await call('PATCH', `/rest/v1/settings?merchant_id=eq.${M1}&key=eq.storefront`, { body: { value: { ...(sfNow.body?.[0]?.value ?? {}), mode: 'OWN' } } })
+    for (const [qty, expect, what] of [[15, /Only \d+ of Linen Shirt left in stock/, 'more than in stock'], [50, /You can order at most 20 of Linen Shirt/, 'over the per-order limit']]) {
+      const sctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+      const spage = await sctx.newPage()
+      await spage.addInitScript(([v, n]) => localStorage.setItem('cart-v1', JSON.stringify({ state: { items: [{ variantId: v, productId: 'p', slug: 'linen-shirt', name: 'Linen Shirt', variantTitle: null, price: 1250, image: null, quantity: n, maxQuantity: n }], couponCode: '' }, version: 0 })), [sv, qty])
+      await spage.goto(`${base}/s/my-store/cart`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      const blocked = await until(async () => {
+        const t = await spage.locator('body').innerText().catch(() => '')
+        if (!expect.test(t)) return null
+        const link = await spage.locator('a[href$="/checkout"]').count()
+        const btn = await spage.locator('button:disabled').filter({ hasText: /Checkout/ }).count()
+        return link === 0 && btn === 1 ? { link, btn, message: t.match(expect)[0] } : null
+      }, 20000)
+      const diag = blocked ? null : { text: (await spage.locator('body').innerText().catch(() => '')).slice(0, 500), links: await spage.locator('a[href*="checkout"]').count() }
+      await spage.screenshot({ path: join(S, `round-cart-${qty}.png`) })
+      await sctx.close()
+      step(`cart ${what} (${qty}): the reason is shown and Checkout is a disabled button (no checkout link)`, !!blocked, JSON.stringify(blocked ?? diag))
+    }
 
     // Sales channels while the stores are still loading: no "Not connected" + Connect that then
     // flips to "Add store" (the buttons that came and went on reload).
