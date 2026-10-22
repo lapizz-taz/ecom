@@ -689,9 +689,10 @@ html:not([data-surface="store"]) .btn-glow:not(:is([data-store-theme], [data-the
     scale 200ms cubic-bezier(0.25, 1, 0.5, 1),
     opacity 200ms ease;
 }
-/* Lit: hovered by a mouse (only where there is one, so a tap on a phone does not leave it stuck on),
-   or pressed by a finger or pen (data-glow-on, set by lib/cursor-glow.ts at the touch point). */
-@media (hover: hover) {
+/* Lit: hovered by a pointer that can hover (any-hover: a mouse, or a pen or VM pointer reported as
+   one that hovers; not a phone, so a tap there does not leave it stuck on), or pressed by a finger
+   or pen (data-glow-on, set by lib/cursor-glow.ts at the touch point). */
+@media (any-hover: hover) {
   .site .btn-3d-site:hover:not(:disabled):not([aria-disabled="true"]),
   html:not([data-surface="store"]) .btn-glow:not(:is([data-store-theme], [data-theme-editor]) *):hover:not(:disabled):not([aria-disabled="true"]) {
     --glow-a: 1;
