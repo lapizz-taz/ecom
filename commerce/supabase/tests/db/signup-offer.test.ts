@@ -76,7 +76,7 @@ describe('new-business offer', () => {
       await db.query(`select public.billing_run()`)
       const [first] = await invoices(db, m.merchant)
       expect(first).toMatchObject({ total: 99, status: 'OPEN' })
-      expect(first.lines[0]).toMatchObject({ amount: 99, intro: true, regular_price: 5000 })
+      expect(first.lines[0]).toMatchObject({ amount: 99, intro: true, regular_price: 2490 })
       expect((await sub(db, m.merchant)).status).toBe('PAST_DUE')
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
       await asUser(db, m.id, m.email, m.merchant)
@@ -98,11 +98,11 @@ describe('new-business offer', () => {
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const all = await invoices(db, m.merchant)
-      expect(all.map((i) => i.total).sort((a, b) => a - b)).toEqual([99, 5000])
-      expect(all.find((i) => i.total === 5000)!.lines[0].intro).toBeUndefined()
+      expect(all.map((i) => i.total).sort((a, b) => a - b)).toEqual([99, 2490])
+      expect(all.find((i) => i.total === 2490)!.lines[0].intro).toBeUndefined()
       // The offer is over: the first month at the plan's price is paid to continue (no grace).
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
-      expect(await pay(db, m.merchant, all.find((i) => i.total === 5000)!.id, 5000)).toBe('succeeded')
+      expect(await pay(db, m.merchant, all.find((i) => i.total === 2490)!.id, 2490)).toBe('succeeded')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
       // Later renewals have the normal grace period.
       await asSystem(db, null)
@@ -230,20 +230,20 @@ describe('new-business offer without a trial, with a one-time fee', () => {
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const second = (await openInvoice(db, m.merchant))!
-      expect(second.total).toBe(6000)
-      expect(lineKinds(second)).toEqual([['plan', 5000], ['setup_fee', 1000]])
+      expect(second.total).toBe(3490)
+      expect(lineKinds(second)).toEqual([['plan', 2490], ['setup_fee', 1000]])
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
       await asUser(db, m.id, m.email, m.merchant)
       expect((await value<Record<string, any>>(db, `select public.my_plan()`)).subscription.setup_fee_pending).toBeNull()
-      expect(await pay(db, m.merchant, second.id, 6000)).toBe('succeeded')
+      expect(await pay(db, m.merchant, second.id, 3490)).toBe('succeeded')
 
       // From then on only the plan price.
       await asSystem(db, null)
       await db.query(`update public.subscriptions set current_period_end = now() - interval '1 minute' where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const third = (await openInvoice(db, m.merchant))!
-      expect(third.total).toBe(5000)
-      expect(lineKinds(third)).toEqual([['plan', 5000]])
+      expect(third.total).toBe(2490)
+      expect(lineKinds(third)).toEqual([['plan', 2490]])
       expect(await accessOf(db, m.merchant)).toBe('FULL')
       s = await sub(db, m.merchant)
       expect(Number(s.setup_fee)).toBe(1000)
@@ -259,14 +259,14 @@ describe('new-business offer without a trial, with a one-time fee', () => {
       await db.query(`update public.subscriptions set current_period_end = now() - interval '5 minutes', intro_until = now() - interval '5 minutes'
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
-      expect((await openInvoice(db, m.merchant))!.total).toBe(6000)
+      expect((await openInvoice(db, m.merchant))!.total).toBe(3490)
 
       // Instead of paying it, the business moves to Starter: that payment replaces the open invoice,
       // so it carries the fee (security audit run 4: else each plan change put the fee off again).
       await asUser(db, m.id, m.email, m.merchant)
       const change = await value<{ id: string; total: number }>(db, `select public.billing_choose_plan('STARTER')`)
-      expect(Number(change.total)).toBe(3500)
-      expect(await pay(db, m.merchant, change.id, 3500)).toBe('succeeded')
+      expect(Number(change.total)).toBe(1990)
+      expect(await pay(db, m.merchant, change.id, 1990)).toBe('succeeded')
       expect(await openInvoice(db, m.merchant)).toBeUndefined()
 
       // The fee was charged once: the next invoice is the plan alone.
@@ -274,7 +274,7 @@ describe('new-business offer without a trial, with a one-time fee', () => {
       await db.query(`update public.subscriptions set current_period_end = now() - interval '1 minute' where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const next = (await openInvoice(db, m.merchant))!
-      expect(lineKinds(next)).toEqual([['plan', 2500]])
+      expect(lineKinds(next)).toEqual([['plan', 990]])
     }))
 
   it('WhatsApp sign-up: the team activating it is the 99 Tk payment; the next invoice has the fee', () =>
@@ -295,7 +295,7 @@ describe('new-business offer without a trial, with a one-time fee', () => {
       await db.query(`update public.subscriptions set current_period_end = now() - interval '5 minutes', intro_until = now() - interval '5 minutes'
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
-      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 5000], ['setup_fee', 1000]])
+      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 2490], ['setup_fee', 1000]])
     }))
 
   it('Super Admin sets the fee, checked', () =>
@@ -335,7 +335,7 @@ describe('new-business offer: a paid trial, then the one-time fee with the plan 
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
       const [trial] = await invoices(db, m.merchant)
       expect(trial).toMatchObject({ total: 99, status: 'OPEN' })
-      expect(trial.lines[0].label).toContain('(trial; then 5,000 BDT)')
+      expect(trial.lines[0].label).toContain('(trial; then 2,490 BDT)')
       expect(await periodHours(db, trial.id)).toBe(48)
       await asUser(db, m.id, m.email, m.merchant)
       expect((await value<Record<string, any>>(db, `select public.my_plan()`)).subscription).toMatchObject({ intro_price: 99, intro_trial: true, setup_fee_pending: 1000 })
@@ -354,18 +354,18 @@ describe('new-business offer: a paid trial, then the one-time fee with the plan 
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const second = (await openInvoice(db, m.merchant))!
-      expect(lineKinds(second)).toEqual([['plan', 5000], ['setup_fee', 1000]])
+      expect(lineKinds(second)).toEqual([['plan', 2490], ['setup_fee', 1000]])
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
       await asUser(db, m.id, m.email, m.merchant)
       expect((await value<Record<string, any>>(db, `select public.my_plan()`)).access_mode).toBe('BLOCKED')
-      expect(await pay(db, m.merchant, second.id, 6000)).toBe('succeeded')
+      expect(await pay(db, m.merchant, second.id, 3490)).toBe('succeeded')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
 
       // Then the plan price, with the normal grace period.
       await asSystem(db, null)
       await db.query(`update public.subscriptions set current_period_end = now() - interval '1 minute' where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
-      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 5000]])
+      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 2490]])
       s = await sub(db, m.merchant)
       expect(s.status).toBe('PAST_DUE')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
@@ -390,7 +390,7 @@ describe('new-business offer: a paid trial, then the one-time fee with the plan 
       await db.query(`update public.subscriptions set current_period_end = now() - interval '5 minutes', intro_until = now() - interval '5 minutes'
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
-      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 5000], ['setup_fee', 1000]])
+      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 2490], ['setup_fee', 1000]])
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
     }))
 
@@ -426,7 +426,7 @@ describe('choosing another plan before the first payment', () => {
       expect(await value(db, `select status from public.billing_invoices where id = $1`, [growthTrial.id])).toBe('VOID')
       expect((await invoices(db, m.merchant)).map((i) => [i.id, i.total, i.status])).toEqual([[r.activation_invoice_id, 99, 'OPEN']])
       const s = await sub(db, m.merchant)
-      expect(s).toMatchObject({ price: 2500, intro_trial: true })
+      expect(s).toMatchObject({ price: 990, intro_trial: true })
       expect(Number(s.setup_fee)).toBe(1000)
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
 
@@ -439,7 +439,7 @@ describe('choosing another plan before the first payment', () => {
       expect(await pay(db, m.merchant, r.activation_invoice_id, 99)).toBe('succeeded')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
       await asUser(db, m.id, m.email, m.merchant)
-      expect(await value(db, `select public.billing_choose_plan('GROWTH')`)).toMatchObject({ applied: false, total: 5000 + 1000 })
+      expect(await value(db, `select public.billing_choose_plan('GROWTH')`)).toMatchObject({ applied: false, total: 2490 + 1000 })
     }))
 
   it('not while a payment was just started', () =>
@@ -484,7 +484,7 @@ describe('new-business offer: 99 Tk for 1 month + 2 days, then the one-time fee 
       const [first] = await invoices(db, m.merchant)
       expect(first).toMatchObject({ total: 99, status: 'OPEN' })
       expect(lineKinds(first)).toEqual([['plan', 99]])
-      expect(first.lines[0].label).toContain('(introductory price; then 5,000 BDT)')
+      expect(first.lines[0].label).toContain('(introductory price; then 2,490 BDT)')
       expect(await coversMonthAndTwoDays(db, first.id)).toBe(true)
 
       // Paid: open for the whole 1 month + 2 days, with nothing more to pay in it.
@@ -502,16 +502,16 @@ describe('new-business offer: 99 Tk for 1 month + 2 days, then the one-time fee 
                       where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
       const second = (await openInvoice(db, m.merchant))!
-      expect(lineKinds(second)).toEqual([['plan', 5000], ['setup_fee', 1000]])
+      expect(lineKinds(second)).toEqual([['plan', 2490], ['setup_fee', 1000]])
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
-      expect(await pay(db, m.merchant, second.id, 6000)).toBe('succeeded')
+      expect(await pay(db, m.merchant, second.id, 3490)).toBe('succeeded')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
 
       // Then the plan price, with the normal grace period.
       await asSystem(db, null)
       await db.query(`update public.subscriptions set current_period_end = now() - interval '1 minute' where merchant_id = $1 and ended_at is null`, [m.merchant])
       await db.query(`select public.billing_run()`)
-      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 5000]])
+      expect(lineKinds((await openInvoice(db, m.merchant))!)).toEqual([['plan', 2490]])
       s = await sub(db, m.merchant)
       expect(s.status).toBe('PAST_DUE')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
@@ -526,7 +526,7 @@ describe('new-business offer: 99 Tk for 1 month + 2 days, then the one-time fee 
       const r = await value<{ activation_invoice_id: string }>(db, `select public.billing_choose_plan('STARTER')`)
       const [inv] = await invoices(db, m.merchant)
       expect(inv).toMatchObject({ id: r.activation_invoice_id, total: 99, status: 'OPEN' })
-      expect(inv.lines[0].label).toContain('(introductory price; then 2,500 BDT)')
+      expect(inv.lines[0].label).toContain('(introductory price; then 990 BDT)')
       expect(await coversMonthAndTwoDays(db, inv.id)).toBe(true)
     }))
 

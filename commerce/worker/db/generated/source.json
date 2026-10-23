@@ -1,5 +1,5 @@
 {
-  "migrations": 176,
-  "last": "20261125000100_plan_prices_oct_2026.sql",
-  "sha256": "cf9c8e7548b0306302e38781802aa1cee79559d33ffa283035351adfd453c47d"
+  "migrations": 175,
+  "last": "20261124000100_moderator_role.sql",
+  "sha256": "37b242f34081e5dc3033cd90eb4042dfcf1334ca1ff8ee98119e75444bf91ce1"
 }

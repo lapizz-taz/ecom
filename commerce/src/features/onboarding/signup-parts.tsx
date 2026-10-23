@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatMoney, formatNumber } from '@/lib/format'
 import { isValidWhatsapp, normalizePhone, normalizeWhatsapp } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { BUSINESS_TYPES, ORDER_VOLUMES, planLimits, planOfferText, planThenText, SELLS_ON, type SignupBusiness, type SignupOptions } from '@/services/onboarding'
+import { BUSINESS_TYPES, ORDER_VOLUMES, planOfferText, planThenText, SELLS_ON, type SignupBusiness, type SignupOptions, type SignupPlan } from '@/services/onboarding'
 
 const BD_MOBILE = /^01[3-9][0-9]{8}$/
 
@@ -20,6 +20,15 @@ export function businessErrors(b: SignupBusiness): Partial<Record<keyof SignupBu
   if (b.whatsapp?.trim() && !isValidWhatsapp(normalizeWhatsapp(b.whatsapp))) e.whatsapp = 'Enter a WhatsApp number (01XXXXXXXXX, or + country code and number)'
   if (b.website.trim() && !/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(b.website.trim())) e.website = 'This address does not look right'
   return e
+}
+
+const LIMIT_LABELS: Array<[string, string]> = [['orders_per_month', 'orders a month'], ['products', 'products'], ['staff', 'team members'], ['stores', 'connected stores']]
+
+export function planLimits(p: SignupPlan) {
+  return LIMIT_LABELS.map(([key, label]) => {
+    const v = p.limits?.[key]
+    return v == null ? `Unlimited ${label}` : `${formatNumber(v)} ${label}`
+  })
 }
 
 const INTERVAL: Record<string, string> = { MONTHLY: 'month', MONTH: 'month', QUARTERLY: '3 months', YEARLY: 'year', YEAR: 'year', ANNUAL: 'year' }

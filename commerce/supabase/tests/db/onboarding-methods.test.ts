@@ -43,7 +43,7 @@ describe('onboarding by online payment', () => {
       await asUser(db, m.id, m.email, m.merchant)
       const plan = await value<Record<string, any>>(db, `select public.my_plan()`)
       expect(plan.activation).toMatchObject({ state: 'awaiting_payment', invoice_id: m.r.activation.invoice_id })
-      expect(plan.invoices[0]).toMatchObject({ id: m.r.activation.invoice_id, status: 'OPEN', total: 5000 })
+      expect(plan.invoices[0]).toMatchObject({ id: m.r.activation.invoice_id, status: 'OPEN', total: 2490 })
 
       // A wrong amount, or the browser itself, opens nothing.
       await asService(db, m.merchant)
@@ -51,12 +51,12 @@ describe('onboarding by online payment', () => {
       expect(await value(db, `select public.billing_gateway_confirm($1, 'bkash', 'TXN-ON-1', 100, true, '{}') ->> 'status'`, [pay.reference])).toBe('amount_mismatch')
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
       await asUser(db, m.id, m.email, m.merchant)
-      await expectError(db, `select public.billing_gateway_confirm($1, 'bkash', 'TXN-ON-2', 5000, true, '{}')`, [pay.reference], /permission denied|PERMISSION_DENIED/)
+      await expectError(db, `select public.billing_gateway_confirm($1, 'bkash', 'TXN-ON-2', 2490, true, '{}')`, [pay.reference], /permission denied|PERMISSION_DENIED/)
       expect(await accessOf(db, m.merchant)).toBe('BLOCKED')
 
       // The gateway's server-to-server confirmation of the full amount opens it.
       await asService(db, m.merchant)
-      expect(await value(db, `select public.billing_gateway_confirm($1, 'bkash', 'TXN-ON-3', 5000, true, '{}') ->> 'status'`, [pay.reference])).toBe('succeeded')
+      expect(await value(db, `select public.billing_gateway_confirm($1, 'bkash', 'TXN-ON-3', 2490, true, '{}') ->> 'status'`, [pay.reference])).toBe('succeeded')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
       await asSystem(db, null)
       const after = await value<Record<string, any>>(db, `select jsonb_build_object('status', m.status, 'activation', m.onboarding -> 'activation', 'via', m.onboarding ->> 'activated_via',
@@ -103,7 +103,7 @@ describe('onboarding by WhatsApp', () => {
       const pending = await value<Array<{ merchant_id: string; state: string }>>(db, `select public.platform_pending_activations()`)
       expect(pending.find((p) => p.merchant_id === m.merchant)?.state).toBe('awaiting_whatsapp')
       await expectError(db, `select public.platform_merchant_activate($1, '')`, [m.merchant], /say why/)
-      expect(await value(db, `select public.platform_merchant_activate($1, 'Paid 5000 by bKash, TrxID 9AB')->> 'subscription'`, [m.merchant])).toBe('TRIALING')
+      expect(await value(db, `select public.platform_merchant_activate($1, 'Paid 2490 by bKash, TrxID 9AB')->> 'subscription'`, [m.merchant])).toBe('TRIALING')
       expect(await accessOf(db, m.merchant)).toBe('FULL')
       await asStaff(db, superId)
       await expectError(db, `select public.platform_merchant_activate($1, 'again')`, [m.merchant], /not waiting/)
@@ -121,7 +121,7 @@ describe('renewals and expiry reminders', () => {
 
       await asUser(db, m.id, m.email, m.merchant)
       const inv = await value<Record<string, any>>(db, `select public.billing_renew_now()`)
-      expect(inv).toMatchObject({ status: 'OPEN', total: 5000 })
+      expect(inv).toMatchObject({ status: 'OPEN', total: 2490 })
       expect((await value<Record<string, any>>(db, `select public.billing_renew_now()`)).id).toBe(inv.id)
       expect(await value(db, `select public.my_plan() -> 'reminder_days'`)).toEqual([3, 1])
 
