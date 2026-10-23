@@ -14,6 +14,8 @@ import { PlatformIcon } from '@/features/inbox/ui'
 import { MessageGroups } from '@/features/messaging/message-list'
 import { MessageLogTab } from '@/features/messaging/message-log'
 import { Notice } from '@/features/messaging/notice'
+import { pricePerMessage, whatsappCategory } from '@/features/messaging/whatsapp-cost'
+import { WhatsappCosts } from '@/features/messaging/whatsapp-costs'
 import { WhatsappStatusBadge } from '@/features/messaging/whatsapp-status'
 import { useUrlState } from '@/hooks/use-url-state'
 import { toast } from '@/lib/toast'
@@ -89,13 +91,23 @@ export default function WhatsappPage() {
             <TabsContent value="messages" className="space-y-3">
               {messages.isLoading ? <LoadingState /> : messages.error ? <ErrorState error={messages.error} onRetry={() => messages.refetch()} />
                 : <MessageGroups channel="WHATSAPP" messages={messages.data ?? []} canManage={manage} basePath="/admin/whatsapp"
-                    status={(m) => <WhatsappStatusBadge message={m} />} />}
+                    status={(m) => (
+                      <>
+                        <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline" title="Meta's price per delivered message (Bangladesh)">
+                          ~{pricePerMessage(whatsappCategory(m.event))}
+                        </span>
+                        <WhatsappStatusBadge message={m} />
+                      </>
+                    )} />}
               <p className="text-xs text-muted-foreground">
                 WhatsApp lets a business message customers first only with texts Meta approved. A message goes out when it is switched on and approved.
                 Any message can still be sent by hand from an order with <span className="font-medium text-foreground">Send on WhatsApp</span>.
               </p>
             </TabsContent>
-            <TabsContent value="setup"><Setup settings={s} canManage={manage} saving={save.isPending} onSave={(p) => save.mutate(p)} /></TabsContent>
+            <TabsContent value="setup" className="space-y-4">
+              <Setup settings={s} canManage={manage} saving={save.isPending} onSave={(p) => save.mutate(p)} />
+              <WhatsappCosts />
+            </TabsContent>
             <TabsContent value="activity"><MessageLogTab channel="WHATSAPP" /></TabsContent>
           </Tabs>
         </>
@@ -175,8 +187,8 @@ function Setup({ settings, canManage, saving, onSave }: {
             <li>Once approved, switch the message on, and switch WhatsApp messages on at the top.</li>
           </ol>
           <p className="mt-3 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
-            Meta charges your WhatsApp Business account for each message at its utility rate; messages sent while a chat with the customer is open
-            (24 hours after they last wrote) are free. Fullfilio adds no charge. Add a payment method in Meta Business Suite → WhatsApp accounts.
+            Meta charges your WhatsApp Business account for each delivered message (about {pricePerMessage('UTILITY')} for an order update);
+            Fullfilio adds no charge. Prices and how charging starts are below.
           </p>
         </CardContent>
       </Card>
