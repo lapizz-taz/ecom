@@ -83,7 +83,7 @@ describe('tenancy: a new merchant', () => {
                (select count(*)::int from public.settings where merchant_id = $1) as settings,
                (select count(*)::int from public.orders where merchant_id = $1) as orders,
                (select count(*)::int from public.products where merchant_id = $1) as products`, [m2])
-      expect(counts).toEqual({ roles: 10, role_permissions: 157, review: 8, sources: 9, finance: 29, fraud_actions: 7, templates: 36, settings: 24, orders: 0, products: 0 })
+      expect(counts).toEqual({ roles: 10, role_permissions: 157, review: 8, sources: 9, finance: 29, fraud_actions: 7, templates: 45, settings: 24, orders: 0, products: 0 })
       // Running it again changes nothing; running it for another merchant is refused.
       await asSystem(db, m2)
       await db.query(`select public._merchant_seed_defaults($1)`, [m2])

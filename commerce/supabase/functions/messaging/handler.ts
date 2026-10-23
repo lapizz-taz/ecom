@@ -3,13 +3,19 @@
 //                     (the password in Vault, integration key email.smtp)
 //   email_disconnect  forgets the mailbox
 //   email_test        one email (a notification's text, saved or not yet saved) to the staff member's own address
-//   whatsapp_submit   submits one WhatsApp text to Meta as a message template (category Utility)
+//   whatsapp_submit   submits one WhatsApp text to Meta as a message template (Utility; Marketing for cart and review)
 //   whatsapp_sync     Meta's review status for the store's templates
 //   whatsapp_test     an approved template, with example values, to a phone number
+// For customers (no sign-in; the order's unguessable token is the key):
+//   order_reply_view  the order behind an email's "Confirm your order" link
+//   order_reply       the customer's Confirm or Cancel from that page
+// For pg_cron (x-cron-secret), every 5 minutes while a store uses them:
+//   scheduled         abandoned cart reminders, review requests and the owner's daily summary
 // Runs on Supabase in production (SUPABASE_FUNCTIONS), next to notifications-dispatch, so a mailbox
 // that passes the test here also works for the real emails.
 import { z } from 'zod'
-import { SAMPLE_DATA, WHATSAPP_VARIABLES } from '../_shared/notifications/defaults.ts'
+import { isCronRequest } from '../_shared/cron.ts'
+import { EVENT_INFO, type MessageEvent, SAMPLE_DATA, WHATSAPP_BUTTONS, WHATSAPP_VARIABLES } from '../_shared/notifications/defaults.ts'
 import { htmlToText, LiquidError, renderLiquid } from '../_shared/notifications/liquid.ts'
 import {
   listWhatsappTemplates, SendError, sendEmail, sendWhatsappTemplate, SMTP_SECRET, submitWhatsappTemplate, whatsappGraph,
@@ -17,13 +23,18 @@ import {
 import { isEmail, sendSmtp, SMTP_PORTS, SmtpError, smtpHostProblem } from '../_shared/notifications/smtp.ts'
 import { exampleValues, fillWhatsapp, templateName, toPositional, whatsappProblems } from '../_shared/notifications/whatsapp-template.ts'
 import { MetaApiError } from '../_shared/meta/graph.ts'
-import { handle, HttpError, json, readJson } from '../_shared/http.ts'
+import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
-import { requireStaff, rpc, type StaffContext } from '../_shared/supabase.ts'
+import { storefrontBase } from '../_shared/storefront.ts'
+import { adminClient, forEachMerchant, requireStaff, rpc, type StaffContext } from '../_shared/supabase.ts'
 
 const uuid = z.string().uuid()
+const replyToken = z.string().regex(/^[0-9a-f]{40}$/)
 const schema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('scheduled') }),
+  z.object({ action: z.literal('order_reply_view'), merchant_id: uuid, token: replyToken }),
+  z.object({ action: z.literal('order_reply'), merchant_id: uuid, token: replyToken, reply: z.enum(['confirm', 'cancel']) }),
   z.object({
     action: z.literal('email_connect'),
     host: z.string().trim().toLowerCase().min(3).max(253),
@@ -53,7 +64,7 @@ interface WhatsappSettings { channel_id: string | null; language: 'en' | 'bn'; n
 interface Notification {
   id: string; event: string; channel: 'EMAIL' | 'WHATSAPP'; subject: string | null; template: string
   wa_name: string | null; wa_language: string | null; wa_status: string | null; wa_template_id: string | null; wa_params: string[] | null; wa_version: number
-  wa_body: string | null
+  wa_body: string | null; reply_buttons: boolean; wa_buttons: boolean
 }
 
 const bad = (message: string, code = 'VALIDATION') => new HttpError(422, message, code)
@@ -155,6 +166,11 @@ async function emailTest(staff: StaffContext, input: Extract<Input, { action: 'e
   return { ok: true, sent_to: to }
 }
 
+/** Meta's category for a message: Marketing for cart reminders and review requests, Utility for order updates. */
+const templateCategory = (event: string) => (EVENT_INFO[event as MessageEvent]?.group === 'Marketing' ? 'MARKETING' : 'UTILITY')
+const categoryNote = (event: string, category?: string) =>
+  category && category !== templateCategory(event) ? `Meta filed it as ${category.toLowerCase()}, which costs more per message.` : ''
+
 async function whatsappSubmit(staff: StaffContext, id: string) {
   const s = await rpc<WhatsappSettings>(staff.admin, 'whatsapp_settings')
   const number = s.numbers.find((x) => x.id === s.channel_id)
@@ -168,11 +184,13 @@ async function whatsappSubmit(staff: StaffContext, id: string) {
   for (let attempt = 0; ; attempt++) {
     const name = templateName(n.event, version)
     try {
-      const r = await submitWhatsappTemplate(g, number.waba_id, { name, language: s.language, text, examples: exampleValues(params) })
+      // The order confirmation's Confirm / Cancel are part of the template Meta approves.
+      const buttons = n.event === 'ORDER_CREATED' && n.reply_buttons ? [WHATSAPP_BUTTONS[s.language].confirm, WHATSAPP_BUTTONS[s.language].cancel] : []
+      const r = await submitWhatsappTemplate(g, number.waba_id, { name, language: s.language, text, examples: exampleValues(params), buttons, category: templateCategory(n.event) })
       const status = (r.status ?? 'PENDING').toUpperCase()
       await rpc(staff.admin, '_whatsapp_template_record', { p_id: n.id, p: {
-        name, language: s.language, status, template_id: r.id, params, body: n.template, version,
-        reason: r.category && r.category !== 'UTILITY' ? `Meta filed it as ${r.category.toLowerCase()}, which costs more per message.` : '',
+        name, language: s.language, status, template_id: r.id, params, body: n.template, version, buttons: buttons.length > 0,
+        reason: categoryNote(n.event, r.category),
       } })
       return { ok: true, name, status }
     } catch (e) {
@@ -193,15 +211,15 @@ async function whatsappSync(staff: StaffContext) {
   if (!number?.waba_id) throw bad('Choose the WhatsApp number that sends the messages first.')
   const g = await whatsappGraph(staff.admin, number.id).catch((e) => { throw bad((e as Error).message) })
   const templates = await listWhatsappTemplates(g, number.waba_id).catch((e) => { throw bad(`Could not read the templates from Meta: ${(e as Error).message}`, 'META_REJECTED') })
-  const { data } = await staff.admin.from('notifications').select('id, wa_name, wa_language, wa_template_id')
+  const { data } = await staff.admin.from('notifications').select('id, event, wa_name, wa_language, wa_template_id')
     .eq('merchant_id', staff.merchantId).eq('channel', 'WHATSAPP').not('wa_name', 'is', null)
   let updated = 0
-  for (const n of (data ?? []) as Array<Pick<Notification, 'id' | 'wa_name' | 'wa_language' | 'wa_template_id'>>) {
+  for (const n of (data ?? []) as Array<Pick<Notification, 'id' | 'event' | 'wa_name' | 'wa_language' | 'wa_template_id'>>) {
     const t = templates.find((x) => x.id === n.wa_template_id) ?? templates.find((x) => x.name === n.wa_name && x.language === n.wa_language)
     const status = t ? t.status.toUpperCase() : 'DELETED'
     const reason = !t ? 'The template is no longer at Meta: submit it again.'
       : status === 'REJECTED' ? `Meta rejected it${t.rejected_reason && t.rejected_reason !== 'NONE' ? `: ${t.rejected_reason.toLowerCase().replace(/_/g, ' ')}` : ''}.`
-      : t.category && t.category !== 'UTILITY' ? `Meta filed it as ${t.category.toLowerCase()}, which costs more per message.` : ''
+      : categoryNote(n.event, t.category)
     await rpc(staff.admin, '_whatsapp_template_record', { p_id: n.id, p: { status, reason, ...(t ? { template_id: t.id } : {}) } })
     updated++
   }
@@ -222,16 +240,64 @@ async function whatsappTest(staff: StaffContext, input: Extract<Input, { action:
   const body = fillWhatsapp(n.wa_body ?? n.template, Object.fromEntries(WHATSAPP_VARIABLES.map((v) => [v.name, v.example])))
   const g = await whatsappGraph(staff.admin, number.id).catch((e) => { throw bad((e as Error).message) })
   await logged(staff, { channel: 'WHATSAPP', to, subject: null, body, provider: 'meta' }, () =>
-    sendWhatsappTemplate(g, (ch as { external_id: string }).external_id, to, { name: n.wa_name!, language: n.wa_language! }, values).catch((e) => {
+    sendWhatsappTemplate(g, (ch as { external_id: string }).external_id, to, { name: n.wa_name!, language: n.wa_language! }, values,
+      n.wa_buttons ? ['ffo:test:confirm', 'ffo:test:cancel'] : []).catch((e) => {
       throw e instanceof SendError ? bad(e.message, 'SEND_FAILED') : e
     }))
   return { ok: true, sent_to: to }
+}
+
+// ------------------------------------------------------------------ customers: confirm / cancel
+interface ReplyView { state: string; can_confirm: boolean; can_cancel: boolean; [k: string]: unknown }
+
+/** The confirm page (no sign-in): the order's token is the key, the store is named in the link. */
+async function orderReply(req: Request, input: Extract<Input, { action: 'order_reply_view' | 'order_reply' }>) {
+  rateLimit(`order-reply:${clientIp(req)}`, 30)
+  const admin = adminClient(input.merchant_id)
+  if (input.action === 'order_reply') {
+    const r = await rpc<{ result: string }>(admin, 'order_reply_apply', { p_token: input.token, p_action: input.reply, p_via: 'EMAIL', p_phone: null })
+    if (r.result === 'not_found') throw new HttpError(404, 'This link is not valid any more.', 'NOT_FOUND')
+  }
+  const view = await rpc<ReplyView | null>(admin, 'order_reply_view', { p_token: input.token })
+  if (!view) throw new HttpError(404, 'This link is not valid any more.', 'NOT_FOUND')
+  return view
+}
+
+// ------------------------------------------------------------------ pg_cron: reminders, reviews, daily summary
+interface DueCart { source: 'own' | 'shopify'; id: string; step: number; url: string | null }
+
+async function scheduled() {
+  const run = await forEachMerchant('messaging', async (admin) => {
+    const reviews = await rpc<number>(admin, 'messaging_run_reviews', { p_limit: 100 })
+    const summary = await rpc<{ sent: number }>(admin, 'messaging_run_summary')
+    const due = await rpc<DueCart[]>(admin, 'messaging_due_carts', { p_limit: 50 })
+    let carts = 0
+    let store: string | null = null
+    for (const c of due ?? []) {
+      let url = c.url
+      if (c.source === 'own') {
+        // "Finish your order" puts the same items back in the customer's cart on the store.
+        store ??= await storefrontBase(admin).catch(() => '')
+        url = store ? `${store}/cart?restore=${c.id}` : null
+      }
+      if (!url) continue
+      carts += await rpc<number>(admin, 'messaging_queue_cart', { p_source: c.source, p_id: c.id, p_step: c.step, p_url: url })
+    }
+    return { reviews, summaries: summary?.sent ?? 0, carts }
+  })
+  const total = (k: 'reviews' | 'summaries' | 'carts') => run.results.reduce((n, r) => n + (r.ok ? r.result[k] : 0), 0)
+  return { ok: true, merchants: run.merchants, failed: run.failed, reviews: total('reviews'), summaries: total('summaries'), carts: total('carts') }
 }
 
 export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const input = parse(schema, await readJson(req))
+    if (input.action === 'scheduled') {
+      if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
+      return json(req, await scheduled())
+    }
+    if (input.action === 'order_reply_view' || input.action === 'order_reply') return json(req, await orderReply(req, input))
     const staff = await requireStaff(req, 'notifications.manage')
     switch (input.action) {
       case 'email_connect': return json(req, await emailConnect(staff, input))

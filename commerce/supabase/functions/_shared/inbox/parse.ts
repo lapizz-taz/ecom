@@ -33,6 +33,8 @@ export interface InboxEvent {
     reply_to_external_id?: string
     sender_name?: string
     created_at?: string
+    /** WhatsApp: the payload of the quick-reply button the customer tapped (our Confirm / Cancel carry the order's token). */
+    button_payload?: string
   }
   status?: { external_id: string; status: 'DELIVERED' | 'READ' | 'FAILED' | 'SENT'; error?: string }
   /** Messenger/Instagram read receipt: every message sent before this time was seen. */
@@ -144,7 +146,7 @@ function fromInstagramComment(accountId: string, value: Json): InboxEvent[] {
 
 const WA_MEDIA = ['image', 'video', 'audio', 'document', 'sticker'] as const
 
-function whatsappMessage(m: Json): { body?: string; attachments: InboxAttachment[] } {
+function whatsappMessage(m: Json): { body?: string; attachments: InboxAttachment[]; button_payload?: string } {
   const type = str(m.type)
   if (type === 'text') return { body: str(obj(m.text).body), attachments: [] }
   if ((WA_MEDIA as readonly string[]).includes(type ?? '')) {
@@ -161,10 +163,10 @@ function whatsappMessage(m: Json): { body?: string; attachments: InboxAttachment
     const l = obj(m.location)
     return { body: str(l.name) ?? str(l.address), attachments: [{ type: 'location', lat: Number(l.latitude), lng: Number(l.longitude) }] }
   }
-  if (type === 'button') return { body: str(obj(m.button).text), attachments: [] }
+  if (type === 'button') return { body: str(obj(m.button).text), attachments: [], button_payload: str(obj(m.button).payload) }
   if (type === 'interactive') {
     const i = obj(m.interactive)
-    return { body: str(obj(i.button_reply).title) ?? str(obj(i.list_reply).title), attachments: [] }
+    return { body: str(obj(i.button_reply).title) ?? str(obj(i.list_reply).title), attachments: [], button_payload: str(obj(i.button_reply).id) }
   }
   if (type === 'reaction') return { body: str(obj(m.reaction).emoji), attachments: [] }
   return { body: `[${type ?? 'message'}]`, attachments: [] }
@@ -181,13 +183,14 @@ function fromWhatsApp(value: Json): InboxEvent[] {
     const m = obj(raw)
     const from = str(m.from)
     if (!from) continue
-    const { body, attachments } = whatsappMessage(m)
+    const { body, attachments, button_payload } = whatsappMessage(m)
     out.push({
       platform: 'WHATSAPP', account_id: phoneId, type: 'message', kind: 'MESSAGE', thread_key: from,
       customer: { external_id: from, phone: from, name: names.get(from) },
       message: {
         external_id: str(m.id), direction: 'IN', body, attachments,
         reply_to_external_id: str(obj(m.context).id), created_at: toIso(m.timestamp),
+        ...(button_payload ? { button_payload } : {}),
       },
     })
   }

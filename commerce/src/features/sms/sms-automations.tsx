@@ -23,7 +23,7 @@ import { deleteSmsRule, listSmsRules, saveSmsRule, setSmsRuleEnabled, type SmsRu
 import { useSmsOverview } from './sms-overview'
 import {
   type Condition, CONDITION_FIELDS, conditionProblem, type ConditionField, describeCondition, newCondition, PAYMENT_OPTIONS,
-  renderTemplate, SMS_EVENTS, type SmsEvent, smsParts, smsVariables, SOURCE_OPTIONS,
+  CART_EVENTS, renderTemplate, SMS_EVENTS, type SmsEvent, smsParts, smsVariables, SOURCE_OPTIONS, variablesForEvent,
 } from './sms-text'
 
 const ORDER = new Map(SMS_EVENTS.map((e, i) => [e.value as string, i]))
@@ -152,9 +152,11 @@ function RuleDialog({ rule, settings, couriers, onClose, onSaved }: {
   const variables = smsVariables(settings.currency_text, { name: config?.store.name, phone: config?.store.phone, website: config?.store.website_url })
   const preview = renderTemplate(template, Object.fromEntries(variables.map((v) => [v.key, v.sample])))
   const parts = smsParts(preview)
-  const problem = conditionProblem(conditions)
+  // A cart reminder is about a cart: the order conditions (total, district, courier…) do not apply.
+  const forCart = CART_EVENTS.includes(event)
+  const problem = forCart ? null : conditionProblem(conditions)
   const save = useMutation({
-    mutationFn: () => saveSmsRule({ id: rule?.id, event, name, template, conditions, enabled }),
+    mutationFn: () => saveSmsRule({ id: rule?.id, event, name, template, conditions: forCart ? [] : conditions, enabled }),
     onSuccess: () => { toast.success('Automation saved'); onSaved(); onClose() },
   })
 
@@ -185,7 +187,7 @@ function RuleDialog({ rule, settings, couriers, onClose, onSaved }: {
       </div>
       <p className="-mt-2 text-xs text-muted-foreground">{SMS_EVENTS.find((e) => e.value === event)?.when}.</p>
 
-      <Field label="Only if (optional)">
+      {!forCart && <Field label="Only if (optional)">
         <div className="grid gap-2">
           {conditions.map((c, i) => (
             <ConditionRow key={i} condition={c} couriers={couriers} currency={settings.currency_text}
@@ -197,13 +199,13 @@ function RuleDialog({ rule, settings, couriers, onClose, onSaved }: {
           </Select>
           {problem && <p className="text-xs text-destructive">{problem}</p>}
         </div>
-      </Field>
+      </Field>}
 
       <Field label="Message" htmlFor="rule-template">
         <Textarea id="rule-template" ref={textarea} rows={4} maxLength={1000} value={template} onChange={(e) => setTemplate(e.target.value)} />
       </Field>
       <div className="-mt-2 flex flex-wrap gap-1">
-        {variables.filter((v) => v.key !== 'payment_amount' || event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_FAILED').map((v) => (
+        {variablesForEvent(variables, event).map((v) => (
           <button key={v.key} type="button" onClick={() => insert(v.key)} title={`Example: ${v.sample}`}
             className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             {v.label}

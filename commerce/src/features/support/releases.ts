@@ -4,6 +4,14 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-23', tag: 'New', area: 'Messaging', major: true, title: 'Customers confirm their own orders',
+    body: 'The order confirmation email gets a Confirm button and WhatsApp gets Confirm / Cancel buttons. A tap marks the order “Customer confirmed” (or approves it, if you choose), or cancels it before you ship: fewer calls and fewer fake orders. Switch on “Ask the customer to confirm” in the Order confirmation of Email or WhatsApp.', to: '/admin/whatsapp' },
+  { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'Fewer returned parcels: “Courier could not reach you”',
+    body: 'When the courier puts a parcel on hold or misses the customer, they get a message right away to call back or reschedule, alongside “Out for delivery”. And when a WhatsApp message cannot go out, it can go as an SMS instead (WhatsApp → Setup). The WhatsApp log now shows Delivered and Read.', to: '/admin/whatsapp?tab=setup' },
+  { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'Abandoned cart reminders and review requests',
+    body: 'A customer who leaves checkout gets an SMS, email or WhatsApp with a link back to the same cart, with an optional second reminder; see how many came back and bought. A few days after delivery, customers can be asked for a review on your page.', to: '/admin/settings?tab=notifications' },
+  { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'Bangla customer messages and a daily summary',
+    body: 'Every SMS, email and WhatsApp message is written in Bangla and English: pick the language once under Settings → Customer messages. The owner can get one email each morning with yesterday’s orders, deliveries, returns, ad spend and profit.', to: '/admin/settings?tab=notifications' },
   { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'Customer emails you can design in code',
     body: 'Order confirmation, shipping, delivery, payment and cancellation emails, each with its own switch. Send them from your own mailbox (Gmail, Zoho, your hosting — no API needed) or through Fullfilio. Change the words and the HTML like on Shopify, with a live preview of your latest order and a test email to yourself.', to: '/admin/email' },
   { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'WhatsApp order updates',

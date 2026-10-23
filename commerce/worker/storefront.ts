@@ -36,8 +36,8 @@ export interface PageSeo {
   jsonld?: unknown[]
 }
 
-/** Admin, sign-up and Super Admin pages: never indexed, on any address. */
-const PRIVATE = /^\/(admin|super-admin|start)(\/|$)/
+/** Admin, sign-up and Super Admin pages, and a customer's order-confirm page: never indexed, on any address. */
+const PRIVATE = /^\/(admin|super-admin|start|order-confirm)(\/|$)/
 /** Store pages that are personal or part of buying: crawlers are asked to stay out. */
 const STORE_PRIVATE = ['/admin', '/cart', '/checkout', '/order-success', '/account', '/login', '/register', '/forgot-password', '/reset-password']
 const FILE = /\.[a-z0-9]{1,8}$/i

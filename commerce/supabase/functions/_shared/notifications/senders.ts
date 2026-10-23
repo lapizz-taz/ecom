@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { InboxGraph, inboxChannelKey } from '../inbox/meta.ts'
 import { META_INBOX_APP_KEY } from '../inbox/oauth.ts'
 import { MetaApiError } from '../meta/graph.ts'
+import { appBase } from '../storefront.ts'
 import { adminClient, rpc } from '../supabase.ts'
 import { htmlToText, LiquidError, renderLiquid } from './liquid.ts'
 import { type MailMessage, sendSmtp, type SmtpConfig, SmtpError, type SmtpSecurity } from './smtp.ts'
@@ -65,15 +66,18 @@ function whatsappError(e: unknown): SendError {
   return new SendError(msg, permanent)
 }
 
-/** Sends an approved template with its placeholder values. */
-export async function sendWhatsappTemplate(g: InboxGraph, phoneNumberId: string, to: string, t: TemplateRef, params: unknown[]): Promise<{ messageId: string }> {
+/**
+ * Sends an approved template with its placeholder values. `buttons`: the payload of each quick-reply
+ * button the template has (Confirm / Cancel carry the order's token), in the template's order.
+ */
+export async function sendWhatsappTemplate(g: InboxGraph, phoneNumberId: string, to: string, t: TemplateRef, params: unknown[], buttons: string[] = []): Promise<{ messageId: string }> {
+  const components: Array<Record<string, unknown>> = []
+  if (params.length) components.push({ type: 'body', parameters: params.map((p) => ({ type: 'text', text: paramValue(p) })) })
+  buttons.forEach((payload, index) => components.push({ type: 'button', sub_type: 'quick_reply', index: String(index), parameters: [{ type: 'payload', payload }] }))
   try {
     const r = await g.post<{ messages?: Array<{ id: string }> }>(`${phoneNumberId}/messages`, {
       messaging_product: 'whatsapp', recipient_type: 'individual', to: to.replace(/\D/g, ''), type: 'template',
-      template: {
-        name: t.name, language: { code: t.language },
-        ...(params.length ? { components: [{ type: 'body', parameters: params.map((p) => ({ type: 'text', text: paramValue(p) })) }] } : {}),
-      },
+      template: { name: t.name, language: { code: t.language }, ...(components.length ? { components } : {}) },
     })
     const id = r.messages?.[0]?.id
     if (!id) throw new SendError('Meta did not confirm the message.')
@@ -85,11 +89,22 @@ export async function sendWhatsappTemplate(g: InboxGraph, phoneNumberId: string,
 
 export interface MetaTemplate { id: string; name: string; status: string; language: string; category?: string; rejected_reason?: string }
 
-/** Submits a template for Meta's review (category Utility: order updates). */
-export async function submitWhatsappTemplate(g: InboxGraph, wabaId: string, t: { name: string; language: string; text: string; examples: string[] }) {
+export type TemplateCategory = 'UTILITY' | 'MARKETING'
+
+/**
+ * Submits a template for Meta's review, with its quick-reply buttons if any. Order updates are
+ * Utility; cart reminders and review requests are Marketing under Meta's rules (dearer per message),
+ * and are submitted as that rather than re-filed by Meta.
+ */
+export async function submitWhatsappTemplate(g: InboxGraph, wabaId: string, t: {
+  name: string; language: string; text: string; examples: string[]; buttons?: string[]; category?: TemplateCategory
+}) {
   return g.post<{ id: string; status?: string; category?: string }>(`${wabaId}/message_templates`, {
-    name: t.name, language: t.language, category: 'UTILITY',
-    components: [{ type: 'BODY', text: t.text, ...(t.examples.length ? { example: { body_text: [t.examples] } } : {}) }],
+    name: t.name, language: t.language, category: t.category ?? 'UTILITY',
+    components: [
+      { type: 'BODY', text: t.text, ...(t.examples.length ? { example: { body_text: [t.examples] } } : {}) },
+      ...(t.buttons?.length ? [{ type: 'BUTTONS', buttons: t.buttons.map((text) => ({ type: 'QUICK_REPLY', text })) }] : []),
+    ],
   })
 }
 
@@ -129,6 +144,9 @@ interface EmailPlan {
   rendered: boolean
   liquid: boolean
   vars: Record<string, unknown> | null
+  /** The order confirmation asks the customer to confirm: the order's token (and store) for the page link. */
+  reply_token?: string | null
+  merchant_id?: string | null
 }
 
 interface WhatsappPlan {
@@ -137,6 +155,8 @@ interface WhatsappPlan {
   template: string | null
   language: string | null
   params: unknown[]
+  /** The approved template's Confirm / Cancel payloads (null: no buttons). */
+  buttons?: string[] | null
   channel_id: string | null
   phone_number_id: string | null
   connected: boolean
@@ -144,14 +164,42 @@ interface WhatsappPlan {
 
 export interface QueuedMessage { id: string; channel: 'EMAIL' | 'WHATSAPP'; recipient: string; subject: string | null; body: string }
 
-/** Test seams: the network, the SMTP client and the platform's database client. */
-export interface Deps { fetchFn?: FetchFn; smtp?: typeof sendSmtp; platform?: SupabaseClient }
+/** Test seams: the network, the SMTP client, the platform's database client and where the app lives. */
+export interface Deps { fetchFn?: FetchFn; smtp?: typeof sendSmtp; platform?: SupabaseClient; appUrl?: string }
+
+/** Where the app lives, for the links an email carries (null: not set up, the email goes without them). */
+function appUrl(deps: Deps): string | null {
+  if (deps.appUrl) return deps.appUrl.replace(/\/+$/, '')
+  try {
+    return appBase()
+  } catch {
+    return null
+  }
+}
+
+/** The order's confirm / cancel page: https://<app>/order-confirm/<store>/<token>. */
+export function replyUrl(base: string, merchantId: string, token: string): string {
+  return `${base}/order-confirm/${merchantId}/${token}`
+}
+
+/** Links that depend on where the app runs, added to the email's data when it is rendered. */
+export function withAppLinks(vars: Record<string, unknown>, plan: Pick<EmailPlan, 'reply_token' | 'merchant_id'>, base: string | null): Record<string, unknown> {
+  if (!base) return vars
+  const out: Record<string, unknown> = { ...vars }
+  const order = vars.order as Record<string, unknown> | undefined
+  if (order && plan.reply_token && plan.merchant_id && /^[0-9a-f]{40}$/.test(plan.reply_token)) {
+    out.order = { ...order, reply_url: replyUrl(base, plan.merchant_id, plan.reply_token) }
+  }
+  const summary = vars.summary as Record<string, unknown> | undefined
+  if (summary && !summary.admin_url) out.summary = { ...summary, admin_url: `${base}/admin` }
+  return out
+}
 
 /** Renders a queued email (when its data came with it) and keeps the result on the log. */
-export async function renderQueuedEmail(admin: SupabaseClient, item: QueuedMessage, plan: EmailPlan): Promise<{ subject: string; html: string }> {
+export async function renderQueuedEmail(admin: SupabaseClient, item: QueuedMessage, plan: EmailPlan, deps: Deps = {}): Promise<{ subject: string; html: string }> {
   if (!plan.liquid || plan.rendered) return { subject: item.subject ?? '', html: item.body }
   try {
-    const vars = plan.vars ?? {}
+    const vars = withAppLinks(plan.vars ?? {}, plan, plan.reply_token || plan.vars?.summary ? appUrl(deps) : null)
     const subject = renderLiquid(item.subject ?? '', vars, { mode: 'text' }).replace(/\s+/g, ' ').trim()
     const html = renderLiquid(item.body, vars)
     await rpc(admin, '_notification_log_rendered', { p_id: item.id, p_subject: subject, p_body: html })
@@ -196,12 +244,12 @@ export async function sendQueued(admin: SupabaseClient, item: QueuedMessage, dep
   const plan = await rpc<EmailPlan | WhatsappPlan | null>(admin, '_notification_send_plan', { p_log_id: item.id })
   if (!plan) throw new SendError('The message is gone.', true)
   if (plan.channel === 'EMAIL') {
-    const { subject, html } = await renderQueuedEmail(admin, item, plan)
+    const { subject, html } = await renderQueuedEmail(admin, item, plan, deps)
     return sendEmail(admin, plan, { to: item.recipient, subject, html, text: htmlToText(html) }, deps)
   }
   if (!plan.approved || !plan.template || !plan.language) throw new SendError('This WhatsApp message is not approved by Meta yet.', true)
   if (!plan.connected || !plan.channel_id || !plan.phone_number_id) throw new SendError('The WhatsApp number is not connected: choose it on the WhatsApp page.', true)
   const g = await whatsappGraph(admin, plan.channel_id, deps.fetchFn, deps.platform)
-  const r = await sendWhatsappTemplate(g, plan.phone_number_id, item.recipient, { name: plan.template, language: plan.language }, plan.params ?? [])
+  const r = await sendWhatsappTemplate(g, plan.phone_number_id, item.recipient, { name: plan.template, language: plan.language }, plan.params ?? [], plan.buttons ?? [])
   return { provider: 'meta', messageId: r.messageId }
 }

@@ -68,6 +68,15 @@ describe('inbox webhooks: WhatsApp', () => {
     expect(events[2]).toMatchObject({ type: 'status', status: { external_id: 'wamid.out', status: 'FAILED', error: 'More than 24 hours' } })
   })
 
+  it('keeps the payload of a tapped quick-reply button (Confirm / Cancel under the order confirmation)', () => {
+    const [e] = parseWebhook({ object: 'whatsapp_business_account', entry: [{ id: 'WABA', changes: [{ field: 'messages', value: {
+      metadata: { phone_number_id: '109' },
+      messages: [{ from: '8801711', id: 'wamid.9', timestamp: '1760000000', type: 'button', context: { id: 'wamid.order' },
+        button: { text: 'Confirm order', payload: `ffo:confirm:${'a'.repeat(40)}` } }],
+    } }] }] })
+    expect(e.message).toMatchObject({ body: 'Confirm order', button_payload: `ffo:confirm:${'a'.repeat(40)}`, reply_to_external_id: 'wamid.order' })
+  })
+
   it('ignores what it does not know', () => {
     expect(parseWebhook({ object: 'user', entry: [{}] })).toEqual([])
     expect(parseWebhook(null)).toEqual([])

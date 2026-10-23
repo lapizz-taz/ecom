@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckCircle2, Clock, Copy, Download, ExternalLink, Link2, MessageCircle, MoreHorizontal, Phone, RefreshCw, ShoppingBag, ShoppingCart, TriangleAlert, UserRound,
+  BellRing, CheckCircle2, Clock, Copy, Download, ExternalLink, Link2, MessageCircle, MoreHorizontal, Phone, RefreshCw, ShoppingBag, ShoppingCart, TriangleAlert, UserRound,
 } from 'lucide-react'
 import { type ReactNode, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -26,13 +26,14 @@ import { useAuth } from '@/features/auth/auth-context'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { useUrlState } from '@/hooks/use-url-state'
-import { calendarTime, formatDateTime, formatNumber, timeAgo } from '@/lib/format'
+import { calendarTime, formatDateTime, formatMoney, formatNumber, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
   abandonedCounts, abandonedCsv, type AbandonedSyncResult, bulkShopifyAbandoned, cartRecoveryLink, fetchShopifyAbandoned, type ShopifyAbandoned, shopifyAbandoned, type ShopifyView, type StoreCart, storeCarts,
   type StoreCartView, updateShopifyAbandoned, updateStoreCart,
 } from '@/services/abandoned'
 import { imageUrl } from '@/services/catalog'
+import { messagingSettings } from '@/services/messaging'
 
 const PAGE_SIZE = 25
 
@@ -45,12 +46,14 @@ function waLink(phone: string | null, message: string) {
 }
 
 export default function AbandonedCartsPage() {
+  const { can } = useAuth()
   const [state, update] = useUrlState({ src: 'store' })
   const counts = useQuery({ queryKey: ['abandoned-counts'], queryFn: abandonedCounts, refetchInterval: 60_000 })
   return (
     <div className="space-y-4">
       <PageHeader title="Abandoned Carts"
         description="Customers who put products in their cart but didn't order. Call them, send a link that brings their cart back, or create the order for them." />
+      {can('notifications.view') && <AutomaticReminders />}
       <Tabs value={state.src} onValueChange={(v) => update({ src: v })}>
         <TabsList>
           <TabsTrigger value="store"><LogoMark className="size-4 rounded-[4px]" /> Our store{counts.data?.store ? <Badge variant="warning" className="ml-1">{counts.data.store}</Badge> : null}</TabsTrigger>
@@ -58,6 +61,44 @@ export default function AbandonedCartsPage() {
         </TabsList>
       </Tabs>
       {state.src === 'shopify' ? <ShopifySection /> : <StoreSection />}
+    </div>
+  )
+}
+
+const after = (minutes: number) => (minutes < 60 ? `${minutes} minutes` : minutes === 60 ? '1 hour' : `${minutes / 60} hours`)
+const CHANNEL_NAME: Record<string, string> = { SMS: 'SMS', EMAIL: 'email', WHATSAPP: 'WhatsApp' }
+
+/** The automatic cart reminders (Settings → Customer messages) and what they brought back. */
+function AutomaticReminders() {
+  const settings = useQuery({ queryKey: ['messaging-settings'], queryFn: messagingSettings, staleTime: 60_000 })
+  const s = settings.data
+  if (!s) return null
+  const on = s.enabled.cart
+  const stats = s.cart_stats
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-card px-4 py-3 text-sm">
+      <BellRing className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1">
+        {on.length ? (
+          <>
+            <span className="font-medium">Automatic reminders on</span>
+            <span className="text-muted-foreground">
+              {' '}by {on.map((c) => CHANNEL_NAME[c]).join(', ')}: {after(s.cart.first_minutes)} after they leave{s.cart.second ? `, again ${s.cart.second_hours} hours later` : ''}.
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="font-medium">Automatic reminders are off.</span>
+            <span className="text-muted-foreground"> Send customers who leave checkout an SMS, email or WhatsApp with a link back to their cart.</span>
+          </>
+        )}
+      </span>
+      {stats.reminded > 0 && (
+        <span className="text-muted-foreground tabular-nums">
+          {stats.days} days: {formatNumber(stats.reminded)} reminded · <span className="font-medium text-foreground">{formatNumber(stats.recovered)} bought ({formatMoney(stats.recovered_value)})</span>
+        </span>
+      )}
+      <Button variant="outline" size="sm" asChild><Link to="/admin/settings?tab=notifications">{on.length ? 'Change' : 'Set up'}</Link></Button>
     </div>
   )
 }

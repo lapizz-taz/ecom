@@ -91,6 +91,10 @@ describe('the Fullfilio website pages', () => {
     const admin = await get('https://fullfilio.com/admin')
     expect(admin.status).toBe(200)
     expect(admin.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
+    // So is a customer's "confirm your order" page from an email.
+    const confirm = await get(`https://fullfilio.com/order-confirm/00000000-0000-4000-8000-000000000001/${'a'.repeat(40)}`)
+    expect(confirm.status).toBe(200)
+    expect(confirm.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
   })
 
   it('previews and other names of the website stay out of the index and point at fullfilio.com', async () => {
