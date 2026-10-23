@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 22 Oct 2026.
+Last updated: 23 Oct 2026.
 
 ## What Fullfilio is
 
@@ -16,14 +16,19 @@ own, or with the seller's Shopify or WooCommerce store.
 
 ## Pricing (live in the database)
 
-All prices are in BDT, per month. Every public plan has a 14-day trial.
+All prices are in BDT, per month (set 23 Oct 2026, in line with the main competitor's ৳2,500 / ৳5,000 /
+৳10,000). Trials: Starter and Growth 2 days, Pro 14 days. Purchases (supplier orders) are unlimited on
+every plan, which the competitor limits.
 
-| Plan | Price | Limits | Extra features |
+| Plan | Price | Limits | Features |
 |---|---|---|---|
-| Starter | ৳990 | 3 staff · 1 store · 300 products · 500 orders/month | Shopify, WooCommerce, SMS, reports, custom domain, courier history (fraud check) |
-| Growth | ৳2,490 | 10 staff · 3 stores · 3,000 products · 3,000 orders/month | + two-way stock sync, ad attribution, abandoned carts, website API, external API |
-| Pro | ৳5,990 | 30 staff · 10 stores · no product or order limit | + Cloud Calling (phone system) |
+| Starter | ৳2,500 | 5 staff · 1 store · 500 products · 1,750 orders/month | Shopify, WooCommerce, SMS, reports, two-way stock sync, abandoned carts, courier history (fraud check) |
+| Growth | ৳5,000 | 10 staff · 1 store · 1,000 products · 3,500 orders/month | + custom domain, ad attribution |
+| Pro | ৳10,000 | 20 staff · 10 stores · 2,000 products · 8,000 orders/month | + website API, external API, Cloud Calling (phone system) |
 | Founder | free, hidden | none | Everything. This is the original business on the platform. |
+
+The website shows Growth as "Most popular" (the middle plan). Accounts that signed up before the change
+pay the new price from their first bill.
 
 - **New-business offer** (switched on): ৳99 for the first month plus 2 days. Then a one-time
   setup fee of ৳1,000 together with the first month at the plan price. After that, the plan price.
@@ -98,7 +103,7 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 **Primary target: Bangladeshi COD brands that sell through a Facebook page or Instagram and are growing.**
 
 - Sell fashion, cosmetics, gadgets, home goods, food or gifts.
-- 30 to 300 orders a day (about 1,000 to 9,000 a month). This is the Growth plan, and Pro at the top end.
+- 30 to 300 orders a day (about 1,000 to 9,000 a month). This is Starter and Growth, and Pro at the top end.
 - A small team of 3 to 15: page moderators or call agents who confirm orders, packers, and an owner who watches money.
 - Spend real money on Meta ads, and want to know which ads make *profit*, not just orders.
 - Ship mainly by Steadfast, Pathao, RedX or Carrybee, almost all COD.

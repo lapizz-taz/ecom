@@ -11,7 +11,7 @@ import { CourierBooking, FraudCheck, InsightsMock, MoreLink, OrdersBoard } from 
 import { ThemeEditorDemo } from '@/features/site/theme-editor-demo'
 import { TourVideo } from '@/features/site/tour-video'
 import { cn } from '@/lib/utils'
-import { offerPeriod, signupOptions } from '@/services/onboarding'
+import { offerPeriod, planLimits, signupOptions, type SignupPlan } from '@/services/onboarding'
 
 // The Fullfilio product site: quiet and precise, black by default with a white
 // version, and the brand blue used sparingly. Every feature shown here exists in the app.
@@ -237,39 +237,73 @@ function Pricing() {
           <h2 className="text-[30px] leading-[1.1] font-medium tracking-[-0.025em] sm:text-[40px]">Simple plans<br />that grow with you</h2>
           <p className="text-[15px] leading-relaxed text-(--s-muted)">Start on a plan that fits today and change it any time from Plan &amp; Billing. Prices are in Bangladeshi taka.</p>
         </div>
-        <div className={cn('mt-14 grid gap-3', plans.length >= 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
-          {q.isLoading && [0, 1, 2].map((i) => <div key={i} className="h-72 animate-pulse rounded-2xl border border-(--s-line) bg-(--s-tint)" />)}
-          {plans.map((p) => {
-            const highlight = p.code === q.data?.default_plan
-            return (
-              <div key={p.code} className={cn('flex flex-col rounded-2xl border p-6', highlight ? 'border-[#2142e7]/60 bg-[#2142e7]/[0.06] shadow-(--s-card-shadow)' : 'border-(--s-line) bg-(--s-card) shadow-(--s-card-shadow)')}>
-                <div className="flex items-center justify-between">
-                  <p className="text-[15px] font-medium">{p.name}</p>
-                  {p.trial_days && !p.offer?.trial_price ? <span className="rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}
-                </div>
-                <p className="mt-4"><span className="text-[36px] font-medium tracking-tight tabular-nums">৳{Number(p.price).toLocaleString('en-IN')}</span><span className="text-[13px] text-(--s-muted)"> / {p.billing_interval === 'YEAR' ? 'year' : 'month'}</span></p>
-                {p.offer && (p.offer.first_price != null || !!p.offer.trial_price) && (
-                  <p className="mt-2 text-[13px] text-(--s-accent)">
-                    {p.offer.trial_price
-                      ? `৳${Number(p.offer.trial_price).toLocaleString('en-IN')} for ${offerPeriod(p.offer, p.trial_days)}`
-                      : `${p.trial_days ? `${p.trial_days} days free, then ` : 'Start for '}৳${Number(p.offer.first_price).toLocaleString('en-IN')} for your first ${p.offer.first_periods > 1 ? `${p.offer.first_periods} months` : 'month'}`}
-                    {p.offer.setup_fee ? `, then a one-time ৳${Number(p.offer.setup_fee).toLocaleString('en-IN')} fee + the plan price` : ''}
-                  </p>
-                )}
-                {p.description && <p className="mt-2 text-[13px] text-(--s-muted)">{p.description}</p>}
-                <ul className="mt-6 flex-1 space-y-2 text-[13px] text-(--s-fg2)">
-                  {(p.features ?? []).slice(0, 8).map((f) => <li key={f} className="flex gap-2"><span className="text-(--s-accent)">✓</span>{f}</li>)}
-                </ul>
-                <Link to={`/start?plan=${encodeURIComponent(p.code)}`}
-                  className={cn('mt-6 rounded-[10px] px-4 py-2.5 text-center text-sm font-medium btn-3d', highlight ? 'bg-(--s-cta) text-(--s-cta-fg) hover:bg-(--s-cta-hover) btn-3d-site' : 'border border-(--s-line-strong) text-(--s-fg2) hover:bg-(--s-tint) btn-3d-site-ghost')}>Choose {p.name}</Link>
-              </div>
-            )
-          })}
+        <div className={cn('mt-14 grid items-stretch gap-4', plans.length >= 3 ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
+          {q.isLoading && [0, 1, 2].map((i) => <div key={i} className="h-96 animate-pulse rounded-2xl border border-(--s-line) bg-(--s-tint)" />)}
+          {plans.map((p, i) => (
+            // The middle plan (as on the sign-up page) is the one most sellers pick.
+            <PlanCard key={p.code} plan={p} previous={plans[i - 1]} popular={plans.length > 2 ? i === 1 : p.code === q.data?.default_plan} />
+          ))}
           {!q.isLoading && !plans.length && <p className="text-[13px] text-(--s-muted)">Plans are being updated. <Link to="/start" className="text-(--s-fg) underline">Contact us</Link> to get started.</p>}
         </div>
         {q.data?.order_fee && <p className="mt-6 text-[13px] text-(--s-muted)">Plus ৳{q.data.order_fee.fee} per approved order{q.data.order_fee.free_per_month ? ` after the first ${q.data.order_fee.free_per_month} each month` : ''}.</p>}
       </div>
     </section>
+  )
+}
+
+const taka = (n: number) => `৳${Number(n).toLocaleString('en-IN')}`
+
+/** The new-business offer under the price ("৳99 for 1 month + 2 days, then …"), or null. */
+function offerText(p: SignupPlan): string | null {
+  const o = p.offer
+  if (!o || (o.first_price == null && !o.trial_price)) return null
+  const first = o.trial_price
+    ? `${taka(o.trial_price)} for ${offerPeriod(o, p.trial_days)}`
+    : `${p.trial_days ? `${p.trial_days} days free, then ` : 'Start for '}${taka(o.first_price ?? 0)} for your first ${o.first_periods > 1 ? `${o.first_periods} months` : 'month'}`
+  return `${first}${o.setup_fee ? `, then a one-time ${taka(o.setup_fee)} fee + the plan price` : ''}`
+}
+
+/**
+ * One plan: name and who it is for, the monthly price, its limits, and what it adds to the plan
+ * before it. The popular one is the page's colours turned around (black on the white website,
+ * white on the black one) with a blue "Most popular" label and the blue button.
+ */
+function PlanCard({ plan: p, previous, popular }: { plan: SignupPlan; previous?: SignupPlan; popular: boolean }) {
+  const offer = offerText(p)
+  const added = (p.features ?? []).filter((f) => !previous?.features?.includes(f))
+  const muted = popular ? 'opacity-60' : 'text-(--s-muted)'
+  return (
+    <div className={cn('flex flex-col rounded-2xl border p-7', popular ? 'border-transparent bg-(--s-fg) text-(--s-bg) shadow-(--s-card-shadow)' : 'border-(--s-line) bg-(--s-card) shadow-(--s-card-shadow)')}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[18px] font-semibold tracking-tight">{p.name}</p>
+        {popular
+          ? <span className="shrink-0 rounded-[4px] bg-[#2142e7] px-2 py-1 font-mono text-[10px] leading-none font-medium tracking-[0.08em] text-white uppercase">Most popular</span>
+          : p.trial_days && !p.offer?.trial_price ? <span className="shrink-0 rounded-full border border-(--s-line-strong) px-2 py-0.5 text-[11px] text-(--s-fg2)">{p.trial_days}-day trial</span> : null}
+      </div>
+      {p.description && <p className={cn('mt-1.5 text-[13.5px]', muted)}>{p.description}</p>}
+      <p className="mt-7 text-[40px] leading-none font-semibold tracking-[-0.03em] tabular-nums">{taka(p.price)}</p>
+      <p className={cn('mt-2 text-[13.5px]', muted)}>per {p.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
+      {offer && <p className={cn('mt-3 text-[12.5px] leading-snug', popular ? 'opacity-80' : 'text-(--s-accent)')}>{offer}</p>}
+      <div className={cn('my-6 h-px', popular ? 'bg-current opacity-15' : 'bg-(--s-line)')} />
+      <ul className="space-y-2.5 text-[14px]">
+        {planLimits(p).map((l) => <li key={l}>{l}</li>)}
+      </ul>
+      {(previous || added.length > 0) && (
+        <div className="mt-6">
+          <p className={cn('text-[12.5px]', muted)}>{previous ? `Everything in ${previous.name}${added.length ? ', plus' : ''}` : 'Includes'}</p>
+          {added.length > 0 && (
+            <ul className="mt-2.5 space-y-1.5 text-[13px]">
+              {added.map((f) => <li key={f} className="flex gap-2"><span className={popular ? 'opacity-60' : 'text-(--s-accent)'}>✓</span>{f}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+      <div className="flex-1" />
+      <Link to={`/start?plan=${encodeURIComponent(p.code)}`}
+        className={cn('mt-8 rounded-[10px] px-4 py-3 text-center text-[15px] font-semibold btn-3d', popular ? 'bg-[#2142e7] text-white btn-3d-site' : 'border border-(--s-line-strong) text-(--s-fg) hover:bg-(--s-tint) btn-3d-site-ghost')}>
+        Get started
+      </Link>
+    </div>
   )
 }
 

@@ -1,5 +1,6 @@
 import { currentAttribution } from '@/lib/attribution'
 import { authRedirect } from '@/lib/auth-links'
+import { formatNumber } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 
 // Public sign-up: a new business opens its account and starts a plan.
@@ -21,6 +22,19 @@ export interface SignupPlan {
   offer?: { trial_months?: number; trial_days: number; trial_price?: number | null; first_price: number | null; first_periods: number; setup_fee?: number | null } | null
   limits: Record<string, number>
   features: string[]
+}
+
+const LIMIT_LABELS: Array<[key: string, one: string, many: string]> = [
+  ['orders_per_month', 'order a month', 'orders a month'], ['staff', 'team member', 'team members'],
+  ['products', 'product', 'products'], ['stores', 'connected store', 'connected stores'],
+]
+
+/** "1,750 orders a month", "5 team members", "500 products", "1 connected store" (a missing limit is unlimited). */
+export function planLimits(p: Pick<SignupPlan, 'limits'>): string[] {
+  return LIMIT_LABELS.map(([key, one, many]) => {
+    const v = p.limits?.[key]
+    return v == null ? `Unlimited ${many}` : `${formatNumber(v)} ${v === 1 ? one : many}`
+  })
 }
 
 /** The offer's period: "1 month + 2 days", "2 days", "3 months" ('' without one). */
