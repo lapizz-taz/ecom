@@ -265,15 +265,15 @@ function offerText(p: SignupPlan): string | null {
 
 /**
  * One plan: name and who it is for, the monthly price, its limits, and what it adds to the plan
- * before it. The popular one is the page's colours turned around (black on the white website,
- * white on the black one) with a blue "Most popular" label and the blue button.
+ * before it. The popular one has a blue "Most popular" label and the blue button, and is black on
+ * the white website (--s-pop).
  */
 function PlanCard({ plan: p, previous, popular }: { plan: SignupPlan; previous?: SignupPlan; popular: boolean }) {
   const offer = offerText(p)
   const added = (p.features ?? []).filter((f) => !previous?.features?.includes(f))
   const muted = popular ? 'opacity-60' : 'text-(--s-muted)'
   return (
-    <div className={cn('flex flex-col rounded-2xl border p-7', popular ? 'border-transparent bg-(--s-fg) text-(--s-bg) shadow-(--s-card-shadow)' : 'border-(--s-line) bg-(--s-card) shadow-(--s-card-shadow)')}>
+    <div className={cn('flex flex-col rounded-2xl border p-7', popular ? 'border-(--s-pop-line) bg-(--s-pop) text-(--s-pop-fg) shadow-(--s-card-shadow)' : 'border-(--s-line) bg-(--s-card) shadow-(--s-card-shadow)')}>
       <div className="flex items-start justify-between gap-3">
         <p className="text-[18px] font-semibold tracking-tight">{p.name}</p>
         {popular
@@ -283,7 +283,7 @@ function PlanCard({ plan: p, previous, popular }: { plan: SignupPlan; previous?:
       {p.description && <p className={cn('mt-1.5 text-[13.5px]', muted)}>{p.description}</p>}
       <p className="mt-7 text-[40px] leading-none font-semibold tracking-[-0.03em] tabular-nums">{taka(p.price)}</p>
       <p className={cn('mt-2 text-[13.5px]', muted)}>per {p.billing_interval === 'YEAR' ? 'year' : 'month'}</p>
-      {offer && <p className={cn('mt-3 text-[12.5px] leading-snug', popular ? 'opacity-80' : 'text-(--s-accent)')}>{offer}</p>}
+      {offer && <p className={cn('mt-3 text-[12.5px] leading-snug', popular ? 'text-(--s-pop-accent)' : 'text-(--s-accent)')}>{offer}</p>}
       <div className={cn('my-6 h-px', popular ? 'bg-current opacity-15' : 'bg-(--s-line)')} />
       <ul className="space-y-2.5 text-[14px]">
         {planLimits(p).map((l) => <li key={l}>{l}</li>)}
@@ -293,7 +293,7 @@ function PlanCard({ plan: p, previous, popular }: { plan: SignupPlan; previous?:
           <p className={cn('text-[12.5px]', muted)}>{previous ? `Everything in ${previous.name}${added.length ? ', plus' : ''}` : 'Includes'}</p>
           {added.length > 0 && (
             <ul className="mt-2.5 space-y-1.5 text-[13px]">
-              {added.map((f) => <li key={f} className="flex gap-2"><span className={popular ? 'opacity-60' : 'text-(--s-accent)'}>✓</span>{f}</li>)}
+              {added.map((f) => <li key={f} className="flex gap-2"><span className={popular ? 'text-(--s-pop-accent)' : 'text-(--s-accent)'}>✓</span>{f}</li>)}
             </ul>
           )}
         </div>
