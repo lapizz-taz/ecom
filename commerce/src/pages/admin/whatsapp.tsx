@@ -1,0 +1,169 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ExternalLink, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router'
+import { PageHeader } from '@/components/common/page-header'
+import { ErrorState, LoadingState, Spinner } from '@/components/common/states'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAuth } from '@/features/auth/auth-context'
+import { PlatformIcon } from '@/features/inbox/ui'
+import { MessageGroups } from '@/features/messaging/message-list'
+import { MessageLogTab } from '@/features/messaging/message-log'
+import { Notice } from '@/features/messaging/notice'
+import { WhatsappStatusBadge } from '@/features/messaging/whatsapp-status'
+import { useUrlState } from '@/hooks/use-url-state'
+import { toast } from '@/lib/toast'
+import { listMessages, saveWhatsappSettings, syncWhatsapp, whatsappSettings, type WhatsappSettings } from '@/services/messaging'
+
+const numberLabel = (n: WhatsappSettings['numbers'][number]) => [n.name, n.display_phone].filter(Boolean).join(' · ') || 'WhatsApp number'
+
+/** WhatsApp module: order updates as WhatsApp messages Meta approved, sent from the store's own number. */
+export default function WhatsappPage() {
+  const { can } = useAuth()
+  const manage = can('notifications.manage')
+  const queryClient = useQueryClient()
+  const [state, update] = useUrlState({ tab: 'messages' })
+  const settings = useQuery({ queryKey: ['whatsapp-settings'], queryFn: whatsappSettings })
+  const messages = useQuery({ queryKey: ['customer-messages', 'WHATSAPP'], queryFn: () => listMessages('WHATSAPP') })
+  const save = useMutation({
+    mutationFn: (p: Parameters<typeof saveWhatsappSettings>[0]) => saveWhatsappSettings(p),
+    onSuccess: (s, p) => {
+      toast.success('enabled' in p ? (s.enabled ? 'WhatsApp messages are on' : 'WhatsApp messages are off') : 'Saved')
+      queryClient.setQueryData(['whatsapp-settings'], s)
+    },
+  })
+  const sync = useMutation({
+    mutationFn: syncWhatsapp,
+    onSuccess: (r) => {
+      toast.success(r.updated ? `Checked ${r.updated} message${r.updated === 1 ? '' : 's'} with Meta` : 'Nothing submitted to Meta yet')
+      void queryClient.invalidateQueries({ queryKey: ['customer-messages', 'WHATSAPP'] })
+    },
+  })
+  const s = settings.data
+  const number = s?.numbers.find((n) => n.id === s.channel_id)
+  const approved = (messages.data ?? []).filter((m) => m.wa_status === 'APPROVED').length
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="WhatsApp" icon={<PlatformIcon platform="WHATSAPP" className="size-4" />}
+        description="Send order confirmations, shipping updates and payment alerts over WhatsApp, from your own business number."
+        actions={s && (
+          <>
+            {manage && number && (
+              <Button variant="outline" disabled={sync.isPending} onClick={() => sync.mutate()}>
+                {sync.isPending ? <Spinner /> : <RefreshCw />} Refresh from Meta
+              </Button>
+            )}
+            <label className="flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2 text-sm font-medium">
+              Send WhatsApp messages
+              <Switch checked={s.enabled} disabled={!manage || save.isPending || (!s.enabled && !s.ready)} onCheckedChange={(on) => save.mutate({ enabled: on })} />
+            </label>
+          </>
+        )} />
+
+      {settings.isLoading ? <LoadingState /> : settings.error ? <ErrorState error={settings.error} onRetry={() => settings.refetch()} /> : s && (
+        <>
+          {!s.numbers.length ? (
+            <Notice tone="warn" text="Connect your WhatsApp Business number first (Messaging → Channels). The same number answers chats in the Inbox."
+              action={<Button size="sm" asChild><Link to="/admin/inbox/channels">Connect WhatsApp</Link></Button>} />
+          ) : !s.ready ? (
+            <Notice tone="warn" text="Choose the WhatsApp number your messages come from."
+              action={state.tab !== 'setup' && <Button size="sm" onClick={() => update({ tab: 'setup' })}>Choose number</Button>} />
+          ) : !s.enabled ? (
+            <Notice tone="warn" text={`Sending from ${number ? numberLabel(number) : 'your number'}, but WhatsApp messages are off. ${approved ? 'Switch them on above.' : 'Submit messages to Meta, then switch them on.'}`} />
+          ) : (
+            <Notice tone="ok" text={`On. Messages Meta approved (${approved}) go out from ${number ? numberLabel(number) : 'your number'} when an order reaches their step.`} />
+          )}
+
+          <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
+            <TabsList>
+              <TabsTrigger value="messages">Messages</TabsTrigger>
+              <TabsTrigger value="setup">Setup</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+            </TabsList>
+            <TabsContent value="messages" className="space-y-3">
+              {messages.isLoading ? <LoadingState /> : messages.error ? <ErrorState error={messages.error} onRetry={() => messages.refetch()} />
+                : <MessageGroups channel="WHATSAPP" messages={messages.data ?? []} canManage={manage} basePath="/admin/whatsapp"
+                    status={(m) => <WhatsappStatusBadge message={m} />} />}
+              <p className="text-xs text-muted-foreground">
+                WhatsApp lets a business message customers first only with texts Meta approved. A message goes out when it is switched on and approved.
+                Any message can still be sent by hand from an order with <span className="font-medium text-foreground">Send on WhatsApp</span>.
+              </p>
+            </TabsContent>
+            <TabsContent value="setup"><Setup settings={s} canManage={manage} saving={save.isPending} onSave={(p) => save.mutate(p)} /></TabsContent>
+            <TabsContent value="activity"><MessageLogTab channel="WHATSAPP" /></TabsContent>
+          </Tabs>
+        </>
+      )}
+    </div>
+  )
+}
+
+function Setup({ settings, canManage, saving, onSave }: {
+  settings: WhatsappSettings; canManage: boolean; saving: boolean
+  onSave: (p: Parameters<typeof saveWhatsappSettings>[0]) => void
+}) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Sending number</CardTitle>
+          <CardDescription>Messages come from a WhatsApp Business number connected in Messaging → Channels.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {settings.numbers.length ? (
+            <div className="space-y-1.5">
+              <Label>Number</Label>
+              <Select value={settings.channel_id ?? ''} disabled={!canManage || saving} onValueChange={(v) => onSave({ channel_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Choose a number" /></SelectTrigger>
+                <SelectContent>
+                  {settings.numbers.map((n) => (
+                    <SelectItem key={n.id} value={n.id} disabled={!n.waba_id || n.status === 'DISCONNECTED'}>
+                      {numberLabel(n)}{!n.waba_id ? ' (reconnect it to send templates)' : n.status === 'DISCONNECTED' ? ' (disconnected)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No WhatsApp number is connected yet.</p>
+          )}
+          <Button variant="outline" size="sm" asChild><Link to="/admin/inbox/channels"><ExternalLink /> Messaging channels</Link></Button>
+
+          <div className="space-y-1.5">
+            <Label>Message language</Label>
+            <Select value={settings.language} disabled={!canManage || saving} onValueChange={(v) => onSave({ language: v as WhatsappSettings['language'] })}>
+              <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="bn">Bangla (বাংলা)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Meta checks that the text is in this language. Change it before you submit; messages already approved keep theirs.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle className="text-base">How it works</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground marker:text-foreground">
+            <li>Choose the number and language here.</li>
+            <li>Open a message, adjust the words, and press <span className="font-medium text-foreground">Submit to Meta</span>. Meta usually answers within minutes, at most a day.</li>
+            <li>Once approved, switch the message on, and switch WhatsApp messages on at the top.</li>
+          </ol>
+          <p className="mt-3 rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+            Meta charges your WhatsApp Business account for each message at its utility rate; messages sent while a chat with the customer is open
+            (24 hours after they last wrote) are free. Fullfilio adds no charge. Add a payment method in Meta Business Suite → WhatsApp accounts.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

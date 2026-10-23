@@ -9,6 +9,9 @@ import type { InboxAttachment } from './parse.ts'
 
 type FetchFn = typeof fetch
 
+/** Where a connected Page / Instagram account / WhatsApp number keeps its access token (integration_secret_*). */
+export const inboxChannelKey = (id: string) => `inbox.channel.${id.replace(/-/g, '')}`
+
 async function hmacHex(key: string, message: string): Promise<string> {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(message))

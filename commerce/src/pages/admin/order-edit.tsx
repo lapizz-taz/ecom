@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, MessageCircle, Minus, Phone, Plus, Search, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Minus, Phone, Plus, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -12,8 +12,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { SendOnWhatsapp } from '@/features/messaging/send-on-whatsapp'
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
-import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { formatMoney, toNumber } from '@/lib/format'
@@ -107,7 +107,6 @@ export default function OrderEditPage() {
   const total = itemsChanged && quote.data
     ? toNumber(quote.data.subtotal) - toNumber(o.discount_total) + toNumber(o.delivery_charge) - toNumber(o.delivery_discount) + toNumber(o.tax_amount)
     : toNumber(o.total_amount)
-  const wa = waNumber(o.customer_phone)
   const addLine = (v: VariantSearchRow) => setLines((ls) => ls.some((l) => l.variant_id === v.variant_id)
     ? ls.map((l) => (l.variant_id === v.variant_id ? { ...l, quantity: l.quantity + 1 } : l))
     : [...ls, { variant_id: v.variant_id!, name: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`, sku: v.sku ?? '', image: null, quantity: 1, unit_price: toNumber(v.unit_price), available: v.track_inventory ? v.available : null }])
@@ -141,7 +140,7 @@ export default function OrderEditPage() {
                 <div className="flex items-center gap-1">
                   <Input id="e-phone" inputMode="tel" value={form.phone} disabled={!editable} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                   <Button size="icon" variant="ghost" asChild><a href={`tel:${o.customer_phone}`} aria-label="Call"><Phone /></a></Button>
-                  {wa && <Button size="icon" variant="ghost" asChild><a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" aria-label="WhatsApp"><MessageCircle /></a></Button>}
+                  <SendOnWhatsapp orderId={o.id} phone={o.customer_phone} size="icon" iconOnly />
                 </div>
               </Field>
               <Field label="Name" htmlFor="e-name"><Input id="e-name" value={form.name} disabled={!editable} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>

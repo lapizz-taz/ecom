@@ -1,5 +1,5 @@
 import {
-  BarChart3, Boxes, ClipboardCheck, Globe, HelpCircle, Inbox, LayoutDashboard, Megaphone, MessageSquare, Search, Settings,
+  BarChart3, Boxes, ClipboardCheck, Globe, HelpCircle, Inbox, LayoutDashboard, Mail, Megaphone, MessageCircle, MessageSquare, Search, Settings,
   ShoppingBag, Store, TrendingUp, UserCog, Users, Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -128,6 +128,22 @@ export const NAV: NavSection[] = [
         ],
       },
       {
+        label: 'Email', to: '/admin/email', icon: <Mail />, permission: 'notifications.view',
+        children: [
+          { label: 'Customer Emails', to: '/admin/email' },
+          { label: 'Email Sending', to: '/admin/email?tab=sender' },
+          { label: 'Email Log', to: '/admin/email?tab=activity' },
+        ],
+      },
+      {
+        label: 'WhatsApp', to: '/admin/whatsapp', icon: <MessageCircle />, permission: 'notifications.view',
+        children: [
+          { label: 'WhatsApp Messages', to: '/admin/whatsapp' },
+          { label: 'WhatsApp Setup', to: '/admin/whatsapp?tab=setup' },
+          { label: 'WhatsApp Log', to: '/admin/whatsapp?tab=activity' },
+        ],
+      },
+      {
         label: 'Purchase', to: '/admin/purchases', icon: <ShoppingBag />, permission: 'purchases.view',
         children: [
           { label: 'Purchase List', to: '/admin/purchases' },
@@ -216,7 +232,7 @@ export const NAV: NavSection[] = [
           { label: 'Developers & API', to: '/admin/settings/developers' },
           { label: 'Messaging Channels', to: '/admin/inbox/channels', permission: 'inbox.view' },
           { label: 'Cloud Calling', to: '/admin/settings/voicedrive-pbx', feature: 'pbx' },
-          { label: 'Templates', to: '/admin/settings?tab=notifications' },
+          { label: 'Customer Messages', to: '/admin/settings?tab=notifications' },
           { label: 'Order Sources', to: '/admin/settings?tab=sources' },
           { label: 'Deletion Logs', to: '/admin/audit-logs?view=deletions', permission: 'audit.view' },
           { label: 'Advanced Settings', to: '/admin/settings?tab=advanced' },

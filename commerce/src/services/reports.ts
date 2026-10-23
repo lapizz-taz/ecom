@@ -43,8 +43,11 @@ export async function timeseries(from: string, to: string, granularity: string, 
   return fromJson<TimeseriesPoint[]>(data) ?? []
 }
 
-async function call<T>(fn: Parameters<typeof supabase.rpc>[0], args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.rpc(fn, args as never)
+// Untyped on purpose: resolving rpc()'s overloads for every report function is too deep for TypeScript.
+type UntypedRpc = { rpc(fn: string, args: unknown): PromiseLike<{ data: Parameters<typeof fromJson>[0]; error: Error | null }> }
+
+async function call<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+  const { data, error } = await (supabase as unknown as UntypedRpc).rpc(fn, args)
   if (error) throw error
   return fromJson<T>(data)
 }

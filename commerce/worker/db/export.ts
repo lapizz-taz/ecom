@@ -23,7 +23,16 @@ export const sqlLiteral = (v: SqlValue): string => {
   if (v instanceof Uint8Array || v instanceof ArrayBuffer) {
     return `X'${Array.from(new Uint8Array(v as ArrayBuffer), (b) => b.toString(16).padStart(2, '0')).join('')}'`
   }
-  return `'${String(v).replaceAll("'", "''")}'`
+  const text = String(v).replaceAll("'", "''")
+  if (!/[\r\n]/.test(text)) return `'${text}'`
+  // Line breaks travel as a marker the text doesn't contain, put back by replace(): each statement
+  // stays on one line (the seed file is read line by line) and the expression stays shallow.
+  // One character absent from the text, so it can't match anything but a line break.
+  const [nl, cr] = [...'⏎␍↵¶␤§', ...Array.from({ length: 31 }, (_, i) => String.fromCharCode(i + 1)).filter((c) => !/[\t\n\r]/.test(c))]
+    .filter((c) => !text.includes(c))
+  let out = `replace('${text.replaceAll('\r', cr).replaceAll('\n', nl)}', '${nl}', char(10))`
+  if (text.includes('\r')) out = `replace(${out}, '${cr}', char(13))`
+  return out
 }
 
 export interface ExportOptions {

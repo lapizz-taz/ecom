@@ -2271,6 +2271,15 @@ CREATE TABLE meta_campaigns (
   CONSTRAINT meta_campaigns_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
 ) STRICT;
 
+CREATE TABLE notification_defaults (
+  channel TEXT NOT NULL CHECK (channel IN ('SMS', 'WHATSAPP', 'EMAIL')),
+  event TEXT NOT NULL CHECK (event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED')),
+  subject TEXT,
+  template TEXT NOT NULL,
+  PRIMARY KEY (channel, event),
+  CONSTRAINT notification_defaults_channel_check CHECK (channel IN ('EMAIL', 'WHATSAPP'))
+) STRICT;
+
 CREATE TABLE notification_logs (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
   notification_id TEXT CHECK (notification_id IS NULL OR length(notification_id) = 36),
@@ -2301,9 +2310,11 @@ CREATE TABLE notification_logs (
   status_checked_at TEXT CHECK (status_checked_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', status_checked_at) = status_checked_at),
   created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  data TEXT CHECK (data IS NULL OR json_valid(data)),
   PRIMARY KEY (id),
   CONSTRAINT notification_logs_cost_check CHECK ((cost is null) or (cost >= 0)),
   CONSTRAINT notification_logs_cost_source_check CHECK (cost_source IN ('ESTIMATE', 'PROVIDER')),
+  CONSTRAINT notification_logs_data_check CHECK ((data is null) or (json_type(data) = 'object')),
   CONSTRAINT notification_logs_delivery_status_check CHECK (delivery_status IN ('PENDING', 'DELIVERED', 'FAILED', 'UNKNOWN')),
   CONSTRAINT notification_logs_encoding_check CHECK (encoding IN ('GSM', 'UNICODE')),
   CONSTRAINT notification_logs_event_or_test CHECK ((event is not null) or (purpose = 'TEST')),
@@ -2331,9 +2342,25 @@ CREATE TABLE notifications (
   name TEXT,
   conditions TEXT DEFAULT '[]' NOT NULL CHECK (json_valid(conditions)),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  wa_name TEXT,
+  wa_language TEXT,
+  wa_status TEXT,
+  wa_reason TEXT,
+  wa_template_id TEXT,
+  wa_params TEXT CHECK (wa_params IS NULL OR json_valid(wa_params)),
+  wa_body TEXT,
+  wa_version INTEGER DEFAULT 0 NOT NULL,
+  wa_checked_at TEXT CHECK (wa_checked_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', wa_checked_at) = wa_checked_at),
   PRIMARY KEY (id),
   CONSTRAINT notifications_name_check CHECK ((name is null) or ((length(name) >= 1) and (length(name) <= 80))),
-  CONSTRAINT notifications_template_length CHECK (length(template) >= 1 AND length(template) <= 1000),
+  CONSTRAINT notifications_subject_length CHECK ((subject is null) or (length(subject) <= 300)),
+  CONSTRAINT notifications_template_length CHECK (case channel when 'EMAIL' then ((length(template) >= 1) and (length(template) <= 200000)) when 'WHATSAPP' then ((length(template) >= 1) and (length(template) <= 1024)) else ((length(template) >= 1) and (length(template) <= 1000)) end),
+  CONSTRAINT notifications_wa_body_check CHECK (length(wa_body) <= 1024),
+  CONSTRAINT notifications_wa_language_check CHECK (wa_language IN ('en', 'bn')),
+  CONSTRAINT notifications_wa_name_check CHECK (length(wa_name) <= 512),
+  CONSTRAINT notifications_wa_params_check CHECK ((wa_params is null) or (json_type(wa_params) = 'array')),
+  CONSTRAINT notifications_wa_reason_check CHECK (length(wa_reason) <= 500),
+  CONSTRAINT notifications_wa_status_check CHECK (length(wa_status) <= 40),
   CONSTRAINT notifications_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
 ) STRICT;
 

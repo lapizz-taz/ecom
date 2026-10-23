@@ -3,6 +3,7 @@
 // Supabase Postgres, or the Cloudflare database (db/, a SQLite Durable Object) once
 // DATABASE_BACKEND=cloudflare; uploads go to R2; Workers KV holds public,
 // rebuildable cache entries only.
+import { connect } from 'cloudflare:sockets'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { setSharedCache } from '../supabase/functions/_shared/cache.ts'
 import { setRegistryRelay } from '../supabase/functions/_shared/domain-check.ts'
@@ -10,6 +11,7 @@ import { setHistoryRelay } from '../supabase/functions/_shared/fraud/courier-his
 import { setPanelRelay } from '../supabase/functions/_shared/fraud/courier-panel.ts'
 import { httpPanelRelay } from '../supabase/functions/_shared/fraud/courier-relay.ts'
 import { setLocalCaller } from '../supabase/functions/_shared/internal.ts'
+import { cloudflareConnector, useSocketConnector } from '../supabase/functions/_shared/notifications/smtp.ts'
 import { relayedFetch } from '../supabase/functions/_shared/payments/gateway-relay.ts'
 import { copyOnce } from './copy.ts'
 import { type JobRunner, runDue } from './cron.ts'
@@ -34,6 +36,8 @@ function setUp(env: Env): Router {
   const r = createRouter(env)
   const origin = (env as { FUNCTIONS_URL?: string }).FUNCTIONS_URL?.replace(/\/functions\/v1\/?$/, '') || 'https://worker.internal'
   setLocalCaller((name, init) => r.invoke(name, new Request(`${origin}/functions/v1/${name}`, init)))
+  // Customer emails through a seller's own mailbox (SMTP) use Cloudflare's TCP sockets here.
+  useSocketConnector(cloudflareConnector(connect))
   if (usesCloudflareDb(env)) {
     // The functions' supabase-js clients talk to the Cloudflare database in-process.
     ;(globalThis as { process?: { env: Record<string, string> } }).process!.env.SUPABASE_URL = INTERNAL_ORIGIN

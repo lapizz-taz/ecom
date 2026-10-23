@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, ArrowRight, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MessageCircle, MoreHorizontal, Package, PackageMinus,
+  ArrowLeft, ArrowRight, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MoreHorizontal, Package, PackageMinus,
   PackageX, Pencil, Phone, PhoneCall, Printer, RefreshCw, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { SendOnWhatsapp } from '@/features/messaging/send-on-whatsapp'
 import { CallButton } from '@/features/pbx/call-button'
 import { CourierHistoryTable, courierHistoryOf } from '@/features/fraud/courier-history'
 import {
@@ -34,7 +35,6 @@ import { OrderBranch } from '@/features/orders/order-branch'
 import { OrderClientInfo } from '@/features/orders/order-client-info'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { eventLabel } from '@/features/sms/sms-text'
-import { waNumber } from '@/features/storefront/whatsapp-confirm'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, toNumber } from '@/lib/format'
 import {
   ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, CHARGE_KIND, CHARGE_SOURCE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, MESSAGE_STATUS, NEEDS_REASON,
@@ -737,7 +737,6 @@ function CallOutcomeCard({ order, onChanged, onApprove, approving, onSaved }: {
       if (r.updated) onSaved?.()
     },
   })
-  const wa = waNumber(order.customer_phone)
   const dirty = code !== order.review_status || note.trim() !== '' || (chosen?.needs_follow_up ?? false)
   // Closing an order (cancelled, invalid, duplicate) needs a reason.
   const needsReason = !!chosen?.closes_order && !reason
@@ -763,7 +762,7 @@ function CallOutcomeCard({ order, onChanged, onApprove, approving, onSaved }: {
           </div>
           <div className="flex flex-wrap gap-2">
             <CallButton size="sm" variant="outline" phone={order.customer_phone} orderId={order.id}><Phone /> Call</CallButton>
-            {wa && <Button size="sm" variant="outline" asChild><a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a></Button>}
+            <SendOnWhatsapp orderId={order.id} phone={order.customer_phone} />
             {can('orders.status') && (
               <Button size="sm" onClick={onApprove} disabled={approving || blocked} title={blocked ? 'Needs a fraud reviewer' : undefined}>
                 {approving ? <Spinner /> : <Check />} Approve

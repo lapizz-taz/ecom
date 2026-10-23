@@ -4,6 +4,10 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'Customer emails you can design in code',
+    body: 'Order confirmation, shipping, delivery, payment and cancellation emails, each with its own switch. Send them from your own mailbox (Gmail, Zoho, your hosting — no API needed) or through Fullfilio. Change the words and the HTML like on Shopify, with a live preview of your latest order and a test email to yourself.', to: '/admin/email' },
+  { date: '2026-10-23', tag: 'New', area: 'Messaging', title: 'WhatsApp order updates',
+    body: 'Send order confirmations, shipping updates and payment alerts on WhatsApp from your business number: write each message, submit it to Meta, and it goes out by itself once approved. On any order, the WhatsApp button opens a chat with the message already written.', to: '/admin/whatsapp' },
   { date: '2026-10-13', tag: 'New', area: 'Marketing', major: true, title: 'WooCommerce plugin 1.4: new look, browser + server tracking, updates in WordPress',
     body: 'Meta, TikTok and Google now get every event from the browser and from your server with one event id (no double counting, nothing lost to ad blockers), with hashed customer data for a higher match quality. Choose when a purchase counts — when placed, on call confirmation or on delivery — and duplicate or low-receive-rate orders are skipped. WordPress now shows when a new plugin version is out. Download 1.4 once from Sales channels; after that, updates arrive in WordPress.', to: '/admin/channels' },
   { date: '2026-10-13', tag: 'New', area: 'Marketing', title: 'Advanced ad tracking for WooCommerce',
