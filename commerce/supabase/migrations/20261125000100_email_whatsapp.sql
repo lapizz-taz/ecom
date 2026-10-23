@@ -655,6 +655,9 @@ The {{store_name}} team$t$),
 
 The {{store_name}} team$t$)
 on conflict (channel, event) do update set subject = excluded.subject, template = excluded.template;
+-- A copy pasted on Windows has CRLF line ends: the texts keep plain line breaks (WhatsApp submits them as written).
+update public.notification_defaults set template = replace(template, chr(13), ''), subject = replace(subject, chr(13), '')
+where position(chr(13) in template) > 0 or position(chr(13) in coalesce(subject, '')) > 0;
 
 -- ---------------------------------------------------------------- templates
 alter table public.notifications drop constraint if exists notifications_template_length;
