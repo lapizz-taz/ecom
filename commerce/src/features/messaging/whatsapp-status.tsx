@@ -11,11 +11,16 @@ const META: Record<string, { label: string; variant: BadgeVariant; hint: string 
   DELETED: { label: 'Not at Meta', variant: 'danger', hint: 'The template is no longer at Meta: submit it again.' },
 }
 
+type Status = Pick<CustomerMessage, 'wa_status' | 'wa_body' | 'template' | 'wa_reason' | 'reply_buttons' | 'wa_buttons'>
+
 /** Where a WhatsApp message stands with Meta, as the editor and the list show it. */
-export function whatsappState(m: Pick<CustomerMessage, 'wa_status' | 'wa_body' | 'template' | 'wa_reason'>) {
+export function whatsappState(m: Status) {
   const meta = m.wa_status ? META[m.wa_status] ?? { label: m.wa_status.toLowerCase(), variant: 'neutral' as const, hint: '' } : null
-  const edited = !!m.wa_body && m.wa_body.trim() !== m.template.trim()
+  // The Confirm / Cancel buttons are part of what Meta approved, like the text.
+  const buttonsChanged = !!meta && m.reply_buttons !== m.wa_buttons
+  const edited = (!!m.wa_body && m.wa_body.trim() !== m.template.trim()) || buttonsChanged
   return {
+    buttonsChanged,
     submitted: !!meta,
     approved: m.wa_status === 'APPROVED',
     edited,
@@ -25,11 +30,11 @@ export function whatsappState(m: Pick<CustomerMessage, 'wa_status' | 'wa_body' |
   }
 }
 
-export function WhatsappStatusBadge({ message }: { message: Pick<CustomerMessage, 'wa_status' | 'wa_body' | 'template' | 'wa_reason'> }) {
+export function WhatsappStatusBadge({ message }: { message: Status }) {
   const s = whatsappState(message)
   return (
     <span className="flex items-center gap-1.5">
-      {s.edited && <Badge variant="info" title="The text changed after it went to Meta: submit it again to use the new text.">Edited</Badge>}
+      {s.edited && <Badge variant="info" title="The message changed after it went to Meta: submit it again to use the new version.">Edited</Badge>}
       <Badge variant={s.variant} title={s.hint}>{s.label}</Badge>
     </span>
   )

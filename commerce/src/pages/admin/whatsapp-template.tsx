@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCheck, MessageCircle, RotateCcw, Save, Send, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCheck, CircleCheck, MessageCircle, Reply, RotateCcw, Save, Send, Upload } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -13,13 +13,19 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
-import { EVENT_INFO, fillWhatsapp, type MessageEvent, WHATSAPP_MAX_BODY, WHATSAPP_VARIABLES, whatsappProblems } from '@/features/messaging/shared'
+import {
+  EVENT_INFO, fillWhatsapp, type MessageEvent, variablesFor, WHATSAPP_BUTTONS, WHATSAPP_CONFIRM_TEXT, WHATSAPP_DEFAULTS, WHATSAPP_DEFAULTS_BN,
+  WHATSAPP_MAX_BODY, WHATSAPP_VARIABLES, whatsappProblems,
+} from '@/features/messaging/shared'
 import { WhatsappStatusBadge, whatsappState } from '@/features/messaging/whatsapp-status'
 import { formatDateTime } from '@/lib/format'
 import { toast } from '@/lib/toast'
-import { getMessage, resetMessage, saveMessage, setMessageEnabled, submitWhatsapp, testWhatsapp, whatsappSettings } from '@/services/messaging'
+import { getMessage, resetMessage, saveMessage, setMessageEnabled, setReplyButtons, submitWhatsapp, testWhatsapp, whatsappSettings } from '@/services/messaging'
 
 const EXAMPLES = Object.fromEntries(WHATSAPP_VARIABLES.map((v) => [v.name, v.example]))
+// The order confirmation's default texts with and without the Confirm / Cancel buttons, in both languages.
+const PLAIN = { en: WHATSAPP_DEFAULTS.ORDER_CREATED, bn: WHATSAPP_DEFAULTS_BN.ORDER_CREATED }
+const isDefault = (text: string, set: Record<'en' | 'bn', string>) => Object.values(set).some((d) => d.trim() === text.trim())
 
 /** WhatsApp's own text styles: *bold*, _italic_, ~strikethrough~. */
 function Styled({ text }: { text: string }) {
@@ -82,6 +88,20 @@ export default function WhatsappTemplatePage() {
     mutationFn: (on: boolean) => setMessageEnabled(id, on),
     onSuccess: (_d, on) => { toast.success(on ? 'This message is on' : 'This message is off'); void message.refetch(); refresh() },
   })
+  const confirm = useMutation({
+    mutationFn: async (on: boolean) => {
+      // A text that is still Fullfilio's follows the buttons: "tap Confirm below" with them, "we will call you" without.
+      const lang = settings.data?.language ?? 'en'
+      const text = m?.template ?? ''
+      if (!dirty && isDefault(text, on ? PLAIN : WHATSAPP_CONFIRM_TEXT)) await saveMessage(id, null, (on ? WHATSAPP_CONFIRM_TEXT : PLAIN)[lang])
+      return setReplyButtons(id, on)
+    },
+    onSuccess: (row, on) => {
+      toast.success(on ? 'Confirm and Cancel buttons added: submit it to Meta again' : 'Buttons removed: submit it to Meta again')
+      setDraft(null)
+      refresh(row)
+    },
+  })
   const test = useMutation({
     mutationFn: () => testWhatsapp(id, phone),
     onSuccess: (r) => { toast.success(`Test message sent to ${r.sent_to}`); setTesting(false) },
@@ -108,6 +128,7 @@ export default function WhatsappTemplatePage() {
   const number = settings.data?.numbers.find((n) => n.id === settings.data?.channel_id)
   const canSubmit = !!number?.waba_id && !problems.length && draft !== null && (dirty || state.edited || !state.submitted || m.wa_status === 'REJECTED' || m.wa_status === 'DELETED' || m.wa_status === 'DISABLED')
   const length = draft?.trim().length ?? 0
+  const buttons = m.event === 'ORDER_CREATED' && m.reply_buttons ? WHATSAPP_BUTTONS[settings.data?.language ?? 'en'] : null
 
   return (
     <div className="space-y-4">
@@ -148,7 +169,7 @@ export default function WhatsappTemplatePage() {
                 <div className="space-y-1.5">
                   <p className="text-xs text-muted-foreground">Click to insert where the cursor is. Use *bold* and _italic_ as in WhatsApp.</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {WHATSAPP_VARIABLES.map((v) => (
+                    {variablesFor(WHATSAPP_VARIABLES, m.event).map((v) => (
                       <button key={v.name} type="button" disabled={!manage} onClick={() => insert(v.name)} title={`{{${v.name}}}`}
                         className="rounded-md border bg-muted/40 px-2 py-1 text-xs hover:bg-muted disabled:opacity-60">{v.label}</button>
                     ))}
@@ -157,6 +178,21 @@ export default function WhatsappTemplatePage() {
               </CardContent>
             </Card>
 
+            {m.event === 'ORDER_CREATED' && (
+              <label className="flex items-start gap-3 rounded-xl border bg-card px-4 py-3">
+                <CircleCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">Ask the customer to confirm</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Adds <span className="font-medium text-foreground">Confirm order</span> and <span className="font-medium text-foreground">Cancel order</span> buttons.
+                    A tap marks the order “Customer confirmed” (or approves it, if you choose that in Settings → Customer messages), or cancels it before you approve it,
+                    and the customer gets a short reply. The buttons are part of the message Meta approves: submit it again after changing this.
+                  </span>
+                </span>
+                <Switch checked={m.reply_buttons} disabled={!manage || confirm.isPending} onCheckedChange={(on) => confirm.mutate(on)} aria-label="Ask the customer to confirm" />
+              </label>
+            )}
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-3">
                 <CardTitle className="text-base">Meta review</CardTitle>
@@ -164,7 +200,13 @@ export default function WhatsappTemplatePage() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p className="text-muted-foreground">{state.hint}</p>
-                {state.edited && <p className="text-amber-700">You changed the text after submitting it. Customers keep getting the submitted text until you submit the new one.</p>}
+                {state.edited && (
+                  <p className="text-amber-700">
+                    {state.buttonsChanged
+                      ? `You ${m.reply_buttons ? 'added' : 'removed'} the Confirm / Cancel buttons after submitting it. Customers keep getting the submitted version until you submit it again.`
+                      : 'You changed the text after submitting it. Customers keep getting the submitted text until you submit the new one.'}
+                  </p>
+                )}
                 {state.submitted && (
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
                     <dt className="text-muted-foreground">Template</dt><dd className="font-mono">{m.wa_name}</dd>
@@ -190,9 +232,17 @@ export default function WhatsappTemplatePage() {
               </span>
             </div>
             <div className="min-h-80 bg-[#efeae2] p-4">
-              <div className="max-w-[88%] rounded-lg rounded-tl-none bg-white px-3 py-2 text-[13.5px] leading-snug text-[#111b21] shadow-sm">
-                <p className="break-words whitespace-pre-wrap"><Styled text={fillWhatsapp(draft.trim(), EXAMPLES)} /></p>
-                <span className="mt-1 flex items-center justify-end gap-1 text-[10.5px] text-[#667781]">10:42 <CheckCheck className="size-3.5 text-[#53bdeb]" /></span>
+              <div className="max-w-[88%]">
+                <div className={`rounded-lg rounded-tl-none bg-white px-3 py-2 text-[13.5px] leading-snug text-[#111b21] shadow-sm ${buttons ? 'rounded-b-none' : ''}`}>
+                  <p className="break-words whitespace-pre-wrap"><Styled text={fillWhatsapp(draft.trim(), EXAMPLES)} /></p>
+                  <span className="mt-1 flex items-center justify-end gap-1 text-[10.5px] text-[#667781]">10:42 <CheckCheck className="size-3.5 text-[#53bdeb]" /></span>
+                </div>
+                {/* Quick-reply buttons, as WhatsApp shows them under the message. */}
+                {buttons && [buttons.confirm, buttons.cancel].map((label, i) => (
+                  <div key={label} className={`mt-px flex items-center justify-center gap-1.5 bg-white py-2 text-[13.5px] font-medium text-[#027eb5] shadow-sm ${i === 1 ? 'rounded-b-lg' : ''}`}>
+                    <Reply className="size-3.5" /> {label}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
-import { EMAIL_DEFAULTS, MESSAGE_EVENTS, WHATSAPP_DEFAULTS } from '../../functions/_shared/notifications/defaults'
+import { EMAIL_DEFAULTS, LANGUAGES, MESSAGE_EVENTS, messageDefaults, SUMMARY_EMAIL, WHATSAPP_DEFAULTS } from '../../functions/_shared/notifications/defaults'
 import { asService, asSystem, asUser, closePool, type Db, expectError, inTx, one, value } from '../support/db'
 import { createOrder, createProduct, createStaff } from '../support/fixtures'
 
@@ -53,11 +53,18 @@ describe('email & WhatsApp: defaults', () => {
   it('stores the same defaults as the code, and every store starts from them', () =>
     inTx(async (db) => {
       await asSystem(db)
-      const { rows } = await db.query<{ channel: string; event: string; subject: string | null; template: string }>(`select * from public.notification_defaults`)
-      expect(rows).toHaveLength(MESSAGE_EVENTS.length * 2)
-      for (const e of MESSAGE_EVENTS) {
-        expect(rows.find((r) => r.channel === 'EMAIL' && r.event === e)).toMatchObject({ subject: EMAIL_DEFAULTS[e].subject, template: EMAIL_DEFAULTS[e].template })
-        expect(rows.find((r) => r.channel === 'WHATSAPP' && r.event === e)?.template).toBe(WHATSAPP_DEFAULTS[e])
+      const { rows } = await db.query<{ channel: string; event: string; language: string; subject: string | null; template: string }>(`select * from public.notification_defaults`)
+      // Every event's email, WhatsApp text and SMS in English and Bangla, and the daily summary email in both.
+      expect(rows).toHaveLength(LANGUAGES.length * (MESSAGE_EVENTS.length * 3 + 1))
+      for (const lang of LANGUAGES) {
+        const d = messageDefaults(lang)
+        const find = (channel: string, e: string) => rows.find((r) => r.channel === channel && r.event === e && r.language === lang)
+        for (const e of MESSAGE_EVENTS) {
+          expect(find('EMAIL', e)).toMatchObject({ subject: d.email[e].subject, template: d.email[e].template })
+          expect(find('WHATSAPP', e)?.template).toBe(d.whatsapp[e])
+          expect(find('SMS', e)?.template).toBe(d.sms[e])
+        }
+        expect(find('EMAIL', 'DAILY_SUMMARY')).toMatchObject(SUMMARY_EMAIL[lang])
       }
       const email = await one<{ subject: string; template: string }>(db, `select subject, template from public.notifications where channel = 'EMAIL' and event = 'ORDER_SHIPPED'`)
       expect(email).toEqual({ subject: EMAIL_DEFAULTS.ORDER_SHIPPED.subject, template: EMAIL_DEFAULTS.ORDER_SHIPPED.template })
@@ -69,7 +76,7 @@ describe('email & WhatsApp: defaults', () => {
       expect(n).toEqual({ template: EMAIL_DEFAULTS.ORDER_DELIVERED.template, subject: EMAIL_DEFAULTS.ORDER_DELIVERED.subject })
 
       // The migration file holds exactly what scripts/gen-notification-defaults.mjs prints.
-      const sql = readFileSync(new URL('../../migrations/20261125000100_email_whatsapp.sql', import.meta.url), 'utf8')
+      const sql = readFileSync(new URL('../../migrations/20261126000200_messaging_v2.sql', import.meta.url), 'utf8')
       for (const e of MESSAGE_EVENTS) expect(sql).toContain(`$t$${EMAIL_DEFAULTS[e].template}$t$`)
     }))
 })
@@ -267,7 +274,10 @@ describe('WhatsApp: approved templates only', () => {
       await asUser(db, agent)
       const r = await value<{ phone: string; messages: Array<{ event: string; name: string; text: string }> }>(db, `select public.whatsapp_order_messages($1)`, [o.id])
       expect(r.phone).toBe('8801711000803')
-      expect(r.messages.map((m) => m.event)).toEqual([...MESSAGE_EVENTS])
+      // Every order message (not the cart reminder), in the order an order lives through them.
+      expect(r.messages.map((m) => m.event)).toEqual(['ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'PAYMENT_RECEIVED',
+        'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERY_FAILED', 'ORDER_DELIVERED', 'REVIEW_REQUEST', 'ORDER_CANCELLED',
+        'RETURN_INITIATED', 'ORDER_RETURNED'])
       expect(r.messages[0].text).toContain(`Hi Rahim, thank you for your order ${o.order_number} of ৳`)
       const viewer = await createStaff(db, 'PRODUCTION_MANAGER')
       await asUser(db, viewer)

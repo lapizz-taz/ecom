@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Mail, MessageCircle, RefreshCw } from 'lucide-react'
+import { Check, CheckCheck, Mail, MessageCircle, MessageSquare, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { type Column, DataTable } from '@/components/common/data-table'
@@ -20,6 +20,26 @@ import { EVENT_INFO, type MessageEvent } from './shared'
 const PROVIDER: Record<string, string> = { smtp: 'your mailbox', fullfilio: 'Fullfilio email service', meta: 'WhatsApp (Meta)' }
 const phone = (to: string) => (to.startsWith('880') ? `0${to.slice(3)}` : to)
 const what = (l: MessageLog) => (l.purpose === 'TEST' ? 'Test message' : l.event ? EVENT_INFO[l.event as MessageEvent]?.title ?? l.event : '—')
+/** WhatsApp's receipts for a sent message: delivered to the phone, read, or not delivered after all. */
+function Receipt({ log }: { log: MessageLog }) {
+  if (log.channel !== 'WHATSAPP' || log.status !== 'SENT') return null
+  if (log.delivery_status === 'READ') return <span className="flex items-center gap-1 text-xs text-sky-600"><CheckCheck className="size-3.5" /> Read</span>
+  if (log.delivery_status === 'DELIVERED') return <span className="flex items-center gap-1 text-xs text-muted-foreground"><CheckCheck className="size-3.5" /> Delivered</span>
+  if (log.delivery_status === 'FAILED') return <span className="text-xs text-red-600">Not delivered</span>
+  return <span className="flex items-center gap-1 text-xs text-muted-foreground"><Check className="size-3.5" /> Sent</span>
+}
+
+/** The SMS that went instead of a WhatsApp message (WhatsApp → Setup → Send an SMS when WhatsApp can't). */
+function SentBySms({ log }: { log: MessageLog }) {
+  if (!log.fallback) return null
+  const sent = log.fallback.status === 'SENT'
+  return (
+    <span className={`flex items-center gap-1 text-xs ${sent ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+      <MessageSquare className="size-3.5" /> {sent ? 'Sent by SMS instead' : log.fallback.status === 'FAILED' ? 'SMS instead failed' : 'Going by SMS instead'}
+    </span>
+  )
+}
+
 /** The email as the customer got it (before sending, the log holds the template). */
 const renderedEmail = (l: MessageLog) => l.purpose === 'TEST' || (l.data as { rendered?: boolean } | null)?.rendered === true
 
@@ -72,8 +92,9 @@ export function MessageLogTab({ channel }: { channel: MessageChannel }) {
       key: 'status', header: 'Status',
       cell: (l) => (
         <span className="space-y-0.5">
-          <StatusBadge value={l.status} map={MESSAGE_STATUS} />
+          {l.channel === 'WHATSAPP' && l.status === 'SENT' ? <Receipt log={l} /> : <StatusBadge value={l.status} map={MESSAGE_STATUS} />}
           {l.error && <span className="block max-w-56 truncate text-xs text-red-600" title={l.error}>{l.error}</span>}
+          <SentBySms log={l} />
         </span>
       ),
     },
@@ -114,10 +135,13 @@ export function MessageLogTab({ channel }: { channel: MessageChannel }) {
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                 {open.orders && <><dt className="text-muted-foreground">Order</dt><dd><Link to={`/admin/orders/${open.orders.id}`} className="font-medium hover:underline">{open.orders.order_number}</Link></dd></>}
                 {open.status === 'SENT' && <><dt className="text-muted-foreground">Sent</dt><dd>{formatDateTime(open.sent_at)}{open.provider ? ` via ${PROVIDER[open.provider] ?? open.provider}` : ''}</dd></>}
+                {open.delivered_at && <><dt className="text-muted-foreground">Delivered</dt><dd>{formatDateTime(open.delivered_at)}</dd></>}
+                {open.read_at && <><dt className="text-muted-foreground">Read</dt><dd>{formatDateTime(open.read_at)}</dd></>}
+                {open.fallback && <><dt className="text-muted-foreground">Instead</dt><dd><SentBySms log={open} /></dd></>}
                 <dt className="text-muted-foreground">Tries</dt><dd>{open.attempts}</dd>
                 {open.error && <><dt className="text-muted-foreground">Problem</dt><dd className="text-red-700">{open.error}</dd></>}
               </dl>
-              {can('notifications.manage') && open.purpose !== 'TEST' && (open.status === 'FAILED' || open.status === 'SKIPPED') && (
+              {can('notifications.manage') && open.purpose !== 'TEST' && !open.fallback && (open.status === 'FAILED' || open.status === 'SKIPPED') && (
                 <div className="flex justify-end">
                   <Button onClick={() => retry.mutate(open.id)} disabled={retry.isPending}>{retry.isPending ? <Spinner /> : <RefreshCw />} Send again</Button>
                 </div>

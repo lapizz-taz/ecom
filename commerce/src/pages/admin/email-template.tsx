@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Mail, Monitor, RotateCcw, Save, Send, Smartphone } from 'lucide-react'
+import { AlertTriangle, CircleCheck, Mail, Monitor, RotateCcw, Save, Send, Smartphone } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -11,9 +11,11 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
-import { EMAIL_VARIABLES, EVENT_INFO, type MessageEvent, renderLiquid, SAMPLE_DATA } from '@/features/messaging/shared'
+import { EMAIL_VARIABLES, EVENT_INFO, type MessageEvent, renderLiquid, SAMPLE_DATA, variablesFor } from '@/features/messaging/shared'
 import { toast } from '@/lib/toast'
-import { emailSettings, getMessage, previewData, resetMessage, saveMessage, sendTestEmail, setMessageEnabled } from '@/services/messaging'
+import { emailSettings, getMessage, previewData, resetMessage, saveMessage, sendTestEmail, setMessageEnabled, setReplyButtons } from '@/services/messaging'
+
+const SAMPLE_REPLY_URL = (SAMPLE_DATA.order as { reply_url: string }).reply_url
 
 type Rendered = { subject: string; html: string; error: null } | { subject: string; html: string; error: string }
 
@@ -57,13 +59,18 @@ export default function EmailTemplatePage() {
   }, [dirty])
 
   // The store's latest order when there is one; otherwise a made-up order in the store's own name and colours.
+  // The confirm page's link is there only when this email asks the customer to confirm (as when it is sent).
+  const asksToConfirm = !!m?.reply_buttons && m.event === 'ORDER_CREATED'
   const data = useMemo(() => {
     const s = settings.data
-    if (realOrder.data && !useSample) return realOrder.data
     const shop = SAMPLE_DATA.shop as Record<string, unknown>
-    return { ...SAMPLE_DATA, shop: { ...shop, name: s?.store.name || shop.name, email: s?.store.email || shop.email,
-      logo_url: s?.design.logo_url ?? s?.store.logo_url ?? null, accent_color: s?.design.accent_color ?? shop.accent_color } }
-  }, [realOrder.data, settings.data, useSample])
+    const base = realOrder.data && !useSample ? realOrder.data
+      : { ...SAMPLE_DATA, shop: { ...shop, name: s?.store.name || shop.name, email: s?.store.email || shop.email,
+          logo_url: s?.design.logo_url ?? s?.store.logo_url ?? null, accent_color: s?.design.accent_color ?? shop.accent_color } }
+    const { reply_url: _reply, ...order } = (base.order ?? {}) as Record<string, unknown>
+    // A cart reminder is about a cart, not an order: the sample cart when the store's order has none.
+    return { ...base, cart: base.cart ?? SAMPLE_DATA.cart, order: asksToConfirm ? { ...order, reply_url: SAMPLE_REPLY_URL } : order }
+  }, [realOrder.data, settings.data, useSample, asksToConfirm])
   const deferred = useDeferredValue(draft)
   const preview = useMemo(() => deferred ? render(deferred.subject, deferred.template, data) : null, [deferred, data])
 
@@ -78,6 +85,10 @@ export default function EmailTemplatePage() {
   const toggle = useMutation({
     mutationFn: (on: boolean) => setMessageEnabled(id, on),
     onSuccess: (_d, on) => { toast.success(on ? 'This email is on' : 'This email is off'); void message.refetch(); refresh() },
+  })
+  const confirm = useMutation({
+    mutationFn: (on: boolean) => setReplyButtons(id, on),
+    onSuccess: (row, on) => { toast.success(on ? 'Customers can confirm or cancel from this email' : 'No confirm button in this email'); refresh(row) },
   })
   const test = useMutation({
     mutationFn: () => sendTestEmail(id, { subject: draft!.subject, template: draft!.template, data }),
@@ -128,6 +139,19 @@ export default function EmailTemplatePage() {
       {draft && (
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="min-w-0 space-y-3">
+            {m.event === 'ORDER_CREATED' && (
+              <label className="flex items-start gap-3 rounded-lg border bg-card px-3 py-2.5">
+                <CircleCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">Ask the customer to confirm</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Adds a <span className="font-medium text-foreground">Confirm your order</span> button and a cancel link. A confirmed order is
+                    marked “Customer confirmed” (or approved, if you choose that in Settings → Customer messages); a cancel cancels it before you approve it.
+                  </span>
+                </span>
+                <Switch checked={m.reply_buttons} disabled={!manage || confirm.isPending} onCheckedChange={(on) => confirm.mutate(on)} aria-label="Ask the customer to confirm" />
+              </label>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="email_subject">Subject</Label>
               <Input id="email_subject" ref={subjectRef} value={draft.subject} maxLength={300} disabled={!manage}
@@ -159,13 +183,13 @@ export default function EmailTemplatePage() {
             <details className="rounded-lg border bg-card" open>
               <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Variables <span className="font-normal text-muted-foreground">· click to insert where the cursor is</span></summary>
               <div className="flex flex-wrap gap-1.5 border-t p-3">
-                {EMAIL_VARIABLES.map((v) => (
+                {variablesFor(EMAIL_VARIABLES, m.event).map((v) => (
                   <button key={v.name} type="button" disabled={!manage} onClick={() => insert(v.name)} title={`{{ ${v.name} }}`}
                     className="rounded-md border bg-muted/40 px-2 py-1 text-xs hover:bg-muted disabled:opacity-60">{v.label}</button>
                 ))}
               </div>
               <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-                Also: <code>{'{% for item in order.line_items %}'}</code> … <code>{'{{ item.title }}'}</code>, <code>{'{{ item.quantity }}'}</code>, <code>{'{{ item.line_price | money }}'}</code> … <code>{'{% endfor %}'}</code>,
+                Also: <code>{`{% for item in ${m.event === 'CART_REMINDER' ? 'cart' : 'order'}.line_items %}`}</code> … <code>{'{{ item.title }}'}</code>, <code>{'{{ item.quantity }}'}</code>, <code>{'{{ item.line_price | money }}'}</code> … <code>{'{% endfor %}'}</code>,
                 and <code>{'{% if %}'}</code>, <code>{'{% unless %}'}</code>, <code>{'{% assign %}'}</code>, <code>{'| default: "…"'}</code>, <code>{'| upcase'}</code>, <code>{'| date: "%d %b"'}</code>.
               </p>
             </details>
@@ -188,9 +212,12 @@ export default function EmailTemplatePage() {
                 <span className="text-muted-foreground">Subject:</span> <span className="font-medium">{preview?.subject || '—'}</span>
               </div>
               <div className="flex justify-center p-3">
-                {/* The email as sent, in a sandbox: no scripts, no access to this page. */}
-                <iframe title="Email preview" sandbox="" srcDoc={preview?.html ?? ''}
-                  className={`h-[640px] rounded-md border bg-white transition-[width] ${width === 'mobile' ? 'w-[375px] max-w-full' : 'w-full'}`} />
+                {/* The email as sent, in a sandbox: no scripts, no access to this page. Mounted with its HTML: an
+                    empty frame that gets its HTML while still loading the empty one can stay blank. */}
+                {preview?.html ? (
+                  <iframe title="Email preview" sandbox="" srcDoc={preview.html}
+                    className={`h-[640px] rounded-md border bg-white transition-[width] ${width === 'mobile' ? 'w-[375px] max-w-full' : 'w-full'}`} />
+                ) : <div className="h-[640px] w-full rounded-md border bg-white" />}
               </div>
             </div>
           </div>

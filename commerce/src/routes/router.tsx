@@ -95,6 +95,8 @@ const shared: RouteObject[] = [
     ],
   },
   { path: '/start', errorElement: <RouteError />, ...page(() => import('@/pages/start/start')) },
+  // A customer's "Confirm your order" from an order email (any address: the link names the store).
+  { path: '/order-confirm/:merchant/:token', errorElement: <RouteError />, ...page(() => import('@/pages/customer/order-confirm')) },
   { path: '/start/finish', errorElement: <RouteError />, ...page(() => import('@/pages/start/finish')) },
   { path: '/admin/login', errorElement: <RouteError />, ...page(() => import('@/pages/admin/login')) },
   { path: '/admin/forgot-password', ...page(() => import('@/pages/storefront/forgot-password')) },

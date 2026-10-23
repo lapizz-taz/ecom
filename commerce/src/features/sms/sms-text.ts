@@ -12,11 +12,17 @@ export const SMS_EVENTS: Array<{ value: SmsEvent; label: string; when: string }>
   { value: 'PRE_ORDER_CONFIRMED', label: 'Pre-order confirmed', when: 'An order is approved as a pre-order' },
   { value: 'ORDER_SHIPPED', label: 'Order shipped', when: 'The courier picks the parcel up' },
   { value: 'OUT_FOR_DELIVERY', label: 'Out for delivery', when: 'The courier is delivering today (at most once a day)' },
+  { value: 'DELIVERY_FAILED', label: 'Courier could not reach', when: 'The courier puts the parcel on hold or a delivery attempt fails (at most once a day)' },
   { value: 'ORDER_DELIVERED', label: 'Delivered', when: 'The parcel is delivered' },
   { value: 'RETURN_INITIATED', label: 'Return initiated', when: 'The parcel, or a customer return, is on its way back' },
   { value: 'ORDER_RETURNED', label: 'Returned', when: 'The return reaches you' },
   { value: 'ORDER_CANCELLED', label: 'Order cancelled', when: 'An order is cancelled' },
+  { value: 'REVIEW_REQUEST', label: 'Review request', when: 'Some days after delivery, with your review link (Settings → Customer messages)' },
+  { value: 'CART_REMINDER', label: 'Abandoned cart', when: 'A customer left checkout without ordering (timing in Settings → Customer messages)' },
 ]
+
+/** Events about a cart, not an order: order conditions (total, district…) do not apply. */
+export const CART_EVENTS: SmsEvent[] = ['CART_REMINDER']
 
 export function eventLabel(event: string | null | undefined): string {
   if (!event || event === 'TEST') return 'Quick SMS'
@@ -24,8 +30,10 @@ export function eventLabel(event: string | null | undefined): string {
   return SMS_EVENTS.find((e) => e.value === event)?.label ?? event
 }
 
+export interface SmsVariable { key: string; label: string; sample: string; events?: SmsEvent[] }
+
 /** Template variables with example values for the preview. Amounts use the SMS currency text. */
-export function smsVariables(currency: string, store: { name?: string; phone?: string; website?: string } = {}) {
+export function smsVariables(currency: string, store: { name?: string; phone?: string; website?: string } = {}): SmsVariable[] {
   const amount = (n: number) => `${currency ? `${currency} ` : ''}${n.toLocaleString('en-US')}`
   const site = (store.website || 'https://yourshop.com').replace(/\/$/, '')
   return [
@@ -36,14 +44,26 @@ export function smsVariables(currency: string, store: { name?: string; phone?: s
     { key: 'cod_amount', label: 'Cash to collect', sample: amount(1195) },
     { key: 'due_amount', label: 'Still due', sample: amount(1195) },
     { key: 'advance_amount', label: 'Advance to pay', sample: amount(55) },
-    { key: 'payment_amount', label: 'Payment amount', sample: amount(55) },
+    { key: 'payment_amount', label: 'Payment amount', sample: amount(55), events: ['PAYMENT_RECEIVED', 'PAYMENT_FAILED'] },
     { key: 'courier_name', label: 'Courier', sample: 'Pathao' },
     { key: 'tracking_number', label: 'Tracking number', sample: 'DL0310ABC123' },
     { key: 'tracking_url', label: 'Tracking link', sample: 'https://merchant.pathao.com/tracking?consignment_id=DL0310ABC123' },
     { key: 'track_order_url', label: 'Order page link', sample: `${site}/track-order?order=ISO-10123` },
+    { key: 'cart_total', label: 'Cart total', sample: amount(1250), events: ['CART_REMINDER'] },
+    { key: 'cart_url', label: 'Cart link', sample: `${site}/cart?restore=8f3a2c`, events: ['CART_REMINDER'] },
+    { key: 'review_url', label: 'Review link', sample: 'https://www.facebook.com/yourpage/reviews', events: ['REVIEW_REQUEST'] },
     { key: 'store_name', label: 'Store name', sample: store.name || 'My Store' },
     { key: 'store_phone', label: 'Store phone', sample: store.phone || '01700000000' },
   ]
+}
+
+/** What a cart reminder knows besides the cart: who left it, and the store. */
+const CART_KNOWS = new Set(['customer_name', 'customer_first_name', 'store_name', 'store_phone'])
+
+/** The variables an SMS for this event can fill (a cart has no order number, total or courier). */
+export function variablesForEvent(variables: SmsVariable[], event: SmsEvent): SmsVariable[] {
+  if (CART_EVENTS.includes(event)) return variables.filter((v) => v.events?.includes(event) || CART_KNOWS.has(v.key))
+  return variables.filter((v) => !v.events || v.events.includes(event))
 }
 
 /** Same as the database's render_template: known variables filled, unknown ones removed. */

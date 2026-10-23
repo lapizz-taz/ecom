@@ -35,6 +35,7 @@ import {
 import { type InboxEvent, insideReplyWindow, parseWebhook, validSignature } from '../_shared/inbox/parse.ts'
 import { MetaApiError } from '../_shared/meta/graph.ts'
 import { logEvent } from '../_shared/monitoring.ts'
+import { REPLY_TEXTS, WHATSAPP_BUTTONS } from '../_shared/notifications/defaults.ts'
 import { parse } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
 import { adminClient, forEachMerchant, merchantFor, optionalUser, requireStaff, rpc } from '../_shared/supabase.ts'
@@ -177,6 +178,36 @@ async function automationCron(): Promise<Record<string, unknown>> {
   return { ok: true, merchants: run.merchants, failed: run.failed, sent }
 }
 
+// ------------------------------------------------------------------ customer replies to the order confirmation
+/** The two buttons' words in every language, for a tap that came without our payload. */
+const BUTTON_WORDS = new Map<string, 'confirm' | 'cancel'>(Object.values(WHATSAPP_BUTTONS).flatMap((b) => [
+  [b.confirm.toLowerCase(), 'confirm'] as const, [b.cancel.toLowerCase(), 'cancel'] as const,
+]))
+
+interface ReplyResult { result: string; order_number?: string; language?: string; reply_in_chat?: boolean }
+
+/**
+ * Confirm / Cancel tapped under the order confirmation: the order changes (only when the tap comes
+ * from the order's own number), then the customer gets a short answer in the chat (free: they wrote).
+ */
+async function customerReply(admin: SupabaseClient, appSecret: string, e: InboxEvent, conversationId: string): Promise<void> {
+  const m = e.message!
+  const phone = e.customer?.phone ?? e.thread_key ?? null
+  const tapped = m.button_payload?.match(/^ffo:(confirm|cancel):([0-9a-f]{40})$/)
+  let r: ReplyResult | null = null
+  if (tapped) {
+    r = await rpc<ReplyResult>(admin, 'order_reply_apply', { p_token: tapped[2], p_action: tapped[1], p_via: 'WHATSAPP', p_phone: phone })
+  } else {
+    const action = BUTTON_WORDS.get((m.body ?? '').trim().toLowerCase())
+    if (!action || !m.reply_to_external_id || m.button_payload?.startsWith('ffo:test:')) return
+    r = await rpc<ReplyResult>(admin, 'order_reply_by_message', { p_message_id: m.reply_to_external_id, p_action: action, p_phone: phone })
+  }
+  const key = r?.result as keyof (typeof REPLY_TEXTS)['en'] | undefined
+  if (!r?.reply_in_chat || !key || !(key in REPLY_TEXTS.en)) return
+  const text = REPLY_TEXTS[r.language === 'bn' ? 'bn' : 'en'][key].replace('{{order_number}}', r.order_number ?? '')
+  await autoSend(admin, appSecret, null, { conversation_id: conversationId, text, auto: 'AUTO_REPLY' })
+}
+
 // ------------------------------------------------------------------ webhook
 interface StoreContext { admin: SupabaseClient; channels: Map<string, Channel | null>; tokens: Map<string, string> }
 
@@ -292,6 +323,11 @@ async function webhook(req: Request): Promise<Response> {
       const channel = await channelFor(store.ctx, e)
       if (!channel) { skipped.no_channel++; continue }
       if (e.type === 'status' && e.status) {
+        // Order messages (templates) too: delivered, read, or failed (then the SMS, when the store chose that).
+        if (channel.platform === 'WHATSAPP' && e.status.status !== 'SENT') {
+          await rpc(admin, 'notification_whatsapp_status', { p_message_id: e.status.external_id, p_status: e.status.status, p_error: e.status.error ?? null })
+            .catch((err) => void logEvent({ level: 'WARN', category: 'WEBHOOK', source: 'inbox', merchantId, message: `WhatsApp receipt not recorded: ${(err as Error).message}` }))
+        }
         await rpc(admin, 'inbox_message_status', { p_channel: channel.id, p_external_id: e.status.external_id, p_status: e.status.status, p_error: e.status.error ?? null })
         continue
       }
@@ -307,6 +343,10 @@ async function webhook(req: Request): Promise<Response> {
       if (!r.duplicate) stored++
       if (r.needs_post && e.post?.id) await refreshPost(store.ctx, channel, e.post.id).catch(() => undefined)
       const fresh = !e.message.created_at || Date.now() - Date.parse(e.message.created_at) < AUTOMATION_MAX_AGE_MS
+      if (!r.duplicate && r.direction === 'IN' && channel.platform === 'WHATSAPP' && (e.message.button_payload || e.message.reply_to_external_id)) {
+        await customerReply(admin, app.app_secret ?? '', e, r.conversation_id).catch((err) => void logEvent({ level: 'ERROR', category: 'WEBHOOK', source: 'inbox', merchantId,
+          message: `Order confirmation reply failed: ${(err as Error).message}`, context: { conversation_id: r.conversation_id } }))
+      }
       if (!r.duplicate && r.direction === 'IN' && fresh) {
         await automate(store.ctx, channel, e, r).catch((err) => void logEvent({ level: 'ERROR', category: 'WEBHOOK', source: 'inbox', merchantId,
           message: `Auto reply / moderation failed: ${(err as Error).message}`, context: { conversation_id: r.conversation_id } }))

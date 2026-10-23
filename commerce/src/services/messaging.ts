@@ -29,8 +29,30 @@ export interface WhatsappSettings {
   provider: 'meta' | 'none'
   channel_id: string | null
   language: 'en' | 'bn'
+  /** A WhatsApp message that cannot go out (not approved, failed, undelivered) goes as the event's SMS. */
+  sms_fallback: boolean
   numbers: WhatsappNumber[]
   ready: boolean
+}
+
+export type MessageLanguage = 'en' | 'bn'
+
+/** Customer-message settings shared by SMS, email and WhatsApp (Settings → Customer messages). */
+export interface MessagingSettings {
+  language: MessageLanguage
+  confirm: { auto_approve: boolean }
+  cart: { first_minutes: number; second: boolean; second_hours: number }
+  review: { days: number; url: string }
+  summary: { enabled: boolean; hour: number; emails: string[]; last_sent: string | null }
+  staff_emails: string[]
+  email_ready: boolean
+  cart_stats: { days: number; reminded: number; recovered: number; recovered_value: number }
+  /** Which channels have each automatic message switched on. */
+  enabled: { cart: MessageChannelAll[]; review: MessageChannelAll[]; confirm: MessageChannel[] }
+}
+export type MessageChannelAll = MessageChannel | 'SMS'
+export type MessagingSettingsPatch = Partial<Pick<MessagingSettings, 'confirm' | 'cart' | 'review'>> & {
+  summary?: Pick<MessagingSettings['summary'], 'enabled' | 'hour' | 'emails'>
 }
 
 // ------------------------------------------------------------------ settings
@@ -56,10 +78,32 @@ export async function whatsappSettings() {
   return fromJson<WhatsappSettings>(data)
 }
 
-export async function saveWhatsappSettings(patch: Partial<Pick<WhatsappSettings, 'enabled' | 'channel_id' | 'language'>>) {
+export async function saveWhatsappSettings(patch: Partial<Pick<WhatsappSettings, 'enabled' | 'channel_id' | 'language' | 'sms_fallback'>>) {
   const { data, error } = await supabase.rpc('whatsapp_settings_save', { p: patch as unknown as Json })
   if (error) throw error
   return fromJson<WhatsappSettings>(data)
+}
+
+export async function messagingSettings() {
+  const { data, error } = await supabase.rpc('messaging_settings')
+  if (error) throw error
+  return fromJson<MessagingSettings>(data)
+}
+
+export async function saveMessagingSettings(patch: MessagingSettingsPatch) {
+  const { data, error } = await supabase.rpc('messaging_settings_save', { p: patch as unknown as Json })
+  if (error) throw error
+  return fromJson<MessagingSettings>(data)
+}
+
+/**
+ * The store's message language. With apply, every text still at a default becomes the default in
+ * the new language (texts staff wrote stay as they are).
+ */
+export async function setMessagingLanguage(language: MessageLanguage, apply: boolean) {
+  const { data, error } = await supabase.rpc('messaging_language_set', { p_language: language, p_apply: apply })
+  if (error) throw error
+  return fromJson<{ language: MessageLanguage; changed: number; custom: number; whatsapp_to_submit: number }>(data)
 }
 
 // ------------------------------------------------------------------ messages
@@ -75,12 +119,6 @@ export async function getMessage(id: string) {
   return data
 }
 
-export async function messageDefault(channel: MessageChannel, event: string) {
-  const { data, error } = await supabase.from('notification_defaults').select('subject, template').eq('channel', channel).eq('event', event as never).maybeSingle()
-  if (error) throw error
-  return data
-}
-
 export async function saveMessage(id: string, subject: string | null, template: string) {
   const { data, error } = await supabase.rpc('notification_message_save', { p_id: id, p_subject: subject as string, p_template: template })
   if (error) throw error
@@ -90,6 +128,13 @@ export async function saveMessage(id: string, subject: string | null, template: 
 export async function setMessageEnabled(id: string, enabled: boolean) {
   const { error } = await supabase.rpc('notification_message_enable', { p_id: id, p_enabled: enabled })
   if (error) throw error
+}
+
+/** The order confirmation's "Ask the customer to confirm" (Confirm / Cancel buttons or link). */
+export async function setReplyButtons(id: string, on: boolean) {
+  const { data, error } = await supabase.rpc('notification_message_options', { p_id: id, p: { reply_buttons: on } })
+  if (error) throw error
+  return data
 }
 
 export async function resetMessage(id: string) {
@@ -113,7 +158,11 @@ export const syncWhatsapp = () => invokeFunction<{ ok: true; updated: number }>(
 export const testWhatsapp = (id: string, to: string) => invokeFunction<{ ok: true; sent_to: string }>('messaging', { action: 'whatsapp_test', notification_id: id, to })
 
 // ------------------------------------------------------------------ log
-export type MessageLog = Tables<'notification_logs'> & { orders: { id: string; order_number: string } | null }
+export type MessageLog = Tables<'notification_logs'> & {
+  orders: { id: string; order_number: string } | null
+  /** WhatsApp: the SMS that went instead, when it could not go out. */
+  fallback?: Pick<Tables<'notification_logs'>, 'id' | 'status' | 'recipient' | 'sent_at'> | null
+}
 
 export async function listMessageLogs(channel: MessageChannel, filter: { status?: string; search?: string } = {}, limit = 100) {
   let q = supabase.from('notification_logs').select('*, orders(id, order_number)').eq('channel', channel)
@@ -122,13 +171,40 @@ export async function listMessageLogs(channel: MessageChannel, filter: { status?
   if (filter.search?.trim()) q = q.ilike('recipient', `%${filter.search.trim().replace(/[%_]/g, '')}%`)
   const { data, error } = await q
   if (error) throw error
-  return (data ?? []) as unknown as MessageLog[]
+  const logs = (data ?? []) as unknown as MessageLog[]
+  if (channel !== 'WHATSAPP' || !logs.length) return logs
+  const { data: sms, error: smsError } = await supabase.from('notification_logs').select('id, status, recipient, sent_at, fallback_of')
+    .in('fallback_of', logs.map((l) => l.id))
+  if (smsError) throw smsError
+  const instead = new Map((sms ?? []).map((f) => [f.fallback_of, f]))
+  return logs.map((l) => ({ ...l, fallback: instead.get(l.id) ?? null }))
 }
 
 export async function retryMessage(id: string) {
   const { error } = await supabase.rpc('retry_notification', { p_id: id })
   if (error) throw error
 }
+
+// ------------------------------------------------------------------ customers: confirm / cancel
+export interface OrderReplyView {
+  store: { name: string; phone: string | null; url: string | null; logo_url: string | null; accent_color: string; currency_symbol: string }
+  order: {
+    number: string; created_at: string; total: number; cod_amount: number | null; customer_first_name: string
+    items: Array<{ title: string; variant: string | null; quantity: number; image_url: string | null }>
+  }
+  state: 'OPEN' | 'CONFIRMED' | 'CANCELLED' | 'CANCEL_REQUESTED' | 'CLOSED' | 'EXPIRED'
+  can_confirm: boolean
+  can_cancel: boolean
+  language: MessageLanguage
+}
+
+/** The order behind an email's "Confirm your order" link (no sign-in: the link is the key). */
+export const orderReplyView = (merchantId: string, token: string) =>
+  invokeFunction<OrderReplyView>('messaging', { action: 'order_reply_view', merchant_id: merchantId, token })
+
+/** The customer's answer on that page. */
+export const orderReply = (merchantId: string, token: string, reply: 'confirm' | 'cancel') =>
+  invokeFunction<OrderReplyView>('messaging', { action: 'order_reply', merchant_id: merchantId, token, reply })
 
 // ------------------------------------------------------------------ orders
 export interface OrderWhatsappMessages { phone: string | null; messages: Array<{ event: string; name: string; text: string }> }

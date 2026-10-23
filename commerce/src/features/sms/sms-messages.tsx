@@ -60,7 +60,7 @@ export function SmsMessagesTab() {
       cell: (m) => (
         <span>
           <span className="block">{formatDateTime(m.sent_at ?? m.created_at)}</span>
-          <span className="text-xs text-muted-foreground">{eventLabel(m.event)}</span>
+          <span className="text-xs text-muted-foreground">{eventLabel(m.event)}{m.fallback_of ? ' · instead of WhatsApp' : ''}</span>
         </span>
       ),
     },

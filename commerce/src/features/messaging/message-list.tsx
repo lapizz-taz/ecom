@@ -7,10 +7,10 @@ import { toast } from '@/lib/toast'
 import { type CustomerMessage, type MessageChannel, setMessageEnabled } from '@/services/messaging'
 import { EVENT_INFO, MESSAGE_EVENTS, type MessageEvent } from './shared'
 
-const GROUPS = ['Order processing', 'Payments', 'Order exceptions'] as const
+const GROUPS = ['Order processing', 'Payments', 'Order exceptions', 'Marketing'] as const
 
 /**
- * The store's customer messages in Shopify's groups (Order processing, Payments, Order exceptions):
+ * The store's customer messages in Shopify's groups (Order processing, Payments, Order exceptions, Marketing):
  * each with what it is, when it goes out, a switch and a link to its editor.
  */
 export function MessageGroups({ channel, messages, canManage, status, basePath }: {

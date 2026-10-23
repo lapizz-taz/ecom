@@ -6103,18 +6103,21 @@ export type Database = {
           event: Database["public"]["Enums"]["notification_event"]
           subject: string | null
           template: string
+          language: string
         }
         Insert: {
           channel: Database["public"]["Enums"]["notification_channel"]
           event: Database["public"]["Enums"]["notification_event"]
           subject?: string | null
           template: string
+          language?: string
         }
         Update: {
           channel?: Database["public"]["Enums"]["notification_channel"]
           event?: Database["public"]["Enums"]["notification_event"]
           subject?: string | null
           template?: string
+          language?: string
         }
         Relationships: []
       }
@@ -6150,6 +6153,8 @@ export type Database = {
           created_by: string | null
           merchant_id: string
           data: Json | null
+          read_at: string | null
+          fallback_of: string | null
         }
         Insert: {
           id?: string
@@ -6182,6 +6187,8 @@ export type Database = {
           created_by?: string | null
           merchant_id?: string
           data?: Json | null
+          read_at?: string | null
+          fallback_of?: string | null
         }
         Update: {
           id?: string
@@ -6214,6 +6221,8 @@ export type Database = {
           created_by?: string | null
           merchant_id?: string
           data?: Json | null
+          read_at?: string | null
+          fallback_of?: string | null
         }
         Relationships: [
           {
@@ -6221,6 +6230,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_logs_fallback_of_fkey"
+            columns: ["fallback_of"]
+            isOneToOne: false
+            referencedRelation: "notification_logs"
             referencedColumns: ["id"]
           },
           {
@@ -6268,6 +6284,8 @@ export type Database = {
           wa_body: string | null
           wa_version: number
           wa_checked_at: string | null
+          reply_buttons: boolean
+          wa_buttons: boolean
         }
         Insert: {
           id?: string
@@ -6290,6 +6308,8 @@ export type Database = {
           wa_body?: string | null
           wa_version?: number
           wa_checked_at?: string | null
+          reply_buttons?: boolean
+          wa_buttons?: boolean
         }
         Update: {
           id?: string
@@ -6312,6 +6332,8 @@ export type Database = {
           wa_body?: string | null
           wa_version?: number
           wa_checked_at?: string | null
+          reply_buttons?: boolean
+          wa_buttons?: boolean
         }
         Relationships: [
           {
@@ -6884,6 +6906,51 @@ export type Database = {
             columns: ["payment_id"]
             isOneToOne: true
             referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_reply_tokens: {
+        Row: {
+          order_id: string
+          merchant_id: string
+          token: string
+          created_at: string
+          replied_at: string | null
+          reply: string | null
+          reply_via: string | null
+        }
+        Insert: {
+          order_id: string
+          merchant_id?: string
+          token: string
+          created_at?: string
+          replied_at?: string | null
+          reply?: string | null
+          reply_via?: string | null
+        }
+        Update: {
+          order_id?: string
+          merchant_id?: string
+          token?: string
+          created_at?: string
+          replied_at?: string | null
+          reply?: string | null
+          reply_via?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_reply_tokens_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_reply_tokens_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
@@ -16165,6 +16232,23 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      messaging_language_set: {
+        Args: {
+          p_language: string
+          p_apply?: boolean
+        }
+        Returns: Json
+      }
+      messaging_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      messaging_settings_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
       meta_accounts_list: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -16248,6 +16332,38 @@ export type Database = {
           wa_body: string | null
           wa_version: number
           wa_checked_at: string | null
+          reply_buttons: boolean
+          wa_buttons: boolean
+        }
+      }
+      notification_message_options: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: {
+          id: string
+          event: Database["public"]["Enums"]["notification_event"]
+          channel: Database["public"]["Enums"]["notification_channel"]
+          is_enabled: boolean
+          subject: string | null
+          template: string
+          created_at: string
+          updated_at: string
+          name: string | null
+          conditions: Json
+          merchant_id: string
+          wa_name: string | null
+          wa_language: string | null
+          wa_status: string | null
+          wa_reason: string | null
+          wa_template_id: string | null
+          wa_params: Json | null
+          wa_body: string | null
+          wa_version: number
+          wa_checked_at: string | null
+          reply_buttons: boolean
+          wa_buttons: boolean
         }
       }
       notification_message_reset: {
@@ -16275,6 +16391,8 @@ export type Database = {
           wa_body: string | null
           wa_version: number
           wa_checked_at: string | null
+          reply_buttons: boolean
+          wa_buttons: boolean
         }
       }
       notification_message_save: {
@@ -16304,6 +16422,8 @@ export type Database = {
           wa_body: string | null
           wa_version: number
           wa_checked_at: string | null
+          reply_buttons: boolean
+          wa_buttons: boolean
         }
       }
       notification_preview_data: {
@@ -18672,6 +18792,8 @@ export type Database = {
           wa_body: string | null
           wa_version: number
           wa_checked_at: string | null
+          reply_buttons: boolean
+          wa_buttons: boolean
         }
       }
       sms_update_settings: {
@@ -19176,7 +19298,7 @@ export type Database = {
       note_kind: "NOTE" | "CONTACT" | "SYSTEM"
       note_visibility: "INTERNAL" | "CUSTOMER"
       notification_channel: "SMS" | "WHATSAPP" | "EMAIL"
-      notification_event: "ORDER_CREATED" | "ORDER_CONFIRMED" | "PRE_ORDER_CONFIRMED" | "ADVANCE_REQUIRED" | "ADVANCE_RECEIVED" | "PAYMENT_RECEIVED" | "PAYMENT_FAILED" | "ORDER_SHIPPED" | "OUT_FOR_DELIVERY" | "ORDER_DELIVERED" | "ORDER_CANCELLED" | "RETURN_INITIATED" | "ORDER_RETURNED"
+      notification_event: "ORDER_CREATED" | "ORDER_CONFIRMED" | "PRE_ORDER_CONFIRMED" | "ADVANCE_REQUIRED" | "ADVANCE_RECEIVED" | "PAYMENT_RECEIVED" | "PAYMENT_FAILED" | "ORDER_SHIPPED" | "OUT_FOR_DELIVERY" | "DELIVERY_FAILED" | "ORDER_DELIVERED" | "ORDER_CANCELLED" | "RETURN_INITIATED" | "ORDER_RETURNED" | "CART_REMINDER" | "REVIEW_REQUEST" | "DAILY_SUMMARY"
       notification_status: "QUEUED" | "SENDING" | "SENT" | "FAILED" | "SKIPPED"
       order_payment_kind: "ADVANCE" | "FULL" | "BALANCE" | "COD" | "REFUND"
       order_source: "STOREFRONT" | "ADMIN" | "IMPORT" | "API"
@@ -19235,7 +19357,7 @@ export const Constants = {
       note_kind: ["NOTE", "CONTACT", "SYSTEM"],
       note_visibility: ["INTERNAL", "CUSTOMER"],
       notification_channel: ["SMS", "WHATSAPP", "EMAIL"],
-      notification_event: ["ORDER_CREATED", "ORDER_CONFIRMED", "PRE_ORDER_CONFIRMED", "ADVANCE_REQUIRED", "ADVANCE_RECEIVED", "PAYMENT_RECEIVED", "PAYMENT_FAILED", "ORDER_SHIPPED", "OUT_FOR_DELIVERY", "ORDER_DELIVERED", "ORDER_CANCELLED", "RETURN_INITIATED", "ORDER_RETURNED"],
+      notification_event: ["ORDER_CREATED", "ORDER_CONFIRMED", "PRE_ORDER_CONFIRMED", "ADVANCE_REQUIRED", "ADVANCE_RECEIVED", "PAYMENT_RECEIVED", "PAYMENT_FAILED", "ORDER_SHIPPED", "OUT_FOR_DELIVERY", "DELIVERY_FAILED", "ORDER_DELIVERED", "ORDER_CANCELLED", "RETURN_INITIATED", "ORDER_RETURNED", "CART_REMINDER", "REVIEW_REQUEST", "DAILY_SUMMARY"],
       notification_status: ["QUEUED", "SENDING", "SENT", "FAILED", "SKIPPED"],
       order_payment_kind: ["ADVANCE", "FULL", "BALANCE", "COD", "REFUND"],
       order_source: ["STOREFRONT", "ADMIN", "IMPORT", "API"],

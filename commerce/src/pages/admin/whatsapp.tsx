@@ -32,7 +32,8 @@ export default function WhatsappPage() {
   const save = useMutation({
     mutationFn: (p: Parameters<typeof saveWhatsappSettings>[0]) => saveWhatsappSettings(p),
     onSuccess: (s, p) => {
-      toast.success('enabled' in p ? (s.enabled ? 'WhatsApp messages are on' : 'WhatsApp messages are off') : 'Saved')
+      toast.success('enabled' in p ? (s.enabled ? 'WhatsApp messages are on' : 'WhatsApp messages are off')
+        : 'sms_fallback' in p ? (s.sms_fallback ? 'Undelivered WhatsApp messages go by SMS' : 'No SMS instead of WhatsApp') : 'Saved')
       queryClient.setQueryData(['whatsapp-settings'], s)
     },
   })
@@ -143,8 +144,23 @@ function Setup({ settings, canManage, saving, onSave }: {
                 <SelectItem value="bn">Bangla (বাংলা)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Meta checks that the text is in this language. Change it before you submit; messages already approved keep theirs.</p>
+            <p className="text-xs text-muted-foreground">
+              Meta checks that the text is in this language. Change it before you submit; messages already approved keep theirs.
+              To switch every customer message to Bangla or English at once, use Settings → Customer messages.
+            </p>
           </div>
+
+          <label className="flex items-start gap-3 rounded-lg border p-3">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Send an SMS when WhatsApp can’t</span>
+              <span className="block text-xs text-muted-foreground">
+                When a WhatsApp message is not approved yet, fails, or the number is not on WhatsApp, the same update goes as the
+                event’s SMS text instead (SMS → Automations, from your SMS balance), so the customer still hears from you. Needs SMS switched on.
+              </span>
+            </span>
+            <Switch checked={settings.sms_fallback} disabled={!canManage || saving} onCheckedChange={(on) => onSave({ sms_fallback: on })}
+              aria-label="Send an SMS when WhatsApp can't" />
+          </label>
         </CardContent>
       </Card>
 

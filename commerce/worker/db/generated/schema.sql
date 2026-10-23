@@ -2273,17 +2273,19 @@ CREATE TABLE meta_campaigns (
 
 CREATE TABLE notification_defaults (
   channel TEXT NOT NULL CHECK (channel IN ('SMS', 'WHATSAPP', 'EMAIL')),
-  event TEXT NOT NULL CHECK (event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED')),
+  event TEXT NOT NULL CHECK (event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERY_FAILED', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED', 'CART_REMINDER', 'REVIEW_REQUEST', 'DAILY_SUMMARY')),
   subject TEXT,
   template TEXT NOT NULL,
-  PRIMARY KEY (channel, event),
-  CONSTRAINT notification_defaults_channel_check CHECK (channel IN ('EMAIL', 'WHATSAPP'))
+  language TEXT DEFAULT 'en' NOT NULL,
+  PRIMARY KEY (channel, event, language),
+  CONSTRAINT notification_defaults_channel_check CHECK (channel IN ('EMAIL', 'WHATSAPP', 'SMS')),
+  CONSTRAINT notification_defaults_language_check CHECK (language IN ('en', 'bn'))
 ) STRICT;
 
 CREATE TABLE notification_logs (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
   notification_id TEXT CHECK (notification_id IS NULL OR length(notification_id) = 36),
-  event TEXT CHECK (event IS NULL OR event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED')),
+  event TEXT CHECK (event IS NULL OR event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERY_FAILED', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED', 'CART_REMINDER', 'REVIEW_REQUEST', 'DAILY_SUMMARY')),
   channel TEXT NOT NULL CHECK (channel IN ('SMS', 'WHATSAPP', 'EMAIL')),
   recipient TEXT NOT NULL,
   subject TEXT,
@@ -2311,16 +2313,19 @@ CREATE TABLE notification_logs (
   created_by TEXT CHECK (created_by IS NULL OR length(created_by) = 36),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
   data TEXT CHECK (data IS NULL OR json_valid(data)),
+  read_at TEXT CHECK (read_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', read_at) = read_at),
+  fallback_of TEXT CHECK (fallback_of IS NULL OR length(fallback_of) = 36),
   PRIMARY KEY (id),
   CONSTRAINT notification_logs_cost_check CHECK ((cost is null) or (cost >= 0)),
   CONSTRAINT notification_logs_cost_source_check CHECK (cost_source IN ('ESTIMATE', 'PROVIDER')),
   CONSTRAINT notification_logs_data_check CHECK ((data is null) or (json_type(data) = 'object')),
-  CONSTRAINT notification_logs_delivery_status_check CHECK (delivery_status IN ('PENDING', 'DELIVERED', 'FAILED', 'UNKNOWN')),
+  CONSTRAINT notification_logs_delivery_status_check CHECK (delivery_status IN ('PENDING', 'DELIVERED', 'READ', 'FAILED', 'UNKNOWN')),
   CONSTRAINT notification_logs_encoding_check CHECK (encoding IN ('GSM', 'UNICODE')),
   CONSTRAINT notification_logs_event_or_test CHECK ((event is not null) or (purpose = 'TEST')),
-  CONSTRAINT notification_logs_purpose_check CHECK (purpose IN ('AUTOMATION', 'TEST')),
+  CONSTRAINT notification_logs_purpose_check CHECK (purpose IN ('AUTOMATION', 'TEST', 'SUMMARY')),
   CONSTRAINT notification_logs_segments_check CHECK ((segments is null) or (segments >= 0)),
   CONSTRAINT notification_logs_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE SET NULL,
+  CONSTRAINT notification_logs_fallback_of_fkey FOREIGN KEY (fallback_of) REFERENCES notification_logs (id) ON DELETE SET NULL,
   CONSTRAINT notification_logs_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
   CONSTRAINT notification_logs_notification_id_fkey FOREIGN KEY (notification_id) REFERENCES notifications (id) ON DELETE SET NULL,
   CONSTRAINT notification_logs_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE SET NULL,
@@ -2332,7 +2337,7 @@ BEGIN UPDATE notification_logs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','n
 
 CREATE TABLE notifications (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
-  event TEXT NOT NULL CHECK (event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED')),
+  event TEXT NOT NULL CHECK (event IN ('ORDER_CREATED', 'ORDER_CONFIRMED', 'PRE_ORDER_CONFIRMED', 'ADVANCE_REQUIRED', 'ADVANCE_RECEIVED', 'PAYMENT_RECEIVED', 'PAYMENT_FAILED', 'ORDER_SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERY_FAILED', 'ORDER_DELIVERED', 'ORDER_CANCELLED', 'RETURN_INITIATED', 'ORDER_RETURNED', 'CART_REMINDER', 'REVIEW_REQUEST', 'DAILY_SUMMARY')),
   channel TEXT NOT NULL CHECK (channel IN ('SMS', 'WHATSAPP', 'EMAIL')),
   is_enabled INTEGER DEFAULT 0 NOT NULL CHECK (is_enabled IN (0, 1)),
   subject TEXT,
@@ -2351,6 +2356,8 @@ CREATE TABLE notifications (
   wa_body TEXT,
   wa_version INTEGER DEFAULT 0 NOT NULL,
   wa_checked_at TEXT CHECK (wa_checked_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', wa_checked_at) = wa_checked_at),
+  reply_buttons INTEGER DEFAULT 0 NOT NULL CHECK (reply_buttons IN (0, 1)),
+  wa_buttons INTEGER DEFAULT 0 NOT NULL CHECK (wa_buttons IN (0, 1)),
   PRIMARY KEY (id),
   CONSTRAINT notifications_name_check CHECK ((name is null) or ((length(name) >= 1) and (length(name) <= 80))),
   CONSTRAINT notifications_subject_length CHECK ((subject is null) or (length(subject) <= 300)),
@@ -2573,6 +2580,22 @@ BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD: order_payments rows cannot be updat
 
 CREATE TRIGGER order_payments_no_delete BEFORE DELETE ON order_payments FOR EACH ROW WHEN NOT EXISTS (SELECT 1 FROM _flags WHERE name = 'store_reset' AND value = OLD.merchant_id)
 BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_RECORD: order_payments rows cannot be deleted; record a correcting entry instead'); END;
+
+CREATE TABLE order_reply_tokens (
+  order_id TEXT NOT NULL CHECK (length(order_id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  token TEXT NOT NULL,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  replied_at TEXT CHECK (replied_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', replied_at) = replied_at),
+  reply TEXT,
+  reply_via TEXT,
+  PRIMARY KEY (order_id),
+  CONSTRAINT order_reply_tokens_reply_check CHECK (reply IN ('CONFIRMED', 'CANCELLED', 'CANCEL_REQUESTED')),
+  CONSTRAINT order_reply_tokens_reply_via_check CHECK (reply_via IN ('WHATSAPP', 'EMAIL')),
+  CONSTRAINT order_reply_tokens_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT order_reply_tokens_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+  CONSTRAINT order_reply_tokens_token_key UNIQUE (token)
+) STRICT;
 
 CREATE TABLE order_review_statuses (
   code TEXT NOT NULL,
@@ -5303,9 +5326,13 @@ CREATE INDEX notification_logs_created_idx ON notification_logs (created_at desc
 
 CREATE INDEX notification_logs_dlr_idx ON notification_logs (sent_at) WHERE ((channel = 'SMS') and (status = 'SENT') and (delivery_status = 'PENDING'));
 
+CREATE INDEX notification_logs_fallback_idx ON notification_logs (fallback_of) WHERE (fallback_of is not null);
+
 CREATE INDEX notification_logs_merchant_idx ON notification_logs (merchant_id);
 
 CREATE INDEX notification_logs_order_idx ON notification_logs (order_id);
+
+CREATE INDEX notification_logs_provider_message_idx ON notification_logs (provider_message_id) WHERE (provider_message_id is not null);
 
 CREATE INDEX notification_logs_queue_idx ON notification_logs (next_attempt_at) WHERE (status = 'QUEUED');
 

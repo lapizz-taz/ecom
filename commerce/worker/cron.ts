@@ -66,6 +66,11 @@ export const JOBS: CronJob[] = [
     run: async (r) => (await r.rpc('inbox_automation_due')) === true && r.call('inbox', { action: 'automation_cron' }),
   },
   {
+    // Abandoned cart reminders, review requests and the owner's daily summary (Settings → Customer messages).
+    name: 'messaging-scheduled', schedule: '*/5 * * * *',
+    run: async (r) => (await r.rpc('messaging_scheduled_due')) === true && r.call('messaging', { action: 'scheduled' }),
+  },
+  {
     name: 'notifications-dispatch', schedule: '* * * * *',
     run: async (r) => ((await r.exists('notification_logs', `status=eq.QUEUED&next_attempt_at=lte.${new Date().toISOString()}`))
       || (await r.exists('notification_logs', `channel=eq.SMS&status=eq.SENT&delivery_status=eq.PENDING&sent_at=lt.${minutesAgo(1, new Date())}`)))
