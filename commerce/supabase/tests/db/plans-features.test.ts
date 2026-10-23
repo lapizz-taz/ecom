@@ -43,7 +43,7 @@ describe('plans: a new merchant', () => {
       expect(plan.subscription.plan.code).toBe('STARTER')
       expect(new Date(plan.subscription.trial_ends_at).getTime()).toBeGreaterThan(Date.now() + 13 * 86_400_000)
       expect(plan.access_mode).toBe('FULL')
-      expect(plan.limits).toMatchObject({ staff: 5, stores: 1 })
+      expect(plan.limits).toMatchObject({ staff: 3, stores: 1 })
       expect(plan.features.shopify.state).toBe('ENABLED')
       expect(plan.features.pbx.state).toBe('NOT_IN_PLAN')
       expect(plan.features.orders.state).toBe('CORE')
@@ -255,15 +255,15 @@ describe('billing', () => {
       await db.query(`select public.billing_run()`)
       const invoices = (await db.query(`select id, total, status from public.billing_invoices where merchant_id = $1`, [m.id])).rows
       expect(invoices).toHaveLength(1)
-      expect(invoices[0]).toMatchObject({ total: '2500.00', status: 'OPEN' })
+      expect(invoices[0]).toMatchObject({ total: '990.00', status: 'OPEN' })
       expect(await value(db, `select status from public.subscriptions where merchant_id = $1 and ended_at is null`, [m.id])).toBe('PAST_DUE')
       expect(await value(db, `select public.merchant_access_mode($1)`, [m.id])).toBe('FULL') // inside the grace period
 
       // The billing manager records a bank transfer; it does not count yet.
       await as(db, billing)
-      const payment = await value<{ id: string; status: string }>(db, `select public.platform_payment_record($1, '{"amount":2500,"method":"BANK","reference":"TRX-1001"}')`, [invoices[0].id])
+      const payment = await value<{ id: string; status: string }>(db, `select public.platform_payment_record($1, '{"amount":990,"method":"BANK","reference":"TRX-1001"}')`, [invoices[0].id])
       expect(payment.status).toBe('PENDING')
-      await expectError(db, `select public.platform_payment_record($1, '{"amount":2500,"method":"BANK","reference":"TRX-1001"}')`, [invoices[0].id], /duplicate|unique/i)
+      await expectError(db, `select public.platform_payment_record($1, '{"amount":990,"method":"BANK","reference":"TRX-1001"}')`, [invoices[0].id], /duplicate|unique/i)
       await expectError(db, `select public.platform_payment_verify($1, true)`, [payment.id], /PERMISSION_DENIED/)
       // Nobody verifies a payment they recorded themselves, Super Admin included.
       await as(db, superId)
