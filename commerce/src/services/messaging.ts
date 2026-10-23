@@ -180,6 +180,20 @@ export async function listMessageLogs(channel: MessageChannel, filter: { status?
   return logs.map((l) => ({ ...l, fallback: instead.get(l.id) ?? null }))
 }
 
+/**
+ * This month's WhatsApp messages Meta delivered (or has not reported on yet), by event: what the
+ * WhatsApp page estimates the month's bill from. Undelivered messages cost nothing.
+ */
+export async function whatsappMonthEvents(): Promise<string[]> {
+  const start = new Date()
+  start.setDate(1)
+  start.setHours(0, 0, 0, 0)
+  const { data, error } = await supabase.from('notification_logs').select('event, delivery_status')
+    .eq('channel', 'WHATSAPP').eq('status', 'SENT').gte('sent_at', start.toISOString()).limit(10000)
+  if (error) throw error
+  return (data ?? []).filter((l) => l.delivery_status !== 'FAILED').map((l) => l.event ?? 'TEST')
+}
+
 export async function retryMessage(id: string) {
   const { error } = await supabase.rpc('retry_notification', { p_id: id })
   if (error) throw error
