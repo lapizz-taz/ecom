@@ -37,3 +37,14 @@ export const saveMetaApp = (input: {
 }) =>
   invokeFunction<{ ok: boolean; name: string | null; verify_token: string }>('platform-admin', { action: 'meta_app_save', ...input, app_secret: input.app_secret || undefined })
 export const clearMetaApp = () => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'meta_app_clear' })
+
+// --- Fullfilio's email service (Resend) for stores without their own mailbox ----------
+export interface EmailServiceStatus {
+  enabled: boolean; from_email: string; from_name: string; daily_limit: number
+  has_key: boolean; key_hint: string | null; can_manage: boolean
+}
+export interface EmailServiceInput { enabled: boolean; from_email: string; from_name: string; daily_limit: number; api_key?: string; send_test?: boolean }
+export const emailServiceStatus = () => invokeFunction<EmailServiceStatus>('platform-admin', { action: 'email_service_status' })
+export const saveEmailService = (input: EmailServiceInput) =>
+  invokeFunction<{ ok: boolean; tested: boolean }>('platform-admin', { action: 'email_service_save', ...input, api_key: input.api_key || undefined })
+export const clearEmailService = () => invokeFunction<{ ok: boolean }>('platform-admin', { action: 'email_service_clear' })

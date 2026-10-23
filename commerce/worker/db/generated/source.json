@@ -1,5 +1,5 @@
 {
-  "migrations": 175,
-  "last": "20261124000100_moderator_role.sql",
-  "sha256": "37b242f34081e5dc3033cd90eb4042dfcf1334ca1ff8ee98119e75444bf91ce1"
+  "migrations": 176,
+  "last": "20261125000100_email_whatsapp.sql",
+  "sha256": "467a212ba08621fc7000414be64381f24e363e99feed84e39424cb50e30b52ea"
 }

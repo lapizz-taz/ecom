@@ -18,7 +18,8 @@ import { toUserMessage } from '@/lib/errors'
 import { formatNumber, timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import {
-  clearMetaApp, type IntegrationsOverview, integrationsOverview, metaAppStatus, retryIntegration, saveMetaApp,
+  clearEmailService, clearMetaApp, emailServiceStatus, type EmailServiceInput, type IntegrationsOverview, integrationsOverview, metaAppStatus,
+  retryIntegration, saveEmailService, saveMetaApp,
 } from '@/services/integrations-hub'
 import type { MerchantRef } from '@/services/platform'
 
@@ -80,6 +81,7 @@ export default function OtherIntegrationsPage() {
           </div>
           <Platform p={d.platform} />
           <MetaAppCard />
+          <EmailServiceCard />
           <Tabs value={state.tab} onValueChange={(tab) => update({ tab })}>
             <TabsList>
               <TabsTrigger value="stores">Shopify & WooCommerce</TabsTrigger>
@@ -253,6 +255,71 @@ function MetaAppCard() {
       <ConfirmDialog open={clearing} onOpenChange={setClearing} destructive title="Remove the Meta app?"
         description="Stores can no longer connect, and messages stop arriving for every connected Page, Instagram account and WhatsApp number until it is saved again."
         confirmLabel="Remove" onConfirm={async () => { await clearMetaApp(); toast.success('Removed'); done() }} />
+    </Card>
+  )
+}
+
+/** Fullfilio's email service: stores without their own mailbox send customer emails through it (Resend). */
+function EmailServiceCard() {
+  const qc = useQueryClient()
+  const status = useQuery({ queryKey: ['platform-email-service'], queryFn: emailServiceStatus })
+  const [form, setForm] = useState<(EmailServiceInput & { api_key: string }) | null>(null)
+  const [clearing, setClearing] = useState(false)
+  const done = () => void qc.invalidateQueries({ queryKey: ['platform-email-service'] })
+  const save = useMutation({
+    mutationFn: (v: EmailServiceInput) => saveEmailService(v),
+    onSuccess: (r) => { toast.success(r.tested ? 'Saved. A test email went to you.' : 'Saved'); setForm(null); done() },
+    onError: (e) => toast.error(toUserMessage(e)),
+  })
+  const s = status.data
+  if (status.error) return <ErrorState error={status.error} onRetry={() => status.refetch()} />
+  if (!s) return null
+  const ready = s.enabled && s.has_key && !!s.from_email
+  const toggle = (enabled: boolean) => save.mutate({ enabled, from_email: s.from_email, from_name: s.from_name, daily_limit: s.daily_limit })
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle className="text-sm">Email service (customer emails)</CardTitle>
+          <CardDescription>
+            Stores that do not connect their own mailbox send order emails through Fullfilio, from this address with the store's name; replies go to the store.
+            Uses a Resend API key (kept encrypted, never shown) and a sending domain verified at Resend.
+          </CardDescription>
+        </div>
+        <Badge variant={ready ? 'success' : 'neutral'}>{ready ? 'On' : s.has_key ? 'Off' : 'Not set up'}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {form ? (
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate({ ...form, send_test: true }) }}>
+            <div className="space-y-1.5"><Label htmlFor="es-from">Sender address</Label><Input id="es-from" type="email" value={form.from_email} onChange={(e) => setForm({ ...form, from_email: e.target.value.trim() })} placeholder="orders@mail.fullfilio.com" /></div>
+            <div className="space-y-1.5"><Label htmlFor="es-name">Fallback sender name</Label><Input id="es-name" value={form.from_name} maxLength={80} onChange={(e) => setForm({ ...form, from_name: e.target.value })} placeholder="Fullfilio" /></div>
+            <div className="space-y-1.5"><Label htmlFor="es-key">Resend API key</Label><Input id="es-key" type="password" autoComplete="off" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value.trim() })} placeholder={s.has_key ? `Saved (${s.key_hint}) — paste only to change` : 're_…'} /></div>
+            <div className="space-y-1.5"><Label htmlFor="es-limit">Emails per store per day</Label><Input id="es-limit" type="number" min={0} max={100000} value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Math.max(0, Math.trunc(Number(e.target.value) || 0)) })} /></div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} /> Stores may use it</label>
+            <div className="flex gap-2 sm:col-span-2">
+              <Button type="submit" disabled={save.isPending || !form.from_email || (!form.api_key && !s.has_key)}>{save.isPending && <Spinner />} Send a test email & save</Button>
+              <Button type="button" variant="ghost" onClick={() => setForm(null)}>Cancel</Button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+            <span>From <span className="font-mono">{s.from_email || '—'}</span></span>
+            <span>Key <span className="font-mono">{s.key_hint ?? 'not saved'}</span></span>
+            <span>{formatNumber(s.daily_limit)} emails per store per day</span>
+            {s.can_manage && (
+              <span className="ml-auto flex gap-2">
+                {s.has_key && <Button size="sm" variant="outline" disabled={save.isPending} onClick={() => toggle(!s.enabled)}>{s.enabled ? 'Switch off' : 'Switch on'}</Button>}
+                <Button size="sm" variant="outline" onClick={() => setForm({ enabled: s.enabled || !s.has_key, from_email: s.from_email, from_name: s.from_name, daily_limit: s.daily_limit, api_key: '' })}>{s.has_key ? 'Change' : 'Set up'}</Button>
+                {s.has_key && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setClearing(true)}>Remove key</Button>}
+              </span>
+            )}
+          </div>
+        )}
+      </CardContent>
+      <ConfirmDialog open={clearing} onOpenChange={setClearing} destructive title="Remove the email service key?"
+        description="The service switches off. Stores using it stop sending customer emails until they connect their own mailbox or the key is saved again."
+        confirmLabel="Remove" onConfirm={async () => { await clearEmailService(); toast.success('Removed'); done() }} />
     </Card>
   )
 }

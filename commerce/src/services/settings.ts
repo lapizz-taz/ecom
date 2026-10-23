@@ -54,31 +54,6 @@ export async function deleteFraudRule(id: string) {
   if (error) throw error
 }
 
-export async function listNotificationTemplates() {
-  // SMS automations live on the SMS page.
-  const { data, error } = await supabase.from('notifications').select('*').neq('channel', 'SMS').neq('event', 'ADVANCE_RECEIVED')
-    .order('event').order('channel')
-  if (error) throw error
-  return data ?? []
-}
-
-export async function updateNotificationTemplate(id: string, values: { is_enabled?: boolean; subject?: string | null; template?: string }) {
-  const { error } = await supabase.from('notifications').update(values).eq('id', id)
-  if (error) throw error
-}
-
-export async function listNotificationLogs(limit = 100) {
-  const { data, error } = await supabase.from('notification_logs').select('*, orders(order_number)').neq('channel', 'SMS')
-    .order('created_at', { ascending: false }).limit(limit)
-  if (error) throw error
-  return data ?? []
-}
-
-export async function retryNotification(id: string) {
-  const { error } = await supabase.rpc('retry_notification', { p_id: id })
-  if (error) throw error
-}
-
 export type { Json }
 
 // ---------------------------------------------------------------------------

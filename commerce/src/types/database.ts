@@ -551,6 +551,7 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          plan_change: Json | null
         }
         Insert: {
           id?: string
@@ -571,6 +572,7 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          plan_change?: Json | null
         }
         Update: {
           id?: string
@@ -591,6 +593,7 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          plan_change?: Json | null
         }
         Relationships: [
           {
@@ -605,6 +608,63 @@ export type Database = {
             columns: ["subscription_id"]
             isOneToOne: false
             referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_payment_checks: {
+        Row: {
+          id: number
+          payment_id: string
+          merchant_id: string
+          source: string
+          outcome: string
+          gateway_status: string | null
+          amount: number | null
+          txn: string | null
+          detail: Json
+          actor_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          payment_id: string
+          merchant_id: string
+          source: string
+          outcome: string
+          gateway_status?: string | null
+          amount?: number | null
+          txn?: string | null
+          detail?: Json
+          actor_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          payment_id?: string
+          merchant_id?: string
+          source?: string
+          outcome?: string
+          gateway_status?: string | null
+          amount?: number | null
+          txn?: string | null
+          detail?: Json
+          actor_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_payment_checks_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_payment_checks_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "billing_payments"
             referencedColumns: ["id"]
           },
         ]
@@ -627,6 +687,13 @@ export type Database = {
           created_at: string
           provider_session: string | null
           provider_txn_id: string | null
+          purpose: string | null
+          currency: string
+          refunded_amount: number
+          status_reason: string | null
+          needs_review: boolean
+          review_note: string | null
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -645,6 +712,13 @@ export type Database = {
           created_at?: string
           provider_session?: string | null
           provider_txn_id?: string | null
+          purpose?: string | null
+          currency?: string
+          refunded_amount?: number
+          status_reason?: string | null
+          needs_review?: boolean
+          review_note?: string | null
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -663,6 +737,13 @@ export type Database = {
           created_at?: string
           provider_session?: string | null
           provider_txn_id?: string | null
+          purpose?: string | null
+          currency?: string
+          refunded_amount?: number
+          status_reason?: string | null
+          needs_review?: boolean
+          review_note?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -677,6 +758,78 @@ export type Database = {
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_refunds: {
+        Row: {
+          id: string
+          payment_id: string
+          merchant_id: string
+          amount: number
+          reason: string
+          method: string
+          status: string
+          reverse_credits: boolean
+          credits_reversed: number
+          credits_short: number
+          provider_refund_id: string | null
+          error: string | null
+          raw: Json | null
+          requested_by: string | null
+          created_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          payment_id: string
+          merchant_id: string
+          amount: number
+          reason: string
+          method: string
+          status?: string
+          reverse_credits?: boolean
+          credits_reversed?: number
+          credits_short?: number
+          provider_refund_id?: string | null
+          error?: string | null
+          raw?: Json | null
+          requested_by?: string | null
+          created_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          id?: string
+          payment_id?: string
+          merchant_id?: string
+          amount?: number
+          reason?: string
+          method?: string
+          status?: string
+          reverse_credits?: boolean
+          credits_reversed?: number
+          credits_short?: number
+          provider_refund_id?: string | null
+          error?: string | null
+          raw?: Json | null
+          requested_by?: string | null
+          created_at?: string
+          completed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_refunds_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_refunds_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "billing_payments"
             referencedColumns: ["id"]
           },
         ]
@@ -960,6 +1113,8 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          seo_title: string | null
+          seo_description: string | null
         }
         Insert: {
           id?: string
@@ -973,6 +1128,8 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          seo_title?: string | null
+          seo_description?: string | null
         }
         Update: {
           id?: string
@@ -986,6 +1143,8 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          seo_title?: string | null
+          seo_description?: string | null
         }
         Relationships: [
           {
@@ -1742,6 +1901,35 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checkout_lookup_slots: {
+        Row: {
+          id: number
+          merchant_id: string
+          ip_hash: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id?: string
+          ip_hash: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          ip_hash?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_lookup_slots_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
             referencedColumns: ["id"]
           },
         ]
@@ -4205,6 +4393,716 @@ export type Database = {
           },
         ]
       }
+      inbox_auto_replies: {
+        Row: {
+          id: string
+          merchant_id: string
+          name: string
+          enabled: boolean
+          is_default: boolean
+          applies_to: string
+          keywords: string[]
+          match: string
+          channel_ids: string[]
+          post_ids: string[]
+          reply_text: string | null
+          private_text: string | null
+          like_comment: boolean
+          once_per_customer: boolean
+          sent_count: number
+          last_sent_at: string | null
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          name: string
+          enabled?: boolean
+          is_default?: boolean
+          applies_to?: string
+          keywords?: string[]
+          match?: string
+          channel_ids?: string[]
+          post_ids?: string[]
+          reply_text?: string | null
+          private_text?: string | null
+          like_comment?: boolean
+          once_per_customer?: boolean
+          sent_count?: number
+          last_sent_at?: string | null
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          name?: string
+          enabled?: boolean
+          is_default?: boolean
+          applies_to?: string
+          keywords?: string[]
+          match?: string
+          channel_ids?: string[]
+          post_ids?: string[]
+          reply_text?: string | null
+          private_text?: string | null
+          like_comment?: boolean
+          once_per_customer?: boolean
+          sent_count?: number
+          last_sent_at?: string | null
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_auto_replies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_auto_replies_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_automation_log: {
+        Row: {
+          id: string
+          merchant_id: string
+          kind: string
+          status: string
+          rule_id: string | null
+          conversation_id: string | null
+          message_id: string | null
+          detail: string | null
+          actor: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          kind: string
+          status: string
+          rule_id?: string | null
+          conversation_id?: string | null
+          message_id?: string | null
+          detail?: string | null
+          actor?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          kind?: string
+          status?: string
+          rule_id?: string | null
+          conversation_id?: string | null
+          message_id?: string | null
+          detail?: string | null
+          actor?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_automation_log_actor_fkey"
+            columns: ["actor"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_automation_log_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_automation_log_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_automation_log_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_automation_log_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_auto_replies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_channels: {
+        Row: {
+          id: string
+          merchant_id: string
+          platform: string
+          external_id: string
+          name: string
+          username: string | null
+          avatar_url: string | null
+          page_id: string | null
+          waba_id: string | null
+          display_phone: string | null
+          receive_comments: boolean
+          status: string
+          status_error: string | null
+          token_hint: string | null
+          last_event_at: string | null
+          connected_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          platform: string
+          external_id: string
+          name: string
+          username?: string | null
+          avatar_url?: string | null
+          page_id?: string | null
+          waba_id?: string | null
+          display_phone?: string | null
+          receive_comments?: boolean
+          status?: string
+          status_error?: string | null
+          token_hint?: string | null
+          last_event_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          platform?: string
+          external_id?: string
+          name?: string
+          username?: string | null
+          avatar_url?: string | null
+          page_id?: string | null
+          waba_id?: string | null
+          display_phone?: string | null
+          receive_comments?: boolean
+          status?: string
+          status_error?: string | null
+          token_hint?: string | null
+          last_event_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_channels_connected_by_fkey"
+            columns: ["connected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_channels_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_conversations: {
+        Row: {
+          id: string
+          merchant_id: string
+          channel_id: string
+          kind: string
+          thread_key: string
+          customer_external_id: string | null
+          customer_name: string | null
+          customer_avatar: string | null
+          customer_phone: string | null
+          customer_address: string | null
+          customer_id: string | null
+          post: Json | null
+          status: string
+          assigned_to: string | null
+          starred: boolean
+          labels: string[]
+          pinned_message_id: string | null
+          linked_order_id: string | null
+          unread_count: number
+          last_message_at: string | null
+          last_message_preview: string | null
+          last_message_direction: string | null
+          last_customer_message_at: string | null
+          created_at: string
+          updated_at: string
+          post_external_id: string | null
+          no_reply_needed: boolean
+          awaiting_since: string | null
+          auto_follow_up_at: string | null
+          auto_follow_up_text: string | null
+          auto_follow_up_by: string | null
+          remind_at: string | null
+          remind_note: string | null
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          channel_id: string
+          kind?: string
+          thread_key: string
+          customer_external_id?: string | null
+          customer_name?: string | null
+          customer_avatar?: string | null
+          customer_phone?: string | null
+          customer_address?: string | null
+          customer_id?: string | null
+          post?: Json | null
+          status?: string
+          assigned_to?: string | null
+          starred?: boolean
+          labels?: string[]
+          pinned_message_id?: string | null
+          linked_order_id?: string | null
+          unread_count?: number
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_message_direction?: string | null
+          last_customer_message_at?: string | null
+          created_at?: string
+          updated_at?: string
+          post_external_id?: string | null
+          no_reply_needed?: boolean
+          awaiting_since?: string | null
+          auto_follow_up_at?: string | null
+          auto_follow_up_text?: string | null
+          auto_follow_up_by?: string | null
+          remind_at?: string | null
+          remind_note?: string | null
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          channel_id?: string
+          kind?: string
+          thread_key?: string
+          customer_external_id?: string | null
+          customer_name?: string | null
+          customer_avatar?: string | null
+          customer_phone?: string | null
+          customer_address?: string | null
+          customer_id?: string | null
+          post?: Json | null
+          status?: string
+          assigned_to?: string | null
+          starred?: boolean
+          labels?: string[]
+          pinned_message_id?: string | null
+          linked_order_id?: string | null
+          unread_count?: number
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          last_message_direction?: string | null
+          last_customer_message_at?: string | null
+          created_at?: string
+          updated_at?: string
+          post_external_id?: string | null
+          no_reply_needed?: boolean
+          awaiting_since?: string | null
+          auto_follow_up_at?: string | null
+          auto_follow_up_text?: string | null
+          auto_follow_up_by?: string | null
+          remind_at?: string | null
+          remind_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_conversations_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_conversations_auto_follow_up_by_fkey"
+            columns: ["auto_follow_up_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_conversations_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_conversations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_conversations_linked_order_id_fkey"
+            columns: ["linked_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_conversations_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_conversations_pinned_fk"
+            columns: ["pinned_message_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_messages: {
+        Row: {
+          id: string
+          merchant_id: string
+          conversation_id: string
+          direction: string
+          external_id: string | null
+          body: string | null
+          attachments: Json
+          reply_to_id: string | null
+          sender_name: string | null
+          sent_by: string | null
+          status: string
+          error: string | null
+          created_at: string
+          hidden: boolean
+          liked: boolean
+          removed_at: string | null
+          filtered: string | null
+          auto_kind: string | null
+          private_reply: boolean
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          conversation_id: string
+          direction: string
+          external_id?: string | null
+          body?: string | null
+          attachments?: Json
+          reply_to_id?: string | null
+          sender_name?: string | null
+          sent_by?: string | null
+          status?: string
+          error?: string | null
+          created_at?: string
+          hidden?: boolean
+          liked?: boolean
+          removed_at?: string | null
+          filtered?: string | null
+          auto_kind?: string | null
+          private_reply?: boolean
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          conversation_id?: string
+          direction?: string
+          external_id?: string | null
+          body?: string | null
+          attachments?: Json
+          reply_to_id?: string | null
+          sender_name?: string | null
+          sent_by?: string | null
+          status?: string
+          error?: string | null
+          created_at?: string
+          hidden?: boolean
+          liked?: boolean
+          removed_at?: string | null
+          filtered?: string | null
+          auto_kind?: string | null
+          private_reply?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_messages_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_messages_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_notes: {
+        Row: {
+          id: string
+          merchant_id: string
+          conversation_id: string
+          body: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          conversation_id: string
+          body: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          conversation_id?: string
+          body?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_notes_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_notes_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_posts: {
+        Row: {
+          id: string
+          merchant_id: string
+          channel_id: string
+          external_id: string
+          caption: string | null
+          image_url: string | null
+          permalink: string | null
+          media_type: string | null
+          is_ad: boolean
+          posted_at: string | null
+          likes: number | null
+          shares: number | null
+          comments: number | null
+          fetched_at: string | null
+          fetch_error: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          channel_id: string
+          external_id: string
+          caption?: string | null
+          image_url?: string | null
+          permalink?: string | null
+          media_type?: string | null
+          is_ad?: boolean
+          posted_at?: string | null
+          likes?: number | null
+          shares?: number | null
+          comments?: number | null
+          fetched_at?: string | null
+          fetch_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          channel_id?: string
+          external_id?: string
+          caption?: string | null
+          image_url?: string | null
+          permalink?: string | null
+          media_type?: string | null
+          is_ad?: boolean
+          posted_at?: string | null
+          likes?: number | null
+          shares?: number | null
+          comments?: number | null
+          fetched_at?: string | null
+          fetch_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_posts_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "inbox_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_posts_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_saved_replies: {
+        Row: {
+          id: string
+          merchant_id: string
+          title: string
+          body: string
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          title: string
+          body: string
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          title?: string
+          body?: string
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_saved_replies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_saved_replies_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbox_settings: {
+        Row: {
+          id: string
+          merchant_id: string
+          auto_reply_channels: string[]
+          moderation: Json
+          moderation_channels: string[]
+          follow_up: Json
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          auto_reply_channels?: string[]
+          moderation?: Json
+          moderation_channels?: string[]
+          follow_up?: Json
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          auto_reply_channels?: string[]
+          moderation?: Json
+          moderation_channels?: string[]
+          follow_up?: Json
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbox_settings_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: true
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbox_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_credentials: {
         Row: {
           key: string
@@ -5199,6 +6097,27 @@ export type Database = {
           },
         ]
       }
+      notification_defaults: {
+        Row: {
+          channel: Database["public"]["Enums"]["notification_channel"]
+          event: Database["public"]["Enums"]["notification_event"]
+          subject: string | null
+          template: string
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["notification_channel"]
+          event: Database["public"]["Enums"]["notification_event"]
+          subject?: string | null
+          template: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["notification_channel"]
+          event?: Database["public"]["Enums"]["notification_event"]
+          subject?: string | null
+          template?: string
+        }
+        Relationships: []
+      }
       notification_logs: {
         Row: {
           id: string
@@ -5230,6 +6149,7 @@ export type Database = {
           status_checked_at: string | null
           created_by: string | null
           merchant_id: string
+          data: Json | null
         }
         Insert: {
           id?: string
@@ -5261,6 +6181,7 @@ export type Database = {
           status_checked_at?: string | null
           created_by?: string | null
           merchant_id?: string
+          data?: Json | null
         }
         Update: {
           id?: string
@@ -5292,6 +6213,7 @@ export type Database = {
           status_checked_at?: string | null
           created_by?: string | null
           merchant_id?: string
+          data?: Json | null
         }
         Relationships: [
           {
@@ -5337,6 +6259,15 @@ export type Database = {
           name: string | null
           conditions: Json
           merchant_id: string
+          wa_name: string | null
+          wa_language: string | null
+          wa_status: string | null
+          wa_reason: string | null
+          wa_template_id: string | null
+          wa_params: Json | null
+          wa_body: string | null
+          wa_version: number
+          wa_checked_at: string | null
         }
         Insert: {
           id?: string
@@ -5350,6 +6281,15 @@ export type Database = {
           name?: string | null
           conditions?: Json
           merchant_id?: string
+          wa_name?: string | null
+          wa_language?: string | null
+          wa_status?: string | null
+          wa_reason?: string | null
+          wa_template_id?: string | null
+          wa_params?: Json | null
+          wa_body?: string | null
+          wa_version?: number
+          wa_checked_at?: string | null
         }
         Update: {
           id?: string
@@ -5363,6 +6303,15 @@ export type Database = {
           name?: string | null
           conditions?: Json
           merchant_id?: string
+          wa_name?: string | null
+          wa_language?: string | null
+          wa_status?: string | null
+          wa_reason?: string | null
+          wa_template_id?: string | null
+          wa_params?: Json | null
+          wa_body?: string | null
+          wa_version?: number
+          wa_checked_at?: string | null
         }
         Relationships: [
           {
@@ -7905,6 +8854,78 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_ad_accounts: {
+        Row: {
+          id: string
+          platform: string
+          name: string
+          ad_account_id: string
+          app_id: string | null
+          usd_rate: number
+          is_active: boolean
+          account_name: string | null
+          currency: string | null
+          timezone: string | null
+          token_hint: string | null
+          has_app_secret: boolean
+          token_expires_at: string | null
+          status: string
+          last_error: string | null
+          last_sync_at: string | null
+          last_sync_since: string | null
+          last_sync_until: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          platform?: string
+          name: string
+          ad_account_id: string
+          app_id?: string | null
+          usd_rate: number
+          is_active?: boolean
+          account_name?: string | null
+          currency?: string | null
+          timezone?: string | null
+          token_hint?: string | null
+          has_app_secret?: boolean
+          token_expires_at?: string | null
+          status?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          last_sync_since?: string | null
+          last_sync_until?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          platform?: string
+          name?: string
+          ad_account_id?: string
+          app_id?: string | null
+          usd_rate?: number
+          is_active?: boolean
+          account_name?: string | null
+          currency?: string | null
+          timezone?: string | null
+          token_hint?: string | null
+          has_app_secret?: boolean
+          token_expires_at?: string | null
+          status?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          last_sync_since?: string | null
+          last_sync_until?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       platform_announcement_deliveries: {
         Row: {
           announcement_id: string
@@ -8468,6 +9489,138 @@ export type Database = {
           },
         ]
       }
+      platform_finance_categories: {
+        Row: {
+          id: string
+          type: string
+          code: string
+          name: string
+          color: string
+          subcategories: string[]
+          allow_manual: boolean
+          is_system: boolean
+          is_active: boolean
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          type: string
+          code: string
+          name: string
+          color?: string
+          subcategories?: string[]
+          allow_manual?: boolean
+          is_system?: boolean
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          type?: string
+          code?: string
+          name?: string
+          color?: string
+          subcategories?: string[]
+          allow_manual?: boolean
+          is_system?: boolean
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      platform_finance_entries: {
+        Row: {
+          id: string
+          txn_number: string
+          type: string
+          category_id: string
+          sub_category: string | null
+          txn_date: string
+          amount: number
+          foreign_amount: number | null
+          foreign_currency: string | null
+          exchange_rate: number | null
+          notes: string | null
+          reference: string | null
+          source: string
+          source_key: string | null
+          ad_account_id: string | null
+          created_by: string | null
+          created_by_email: string | null
+          created_at: string
+          updated_at: string
+          voided_at: string | null
+          voided_by: string | null
+          void_reason: string | null
+        }
+        Insert: {
+          id?: string
+          txn_number?: string
+          type: string
+          category_id: string
+          sub_category?: string | null
+          txn_date: string
+          amount: number
+          foreign_amount?: number | null
+          foreign_currency?: string | null
+          exchange_rate?: number | null
+          notes?: string | null
+          reference?: string | null
+          source?: string
+          source_key?: string | null
+          ad_account_id?: string | null
+          created_by?: string | null
+          created_by_email?: string | null
+          created_at?: string
+          updated_at?: string
+          voided_at?: string | null
+          voided_by?: string | null
+          void_reason?: string | null
+        }
+        Update: {
+          id?: string
+          txn_number?: string
+          type?: string
+          category_id?: string
+          sub_category?: string | null
+          txn_date?: string
+          amount?: number
+          foreign_amount?: number | null
+          foreign_currency?: string | null
+          exchange_rate?: number | null
+          notes?: string | null
+          reference?: string | null
+          source?: string
+          source_key?: string | null
+          ad_account_id?: string | null
+          created_by?: string | null
+          created_by_email?: string | null
+          created_at?: string
+          updated_at?: string
+          voided_at?: string | null
+          voided_by?: string | null
+          void_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_finance_entries_ad_account_id_fkey"
+            columns: ["ad_account_id"]
+            isOneToOne: false
+            referencedRelation: "platform_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_finance_entries_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "platform_finance_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_incident_merchants: {
         Row: {
           incident_id: string
@@ -8602,6 +9755,198 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_lead_touches: {
+        Row: {
+          id: number
+          kind: string
+          ref: string
+          attribution: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          kind: string
+          ref: string
+          attribution: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          kind?: string
+          ref?: string
+          attribution?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+      platform_meta_ads: {
+        Row: {
+          id: string
+          adset_id: string | null
+          campaign_id: string | null
+          name: string
+          status: string | null
+          effective_status: string | null
+          thumbnail_url: string | null
+          title: string | null
+          synced_at: string
+        }
+        Insert: {
+          id: string
+          adset_id?: string | null
+          campaign_id?: string | null
+          name: string
+          status?: string | null
+          effective_status?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          adset_id?: string | null
+          campaign_id?: string | null
+          name?: string
+          status?: string | null
+          effective_status?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      platform_meta_adsets: {
+        Row: {
+          id: string
+          campaign_id: string | null
+          name: string
+          status: string | null
+          effective_status: string | null
+          daily_budget: number | null
+          lifetime_budget: number | null
+          start_time: string | null
+          end_time: string | null
+          synced_at: string
+        }
+        Insert: {
+          id: string
+          campaign_id?: string | null
+          name: string
+          status?: string | null
+          effective_status?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          end_time?: string | null
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string | null
+          name?: string
+          status?: string | null
+          effective_status?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          end_time?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      platform_meta_campaigns: {
+        Row: {
+          id: string
+          account_id: string
+          name: string
+          status: string | null
+          effective_status: string | null
+          objective: string | null
+          daily_budget: number | null
+          lifetime_budget: number | null
+          start_time: string | null
+          stop_time: string | null
+          synced_at: string
+        }
+        Insert: {
+          id: string
+          account_id: string
+          name: string
+          status?: string | null
+          effective_status?: string | null
+          objective?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          stop_time?: string | null
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          account_id?: string
+          name?: string
+          status?: string | null
+          effective_status?: string | null
+          objective?: string | null
+          daily_budget?: number | null
+          lifetime_budget?: number | null
+          start_time?: string | null
+          stop_time?: string | null
+          synced_at?: string
+        }
+        Relationships: []
+      }
+      platform_meta_insights: {
+        Row: {
+          ad_id: string
+          date: string
+          account_id: string
+          campaign_id: string | null
+          adset_id: string | null
+          spend: number
+          cost: number
+          impressions: number
+          clicks: number
+          link_clicks: number
+          leads: number
+          registrations: number
+          messages: number
+          purchases: number
+        }
+        Insert: {
+          ad_id: string
+          date: string
+          account_id: string
+          campaign_id?: string | null
+          adset_id?: string | null
+          spend?: number
+          cost?: number
+          impressions?: number
+          clicks?: number
+          link_clicks?: number
+          leads?: number
+          registrations?: number
+          messages?: number
+          purchases?: number
+        }
+        Update: {
+          ad_id?: string
+          date?: string
+          account_id?: string
+          campaign_id?: string | null
+          adset_id?: string | null
+          spend?: number
+          cost?: number
+          impressions?: number
+          clicks?: number
+          link_clicks?: number
+          leads?: number
+          registrations?: number
+          messages?: number
+          purchases?: number
         }
         Relationships: []
       }
@@ -9386,6 +10731,7 @@ export type Database = {
           updated_at: string
           merchant_id: string
           deleted_at: string | null
+          removed_at: string | null
         }
         Insert: {
           id: string
@@ -9399,6 +10745,7 @@ export type Database = {
           updated_at?: string
           merchant_id?: string
           deleted_at?: string | null
+          removed_at?: string | null
         }
         Update: {
           id?: string
@@ -9412,6 +10759,7 @@ export type Database = {
           updated_at?: string
           merchant_id?: string
           deleted_at?: string | null
+          removed_at?: string | null
         }
         Relationships: [
           {
@@ -9825,6 +11173,97 @@ export type Database = {
           },
           {
             foreignKeyName: "sales_channels_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seo_entries: {
+        Row: {
+          merchant_id: string
+          entity_type: string
+          entity_key: string
+          title: string | null
+          description: string | null
+          canonical_url: string | null
+          noindex: boolean
+          focus_keyword: string | null
+          og_image: string | null
+          sources: Json
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          merchant_id?: string
+          entity_type: string
+          entity_key: string
+          title?: string | null
+          description?: string | null
+          canonical_url?: string | null
+          noindex?: boolean
+          focus_keyword?: string | null
+          og_image?: string | null
+          sources?: Json
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          merchant_id?: string
+          entity_type?: string
+          entity_key?: string
+          title?: string | null
+          description?: string | null
+          canonical_url?: string | null
+          noindex?: boolean
+          focus_keyword?: string | null
+          og_image?: string | null
+          sources?: Json
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seo_entries_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seo_redirects: {
+        Row: {
+          id: string
+          merchant_id: string
+          from_path: string
+          to_path: string
+          source: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          from_path: string
+          to_path: string
+          source?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          from_path?: string
+          to_path?: string
+          source?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seo_redirects_merchant_id_fkey"
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
@@ -10320,6 +11759,80 @@ export type Database = {
           },
         ]
       }
+      signup_requests: {
+        Row: {
+          id: string
+          business_name: string
+          full_name: string
+          phone: string
+          whatsapp: string | null
+          email: string | null
+          business_type: string | null
+          website: string | null
+          sells_on: string[]
+          orders_per_month: string | null
+          plan_code: string | null
+          message: string
+          status: string
+          merchant_id: string | null
+          note: string | null
+          handled_by: string | null
+          created_at: string
+          updated_at: string
+          ip_hash: string | null
+        }
+        Insert: {
+          id?: string
+          business_name: string
+          full_name: string
+          phone: string
+          whatsapp?: string | null
+          email?: string | null
+          business_type?: string | null
+          website?: string | null
+          sells_on?: string[]
+          orders_per_month?: string | null
+          plan_code?: string | null
+          message: string
+          status?: string
+          merchant_id?: string | null
+          note?: string | null
+          handled_by?: string | null
+          created_at?: string
+          updated_at?: string
+          ip_hash?: string | null
+        }
+        Update: {
+          id?: string
+          business_name?: string
+          full_name?: string
+          phone?: string
+          whatsapp?: string | null
+          email?: string | null
+          business_type?: string | null
+          website?: string | null
+          sells_on?: string[]
+          orders_per_month?: string | null
+          plan_code?: string | null
+          message?: string
+          status?: string
+          merchant_id?: string | null
+          note?: string | null
+          handled_by?: string | null
+          created_at?: string
+          updated_at?: string
+          ip_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signup_requests_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_api_keys: {
         Row: {
           id: string
@@ -10723,6 +12236,10 @@ export type Database = {
           merchant_id: string
           is_primary: boolean
           diagnostics: Json | null
+          verify_code: string | null
+          verified_at: string | null
+          removed_at: string | null
+          status_changed_at: string | null
         }
         Insert: {
           id?: string
@@ -10737,6 +12254,10 @@ export type Database = {
           merchant_id?: string
           is_primary?: boolean
           diagnostics?: Json | null
+          verify_code?: string | null
+          verified_at?: string | null
+          removed_at?: string | null
+          status_changed_at?: string | null
         }
         Update: {
           id?: string
@@ -10751,6 +12272,10 @@ export type Database = {
           merchant_id?: string
           is_primary?: boolean
           diagnostics?: Json | null
+          verify_code?: string | null
+          verified_at?: string | null
+          removed_at?: string | null
+          status_changed_at?: string | null
         }
         Relationships: [
           {
@@ -10993,6 +12518,10 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          intro_price: number | null
+          intro_until: string | null
+          setup_fee: number | null
+          intro_trial: boolean
         }
         Insert: {
           id?: string
@@ -11014,6 +12543,10 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          intro_price?: number | null
+          intro_until?: string | null
+          setup_fee?: number | null
+          intro_trial?: boolean
         }
         Update: {
           id?: string
@@ -11035,6 +12568,10 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          intro_price?: number | null
+          intro_until?: string | null
+          setup_fee?: number | null
+          intro_trial?: boolean
         }
         Relationships: [
           {
@@ -12872,6 +14409,7 @@ export type Database = {
           updated_at: string
           merchant_id: string
           deleted_at: string | null
+          removed_at: string | null
         }
       }
       admin_shopify_abandoned: {
@@ -12900,6 +14438,12 @@ export type Database = {
       admin_site_keys: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      admin_staff_remove: {
+        Args: {
+          p_user_id: string
+        }
+        Returns: undefined
       }
       admin_store_carts: {
         Args: {
@@ -13388,6 +14932,22 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      billing_choose_plan: {
+        Args: {
+          p_code: string
+        }
+        Returns: Json
+      }
+      billing_plan_options: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      billing_receipt: {
+        Args: {
+          p_payment: string
+        }
+        Returns: Json
+      }
       billing_renew_now: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -13672,6 +15232,13 @@ export type Database = {
           merchant_id: string
         }
       }
+      credits_buy: {
+        Args: {
+          p_type: string
+          p_quantity: number
+        }
+        Returns: Json
+      }
       credits_start_recharge: {
         Args: {
           p_package: string
@@ -13765,6 +15332,16 @@ export type Database = {
         Returns: Json
       }
       device_settings_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      email_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      email_settings_save: {
         Args: {
           p: Json
         }
@@ -14367,6 +15944,160 @@ export type Database = {
         }
         Returns: Json
       }
+      inbox_activity: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
+      inbox_auto_reply_delete: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      inbox_auto_reply_save: {
+        Args: {
+          p: Json
+        }
+        Returns: string
+      }
+      inbox_auto_reply_toggle: {
+        Args: {
+          p_id: string
+          p_enabled: boolean
+        }
+        Returns: undefined
+      }
+      inbox_auto_reply_try: {
+        Args: {
+          p_text: string
+          p_kind?: string
+          p_channel?: string
+          p_first?: boolean
+        }
+        Returns: Json
+      }
+      inbox_automation: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      inbox_bulk: {
+        Args: {
+          p_ids: string[]
+          p: Json
+        }
+        Returns: number
+      }
+      inbox_comments: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
+      inbox_comments_overview: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
+      inbox_follow_up_set: {
+        Args: {
+          p_id: string
+          p_minutes: number
+          p_text?: string
+        }
+        Returns: undefined
+      }
+      inbox_list: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
+      inbox_mark_read: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      inbox_note_add: {
+        Args: {
+          p_id: string
+          p_body: string
+        }
+        Returns: string
+      }
+      inbox_note_delete: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      inbox_order_message: {
+        Args: {
+          p_order: string
+          p_kind?: string
+        }
+        Returns: string
+      }
+      inbox_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      inbox_reminder_set: {
+        Args: {
+          p_id: string
+          p_at: string
+          p_note?: string
+        }
+        Returns: undefined
+      }
+      inbox_saved_replies: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      inbox_saved_reply_delete: {
+        Args: {
+          p_id: string
+        }
+        Returns: undefined
+      }
+      inbox_saved_reply_save: {
+        Args: {
+          p: Json
+        }
+        Returns: string
+      }
+      inbox_settings_save: {
+        Args: {
+          p: Json
+        }
+        Returns: undefined
+      }
+      inbox_thread: {
+        Args: {
+          p_id: string
+          p_before?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      inbox_unread_count: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      inbox_unread_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      inbox_update: {
+        Args: {
+          p_id: string
+          p: Json
+        }
+        Returns: undefined
+      }
       integrations_overview: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -14459,6 +16190,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      my_billing: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       my_credits: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -14486,6 +16221,96 @@ export type Database = {
           p_event: Database["public"]["Enums"]["notification_event"]
         }
         Returns: string
+      }
+      notification_message_enable: {
+        Args: {
+          p_id: string
+          p_enabled: boolean
+        }
+        Returns: {
+          id: string
+          event: Database["public"]["Enums"]["notification_event"]
+          channel: Database["public"]["Enums"]["notification_channel"]
+          is_enabled: boolean
+          subject: string | null
+          template: string
+          created_at: string
+          updated_at: string
+          name: string | null
+          conditions: Json
+          merchant_id: string
+          wa_name: string | null
+          wa_language: string | null
+          wa_status: string | null
+          wa_reason: string | null
+          wa_template_id: string | null
+          wa_params: Json | null
+          wa_body: string | null
+          wa_version: number
+          wa_checked_at: string | null
+        }
+      }
+      notification_message_reset: {
+        Args: {
+          p_id: string
+        }
+        Returns: {
+          id: string
+          event: Database["public"]["Enums"]["notification_event"]
+          channel: Database["public"]["Enums"]["notification_channel"]
+          is_enabled: boolean
+          subject: string | null
+          template: string
+          created_at: string
+          updated_at: string
+          name: string | null
+          conditions: Json
+          merchant_id: string
+          wa_name: string | null
+          wa_language: string | null
+          wa_status: string | null
+          wa_reason: string | null
+          wa_template_id: string | null
+          wa_params: Json | null
+          wa_body: string | null
+          wa_version: number
+          wa_checked_at: string | null
+        }
+      }
+      notification_message_save: {
+        Args: {
+          p_id: string
+          p_subject: string
+          p_template: string
+        }
+        Returns: {
+          id: string
+          event: Database["public"]["Enums"]["notification_event"]
+          channel: Database["public"]["Enums"]["notification_channel"]
+          is_enabled: boolean
+          subject: string | null
+          template: string
+          created_at: string
+          updated_at: string
+          name: string | null
+          conditions: Json
+          merchant_id: string
+          wa_name: string | null
+          wa_language: string | null
+          wa_status: string | null
+          wa_reason: string | null
+          wa_template_id: string | null
+          wa_params: Json | null
+          wa_body: string | null
+          wa_version: number
+          wa_checked_at: string | null
+        }
+      }
+      notification_preview_data: {
+        Args: {
+          p_order_id?: string
+        }
+        Returns: Json
       }
       order_channel_info: {
         Args: {
@@ -14840,9 +16665,32 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_ad_accounts_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       platform_addon_save: {
         Args: {
           p: Json
+        }
+        Returns: Json
+      }
+      platform_ads_leads: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_source?: string
+          p_campaign?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_ads_report: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_level?: string
+          p_parent?: string
         }
         Returns: Json
       }
@@ -14945,6 +16793,23 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_billing_controls: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_billing_controls_save: {
+        Args: {
+          p: Json
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_billing_dashboard: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
       platform_billing_gateway_toggle: {
         Args: {
           p_provider: string
@@ -14954,6 +16819,29 @@ export type Database = {
       }
       platform_billing_gateways: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_billing_payment: {
+        Args: {
+          p_payment: string
+        }
+        Returns: Json
+      }
+      platform_billing_refund_start: {
+        Args: {
+          p_payment: string
+          p_amount: number
+          p_reason: string
+          p_manual?: boolean
+          p_reverse_credits?: boolean
+        }
+        Returns: Json
+      }
+      platform_billing_review_resolve: {
+        Args: {
+          p_payment: string
+          p_note: string
+        }
         Returns: Json
       }
       platform_business_report: {
@@ -15083,6 +16971,13 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_deletion_request_delete_merchant: {
+        Args: {
+          p_id: string
+          p_confirm: string
+        }
+        Returns: Json
+      }
       platform_deletion_request_execute: {
         Args: {
           p_id: string
@@ -15120,6 +17015,50 @@ export type Database = {
         Args: {
           p_code: string
           p: Json
+        }
+        Returns: Json
+      }
+      platform_finance_categories_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      platform_finance_category_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_finance_entries: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_finance_entry_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
+      }
+      platform_finance_entry_void: {
+        Args: {
+          p_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      platform_finance_ledger: {
+        Args: {
+          p_type: string
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      platform_finance_overview: {
+        Args: {
+          p_from: string
+          p_to: string
         }
         Returns: Json
       }
@@ -15601,6 +17540,36 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      platform_signup_offer_save: {
+        Args: {
+          p_value: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
+      platform_signup_request_update: {
+        Args: {
+          p_id: string
+          p_status: string
+          p_merchant?: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      platform_signup_requests: {
+        Args: {
+          p_status?: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      platform_signup_settings_save: {
+        Args: {
+          p_value: Json
+          p_reason?: string
+        }
+        Returns: Json
+      }
       platform_sms_settings_save: {
         Args: {
           p: Json
@@ -15644,6 +17613,13 @@ export type Database = {
         Args: {
           p_user: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      platform_store_domains_list: {
+        Args: {
+          p_search?: string
+          p_bucket?: string
         }
         Returns: Json
       }
@@ -15943,8 +17919,22 @@ export type Database = {
           merchant_id: string
         }
       }
+      public_lead_touch: {
+        Args: {
+          p_kind: string
+          p_ref: string
+          p_attr: Json
+        }
+        Returns: undefined
+      }
       public_signup_options: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      public_signup_request: {
+        Args: {
+          p: Json
+        }
         Returns: Json
       }
       purchase_order_set_status: {
@@ -16520,6 +18510,60 @@ export type Database = {
         }
         Returns: Json
       }
+      seo_audit: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      seo_bulk: {
+        Args: {
+          p_action: string
+          p_items?: Json
+          p_include_manual?: boolean
+        }
+        Returns: Json
+      }
+      seo_item_get: {
+        Args: {
+          p_type: string
+          p_key: string
+        }
+        Returns: Json
+      }
+      seo_item_save: {
+        Args: {
+          p_type: string
+          p_key: string
+          p_value: Json
+        }
+        Returns: Json
+      }
+      seo_redirect_delete: {
+        Args: {
+          p_id: string
+        }
+        Returns: Json
+      }
+      seo_redirect_save: {
+        Args: {
+          p_from: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      seo_redirects_list: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      seo_settings_get: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      seo_settings_save: {
+        Args: {
+          p_value: Json
+        }
+        Returns: Json
+      }
       set_courier_invoice_status: {
         Args: {
           p_invoice_id: string
@@ -16619,6 +18663,15 @@ export type Database = {
           name: string | null
           conditions: Json
           merchant_id: string
+          wa_name: string | null
+          wa_language: string | null
+          wa_status: string | null
+          wa_reason: string | null
+          wa_template_id: string | null
+          wa_params: Json | null
+          wa_body: string | null
+          wa_version: number
+          wa_checked_at: string | null
         }
       }
       sms_update_settings: {
@@ -16690,6 +18743,21 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      storefront_draft_discard: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      storefront_draft_get: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      storefront_draft_save: {
+        Args: {
+          p_content: Json
+          p_base?: string
+        }
+        Returns: Json
+      }
       storefront_get_product: {
         Args: {
           p_slug: string
@@ -16714,6 +18782,18 @@ export type Database = {
       storefront_mode: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      storefront_page: {
+        Args: {
+          p_path: string
+        }
+        Returns: Json
+      }
+      storefront_publish: {
+        Args: {
+          p_base?: string
+        }
+        Returns: Json
       }
       storefront_quote: {
         Args: {
@@ -16740,6 +18820,20 @@ export type Database = {
         Args: {
           p_slug: string
         }
+        Returns: Json
+      }
+      storefront_robots: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      storefront_seo: {
+        Args: {
+          p_path: string
+        }
+        Returns: Json
+      }
+      storefront_sitemap: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       submit_contact_message: {
@@ -16985,6 +19079,7 @@ export type Database = {
           updated_at: string
           merchant_id: string
           deleted_at: string | null
+          removed_at: string | null
         }
       }
       update_shipment: {
@@ -17044,6 +19139,22 @@ export type Database = {
           updated_at: string
           merchant_id: string
         }
+      }
+      whatsapp_order_messages: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: Json
+      }
+      whatsapp_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      whatsapp_settings_save: {
+        Args: {
+          p: Json
+        }
+        Returns: Json
       }
     }
     Enums: {

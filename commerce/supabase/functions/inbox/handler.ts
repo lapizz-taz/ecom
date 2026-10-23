@@ -27,7 +27,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson, readText } from '../_shared/http.ts'
-import { attachmentType, commentAction, type CommentOp, fetchPost, hint, InboxGraph, type OutgoingFile, type PostDetails, sendMessage } from '../_shared/inbox/meta.ts'
+import { attachmentType, commentAction, type CommentOp, fetchPost, hint, InboxGraph, inboxChannelKey, type OutgoingFile, type PostDetails, sendMessage } from '../_shared/inbox/meta.ts'
 import {
   exchangeCode, type GrantedNumber, type GrantedPage, grantedNumbers, grantedPages, loginUrl, META_INBOX_APP_KEY,
   type MetaInboxApp, type OAuthKind, pageFields, readState, signState,
@@ -39,7 +39,7 @@ import { parse } from '../_shared/schemas.ts'
 import { appBase } from '../_shared/storefront.ts'
 import { adminClient, forEachMerchant, merchantFor, optionalUser, requireStaff, rpc } from '../_shared/supabase.ts'
 
-const channelKey = (id: string) => `inbox.channel.${id.replace(/-/g, '')}`
+const channelKey = inboxChannelKey
 /** The token from a Facebook sign-in, kept for 30 minutes while the owner picks what to connect. */
 const PENDING_KEY = 'inbox.oauth'
 const PENDING_MINUTES = 30

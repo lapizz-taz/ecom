@@ -22,7 +22,7 @@ const TABS = [
   { key: 'fraud', label: 'Fraud & advance', render: () => <FraudSettings /> },
   { key: 'operations', label: 'Orders & operations', render: () => <OperationsSettings /> },
   { key: 'labels', label: 'Label builder', render: () => <Navigate to="/admin/label-builder" replace /> },
-  { key: 'notifications', label: 'Templates', render: () => <NotificationSettings /> },
+  { key: 'notifications', label: 'Customer messages', render: () => <NotificationSettings /> },
   { key: 'sources', label: 'Order sources', render: () => <OrderSourcesSettings /> },
   { key: 'finance', label: 'Finance categories', permission: 'finance.view', render: () => <FinanceCategories /> },
   { key: 'advanced', label: 'Advanced', render: () => <AdvancedSettings /> },

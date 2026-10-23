@@ -36,6 +36,8 @@ import {
   PLATFORM_BD_COURIER_SECRET, PLATFORM_COURIER_PANEL_SECRET,
 } from '../_shared/fraud/service.ts'
 import { META_INBOX_APP_KEY, type MetaInboxApp } from '../_shared/inbox/oauth.ts'
+import { EMAIL_SERVICE_SECRET, sendEmailService } from '../_shared/notifications/senders.ts'
+import { isEmail } from '../_shared/notifications/smtp.ts'
 import { normalizeAccountId } from '../_shared/meta/graph.ts'
 import {
   checkAdAccount, type PlatformAdAccount, platformAdSecretKey, platformAdSecrets, spendWindow, syncPlatformAdAccounts, syncPlatformAdSpend, tokenHint,
@@ -169,6 +171,18 @@ const schema = z.discriminatedUnion('action', [
     new_verify_token: z.boolean().optional(),
   }),
   z.object({ action: z.literal('meta_app_clear') }),
+  z.object({ action: z.literal('email_service_status') }),
+  z.object({
+    action: z.literal('email_service_save'),
+    enabled: z.boolean(),
+    from_email: z.string().trim().toLowerCase().max(200).refine(isEmail, 'Enter the sender address, like orders@mail.fullfilio.com'),
+    from_name: z.string().trim().max(80).regex(/^[^<>"\r\n]*$/, 'No < > or quotes in the name'),
+    daily_limit: z.number().int().min(0).max(100_000),
+    // Empty: keep the saved key.
+    api_key: z.string().trim().regex(/^re_[A-Za-z0-9_]{8,200}$/, 'A Resend API key starts with re_').optional(),
+    send_test: z.boolean().optional(),
+  }),
+  z.object({ action: z.literal('email_service_clear') }),
   z.object({
     action: z.literal('courier_panel_connect'),
     provider: z.enum(COURIER_PANEL_PROVIDERS),
@@ -496,6 +510,49 @@ export default (
       case 'meta_app_clear': {
         await require(client, 'integrations', 'manage')
         await rpc(admin, 'platform_secret_clear', { p_key: META_INBOX_APP_KEY, p_actor: user.id })
+        return json(req, { ok: true })
+      }
+
+      // ------------------------------------- Fullfilio email service (Resend, for stores without their own mailbox)
+      case 'email_service_status': {
+        await require(client, 'integrations', 'view')
+        const { data: row } = await admin.from('platform_settings').select('value').eq('key', 'email_service').maybeSingle()
+        const key = await rpc<{ api_key?: string } | null>(admin, 'platform_secret_get', { p_key: EMAIL_SERVICE_SECRET })
+        const canManage = await rpc<boolean>(client, 'platform_can', { p_module: 'integrations', p_action: 'manage', p_merchant: null })
+        const v = (row?.value ?? {}) as Record<string, unknown>
+        return json(req, {
+          enabled: !!v.enabled, from_email: v.from_email ?? '', from_name: v.from_name ?? '', daily_limit: v.daily_limit ?? 300,
+          has_key: !!key?.api_key, key_hint: key?.api_key ? `re_…${key.api_key.slice(-4)}` : null, can_manage: canManage,
+        })
+      }
+      case 'email_service_save': {
+        await require(client, 'integrations', 'manage')
+        const prev = await rpc<{ api_key?: string } | null>(admin, 'platform_secret_get', { p_key: EMAIL_SERVICE_SECRET })
+        const apiKey = input.api_key || prev?.api_key
+        if (!apiKey) throw new HttpError(422, 'Paste the Resend API key', 'VALIDATION')
+        if (input.send_test || input.api_key) {
+          // The key and the sender domain must work: one email to the person saving it.
+          if (!user.email) throw new HttpError(422, 'Your sign-in has no email address to send the test to', 'VALIDATION')
+          await sendEmailService(apiKey, {
+            from: { name: input.from_name || 'Fullfilio', email: input.from_email }, to: user.email, replyTo: null,
+            subject: 'Fullfilio email service works', text: 'Stores can now send their customer emails through Fullfilio.',
+            html: '<p>Stores can now send their customer emails through Fullfilio.</p>',
+          }).catch((e) => { throw new HttpError(422, (e as Error).message, 'CONNECTION_FAILED') })
+        }
+        if (input.api_key) {
+          await rpc(admin, 'platform_secret_store', { p_key: EMAIL_SERVICE_SECRET, p_value: { api_key: input.api_key }, p_hint: `re_…${input.api_key.slice(-4)}`, p_actor: user.id })
+        }
+        await rpc(client, 'platform_setting_save', {
+          p_key: 'email_service', p_reason: 'Email service',
+          p_value: { enabled: input.enabled, from_email: input.from_email, from_name: input.from_name, daily_limit: input.daily_limit },
+        })
+        return json(req, { ok: true, tested: !!(input.send_test || input.api_key) })
+      }
+      case 'email_service_clear': {
+        await require(client, 'integrations', 'manage')
+        await rpc(admin, 'platform_secret_clear', { p_key: EMAIL_SERVICE_SECRET, p_actor: user.id })
+        const { data: row } = await admin.from('platform_settings').select('value').eq('key', 'email_service').maybeSingle()
+        await rpc(client, 'platform_setting_save', { p_key: 'email_service', p_reason: 'Email service key removed', p_value: { ...(row?.value ?? {}), enabled: false } })
         return json(req, { ok: true })
       }
 

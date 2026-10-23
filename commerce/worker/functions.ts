@@ -16,6 +16,7 @@ import courierWebhook from '../supabase/functions/courier-webhook/handler.ts'
 import domains from '../supabase/functions/domains/handler.ts'
 import fraudCheck from '../supabase/functions/fraud-check/handler.ts'
 import inbox from '../supabase/functions/inbox/handler.ts'
+import messaging from '../supabase/functions/messaging/handler.ts'
 import metaAds from '../supabase/functions/meta-ads/handler.ts'
 import notificationsDispatch from '../supabase/functions/notifications-dispatch/handler.ts'
 import paymentWebhook from '../supabase/functions/payment-webhook/handler.ts'
@@ -45,6 +46,8 @@ export const FUNCTIONS: Record<string, Handler> = {
   'domains': domains,
   'fraud-check': fraudCheck,
   'inbox': inbox,
+  // Listed in SUPABASE_FUNCTIONS: sends mail where notifications-dispatch does (same ports).
+  'messaging': messaging,
   'meta-ads': metaAds,
   'notifications-dispatch': notificationsDispatch,
   'payment-webhook': paymentWebhook,

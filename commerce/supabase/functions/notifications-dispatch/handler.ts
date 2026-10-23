@@ -1,13 +1,15 @@
 // Sends queued customer messages, then asks the SMS gateway for delivery
 // reports that are due. Triggered by pg_cron (x-cron-secret) every minute
 // while something waits, and nudged right after checkout and payments.
-//   SMS        → the gateway connected on the SMS page (credentials in Vault)
-//   WhatsApp / email → the provider chosen in Settings → Notifications
+//   SMS        → the platform's SMS gateway (SMS page)
+//   Email      → the store's own mailbox or Fullfilio's email service (Email page)
+//   WhatsApp   → the approved template, from the store's WhatsApp number (WhatsApp page)
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
-import { type Channel, notificationProvider } from '../_shared/notifications/providers.ts'
+import type { Channel } from '../_shared/notifications/providers.ts'
+import { SendError, sendQueued } from '../_shared/notifications/senders.ts'
 import { SmsError, type SmsProvider } from '../_shared/sms/providers.ts'
 import { connectedSmsProvider } from '../_shared/sms/registry.ts'
 import { adminClient, forEachMerchant, merchantOf, rpc } from '../_shared/supabase.ts'
@@ -36,9 +38,8 @@ async function sendOne(admin: SupabaseClient, item: QueuedNotification, sms: () 
       const sent = await provider.send({ to: item.recipient, body: item.body, senderId, clientRef: item.id })
       result = { p_provider: provider.code, p_provider_message_id: sent.messageId, p_cost: sent.cost, p_delivery_status: sent.delivery }
     } else {
-      const provider = notificationProvider(item.provider ?? 'console')
-      const sent = await provider.send({ channel: item.channel, to: item.recipient, subject: item.subject, body: item.body })
-      result = { p_provider: provider.name, p_provider_message_id: sent.messageId ?? null }
+      const sent = await sendQueued(admin, { ...item, channel: item.channel as 'EMAIL' | 'WHATSAPP' })
+      result = { p_provider: sent.provider, p_provider_message_id: sent.messageId }
     }
   } catch (error) {
     const message = (error as Error).message
@@ -46,7 +47,7 @@ async function sendOne(admin: SupabaseClient, item: QueuedNotification, sms: () 
     try {
       status = await rpc<string | null>(admin, 'complete_notification', {
         p_id: item.id, p_success: false, p_provider: item.provider, p_provider_message_id: null, p_error: message,
-        p_permanent: error instanceof SmsError && error.permanent,
+        p_permanent: (error instanceof SmsError || error instanceof SendError) && error.permanent,
       })
     } catch (recordError) {
       void logEvent({ level: 'ERROR', category, source: 'notifications-dispatch', message: 'Could not record a failed message', error: recordError,
