@@ -252,13 +252,13 @@ function AddProducts({ onAdd }: { onAdd: (v: VariantSearchRow) => void }) {
       {term && (
         <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">
           {(results.data ?? []).map((v) => {
-            const out = v.track_inventory && (v.available ?? 0) <= 0
+            const out = !v.in_stock
             return (
               <li key={v.variant_id}>
                 <button type="button" onClick={() => { onAdd(v); setQ('') }} disabled={!!out}
                   className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
                   <span className="min-w-0 flex-1 truncate">{v.product_name}{v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''} <span className="text-xs text-muted-foreground">{v.sku}</span></span>
-                  <span className="text-xs text-muted-foreground">{v.track_inventory ? `${v.available ?? 0} left` : 'To order'}</span>
+                  <span className="text-xs text-muted-foreground">{!v.track_inventory ? 'To order' : v.available !== null ? `${v.available} left` : v.in_stock ? 'In stock' : 'Out of stock'}</span>
                   <span className="w-16 text-right tabular-nums">{formatMoney(v.unit_price)}</span>
                 </button>
               </li>

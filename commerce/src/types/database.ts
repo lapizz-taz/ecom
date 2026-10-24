@@ -16480,6 +16480,14 @@ export type Database = {
         }
         Returns: Json
       }
+      order_catalog: {
+        Args: {
+          p_search?: string
+          p_variant_ids?: string[]
+          p_limit?: number
+        }
+        Returns: Json
+      }
       order_cost_summary: {
         Args: {
           p_order: string

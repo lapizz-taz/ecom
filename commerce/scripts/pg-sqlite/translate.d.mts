@@ -10,5 +10,6 @@ export function readType(tokens: Token[], i: number): { name: string; array: boo
 export function splitTop(tokens: Token[]): Token[][]
 export function toSqlite(expr: string, opts?: { context?: boolean; functions?: Set<string>; bare?: boolean }): string
 export function pgArrayToJson(text: string, elemType: string): string
+export const CATALOG_READ_PERMISSIONS: string[]
 export const NOW: string
 export const UUID: string

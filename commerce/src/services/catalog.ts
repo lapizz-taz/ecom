@@ -206,27 +206,34 @@ export function imageUrl(url: string | null | undefined, width = 400): string | 
 }
 
 // Variant search for orders and purchase orders --------------------------------
-export async function searchVariants(q: string, limit = 12) {
-  const term = q.replace(/[%,()]/g, ' ').trim()
-  let query = supabase
-    .from('inventory_overview')
-    .select('variant_id, product_id, product_name, variant_title, sku, unit_price, unit_cost, available, track_inventory, product_status, variant_active')
-    .eq('variant_active', true)
-    .order('product_name')
-    .limit(limit)
-  if (term) query = query.or(`product_name.ilike.%${term}%,sku.ilike.%${term}%`)
-  const { data, error } = await query
-  if (error) throw error
-  return data ?? []
+/** A variant to put on an order (order_catalog): the cost only for staff who may see costs, the
+ *  stock count only for staff who may see stock; everyone gets whether it is in stock. */
+export interface VariantSearchRow {
+  variant_id: string
+  product_id: string
+  product_name: string
+  product_slug: string
+  product_status: string
+  variant_title: string | null
+  sku: string
+  variant_active: boolean
+  track_inventory: boolean
+  unit_price: number | null
+  unit_cost: number | null
+  available: number | null
+  in_stock: boolean
+  image_url: string | null
 }
-export type VariantSearchRow = Awaited<ReturnType<typeof searchVariants>>[number]
+
+export async function searchVariants(q: string, limit = 12): Promise<VariantSearchRow[]> {
+  const { data, error } = await supabase.rpc('order_catalog', { p_search: q.trim() || undefined, p_limit: limit })
+  if (error) throw error
+  return (data ?? []) as unknown as VariantSearchRow[]
+}
 
 export async function variantsByIds(ids: string[]): Promise<VariantSearchRow[]> {
   if (!ids.length) return []
-  const { data, error } = await supabase
-    .from('inventory_overview')
-    .select('variant_id, product_id, product_name, variant_title, sku, unit_price, unit_cost, available, track_inventory, product_status, variant_active')
-    .in('variant_id', ids)
+  const { data, error } = await supabase.rpc('order_catalog', { p_variant_ids: ids })
   if (error) throw error
-  return data ?? []
+  return (data ?? []) as unknown as VariantSearchRow[]
 }

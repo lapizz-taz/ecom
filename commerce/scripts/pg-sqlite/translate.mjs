@@ -228,6 +228,9 @@ const raw = (v) => ({ t: 'raw', v })
 
 // ---------------------------------------------------------------- translation
 
+/** public._can_read_catalog(): any of these permissions (worker/db/snapshot.test.ts checks it against the migrations). */
+export const CATALOG_READ_PERMISSIONS = ['products.view', 'inventory.view', 'purchases.view', 'production.view', 'finance.view', 'marketing.view']
+
 /**
  * Context functions used by row-security rules. They depend only on who is asking,
  * so they become placeholders that the runtime fills in for each request.
@@ -240,9 +243,7 @@ const CONTEXT = {
   '_support_read_only': () => '{{support_read_only}}',
   'current_role_code': () => '{{role_code}}',
   'is_system_context': () => '{{is_system}}',
-  // public._can_read_catalog(): any of these permissions (kept in step with the migrations).
-  '_can_read_catalog': () => ['products.view', 'inventory.view', 'orders.create', 'purchases.view', 'production.view', 'finance.view', 'marketing.view']
-    .map((p) => `{{perm:${p}}}`).join(' OR ').replace(/^(.*)$/, '($1)'),
+  '_can_read_catalog': () => CATALOG_READ_PERMISSIONS.map((p) => `{{perm:${p}}}`).join(' OR ').replace(/^(.*)$/, '($1)'),
   'has_permission': (args) => {
     if (args.length !== 1 || args[0].t !== 'str') throw new Untranslatable('has_permission with a non-literal code')
     if (!/^[a-z_]+\.[a-z_]+$/.test(args[0].v)) throw new Untranslatable(`odd permission code ${args[0].v}`)
