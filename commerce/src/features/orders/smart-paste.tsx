@@ -51,7 +51,7 @@ export function SmartPaste({ districts, onFill, initial }: { districts: readonly
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {found ? FIELDS.map((f) => (
           <span key={f.key} className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]',
-            found[f.key] ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300' : 'text-muted-foreground')}>
+            found[f.key] ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10' : 'text-muted-foreground')}>
             {found[f.key] ? <Check className="size-3" /> : <X className="size-3" />} {f.label}
           </span>
         )) : <span className="text-[11px] text-muted-foreground">Name, phone, address, district and area are filled in for you. Check them before creating the order.</span>}

@@ -59,7 +59,7 @@ function ScopeChips({ scopes }: { scopes: string[] }) {
     <span className="flex flex-wrap gap-1">
       {scopes.map((s) => (
         <span key={s} className={cn('rounded-md px-1.5 py-0.5 font-mono text-[11px] ring-1 ring-inset',
-          s.endsWith(':write') ? 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-muted text-muted-foreground ring-border')}>{s}</span>
+          s.endsWith(':write') ? 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10' : 'bg-muted text-muted-foreground ring-border')}>{s}</span>
       ))}
     </span>
   )
@@ -222,7 +222,7 @@ function LogsTab() {
               <td className="px-4 py-2.5">{l.key_name ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs"><Method m={l.method} /> {l.path}</td>
               <td className="px-4 py-2.5">
-                <span className={cn('rounded-md px-1.5 py-0.5 font-mono text-[11px] font-medium', l.status < 300 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : l.status < 500 ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300')}>{l.status}</span>
+                <span className={cn('rounded-md px-1.5 py-0.5 font-mono text-[11px] font-medium', l.status < 300 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10' : l.status < 500 ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10' : 'bg-red-50 text-red-700 dark:bg-red-500/10')}>{l.status}</span>
                 {l.error_code && <span className="ml-2 font-mono text-[11px] text-muted-foreground">{l.error_code}</span>}
               </td>
               <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{l.duration_ms != null ? `${l.duration_ms} ms` : '—'}</td>
@@ -235,7 +235,7 @@ function LogsTab() {
 }
 
 function Method({ m }: { m: string }) {
-  return <span className={cn('inline-block w-11 rounded px-1 text-center font-mono text-[10px] font-semibold', m === 'GET' ? 'bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300' : 'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300')}>{m}</span>
+  return <span className={cn('inline-block w-11 rounded px-1 text-center font-mono text-[10px] font-semibold', m === 'GET' ? 'bg-sky-100 text-sky-800 dark:bg-sky-500/15' : 'bg-violet-100 text-violet-800 dark:bg-violet-500/15')}>{m}</span>
 }
 
 function Code({ children }: { children: string }) {

@@ -199,7 +199,7 @@ function RuleEditor({ a, rule, manage, onClose, onSaved }: { a: InboxAutomation;
         </div>
       </div>
       {r.is_default ? (
-        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">Sent once to a customer writing for the first time, when none of your keywords matched.</p>
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700">Sent once to a customer writing for the first time, when none of your keywords matched.</p>
       ) : (
         <div className="space-y-1.5">
           <Label htmlFor="ar-word">Keywords</Label>

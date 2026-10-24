@@ -172,7 +172,7 @@ export function ConversationList({ overview, selected, onSelect, filters, onFilt
                       <span className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
                         {c.kind === 'COMMENT' && <span className="inline-flex items-center gap-0.5"><MessagesSquare className="size-3" /> Comment</span>}
                         {c.has_order && <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400"><ShoppingBag className="size-3" /> Order</span>}
-                        {c.labels.slice(0, 2).map((l) => <span key={l} className="truncate rounded bg-violet-500/10 px-1 text-violet-700 dark:text-violet-300">{l}</span>)}
+                        {c.labels.slice(0, 2).map((l) => <span key={l} className="truncate rounded bg-violet-500/10 px-1 text-violet-700">{l}</span>)}
                         {c.assigned_name && <span className="inline-flex shrink-0 items-center gap-0.5"><UserRound className="size-3" /> {c.assigned_name.split(' ')[0]}</span>}
                         {c.auto_follow_up_at && <AlarmClock className="size-3 shrink-0 text-violet-500" aria-label="Auto follow-up scheduled" />}
                         {c.remind_at && <BellRing className="size-3 shrink-0 text-amber-500" aria-label="Reminder" />}

@@ -166,7 +166,7 @@ export default function WhatsappTemplatePage() {
                 <Textarea id="wa_text" ref={editor} value={draft} disabled={!manage} rows={10} className="text-sm leading-relaxed"
                   onChange={(e) => setDraft(e.target.value)} />
                 {problems.length > 0 && (
-                  <ul className="space-y-1 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                  <ul className="space-y-1 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
                     {problems.map((p) => <li key={p} className="flex items-start gap-1.5"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {p}</li>)}
                   </ul>
                 )}

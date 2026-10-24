@@ -25,10 +25,10 @@ function domainTone(d: StoreDomain): Tone {
 }
 
 const TONE: Record<Tone, { label: string; chip: string }> = {
-  live: { label: 'Connected', chip: 'bg-blue-50 text-blue-700 ring-blue-600/15 dark:bg-blue-500/10 dark:text-blue-300' },
-  warn: { label: 'Connected · issue', chip: 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-300' },
+  live: { label: 'Connected', chip: 'bg-blue-50 text-blue-700 ring-blue-600/15 dark:bg-blue-500/10' },
+  warn: { label: 'Connected · issue', chip: 'bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10' },
   pending: { label: 'Pending', chip: 'bg-zinc-100 text-zinc-700 ring-zinc-500/15 dark:bg-white/10 dark:text-zinc-300' },
-  error: { label: 'Not connected', chip: 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10 dark:text-red-300' },
+  error: { label: 'Not connected', chip: 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-500/10' },
 }
 
 export function DomainChip({ d }: { d: StoreDomain }) {

@@ -90,8 +90,8 @@ export function profitOf(rows: CalcRow[]): number {
 const fmt = (v: unknown) => formatMoney(v)
 
 export const CERTAINTY: Record<Certainty, { label: string; hint: string; className: string }> = {
-  actual: { label: 'Actual', hint: 'Recorded in your books', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
-  synced: { label: 'Synced', hint: 'Imported from a connected store or ad account', className: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
-  estimated: { label: 'Estimated', hint: 'Courier rate, replaced when the courier reports the real fee', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' },
-  unavailable: { label: 'Unavailable', hint: 'Not configured or not connected — not guessed', className: 'bg-red-500/10 text-red-700 dark:text-red-300' },
+  actual: { label: 'Actual', hint: 'Recorded in your books', className: 'bg-emerald-500/10 text-emerald-700' },
+  synced: { label: 'Synced', hint: 'Imported from a connected store or ad account', className: 'bg-sky-500/10 text-sky-700' },
+  estimated: { label: 'Estimated', hint: 'Courier rate, replaced when the courier reports the real fee', className: 'bg-amber-500/10 text-amber-700' },
+  unavailable: { label: 'Unavailable', hint: 'Not configured or not connected — not guessed', className: 'bg-red-500/10 text-red-700' },
 }

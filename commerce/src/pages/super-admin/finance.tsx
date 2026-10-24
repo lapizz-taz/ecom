@@ -477,13 +477,13 @@ const dhaka = (offset = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia
 /** Lead quality against the period's average cost per lead. */
 function verdict(r: AdsRow, avgCpl: number | null): { label: string; tone: string } | null {
   if (toNumber(r.cost) <= 0) return null
-  if (r.paying > 0 && r.roas != null && toNumber(r.roas) >= 1) return { label: 'Paying back', tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
-  if (r.leads === 0) return toNumber(r.cost) >= (avgCpl ?? Infinity) ? { label: 'No leads', tone: 'bg-red-500/15 text-red-700 dark:text-red-300' } : { label: 'Too early', tone: 'bg-muted text-muted-foreground' }
+  if (r.paying > 0 && r.roas != null && toNumber(r.roas) >= 1) return { label: 'Paying back', tone: 'bg-emerald-500/15 text-emerald-700' }
+  if (r.leads === 0) return toNumber(r.cost) >= (avgCpl ?? Infinity) ? { label: 'No leads', tone: 'bg-red-500/15 text-red-700' } : { label: 'Too early', tone: 'bg-muted text-muted-foreground' }
   if (avgCpl == null || r.cpl == null) return null
   const ratio = toNumber(r.cpl) / avgCpl
-  if (ratio <= 0.8) return { label: 'Good leads', tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
-  if (ratio <= 1.25) return { label: 'Average', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' }
-  return { label: 'Costly leads', tone: 'bg-red-500/15 text-red-700 dark:text-red-300' }
+  if (ratio <= 0.8) return { label: 'Good leads', tone: 'bg-emerald-500/15 text-emerald-700' }
+  if (ratio <= 1.25) return { label: 'Average', tone: 'bg-amber-500/15 text-amber-700' }
+  return { label: 'Costly leads', tone: 'bg-red-500/15 text-red-700' }
 }
 
 function AdsReportTab({ from, to }: { from: string; to: string }) {
@@ -608,7 +608,7 @@ function AdsReportTab({ from, to }: { from: string; to: string }) {
                           <button type="button" disabled={!next} onClick={() => next && setPath([...path, { level, id: r.id, name: r.name }])}
                             className={cn('block max-w-full truncate text-left font-medium', next && 'hover:underline')} title={r.name}>{r.name}{next && <ChevronRight className="ml-0.5 inline size-3.5 text-muted-foreground" />}</button>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                            {r.effective_status && <span className={cn('rounded px-1.5 text-[10px] font-medium', r.effective_status === 'ACTIVE' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground')}>{r.effective_status.toLowerCase().replace(/_/g, ' ')}</span>}
+                            {r.effective_status && <span className={cn('rounded px-1.5 text-[10px] font-medium', r.effective_status === 'ACTIVE' ? 'bg-emerald-500/15 text-emerald-700' : 'bg-muted text-muted-foreground')}>{r.effective_status.toLowerCase().replace(/_/g, ' ')}</span>}
                             {r.daily_budget ? <span className="text-[11px] text-muted-foreground">{usd(r.daily_budget, R.currency ?? 'USD')}/day</span> : null}
                             {v && <span className={cn('rounded px-1.5 text-[10px] font-semibold', v.tone)}>{v.label}</span>}
                           </div>
@@ -762,7 +762,7 @@ function AdAccountsTab() {
                   {a.last_sync_at ? `Last sync ${formatDateTime(a.last_sync_at)}` : 'Not synced yet'}
                   {a.token_hint ? ` · token ${a.token_hint}` : ''}{a.token_expires_at ? ` · expires ${formatDate(a.token_expires_at)}` : ''}
                 </p>
-                {a.last_error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">{a.last_error}</p>}
+                {a.last_error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700">{a.last_error}</p>}
                 {manage && (
                   <div className="flex flex-wrap gap-2">
                     {a.is_active && <Button size="sm" variant="outline" disabled={sync.isPending} onClick={() => sync.mutate(a.id)}><RefreshCw className={cn(sync.isPending && 'animate-spin')} /> Sync now</Button>}

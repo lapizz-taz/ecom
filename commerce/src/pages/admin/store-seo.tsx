@@ -621,7 +621,7 @@ function Section({ title, detail, children }: { title: string; detail?: ReactNod
 
 function Toggle({ label, detail, checked, onChange, disabled, warn }: { label: string; detail?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; warn?: boolean }) {
   return (
-    <label className={cn('flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5', disabled && 'cursor-not-allowed opacity-60', warn && 'border-amber-400 bg-amber-50/60 dark:bg-amber-950/20')}>
+    <label className={cn('flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5', disabled && 'cursor-not-allowed opacity-60', warn && 'border-amber-400 bg-amber-50/60')}>
       <span className="min-w-0">
         <span className="block text-sm font-medium">{label}</span>
         {detail && <span className="block text-xs text-muted-foreground">{detail}</span>}

@@ -17,7 +17,7 @@ export function useAuthLinkError(): AuthLinkError | null {
 
 export function LinkErrorNotice({ error, action }: { error: AuthLinkError; action?: React.ReactNode }) {
   return (
-    <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" role="alert">
+    <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10" role="alert">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <div className="space-y-1"><p>{error.message}</p>{action}</div>
     </div>
