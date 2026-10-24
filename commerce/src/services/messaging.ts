@@ -194,6 +194,36 @@ export async function whatsappMonthEvents(): Promise<string[]> {
   return (data ?? []).filter((l) => l.delivery_status !== 'FAILED').map((l) => l.event ?? 'TEST')
 }
 
+/** The last days of one channel's customer messages (the Email and WhatsApp pages' numbers). */
+export interface ChannelStats {
+  days: number
+  sent: number
+  /** WhatsApp only: reached the phone (read included) and opened. */
+  delivered: number
+  read: number
+  failed: number
+  /** Not sent on purpose: no address, unsubscribed, a duplicate. */
+  skipped: number
+  waiting: number
+  last_sent_at: string | null
+  /** Sent per message (event). */
+  by_event: Record<string, number>
+  /** WhatsApp messages that went as SMS instead. */
+  by_sms: number
+  confirmed: number
+  cancelled: number
+  /** Email only: addresses that stopped cart reminders and review requests. */
+  unsubscribed: number
+  /** A test was sent from this page at least once. */
+  tested: boolean
+}
+
+export async function channelStats(channel: 'EMAIL' | 'WHATSAPP', days = 30) {
+  const { data, error } = await supabase.rpc('messaging_channel_stats', { p_channel: channel, p_days: days })
+  if (error) throw error
+  return fromJson<ChannelStats>(data)
+}
+
 export async function retryMessage(id: string) {
   const { error } = await supabase.rpc('retry_notification', { p_id: id })
   if (error) throw error
@@ -219,6 +249,22 @@ export const orderReplyView = (merchantId: string, token: string) =>
 /** The customer's answer on that page. */
 export const orderReply = (merchantId: string, token: string, reply: 'confirm' | 'cancel') =>
   invokeFunction<OrderReplyView>('messaging', { action: 'order_reply', merchant_id: merchantId, token, reply })
+
+export interface UnsubscribeView {
+  store: { name: string; phone: string | null; url: string | null; logo_url: string | null; accent_color: string }
+  /** Shown half hidden: "r••••@gmail.com". */
+  email: string
+  unsubscribed: boolean
+  language: MessageLanguage
+}
+
+/** The address behind a cart reminder's or review request's "Unsubscribe" link (no sign-in). */
+export const unsubscribeView = (merchantId: string, token: string) =>
+  invokeFunction<UnsubscribeView>('messaging', { action: 'unsubscribe_view', merchant_id: merchantId, token })
+
+/** Stop those emails, or (subscribe = true) start them again. Order emails are not affected. */
+export const unsubscribe = (merchantId: string, token: string, subscribe = false) =>
+  invokeFunction<UnsubscribeView>('messaging', { action: 'unsubscribe', merchant_id: merchantId, token, subscribe })
 
 // ------------------------------------------------------------------ orders
 export interface OrderWhatsappMessages { phone: string | null; messages: Array<{ event: string; name: string; text: string }> }

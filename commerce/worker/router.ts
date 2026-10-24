@@ -72,6 +72,8 @@ export function fromRootProxy(req: Request, secret: string | undefined): Request
 }
 
 const FUNCTION_PATH = /^\/functions\/v1\/([a-z0-9-]+)(?=\/|$)/
+/** The unsubscribe link in cart reminder and review emails; a mail app's own button POSTs to it (RFC 8058). */
+const UNSUBSCRIBE_PATH = /^\/unsubscribe\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([0-9a-f]{40})\/?$/
 
 function problem(status: number, code: string, message: string): Response {
   return new Response(JSON.stringify({ error: { code, message } }), {
@@ -140,6 +142,10 @@ export function createRouter(env: Env, fns: Record<string, Handler> = FUNCTIONS)
       return invoke('channels', inbound(req, `${url.origin}/functions/v1/channels/callback/shopify${url.search}`))
     }
     if (path.startsWith('/files/')) return serveFile(req, env)
+    const unsubscribe = req.method === 'POST' ? UNSUBSCRIBE_PATH.exec(path) : null
+    if (unsubscribe) {
+      return invoke('messaging', inbound(req, `${url.origin}/functions/v1/messaging?unsubscribe=${unsubscribe[1]}.${unsubscribe[2]}`))
+    }
     if (path.startsWith('/rest/v1/') || path.startsWith('/auth/v1/') || path.startsWith('/realtime/v1/')) return database(req, env)
     const fn = FUNCTION_PATH.exec(path)
     if (fn) return fn[1] === 'files' ? files(inbound(req)) : invoke(fn[1], inbound(req))

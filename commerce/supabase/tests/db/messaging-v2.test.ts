@@ -79,7 +79,9 @@ const enqueue = async (db: Db, orderId: string, event: string, ref: string | nul
 async function daytime(db: Db, day = true) {
   await asSystem(db)
   const tz = await value<string>(db, `select tz from (select 'Etc/GMT' || case when n > 0 then '-' || n when n < 0 then '+' || (-n) else '' end as tz
-    from generate_series(-12, 14) n) z where (extract(hour from now() at time zone tz) between 10 and 19) = $1 limit 1`, [day])
+    from generate_series(-12, 14) n) z, extract(hour from now() at time zone tz) h
+    -- Well inside or well outside the sending hours (9 am to 8 pm), whatever the time the test runs.
+    where case when $1 then h between 10 and 19 else h not between 8 and 21 end limit 1`, [day])
   await setSetting(db, 'store', { timezone: tz })
 }
 

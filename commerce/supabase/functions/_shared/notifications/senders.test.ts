@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it, vi } from 'vitest'
 import { InboxGraph } from '../inbox/meta.ts'
 import { EMAIL_DEFAULTS, SAMPLE_DATA } from './defaults.ts'
-import { replyUrl, SendError, sendEmailService, sendQueued, sendWhatsappTemplate, submitWhatsappTemplate, withAppLinks } from './senders.ts'
+import { replyUrl, SendError, sendEmailService, sendQueued, sendWhatsappTemplate, submitWhatsappTemplate, unsubscribeUrl, withAppLinks } from './senders.ts'
 import { SmtpError } from './smtp.ts'
 
 type Calls = Array<{ fn: string; args: Record<string, unknown> }>
@@ -113,6 +113,15 @@ describe('links an email gets where it is sent', () => {
     expect((withAppLinks({ order: {} }, { reply_token: 'nope', merchant_id: 'm' }, 'https://f.com').order as Record<string, unknown>).reply_url).toBeUndefined()
     expect(withAppLinks({ order: {} }, { reply_token: token, merchant_id: 'm' }, null)).toEqual({ order: {} })
   })
+
+  it("the customer's pages open on the store's own address, the owner's admin on the app's", () => {
+    const vars = withAppLinks({ order: {}, summary: {} }, { reply_token: token, unsubscribe_token: token, merchant_id: 'm-1' }, 'https://fullfilio.com', 'https://isolation.shop')
+    expect((vars.order as Record<string, unknown>).reply_url).toBe(`https://isolation.shop/order-confirm/m-1/${token}`)
+    expect(vars.unsubscribe_url).toBe(`https://isolation.shop/unsubscribe/m-1/${token}`)
+    expect((vars.summary as Record<string, unknown>).admin_url).toBe('https://fullfilio.com/admin')
+    expect(unsubscribeUrl('https://x.com', 'm', 't')).toBe('https://x.com/unsubscribe/m/t')
+    expect(withAppLinks({}, { unsubscribe_token: 'nope', merchant_id: 'm' }, 'https://f.com').unsubscribe_url).toBeUndefined()
+  })
 })
 
 describe('sending a queued message', () => {
@@ -132,6 +141,25 @@ describe('sending a queued message', () => {
     const body = calls.find((c) => c.fn === '_notification_log_rendered')!.args.p_body as string
     expect(body).toContain(`https://fullfilio.com/order-confirm/m-9/${token}`)
     expect(body).toContain('Confirm your order')
+  })
+
+  it('a cart reminder says how to unsubscribe, in the email and in the headers mail apps read', async () => {
+    const calls: Calls = []
+    const token = 'c'.repeat(40)
+    const cart = { ...queuedEmail, subject: EMAIL_DEFAULTS.CART_REMINDER.subject, body: EMAIL_DEFAULTS.CART_REMINDER.template }
+    const plan = { ...emailPlan('smtp'), unsubscribe_token: token, merchant_id: 'm-9', language: 'bn' }
+    const smtp = vi.fn(async () => ({ messageId: 'm-3', response: 'OK' }))
+    await sendQueued(db({ _notification_send_plan: plan, integration_secret_get: { password: 'p' } }, calls), cart, { smtp, linkBase: 'https://isolation.shop/' })
+    const url = `https://isolation.shop/unsubscribe/m-9/${token}`
+    const body = calls.find((c) => c.fn === '_notification_log_rendered')!.args.p_body as string
+    expect(body).toContain(url)
+    expect(body).toContain('আনসাবস্ক্রাইব')
+    const msg = (smtp.mock.calls[0] as unknown as [unknown, Record<string, any>])[1]
+    expect(msg.headers).toEqual({ 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' })
+    // An order email has neither.
+    const order = vi.fn(async () => ({ messageId: 'm-4', response: 'OK' }))
+    await sendQueued(db({ _notification_send_plan: emailPlan('smtp'), integration_secret_get: { password: 'p' } }), queuedEmail, { smtp: order, linkBase: 'https://isolation.shop' })
+    expect((order.mock.calls[0] as unknown as [unknown, Record<string, any>])[1].headers).toBeUndefined()
   })
 
   it('renders the email, keeps the result, and sends it from the store\'s own mailbox', async () => {
@@ -167,6 +195,11 @@ describe('sending a queued message', () => {
     const r = await sendQueued(db({ _notification_send_plan: emailPlan('fullfilio') }), queuedEmail, { fetchFn: fetchFn as unknown as typeof fetch, platform })
     expect(r).toEqual({ provider: 'fullfilio', messageId: 'msg_9' })
     expect(JSON.parse((fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).from).toBe('Isolation <mail@send.fullfilio.com>')
+    // The unsubscribe headers go along through the service too.
+    const cart = { ...queuedEmail, body: EMAIL_DEFAULTS.CART_REMINDER.template }
+    await sendQueued(db({ _notification_send_plan: { ...emailPlan('fullfilio'), unsubscribe_token: 'd'.repeat(40), merchant_id: 'm' } }), cart,
+      { fetchFn: fetchFn as unknown as typeof fetch, platform, linkBase: 'https://shop.example' })
+    expect(JSON.parse((fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1].body as string).headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click')
   })
 
   it('a WhatsApp message goes out only when approved, from the chosen number', async () => {

@@ -56,6 +56,22 @@ export async function storefrontBase(admin: SupabaseClient): Promise<string> {
 }
 
 /**
+ * Where a customer's links from an email open (confirm the order, unsubscribe): the store's own
+ * address when Fullfilio serves its online store (live primary custom domain, else its store
+ * subdomain), else the platform. Unlike storefrontBase, never the store's other website: those
+ * pages are Fullfilio's.
+ */
+export async function customerLinkBase(admin: SupabaseClient): Promise<string> {
+  const { slug, root } = await storeIdentity(admin).catch(() => ({ slug: null, root: null }))
+  if (slug) {
+    const { data: primary } = await admin.from('store_domains').select('domain').eq('is_primary', true).eq('status', 'ACTIVE').maybeSingle()
+    if (primary?.domain) return `https://${primary.domain}`
+    if (root) return `https://${slug}.${root}`
+  }
+  return appBase()
+}
+
+/**
  * Where the admin app lives (staff invites, "open in Fullfilio" links): APP_URL
  * or PLATFORM_URL, else the address the staff member is using right now.
  */

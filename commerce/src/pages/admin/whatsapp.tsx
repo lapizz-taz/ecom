@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/features/auth/auth-context'
 import { PlatformIcon } from '@/features/inbox/ui'
+import { ChannelNumbers, SetupChecklist, type SetupStep, WHATSAPP_FIGURES } from '@/features/messaging/channel-overview'
 import { MessageGroups } from '@/features/messaging/message-list'
 import { MessageLogTab } from '@/features/messaging/message-log'
 import { Notice } from '@/features/messaging/notice'
@@ -19,7 +20,7 @@ import { WhatsappCosts } from '@/features/messaging/whatsapp-costs'
 import { WhatsappStatusBadge } from '@/features/messaging/whatsapp-status'
 import { useUrlState } from '@/hooks/use-url-state'
 import { toast } from '@/lib/toast'
-import { listMessages, saveWhatsappSettings, syncWhatsapp, whatsappSettings, type WhatsappSettings } from '@/services/messaging'
+import { channelStats, listMessages, saveWhatsappSettings, syncWhatsapp, whatsappSettings, type WhatsappSettings } from '@/services/messaging'
 
 const numberLabel = (n: WhatsappSettings['numbers'][number]) => [n.name, n.display_phone].filter(Boolean).join(' · ') || 'WhatsApp number'
 
@@ -31,6 +32,7 @@ export default function WhatsappPage() {
   const [state, update] = useUrlState({ tab: 'messages' })
   const settings = useQuery({ queryKey: ['whatsapp-settings'], queryFn: whatsappSettings })
   const messages = useQuery({ queryKey: ['customer-messages', 'WHATSAPP'], queryFn: () => listMessages('WHATSAPP') })
+  const stats = useQuery({ queryKey: ['messaging-stats', 'WHATSAPP'], queryFn: () => channelStats('WHATSAPP'), staleTime: 60_000 })
   const save = useMutation({
     mutationFn: (p: Parameters<typeof saveWhatsappSettings>[0]) => saveWhatsappSettings(p),
     onSuccess: (s, p) => {
@@ -48,7 +50,41 @@ export default function WhatsappPage() {
   })
   const s = settings.data
   const number = s?.numbers.find((n) => n.id === s.channel_id)
-  const approved = (messages.data ?? []).filter((m) => m.wa_status === 'APPROVED').length
+  const all = messages.data ?? []
+  const approved = all.filter((m) => m.wa_status === 'APPROVED').length
+  const sending = all.some((m) => m.is_enabled && m.wa_status === 'APPROVED')
+  const steps: SetupStep[] = s ? [
+    {
+      title: 'Connect your WhatsApp Business number', done: s.numbers.length > 0,
+      text: 'In Messaging → Channels. The same number answers chats in the Inbox.',
+      action: <Button size="sm" variant="outline" asChild><Link to="/admin/inbox/channels">Connect WhatsApp</Link></Button>,
+    },
+    {
+      title: 'Choose the number messages come from', done: s.ready,
+      text: number ? numberLabel(number) : 'And the language Meta should check the texts in.',
+      action: s.numbers.length > 0 && <Button size="sm" variant="outline" onClick={() => update({ tab: 'setup' })}>Choose number</Button>,
+    },
+    {
+      title: 'Get your messages approved by Meta', done: approved > 0,
+      text: `${approved} of ${all.length} approved. Open a message and press Submit to Meta; Meta usually answers within minutes.`,
+      action: s.ready && <Button size="sm" variant="outline" onClick={() => update({ tab: 'messages' })}>Open messages</Button>,
+    },
+    {
+      title: 'Add a payment method in Meta', done: null,
+      text: <>Meta Business Suite → Settings → WhatsApp accounts → Payment settings. Meta bills your card for delivered messages (about {pricePerMessage('UTILITY')} for an order update).</>,
+      action: <Button size="sm" variant="ghost" onClick={() => update({ tab: 'setup' })}>What it costs</Button>,
+    },
+    {
+      title: 'Send yourself a test', done: !!stats.data?.tested,
+      text: 'Open an approved message and send it to your own phone.',
+    },
+    {
+      title: 'Switch on WhatsApp messages', done: s.enabled,
+      text: 'Approved messages that are switched on go out when an order reaches their step.',
+      action: manage && s.ready && approved > 0 && <Button size="sm" disabled={save.isPending} onClick={() => save.mutate({ enabled: true })}>Switch on</Button>,
+    },
+  ] : []
+  const live = !!s && s.ready && s.enabled && sending
 
   return (
     <div className="space-y-4">
@@ -70,17 +106,12 @@ export default function WhatsappPage() {
 
       {settings.isLoading ? <LoadingState /> : settings.error ? <ErrorState error={settings.error} onRetry={() => settings.refetch()} /> : s && (
         <>
-          {!s.numbers.length ? (
-            <Notice tone="warn" text="Connect your WhatsApp Business number first (Messaging → Channels). The same number answers chats in the Inbox."
-              action={<Button size="sm" asChild><Link to="/admin/inbox/channels">Connect WhatsApp</Link></Button>} />
-          ) : !s.ready ? (
-            <Notice tone="warn" text="Choose the WhatsApp number your messages come from."
-              action={state.tab !== 'setup' && <Button size="sm" onClick={() => update({ tab: 'setup' })}>Choose number</Button>} />
-          ) : !s.enabled ? (
-            <Notice tone="warn" text={`Sending from ${number ? numberLabel(number) : 'your number'}, but WhatsApp messages are off. ${approved ? 'Switch them on above.' : 'Submit messages to Meta, then switch them on.'}`} />
-          ) : (
+          {messages.isLoading ? null : live ? (
             <Notice tone="ok" text={`On. Messages Meta approved (${approved}) go out from ${number ? numberLabel(number) : 'your number'} when an order reaches their step.`} />
+          ) : (
+            <SetupChecklist title="Set up WhatsApp messages" steps={steps} />
           )}
+          {(live || !!stats.data?.sent) && <ChannelNumbers stats={stats.data} loading={stats.isLoading} figures={WHATSAPP_FIGURES} />}
 
           <Tabs value={state.tab} onValueChange={(v) => update({ tab: v })}>
             <TabsList>
@@ -90,7 +121,7 @@ export default function WhatsappPage() {
             </TabsList>
             <TabsContent value="messages" className="space-y-3">
               {messages.isLoading ? <LoadingState /> : messages.error ? <ErrorState error={messages.error} onRetry={() => messages.refetch()} />
-                : <MessageGroups channel="WHATSAPP" messages={messages.data ?? []} canManage={manage} basePath="/admin/whatsapp"
+                : <MessageGroups channel="WHATSAPP" messages={messages.data ?? []} canManage={manage} basePath="/admin/whatsapp" sent={stats.data}
                     status={(m) => (
                       <>
                         <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline" title="Meta's price per delivered message (Bangladesh)">

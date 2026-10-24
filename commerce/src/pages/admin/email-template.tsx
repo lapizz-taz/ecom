@@ -11,19 +11,26 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
-import { EMAIL_VARIABLES, EVENT_INFO, type MessageEvent, renderLiquid, SAMPLE_DATA, variablesFor } from '@/features/messaging/shared'
+import {
+  EMAIL_VARIABLES, EVENT_INFO, type MessageEvent, renderLiquid, SAMPLE_DATA, UNSUBSCRIBE_EVENTS, variablesFor, withUnsubscribeFooter,
+} from '@/features/messaging/shared'
 import { toast } from '@/lib/toast'
-import { emailSettings, getMessage, previewData, resetMessage, saveMessage, sendTestEmail, setMessageEnabled, setReplyButtons } from '@/services/messaging'
+import {
+  emailSettings, getMessage, messagingSettings, type MessageLanguage, previewData, resetMessage, saveMessage, sendTestEmail, setMessageEnabled, setReplyButtons,
+} from '@/services/messaging'
 
 const SAMPLE_REPLY_URL = (SAMPLE_DATA.order as { reply_url: string }).reply_url
+const SAMPLE_UNSUBSCRIBE_URL = 'https://yourstore.com/unsubscribe/sample'
 
 type Rendered = { subject: string; html: string; error: null } | { subject: string; html: string; error: string }
 
-function render(subject: string, template: string, data: Record<string, unknown>): Rendered {
+/** As the sender renders it: a cart reminder or review request gets the unsubscribe line its template does not have. */
+function render(subject: string, template: string, data: Record<string, unknown>, lang: MessageLanguage): Rendered {
   let s = ''
   try {
     s = renderLiquid(subject, data, { mode: 'text' }).replace(/\s+/g, ' ').trim()
-    return { subject: s, html: renderLiquid(template, data), error: null }
+    const html = renderLiquid(template, data)
+    return { subject: s, html: typeof data.unsubscribe_url === 'string' ? withUnsubscribeFooter(html, data.unsubscribe_url, lang) : html, error: null }
   } catch (e) {
     return { subject: s, html: '', error: (e as Error).message }
   }
@@ -38,6 +45,7 @@ export default function EmailTemplatePage() {
   const message = useQuery({ queryKey: ['customer-message', id], queryFn: () => getMessage(id) })
   const settings = useQuery({ queryKey: ['email-settings'], queryFn: emailSettings })
   const realOrder = useQuery({ queryKey: ['notification-preview-data'], queryFn: () => previewData(), staleTime: 60_000 })
+  const language = useQuery({ queryKey: ['messaging-settings'], queryFn: messagingSettings, staleTime: 60_000 }).data?.language ?? 'en'
   const [draft, setDraft] = useState<{ subject: string; template: string } | null>(null)
   const [width, setWidth] = useState<'desktop' | 'mobile'>('desktop')
   const [useSample, setUseSample] = useState(false)
@@ -61,6 +69,7 @@ export default function EmailTemplatePage() {
   // The store's latest order when there is one; otherwise a made-up order in the store's own name and colours.
   // The confirm page's link is there only when this email asks the customer to confirm (as when it is sent).
   const asksToConfirm = !!m?.reply_buttons && m.event === 'ORDER_CREATED'
+  const canUnsubscribe = !!m && UNSUBSCRIBE_EVENTS.includes(m.event as MessageEvent)
   const data = useMemo(() => {
     const s = settings.data
     const shop = SAMPLE_DATA.shop as Record<string, unknown>
@@ -69,10 +78,13 @@ export default function EmailTemplatePage() {
           logo_url: s?.design.logo_url ?? s?.store.logo_url ?? null, accent_color: s?.design.accent_color ?? shop.accent_color } }
     const { reply_url: _reply, ...order } = (base.order ?? {}) as Record<string, unknown>
     // A cart reminder is about a cart, not an order: the sample cart when the store's order has none.
-    return { ...base, cart: base.cart ?? SAMPLE_DATA.cart, order: asksToConfirm ? { ...order, reply_url: SAMPLE_REPLY_URL } : order }
-  }, [realOrder.data, settings.data, useSample, asksToConfirm])
+    return {
+      ...base, cart: base.cart ?? SAMPLE_DATA.cart, order: asksToConfirm ? { ...order, reply_url: SAMPLE_REPLY_URL } : order,
+      ...(canUnsubscribe ? { unsubscribe_url: SAMPLE_UNSUBSCRIBE_URL } : {}),
+    }
+  }, [realOrder.data, settings.data, useSample, asksToConfirm, canUnsubscribe])
   const deferred = useDeferredValue(draft)
-  const preview = useMemo(() => deferred ? render(deferred.subject, deferred.template, data) : null, [deferred, data])
+  const preview = useMemo(() => deferred ? render(deferred.subject, deferred.template, data, language) : null, [deferred, data, language])
 
   const refresh = (row?: unknown) => {
     if (row) queryClient.setQueryData(['customer-message', id], row)
@@ -92,7 +104,10 @@ export default function EmailTemplatePage() {
   })
   const test = useMutation({
     mutationFn: () => sendTestEmail(id, { subject: draft!.subject, template: draft!.template, data }),
-    onSuccess: (r) => toast.success(`Test email sent to ${r.sent_to}`),
+    onSuccess: (r) => {
+      toast.success(`Test email sent to ${r.sent_to}`)
+      void queryClient.invalidateQueries({ queryKey: ['messaging-stats', 'EMAIL'] })
+    },
   })
 
   const insert = (name: string) => {

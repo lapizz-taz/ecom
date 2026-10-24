@@ -13,13 +13,15 @@ const GROUPS = ['Order processing', 'Payments', 'Order exceptions', 'Marketing']
  * The store's customer messages in Shopify's groups (Order processing, Payments, Order exceptions, Marketing):
  * each with what it is, when it goes out, a switch and a link to its editor.
  */
-export function MessageGroups({ channel, messages, canManage, status, basePath }: {
+export function MessageGroups({ channel, messages, canManage, status, basePath, sent }: {
   channel: MessageChannel
   messages: CustomerMessage[]
   canManage: boolean
   /** Something shown next to the switch (WhatsApp: Meta's review). */
   status?: (m: CustomerMessage) => ReactNode
   basePath: string
+  /** How many of each went out lately (the page's numbers), shown under its name. */
+  sent?: { days: number; by_event: Record<string, number> }
 }) {
   const queryClient = useQueryClient()
   const toggle = useMutation({
@@ -45,7 +47,10 @@ export function MessageGroups({ channel, messages, canManage, status, basePath }
                   <li key={m.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30">
                     <Link to={`${basePath}/${m.id}`} className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{EVENT_INFO[e].title}</span>
-                      <span className="block text-xs text-muted-foreground">{EVENT_INFO[e].when}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {EVENT_INFO[e].when}
+                        {!!sent?.by_event[e] && <span className="tabular-nums"> · {sent.by_event[e].toLocaleString('en-US')} sent in {sent.days} days</span>}
+                      </span>
                     </Link>
                     {status?.(m)}
                     <Switch checked={m.is_enabled} disabled={!canManage || toggle.isPending} aria-label={`Send ${EVENT_INFO[e].title}`}

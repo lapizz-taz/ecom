@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-24', tag: 'Improved', area: 'Messaging', title: 'Unsubscribe link, store-address links and a clearer Email and WhatsApp page',
+    body: 'Cart reminder and review request emails now have an Unsubscribe link, and Gmail and other mail apps show their own unsubscribe button, which keeps your emails out of spam. Customers who unsubscribe still get emails about their orders. Confirm and unsubscribe pages open on your online store’s own address. The Email and WhatsApp pages show a setup checklist and the last 30 days: sent, delivered, read, failed, confirmed by customers and unsubscribed.', to: '/admin/email' },
   { date: '2026-10-23', tag: 'Improved', area: 'Messaging', title: 'See what WhatsApp messages cost',
     body: 'WhatsApp → Setup shows Meta’s price per message (about ৳0.5 for an order update, about ৳10 for a cart reminder or review request), what is free, how Meta starts charging, and an estimate for this month. Each message in the list shows its price too.', to: '/admin/whatsapp?tab=setup' },
   { date: '2026-10-23', tag: 'New', area: 'Messaging', major: true, title: 'Customers confirm their own orders',

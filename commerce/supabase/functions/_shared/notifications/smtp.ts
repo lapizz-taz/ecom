@@ -24,6 +24,8 @@ export interface MailMessage {
   subject: string
   html: string
   text: string
+  /** More headers (List-Unsubscribe …): plain ASCII names and values, one line each. */
+  headers?: Record<string, string>
 }
 
 /** A byte stream the SMTP client talks over. */
@@ -182,6 +184,9 @@ export function buildMessage(m: MailMessage, now = new Date(), id = crypto.rando
     `Subject: ${encodeHeader(m.subject || '(no subject)')}`,
     `Date: ${now.toUTCString().replace('GMT', '+0000')}`,
     `Message-ID: <${id}@${domain}>`,
+    ...Object.entries(m.headers ?? {})
+      .filter(([k, v]) => /^[A-Za-z][A-Za-z0-9-]{0,60}$/.test(k) && /^[\x20-\x7e]{1,900}$/.test(v))
+      .map(([k, v]) => `${k}: ${v}`),
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ]

@@ -104,7 +104,11 @@ export default function WhatsappTemplatePage() {
   })
   const test = useMutation({
     mutationFn: () => testWhatsapp(id, phone),
-    onSuccess: (r) => { toast.success(`Test message sent to ${r.sent_to}`); setTesting(false) },
+    onSuccess: (r) => {
+      toast.success(`Test message sent to ${r.sent_to}`)
+      setTesting(false)
+      void queryClient.invalidateQueries({ queryKey: ['messaging-stats', 'WHATSAPP'] })
+    },
   })
 
   const insert = (name: string) => {
