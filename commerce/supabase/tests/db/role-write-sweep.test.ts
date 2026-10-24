@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { MERCHANT_1, asSystem, asUser, closePool, inTx, value } from '../support/db'
+import { MERCHANT_1, asAnon, asSystem, asUser, closePool, inTx, value } from '../support/db'
 import { advanceOrder, createOrder, createProduct, createStaff } from '../support/fixtures'
 import { PHONE_A, callEach, callable, storeIds, type Target } from '../support/sweep'
 
@@ -27,6 +27,10 @@ const OWN: Record<string, string[]> = {
   submit_contact_message: ['contact_messages'],
   update_my_profile: ['profiles', 'audit_logs'],
 }
+
+/** What a signed-out visitor may write through: the contact forms, the cart, visit tracking and sign-up. */
+const PUBLIC_WRITERS = ['submit_contact_message', 'platform_contact_submit', 'public_lead_touch', 'public_signup_request',
+  'storefront_cart_sync', 'storefront_cart_restore', 'track_storefront_event', 'track_visit_event', 'storefront_ad_tracking']
 
 /** Rows inserted, updated or deleted so far in this transaction, per table. */
 const WRITES = `select coalesce(jsonb_object_agg(relname, n_tup_ins + n_tup_upd + n_tup_del), '{}')
@@ -83,5 +87,28 @@ describe('role write sweep', () => {
       for (const w of ['VIEWER update_my_profile', 'CALL add_order_note', 'ORDER_MANAGER approve_orders', 'FINANCE_MANAGER record_order_payment', 'INVENTORY_MANAGER adjust_stock']) {
         expect(wrote).toContain(w)
       }
+    }))
+
+  it.skipIf(onEngine)('lets a signed-out visitor write only through the public forms, the cart and tracking', { timeout: 300_000 }, () =>
+    inTx(async (db) => {
+      const product = await createProduct(db, { name: 'Visitor sweep product', price: 900, stock: 9 })
+      const open = await createOrder(db, { phone: PHONE_A, items: [{ variantId: product.variantIds[0], quantity: 1 }] })
+      const owner = await createStaff(db, 'OWNER')
+      await asSystem(db)
+      const ids = await storeIds(db, MERCHANT_1)
+      const a: Target = { order: open.id, product: product.productId, variant: product.variantIds[0], customer: open.customer_id, owner, merchant: MERCHANT_1 }
+      const fns = await callable(db, 'anon')
+      await db.query(`set local statement_timeout = '5s'`)
+      await asAnon(db, MERCHANT_1)
+      const problems: string[] = []
+      let before: Record<string, number> = {}
+      const r = await callEach(db, fns, ids, a, async (c) => {
+        if (c.failed) return
+        const after = await value<Record<string, number>>(db, WRITES)
+        const tables = Object.keys(after).filter((t) => after[t] !== (before[t] ?? 0))
+        if (tables.length && !PUBLIC_WRITERS.includes(c.fn)) problems.push(`visitor ${c.fn} wrote ${tables.sort().join(', ')}`)
+      }, async () => { before = await value<Record<string, number>>(db, WRITES) })
+      expect(problems).toEqual([])
+      expect(r.answered).toBeGreaterThan(50)
     }))
 })
