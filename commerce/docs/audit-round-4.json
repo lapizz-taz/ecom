@@ -312,6 +312,16 @@
       "module": "role sweep (automated)",
       "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak and catalog cost fixed",
       "status": "PASS (Call), PASS (Moderator) after fixes 7-8"
+    },
+    {
+      "module": "role write sweep (automated)",
+      "result": "8 built-in staff roles x every callable function; 81 role/function writes, all backed by a non-view permission the function names, or the caller's own records, or an audit entry alone",
+      "status": "PASS"
+    },
+    {
+      "module": "messaging v2 end to end",
+      "result": "dispatcher records once, stuck sends fail without resend; db 20 tests, unit 42, browser 42/42",
+      "status": "PASS (live delivery blocked: WhatsApp number needs reconnecting)"
     }
   ],
   "regression_pass4": {
