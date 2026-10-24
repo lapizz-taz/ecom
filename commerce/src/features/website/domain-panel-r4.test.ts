@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ts from 'typescript'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { DomainDetail, DomainList } from '@/features/website/domain-status'
 import type { DnsRecord, DomainDiagnosis, StoreDomain } from '@/services/website'
@@ -235,6 +235,14 @@ for (const [key, d] of Object.entries(FIX)) d.id = key
 /** What each fixture's primary domain is (the www rows sit next to a primary root). */
 export const primaryOf = (d: StoreDomain) => (d.is_primary ? d.domain : d.domain.startsWith('www.') ? d.domain.slice(4) : 'shop.com')
 // </fixtures>
+
+// The panel words its promise from the real clock ("every 10 minutes" for 3 days after a change,
+// then "every hour"): run it at the fixtures' own time, or after 23 Oct the fresh domain looks days old.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(NOW))
+})
+afterAll(() => vi.useRealTimers())
 
 // --- rendering helpers ----------------------------------------------------------------------
 

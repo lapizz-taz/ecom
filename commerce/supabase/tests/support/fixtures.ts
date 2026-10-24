@@ -191,3 +191,16 @@ export async function sellOn(db: Db, mode: 'OWN' | 'SHOPIFY' | 'WOOCOMMERCE' | '
   await db.query(`select set_config('app.merchant_id', $1, true)`, [merchant])
   if (['anon', 'authenticated', 'service_role'].includes(role)) await db.query(`set local role ${role}`)
 }
+
+/**
+ * An Etc/GMT zone where it is now well inside (10:00–19:59) or well outside (before 8:00, from 22:00)
+ * the 9 am–8 pm hours that cart reminders and review requests wait for, whatever time the test runs.
+ * Picked here rather than in SQL: the Cloudflare database cannot convert to a zone held in a column.
+ */
+export function storeZone(day = true, now = new Date()): string {
+  for (let n = -12; n <= 14; n++) {
+    const h = (now.getUTCHours() + n + 24) % 24
+    if (day ? h >= 10 && h <= 19 : h < 8 || h > 21) return n > 0 ? `Etc/GMT-${n}` : n < 0 ? `Etc/GMT+${-n}` : 'Etc/GMT'
+  }
+  throw new Error('no time zone fits')
+}

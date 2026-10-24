@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
 import { asAnon, asService, asSystem, asUser, closePool, type Db, expectError, inTx, value } from '../support/db'
-import { createOrder, createProduct, createStaff, setSetting } from '../support/fixtures'
+import { createOrder, createProduct, createStaff, setSetting, storeZone } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -19,9 +19,7 @@ async function emailOn(db: Db, admin: string) {
 /** A store time zone in which it is day now (reminders wait for the day). */
 async function daytime(db: Db) {
   await asSystem(db)
-  const tz = await value<string>(db, `select tz from (select 'Etc/GMT' || case when n > 0 then '-' || n when n < 0 then '+' || (-n) else '' end as tz
-    from generate_series(-12, 14) n) z where extract(hour from now() at time zone tz) between 10 and 19 limit 1`)
-  await setSetting(db, 'store', { timezone: tz })
+  await setSetting(db, 'store', { timezone: storeZone() })
 }
 
 /** An order for karim@example.com and his abandoned cart; only the email cart reminder and order confirmation are on. */

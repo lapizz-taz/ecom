@@ -3,7 +3,7 @@ import {
   EMAIL_DEFAULTS, EMAIL_DEFAULTS_BN, SMS_DEFAULTS, SMS_DEFAULTS_BN, WHATSAPP_DEFAULTS, WHATSAPP_DEFAULTS_BN,
 } from '../../functions/_shared/notifications/defaults'
 import { asService, asSystem, asUser, closePool, type Db, expectError, inTx, one, value } from '../support/db'
-import { createOrder, createProduct, createStaff, setSetting } from '../support/fixtures'
+import { createOrder, createProduct, createStaff, setSetting, storeZone } from '../support/fixtures'
 
 afterAll(closePool)
 
@@ -78,11 +78,7 @@ const enqueue = async (db: Db, orderId: string, event: string, ref: string | nul
 /** A store time zone in which it is day now (reminders and review requests wait for the day). */
 async function daytime(db: Db, day = true) {
   await asSystem(db)
-  const tz = await value<string>(db, `select tz from (select 'Etc/GMT' || case when n > 0 then '-' || n when n < 0 then '+' || (-n) else '' end as tz
-    from generate_series(-12, 14) n) z, extract(hour from now() at time zone tz) h
-    -- Well inside or well outside the sending hours (9 am to 8 pm), whatever the time the test runs.
-    where case when $1 then h between 10 and 19 else h not between 8 and 21 end limit 1`, [day])
-  await setSetting(db, 'store', { timezone: tz })
+  await setSetting(db, 'store', { timezone: storeZone(day) })
 }
 
 const reply = (db: Db, token: string, action: string, via = 'EMAIL', phone: string | null = null) =>
