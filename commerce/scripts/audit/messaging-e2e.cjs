@@ -108,7 +108,9 @@ async function settle(page, re, ms = 30000) {
     step('the preview uses the latest order', preview.data?.order?.name === order?.order_number && preview.data?.customer?.first_name === 'Karim', JSON.stringify(preview.data?.order ?? preview.error).slice(0, 300))
     const wa = await owner.client.rpc('whatsapp_order_messages', { p_order_id: orderId })
     const confirmed = (wa.data?.messages ?? []).find((m) => m.event === 'ORDER_CONFIRMED')
-    step('"Send on WhatsApp" gets the texts filled in for the order', wa.data?.messages?.length === 12 && /8801812345678|01812345678/.test(wa.data?.phone ?? '') && confirmed?.text.includes(order?.order_number) && /Karim/.test(confirmed?.text ?? ''),
+    // 14 since messages v2 ("Courier could not reach you" and the review request); never the cart reminder (about a cart, not this order).
+    step('"Send on WhatsApp" gets the texts filled in for the order', wa.data?.messages?.length === 14 && !wa.data.messages.some((m) => m.event === 'CART_REMINDER')
+      && /8801812345678|01812345678/.test(wa.data?.phone ?? '') && confirmed?.text.includes(order?.order_number) && /Karim/.test(confirmed?.text ?? ''),
       JSON.stringify(wa.data ?? wa.error).slice(0, 400))
     const direct = await owner.client.from('notifications').update({ wa_status: 'APPROVED' }).eq('channel', 'WHATSAPP').select('id')
     step('nobody writes Meta\'s review directly', !direct.error && (direct.data ?? []).length === 0, JSON.stringify(direct))
@@ -163,7 +165,7 @@ async function settle(page, re, ms = 30000) {
         await page.screenshot({ path: join(S, `msg-${width}-email-saved.png`), fullPage: true })
       }
 
-      await open('/admin/whatsapp', /Connect your WhatsApp Business number first.*Order approved.*Not submitted/, 'whatsapp')
+      await open('/admin/whatsapp', /Set up WhatsApp messages.*Connect your WhatsApp Business number.*Order approved.*Not submitted/, 'whatsapp')
       await open('/admin/whatsapp?tab=setup', /Sending number.*Message language.*How it works/, 'whatsapp-setup')
       await open(`/admin/whatsapp/${waId}`, /Order approved.*Meta review.*Business account/, 'whatsapp-editor')
       const bubble = await text(page)
@@ -181,6 +183,58 @@ async function settle(page, re, ms = 30000) {
       const menu = await settle(page, /Opens WhatsApp with the message written.*Open chat.*Order approved/, 10000)
       await page.screenshot({ path: join(S, `msg-${width}-order-whatsapp.png`) })
       step(`[${width}] "Send on WhatsApp" lists the messages on the order`, menu, (await text(page)).slice(0, 300))
+      await ctx.close()
+    }
+
+    // ---- round 4: the customer's unsubscribe page, a mail app's one-click unsubscribe, and a WhatsApp number that needs reconnecting
+    const token = 'c'.repeat(40)
+    const pref = await call('POST', '/rest/v1/email_preferences', { body: { merchant_id: M1, email: 'karim@example.com', token }, prefer: 'return=representation' })
+    step('an unsubscribe token for karim@example.com', pref.status < 300, JSON.stringify(pref).slice(0, 300))
+    const prefRow = async () => (await call('GET', `/rest/v1/email_preferences?token=eq.${token}&select=unsubscribed_at,unsubscribed_via`)).body?.[0]
+    {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+      const page = await ctx.newPage()
+      current = page
+      const errs = []
+      page.on('pageerror', (e) => errs.push(String(e).slice(0, 200)))
+      await page.goto(`${base}/unsubscribe/${M1}/${token}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      const asks = await settle(page, /Stop offer emails from .*k••••@example\.com.*still come/, 20000)
+      const before = await prefRow()
+      await page.screenshot({ path: join(S, 'msg-390-unsubscribe.png') })
+      await page.click('button:has-text("Unsubscribe")')
+      const done = await settle(page, /You are unsubscribed/, 10000)
+      const after = await prefRow()
+      step('[390] the unsubscribe page names the store and the half-hidden address, changes nothing until the tap, then unsubscribes',
+        asks && before?.unsubscribed_at == null && done && !!after?.unsubscribed_at && after?.unsubscribed_via === 'LINK' && errs.length === 0,
+        JSON.stringify({ asks, before, done, after, errs, text: (await text(page)).slice(0, 300) }))
+      await page.click('button:has-text("Subscribe again")')
+      const again = await settle(page, /You are subscribed again/, 10000)
+      step('[390] "Subscribe again" turns the emails back on', again && (await prefRow())?.unsubscribed_at == null, (await text(page)).slice(0, 300))
+      await ctx.close()
+    }
+    const oneClick = await fetch(`${base}/unsubscribe/${M1}/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' })
+    const clicked = await prefRow()
+    step('a mail app\'s one-click unsubscribe (POST to the link) unsubscribes at once', oneClick.status === 200 && clicked?.unsubscribed_via === 'ONE_CLICK',
+      JSON.stringify({ status: oneClick.status, clicked }))
+    const unknown = await fetch(`${base}/unsubscribe/${M1}/${'d'.repeat(40)}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' })
+    step('an unknown token unsubscribes nobody (404)', unknown.status === 404, String(unknown.status))
+
+    const channel = await call('POST', '/rest/v1/rpc/inbox_channel_save', { body: { p: { platform: 'WHATSAPP', external_id: '109876543210', waba_id: '2233445566', display_phone: '+880 1711-000000', name: 'My Store' }, p_actor: null } })
+    const channelId = channel.body?.id ?? (await call('GET', '/rest/v1/inbox_channels?platform=eq.WHATSAPP&select=id')).body?.[0]?.id
+    const chosen = await owner.client.rpc('whatsapp_settings_save', { p: { channel_id: channelId } })
+    await call('PATCH', `/rest/v1/inbox_channels?id=eq.${channelId}`, { body: { status: 'FAILED' } })
+    step('a WhatsApp number, chosen for sending, whose token Meta refuses', Boolean(channelId) && !chosen.error, JSON.stringify({ channel: channel.body, chosen: chosen.error }).slice(0, 300))
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+      const page = await ctx.newPage()
+      current = page
+      await page.goto(`${base}/admin/login`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      await page.evaluate(([k, s]) => { localStorage.setItem(k, s); localStorage.setItem('admin-whats-new-seen', '9999-12-31'); localStorage.setItem('admin-major-update-seen', '9999-12-31|seen') }, [`sb-${new URL(base).hostname.split('.')[0]}-auth-token`, JSON.stringify(owner.session)])
+      await page.goto(`${base}/admin/whatsapp`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      const warned = await settle(page, /needs reconnecting: Meta no longer accepts its access token.*Reconnect/, 20000)
+      const notOn = !/On\. Messages Meta approved/.test(await text(page))
+      await page.screenshot({ path: join(S, 'msg-1440-whatsapp-reconnect.png'), fullPage: true })
+      step('[1440] the WhatsApp page says the number needs reconnecting and never "On"', warned && notOn, (await text(page)).slice(0, 400))
       await ctx.close()
     }
   } catch (e) {

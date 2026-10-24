@@ -68,6 +68,20 @@ files (1,018 tests), 18 scheduled jobs (live).
 | Tenant isolation — functions with elevated rights (live) | 752 run as `app_owner` (cannot bypass row security). 354 run as `postgres`: all on the test-enforced exempt list (`tenancy.test.ts`); the 33 a signed-in user may call that are not Super Admin functions were read: only 3 take an id (`merchant_access_mode`, `announcement_mark_read`, `credits_start_recharge`) and all 3 act on the caller's own store (the first ignores the id unless the caller is platform staff) | live-read + code read | no cross-store path | PASS |
 | WooCommerce plugin | Offline simulations: advance at checkout 41, tracking (Meta/TikTok/Google payloads, when a purchase counts, skips) 53, updater 17; `php -l` on all 18 plugin files | unit (PHP 8.3) | 111/111, 0 syntax errors | PASS (live WordPress: BLOCKED — no Docker here) |
 
+## 3c. Browser and load (pass 3)
+
+Real Worker (site + every backend function + Cloudflare database seeded from all migrations) on this
+machine, Chromium at 1440 and 390 px. Scripts in `scripts/audit/`; results in `scripts/audit/*-results.json`.
+
+| Suite | What it drives | Result | Status |
+|---|---|---|---|
+| `admin-pages-e2e` | every admin page (dashboard + 81 routes) at both widths as owner: no page error, no "Something went wrong" / "Page not found", no sideways scroll, not sent back to sign-in | 164/164 | PASS |
+| `super-admin-pages-e2e` | every Super Admin page at both widths as platform staff; a store owner refused on `/super-admin/merchants` (UI and data call) | 55/55 | PASS |
+| `storefront-e2e` | every store page at both widths; a shopper's phone checkout (saved once, stock reserved once, reload places nothing new); Track order with wrong/right phone | 33/33 | PASS |
+| `order-lifecycle-e2e` | place (same request twice → one order) → confirm → … → delivered; history; delivered cannot go back; stock 10→8 once; failed delivery → return → restock once; cancel needs a reason and frees stock; **P&L by hand**: product revenue 2,000 (delivered only) + delivery 80 = 2,080 − COGS 800 (2 × 400) = gross 1,280 − courier 140 − return charge 50 = **net 1,090**, margin 61.54 % — report matches; Call role refused order/item/product cost and the P&L; a second store sees none of store one (spoofed `x-merchant-id` ignored) | 31/31 | PASS |
+| `messaging-e2e` (extended this round) | Email/WhatsApp pages and editors at both widths; template mistake blocks saving; "Send on WhatsApp" fills the order's 14 texts (never the cart reminder); **new**: the customer's unsubscribe page (store, half-hidden address, nothing changes until the tap, then unsubscribed; "Subscribe again"); a mail app's one-click POST unsubscribes at once; an unknown token → 404; a WhatsApp number whose token Meta refuses → "needs reconnecting" + Reconnect, never "On" | first run 32/35 (3 stale expectations: 12 → 14 messages since messages v2; the new checklist replaced the old notice), after updating the suite **42/42** | PASS |
+| Load (`scripts/load-test.mjs`, 16 clients × 20 s, local PostgreSQL 16, 4 cores) | today's code and round 3's code (`f8531a7`) on the same fresh server | today (2 runs): orders 133–138/s (p95 335–365 ms), status changes 458–459/s (p95 54 ms), search p95 25 ms, orders during search 61–64/s, 0 errors. Round 3's code: 75/s, 340/s, 22 ms, 69/s in one run taken while the machine was still busy — today's first run in that window was 80/s too. Round 3's own record: 137/s, 442/s, 26 ms | PASS — no regression |
+
 ## 4. Findings and fixes
 
 | # | Module | Finding | Severity | Root cause | Fix | Test | Status |
