@@ -182,8 +182,6 @@
     }
   ],
   "not_yet_tested": [
-    "website pixel events (browser + server, one event id) on a live page",
-    "Super Admin money actions in the browser (credit adjust, plan change with setup fee)",
     "real providers (Shopify, WooCommerce, couriers, bKash, PayStation, SSLCommerz, SMS, Meta/TikTok/Google) - BLOCKED-PROVIDER from this session"
   ],
   "browser": [
@@ -194,7 +192,7 @@
     },
     {
       "suite": "super-admin-pages-e2e",
-      "result": "55/55",
+      "result": "56/56 incl. credit top-up: one ledger entry of 2500 poisha with the reason",
       "status": "PASS"
     },
     {
@@ -264,6 +262,11 @@
     {
       "module": "WooCommerce plugin offline",
       "result": "111/111; php -l 18 files clean",
+      "status": "PASS"
+    },
+    {
+      "module": "website Meta pixel (live)",
+      "result": "PageView/ViewContent/Lead from browser and server, EMQ 6.1, ip/ua/fbp/external_id 100%; CompleteRegistration/StartTrial unit-tested only (no sign-ups in 7 days)",
       "status": "PASS"
     }
   ]
