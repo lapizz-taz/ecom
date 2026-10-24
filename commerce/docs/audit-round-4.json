@@ -141,6 +141,36 @@
       "fix": "storeZone() in fixtures.ts",
       "regression": "db 12/12, cfdb 11/12",
       "status": "FIXED"
+    },
+    {
+      "id": 6,
+      "module": "tenant isolation",
+      "severity": "P2 (security low)",
+      "summary": "store B could save notes, production orders, history entries and fraud checks against store A's order id; a fraud check left that way blocks store A's store reset",
+      "root_cause": "row security hides the other store's order and the following checks passed on the empty result (null not in (...), no not-found check)",
+      "fix": "migration 20261128000100_same_store_order_refs.sql patches the live bodies in place (pg_get_functiondef): add_order_note, _raw_retain_order_advance, admin_create_production_order, record_fraud_check answer NOT_FOUND",
+      "regression": "cross-store-sweep.test.ts (sweep + focused test): fail without the migration (13 problems), pass with it",
+      "status": "FIXED (production migration pending)"
+    },
+    {
+      "id": 7,
+      "module": "roles (Moderator)",
+      "severity": "P2 (security low)",
+      "summary": "Moderator could duplicate any order and read its customer from the copy",
+      "root_cause": "admin_duplicate_order checked only orders.create",
+      "fix": "same migration: also requires orders.view",
+      "regression": "role sweep + focused test",
+      "status": "FIXED (production migration pending)"
+    },
+    {
+      "id": 8,
+      "module": "roles (Moderator)",
+      "severity": "P3",
+      "summary": "Moderator reads products.cost_price through the catalog used for new orders",
+      "root_cause": "all staff share one database role; catalog policy admits orders.create",
+      "fix": "proposed: cost-free catalog for the order form; products table only for people who may see costs",
+      "regression": "role sweep known-open entry",
+      "status": "OPEN - owner decision"
     }
   ],
   "engine_gaps": [
@@ -176,6 +206,14 @@
     }
   ],
   "owner_actions": [
+    {
+      "what": "Run migration 20261128000100_same_store_order_refs.sql (findings 6 and 7)",
+      "where": "Supabase > SQL Editor"
+    },
+    {
+      "what": "Decide finding 8: cost-free catalog for the Moderator's order form",
+      "where": "reply in chat"
+    },
     {
       "what": "Reconnect the WhatsApp Business number",
       "where": "Admin > Messaging > Channels"
@@ -268,6 +306,16 @@
       "module": "website Meta pixel (live)",
       "result": "PageView/ViewContent/Lead from browser and server, EMQ 6.1, ip/ua/fbp/external_id 100%; CompleteRegistration/StartTrial unit-tested only (no sign-ups in 7 days)",
       "status": "PASS"
+    },
+    {
+      "module": "cross-store sweep (automated)",
+      "result": "every authenticated and anon function called by store B with store A's ids, ids-only and filled; checks rows, answers, errors and cross-store foreign keys; 4 functions fixed, then 0 problems",
+      "status": "PASS after fix"
+    },
+    {
+      "module": "role sweep (automated)",
+      "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak fixed; catalog cost open",
+      "status": "PASS (Call), 1 OPEN (Moderator)"
     }
   ]
 }
