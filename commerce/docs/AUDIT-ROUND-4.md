@@ -58,6 +58,16 @@ files (1,018 tests), 18 scheduled jobs (live).
 | Queues | notifications stuck > 1 h: 0; billing payments pending > 1 day: 0; store sync jobs in 3 days: none | PASS |
 | Production WhatsApp channel | status **FAILED** since 20 Oct (Meta token expired/revoked) | **BLOCKED — OWNER**: reconnect in Messaging → Channels |
 
+## 3b. Module checks (pass 2)
+
+| Module | Scenario | Kind | Result | Status |
+|---|---|---|---|---|
+| Per-order fee (৳1.5 per approved order) | Charged once per order: unique `order_id` on `order_fee_charges`, a per-store lock, an exists check and a fixed ledger key `order-fee:<order>`; approve twice, approve → cancel, approve two with balance for one, empty balance refused with the price and balance named, store price / exemption / free orders / "let it through" | code read + db (`order-fee-reset.test.ts`, 5 tests) | as expected | PASS |
+| Sign-up offer and plan billing | ৳99 first month (+2 days) → ৳1,000 once with the plan price → plan price; fee carried over a plan change; WhatsApp sign-up activation counts as the ৳99; Super Admin settings validated | db (`signup-offer.test.ts`, 19 tests) | as expected | PASS |
+| Platform payments | Totals in poisha server-side; credits granted once however often the confirmation comes; wrong amount/currency/reused transaction flagged; refunds once; store isolation | db (`billing-payments.test.ts`, 14 tests) | as expected | PASS |
+| Tenant isolation — functions with elevated rights (live) | 752 run as `app_owner` (cannot bypass row security). 354 run as `postgres`: all on the test-enforced exempt list (`tenancy.test.ts`); the 33 a signed-in user may call that are not Super Admin functions were read: only 3 take an id (`merchant_access_mode`, `announcement_mark_read`, `credits_start_recharge`) and all 3 act on the caller's own store (the first ignores the id unless the caller is platform staff) | live-read + code read | no cross-store path | PASS |
+| WooCommerce plugin | Offline simulations: advance at checkout 41, tracking (Meta/TikTok/Google payloads, when a purchase counts, skips) 53, updater 17; `php -l` on all 18 plugin files | unit (PHP 8.3) | 111/111, 0 syntax errors | PASS (live WordPress: BLOCKED — no Docker here) |
+
 ## 4. Findings and fixes
 
 | # | Module | Finding | Severity | Root cause | Fix | Test | Status |
