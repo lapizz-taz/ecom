@@ -110,7 +110,7 @@
       "root_cause": "not yet known",
       "fix": "diagnostics: 10 s wait, reports order outcome and wait state",
       "regression": "735/735 rerun",
-      "status": "WATCH"
+      "status": "WATCH (passed in the pass-4 full run)"
     },
     {
       "id": 3,
@@ -317,5 +317,11 @@
       "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak fixed; catalog cost open",
       "status": "PASS (Call), 1 OPEN (Moderator)"
     }
-  ]
+  ],
+  "regression_pass4": {
+    "db": "739/739 (105 files)",
+    "unit": "1016 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "cfdb": "632 passed, 96 failed, 11 skipped (baseline 629/97/9; no new failure)"
+  }
 }

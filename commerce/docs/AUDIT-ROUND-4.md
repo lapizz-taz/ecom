@@ -85,6 +85,10 @@ machine, Chromium at 1440 and 390 px. Scripts in `scripts/audit/`; results in `s
 | `messaging-e2e` (extended this round) | Email/WhatsApp pages and editors at both widths; template mistake blocks saving; "Send on WhatsApp" fills the order's 14 texts (never the cart reminder); **new**: the customer's unsubscribe page (store, half-hidden address, nothing changes until the tap, then unsubscribed; "Subscribe again"); a mail app's one-click POST unsubscribes at once; an unknown token → 404; a WhatsApp number whose token Meta refuses → "needs reconnecting" + Reconnect, never "On" | first run 32/35 (3 stale expectations: 12 → 14 messages since messages v2; the new checklist replaced the old notice), after updating the suite **42/42** | PASS |
 | Load (`scripts/load-test.mjs`, 16 clients × 20 s, local PostgreSQL 16, 4 cores) | today's code and round 3's code (`f8531a7`) on the same fresh server | today (2 runs): orders 133–138/s (p95 335–365 ms), status changes 458–459/s (p95 54 ms), search p95 25 ms, orders during search 61–64/s, 0 errors. Round 3's code: 75/s, 340/s, 22 ms, 69/s in one run taken while the machine was still busy — today's first run in that window was 80/s too. Round 3's own record: 137/s, 442/s, 26 ms | PASS — no regression |
 
+Regression after pass 4 (sweeps + migration `20261128000100`): database tests **739/739** (105 files, the
+stock-lock test included), unit 1016 passed / 2 skipped, typecheck 0 errors, Cloudflare engine replay 632 / 96 / 11
+(no new failure).
+
 ## 4. Findings and fixes
 
 | # | Module | Finding | Severity | Root cause | Fix | Test | Status |
@@ -110,6 +114,10 @@ machine, Chromium at 1440 and 390 px. Scripts in `scripts/audit/`; results in `s
 | E3 | Missing Postgres functions/forms: `regexp_split_to_table`, `daterange`, `has_column_privilege`, interval `'1 month - 1 day'`, `AT TIME ZONE` with a zone from a column, per-row functions on unreachable columns (`_platform_leads`), `pg_proc.prorettype`, `ALTER TABLE … DISABLE TRIGGER`, `pbx_gw` schema | ~12 | HR month review, platform leads/finance reports, PBX gateway views would fail |
 | E4 | Signup network limit not applied on the engine (`public_signup_request` from the same network) | 1 | Sign-up flood limit missing |
 | E5 | `messaging_due_carts` returns the cart's source in the `step` column (wrong column mapping) | messaging-v2 1 | Second cart reminder never queued |
+
+After pass 4 (sweeps and migration `20261128000100`): 632 passed, 96 failed, 11 skipped of 739. No new
+failure; the two sweeps skip on the engine (they read the Postgres catalogs) and the focused tests of
+§4 #6–#7 pass there.
 
 Status: **FAIL — BLOCKED for switch-over**, not a production defect. Recorded for D1-8; not fixed in
 this round (an engine change is not a small, safe fix).
