@@ -150,7 +150,7 @@
       "root_cause": "row security hides the other store's order and the following checks passed on the empty result (null not in (...), no not-found check)",
       "fix": "migration 20261128000100_same_store_order_refs.sql patches the live bodies in place (pg_get_functiondef): add_order_note, _raw_retain_order_advance, admin_create_production_order, record_fraud_check answer NOT_FOUND",
       "regression": "cross-store-sweep.test.ts (sweep + focused test): fail without the migration (13 problems), pass with it",
-      "status": "FIXED (production migration pending)"
+      "status": "FIXED (live on production; 0 cross-store rows existed before)"
     },
     {
       "id": 7,
@@ -160,7 +160,7 @@
       "root_cause": "admin_duplicate_order checked only orders.create",
       "fix": "same migration: also requires orders.view",
       "regression": "role sweep + focused test",
-      "status": "FIXED (production migration pending)"
+      "status": "FIXED (live on production; 0 cross-store rows existed before)"
     },
     {
       "id": 8,
@@ -206,10 +206,6 @@
     }
   ],
   "owner_actions": [
-    {
-      "what": "Run migration 20261128000100_same_store_order_refs.sql (findings 6 and 7)",
-      "where": "Supabase > SQL Editor"
-    },
     {
       "what": "Decide finding 8: cost-free catalog for the Moderator's order form",
       "where": "reply in chat"
