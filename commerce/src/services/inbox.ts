@@ -1,6 +1,7 @@
 import { invokeFunction } from '@/lib/functions'
 import { fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
+import type { VariantSearchRow } from '@/services/catalog'
 
 export type InboxPlatform = 'FACEBOOK' | 'INSTAGRAM' | 'WHATSAPP'
 export type ConversationStatus = 'OPEN' | 'FOLLOW_UP' | 'DONE'
@@ -211,19 +212,18 @@ export async function fileForSending(file: Blob, name: string): Promise<Outgoing
 // ---- products to send in a chat
 export interface ChatProduct { id: string; name: string; slug: string; price: number | null; image: string | null }
 export async function chatProducts(q: string): Promise<ChatProduct[]> {
-  let query = supabase.from('products')
-    .select('id, name, slug, product_images(url, is_primary, position), product_variants(price, is_active)')
-    .eq('status', 'ACTIVE').order('name').limit(12)
-  const term = q.replace(/[%,()]/g, ' ').trim()
-  if (term) query = query.ilike('name', `%${term}%`)
-  const { data, error } = await query
+  // The same cost-free catalog as the order form (anyone who answers chats may use it).
+  const { data, error } = await supabase.rpc('order_catalog', { p_search: q.trim() || undefined, p_limit: 50 })
   if (error) throw error
-  return (data ?? []).map((p) => {
-    const images = [...((p.product_images ?? []) as Array<{ url: string; is_primary: boolean; position: number }>)]
-      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.position - b.position)
-    const prices = ((p.product_variants ?? []) as Array<{ price: number; is_active: boolean }>).filter((v) => v.is_active).map((v) => Number(v.price))
-    return { id: p.id, name: p.name, slug: p.slug, price: prices.length ? Math.min(...prices) : null, image: images[0]?.url ?? null }
-  })
+  const byProduct = new Map<string, ChatProduct>()
+  for (const v of (data ?? []) as unknown as VariantSearchRow[]) {
+    if (v.product_status !== 'ACTIVE') continue
+    const p = byProduct.get(v.product_id)
+    const price = v.unit_price === null ? null : Number(v.unit_price)
+    if (!p) byProduct.set(v.product_id, { id: v.product_id, name: v.product_name, slug: v.product_slug, price, image: v.image_url })
+    else if (price !== null && (p.price === null || price < p.price)) p.price = price
+  }
+  return [...byProduct.values()].slice(0, 12)
 }
 
 // ---- staff to assign

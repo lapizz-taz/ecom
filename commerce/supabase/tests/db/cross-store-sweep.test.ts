@@ -362,11 +362,7 @@ describe('role sweep', () => {
         await db.query('release savepoint read')
         await asSystem(db)
       }
-      // Open (docs/AUDIT-ROUND-4.md §4 #8): the catalog a Moderator needs to create orders still
-      // carries the product cost. Remove the entry once it is fixed; any other finding fails.
-      const knownOpen = [`MODERATOR reads products: shows ${COST}`]
-      expect(problems.filter((p) => !knownOpen.includes(p))).toEqual([])
-      expect(knownOpen.filter((k) => !problems.includes(k))).toEqual([])
+      expect(problems).toEqual([])
     }))
 
   it('needs the right to see orders to duplicate one (a copy shows the customer)', () =>

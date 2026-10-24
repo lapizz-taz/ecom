@@ -47,8 +47,8 @@ export function VariantPicker({ onPick, placeholder = 'Add product by name or SK
                   </span>
                   <span className="shrink-0 text-right text-xs">
                     <span className="block font-medium">{formatMoney(v.unit_price)}</span>
-                    <span className={v.track_inventory && (v.available ?? 0) <= 0 ? 'text-destructive' : 'text-muted-foreground'}>
-                      {v.track_inventory ? `${v.available ?? 0} in stock` : 'made to order'}
+                    <span className={v.in_stock ? 'text-muted-foreground' : 'text-destructive'}>
+                      {!v.track_inventory ? 'made to order' : v.available !== null ? `${v.available} in stock` : v.in_stock ? 'in stock' : 'out of stock'}
                     </span>
                   </span>
                 </button>

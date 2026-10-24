@@ -168,9 +168,9 @@
       "severity": "P3",
       "summary": "Moderator reads products.cost_price through the catalog used for new orders",
       "root_cause": "all staff share one database role; catalog policy admits orders.create",
-      "fix": "proposed: cost-free catalog for the order form; products table only for people who may see costs",
-      "regression": "role sweep known-open entry",
-      "status": "OPEN - owner decision"
+      "fix": "migration 20261129000100_order_catalog.sql: products/product_variants tables closed to order creators; order forms and inbox products read order_catalog (cost only with _can_see_costs, stock count only with inventory.view/products.view); converter copy of _can_read_catalog fixed and checked by worker/db/snapshot.test.ts",
+      "regression": "role sweep (no known-open entries), moderator-role.test.ts, snapshot.test.ts, browser moderator-e2e.cjs 16/16",
+      "status": "FIXED - pending production migration"
     }
   ],
   "engine_gaps": [
@@ -207,8 +207,8 @@
   ],
   "owner_actions": [
     {
-      "what": "Decide finding 8: cost-free catalog for the Moderator's order form",
-      "where": "reply in chat"
+      "what": "Run migration 20261129000100_order_catalog.sql, then say Publish",
+      "where": "Supabase SQL Editor"
     },
     {
       "what": "Reconnect the WhatsApp Business number",
@@ -310,8 +310,8 @@
     },
     {
       "module": "role sweep (automated)",
-      "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak fixed; catalog cost open",
-      "status": "PASS (Call), 1 OPEN (Moderator)"
+      "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak and catalog cost fixed",
+      "status": "PASS (Call), PASS (Moderator) after fixes 7-8"
     }
   ],
   "regression_pass4": {
@@ -319,5 +319,13 @@
     "unit": "1016 passed, 2 skipped",
     "typecheck": "0 errors",
     "cfdb": "632 passed, 96 failed, 11 skipped (baseline 629/97/9; no new failure)"
+  },
+  "regression_pass5": {
+    "db": "740/740 (105 files)",
+    "unit": "1017 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "build": "clean",
+    "cfdb": "633 passed, 96 failed, 11 skipped (no new failure; new Moderator test passes)",
+    "browser": "moderator-e2e 16/16"
   }
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
-import { asService, asSystem, asUser, closePool, expectError, inTx, one, value, type Db } from '../support/db'
+import { MERCHANT_1, asService, asSystem, asUser, closePool, expectError, inTx, one, value, type Db } from '../support/db'
 import { createOrder, createProduct, createStaff, orderPayload } from '../support/fixtures'
 
 afterAll(closePool)
@@ -46,7 +46,8 @@ describe('Moderator role', () => {
       await db.query(`select public.inbox_note_add($1, 'Asked for the black one')`, [c.conversation_id])
 
       // The products to pick (no costs), a quote, and the order.
-      expect(await value<number>(db, `select count(*)::int from public.product_variants where id = $1`, [p.variantIds[0]])).toBe(1)
+      expect(await value<Array<{ variant_id: string; unit_cost: unknown }>>(db, `select public.order_catalog(p_variant_ids => array[$1]::uuid[])`, [p.variantIds[0]]))
+        .toEqual([expect.objectContaining({ variant_id: p.variantIds[0], unit_cost: null })])
       await expectError(db, `select unit_cost from public.order_items limit 1`, [], /permission denied/)
       const payload = orderPayload({ items: [{ variantId: p.variantIds[0], quantity: 1 }], phone: '01711000123', name: 'Nadia' })
       const quote = await value<{ total: string | number }>(db, `select public.admin_quote_order($1::jsonb, 'Dhaka')`, [JSON.stringify(payload.items)])
@@ -96,5 +97,31 @@ describe('Moderator role', () => {
       expect(await value(db, `select (public.admin_set_order_source($1, 'MESSENGER')).source`, [o.id])).toBe('Messenger')
       await asUser(db, await createStaff(db, 'VIEWER'))
       await expectError(db, `select public.admin_set_order_source($1, 'MESSENGER')`, [o.id], /PERMISSION_DENIED|permission/i)
+    }))
+
+  it('picks products for an order without their cost or stock count; the product tables stay closed', () =>
+    inTx(async (db) => {
+      const p = await createProduct(db, { price: 900, cost: 400, stock: 7 })
+      const name = await value<string>(db, `select name from public.products where id = $1`, [p.productId])
+      await asUser(db, await createStaff(db, 'MODERATOR'))
+      expect(await value<number>(db, `select count(*)::int from public.products`)).toBe(0)
+      expect(await value<number>(db, `select count(*)::int from public.product_variants`)).toBe(0)
+      const byId = await value<Array<Record<string, unknown>>>(db, `select public.order_catalog(null, $1::uuid[])`, [p.variantIds])
+      expect(byId).toHaveLength(1)
+      expect(byId[0]).toMatchObject({ variant_id: p.variantIds[0], product_name: name, unit_price: 900, unit_cost: null, available: null, in_stock: true })
+      const byName = await value<Array<Record<string, unknown>>>(db, `select public.order_catalog($1)`, [name])
+      expect(byName.map((v) => v.variant_id)).toEqual(p.variantIds)
+      expect(JSON.stringify(byName)).not.toContain('400')
+
+      // Staff who may see costs and stock get both.
+      await asUser(db, await createStaff(db, 'OWNER'))
+      const own = await value<Array<Record<string, unknown>>>(db, `select public.order_catalog(null, $1::uuid[])`, [p.variantIds])
+      expect(own[0]).toMatchObject({ unit_cost: 400, available: 7, in_stock: true })
+
+      // Someone who neither creates orders, answers chats nor works with products gets nothing.
+      await asSystem(db)
+      await db.query(`insert into public.roles (merchant_id, code, name) values ($1, 'NOTHING', 'Nothing')`, [MERCHANT_1])
+      await asUser(db, await createStaff(db, 'NOTHING'))
+      await expectError(db, `select public.order_catalog('a')`, [], /PERMISSION_DENIED/)
     }))
 })
