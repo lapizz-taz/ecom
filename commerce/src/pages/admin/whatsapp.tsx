@@ -53,11 +53,14 @@ export default function WhatsappPage() {
   const all = messages.data ?? []
   const approved = all.filter((m) => m.wa_status === 'APPROVED').length
   const sending = all.some((m) => m.is_enabled && m.wa_status === 'APPROVED')
+  // Meta stopped accepting the number's access token (expired or revoked): nothing goes out until it is reconnected.
+  const needsReconnect = number?.status === 'FAILED'
   const steps: SetupStep[] = s ? [
     {
-      title: 'Connect your WhatsApp Business number', done: s.numbers.length > 0,
-      text: 'In Messaging → Channels. The same number answers chats in the Inbox.',
-      action: <Button size="sm" variant="outline" asChild><Link to="/admin/inbox/channels">Connect WhatsApp</Link></Button>,
+      title: 'Connect your WhatsApp Business number', done: s.numbers.some((n) => n.status === 'OK'),
+      text: needsReconnect ? 'Meta no longer accepts this number’s access token: reconnect it in Messaging → Channels.'
+        : 'In Messaging → Channels. The same number answers chats in the Inbox.',
+      action: <Button size="sm" variant="outline" asChild><Link to="/admin/inbox/channels">{needsReconnect ? 'Reconnect WhatsApp' : 'Connect WhatsApp'}</Link></Button>,
     },
     {
       title: 'Choose the number messages come from', done: s.ready,
@@ -84,7 +87,7 @@ export default function WhatsappPage() {
       action: manage && s.ready && approved > 0 && <Button size="sm" disabled={save.isPending} onClick={() => save.mutate({ enabled: true })}>Switch on</Button>,
     },
   ] : []
-  const live = !!s && s.ready && s.enabled && sending
+  const live = !!s && s.ready && s.enabled && sending && !needsReconnect
 
   return (
     <div className="space-y-4">
@@ -106,6 +109,11 @@ export default function WhatsappPage() {
 
       {settings.isLoading ? <LoadingState /> : settings.error ? <ErrorState error={settings.error} onRetry={() => settings.refetch()} /> : s && (
         <>
+          {needsReconnect && (
+            <Notice tone="warn"
+              text={`${numberLabel(number)} needs reconnecting: Meta no longer accepts its access token, so no WhatsApp message can go out${s.sms_fallback ? ' (the same updates go by SMS instead)' : ''}.`}
+              action={<Button size="sm" asChild><Link to="/admin/inbox/channels">Reconnect</Link></Button>} />
+          )}
           {messages.isLoading ? null : live ? (
             <Notice tone="ok" text={`On. Messages Meta approved (${approved}) go out from ${number ? numberLabel(number) : 'your number'} when an order reaches their step.`} />
           ) : (
@@ -167,7 +175,7 @@ function Setup({ settings, canManage, saving, onSave }: {
                 <SelectContent>
                   {settings.numbers.map((n) => (
                     <SelectItem key={n.id} value={n.id} disabled={!n.waba_id || n.status === 'DISCONNECTED'}>
-                      {numberLabel(n)}{!n.waba_id ? ' (reconnect it to send templates)' : n.status === 'DISCONNECTED' ? ' (disconnected)' : ''}
+                      {numberLabel(n)}{!n.waba_id ? ' (reconnect it to send templates)' : n.status === 'DISCONNECTED' ? ' (disconnected)' : n.status === 'FAILED' ? ' (needs reconnecting)' : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -40,7 +40,7 @@ export function json(req: Request, body: unknown, status = 200, extra: Record<st
 
 // Reads the body as bytes, refusing more than maxBytes without buffering the rest
 // (a declared Content-Length is checked first; the stream is counted as it arrives).
-export async function readBytes(req: Request, maxBytes = 64 * 1024): Promise<Uint8Array> {
+export async function readBytes(req: Request, maxBytes = 64 * 1024): Promise<Uint8Array<ArrayBuffer>> {
   const declared = Number(req.headers.get('content-length') ?? '')
   if (Number.isFinite(declared) && declared > maxBytes) throw new HttpError(413, 'Request is too large', 'PAYLOAD_TOO_LARGE')
   if (!req.body) return new Uint8Array(0)

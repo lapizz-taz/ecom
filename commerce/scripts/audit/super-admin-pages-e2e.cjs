@@ -147,6 +147,26 @@ const PATHS = ['', 'merchants', 'live', 'domains', 'merchants/new', 'employees',
       const after = await text(page)
       step('Super Admin change plan is saved', Boolean(res) && res.status() < 300 && !(await dialog.isVisible().catch(() => false)),
         JSON.stringify({ url: res?.url(), status: res?.status(), body: res ? (await res.text().catch(() => '')).slice(0, 400) : 'no request', page: after.slice(0, 300) }))
+
+      // Round 4: the Super Admin adds ৳25 to the store's balance — one ledger entry with the reason, the new balance shown.
+      await page.getByRole('tab', { name: 'Credits & usage' }).click({ timeout: 30000 })
+      await page.getByRole('button', { name: 'Change credits' }).click({ timeout: 30000 })
+      const credit = page.getByRole('dialog')
+      await credit.getByRole('combobox').nth(0).click()
+      await page.getByRole('option', { name: 'Add (adjustment)' }).click({ timeout: 10000 })
+      await credit.getByRole('combobox').nth(1).click()
+      await page.getByRole('option', { name: /^Balance \(Tk\)/ }).click({ timeout: 10000 })
+      await credit.locator('input[type=number]').fill('25')
+      await credit.locator('textarea').fill('Audit round 4: test top-up')
+      const adjusted = page.waitForResponse((r) => /platform_credit_adjust/.test(r.url()) && r.request().method() === 'POST', { timeout: 20000 }).catch(() => null)
+      await credit.getByRole('button', { name: /^(Apply|Request approval)$/ }).click()
+      const ar = await adjusted
+      const toast = await settle(page, /Done — new balance/, 10000)
+      const ledger = (await call('GET', `/rest/v1/credit_ledger?merchant_id=eq.${M1}&credit_type=eq.BALANCE&select=amount,balance_after,reason,kind&order=created_at.desc&limit=3`, { merchant: null })).body
+      const mine = (ledger ?? []).filter((e) => /Audit round 4/.test(e.reason ?? ''))
+      step('Super Admin adds ৳25 to a store\'s balance: one ledger entry (2,500 poisha) with the reason; the new balance is shown',
+        Boolean(ar) && ar.status() < 300 && toast && mine.length === 1 && Number(mine[0].amount) === 2500,
+        JSON.stringify({ status: ar?.status(), toast, ledger }).slice(0, 600))
       await ctx.close()
     }
     const summary = []

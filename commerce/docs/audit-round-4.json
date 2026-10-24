@@ -1,0 +1,323 @@
+{
+  "round": 4,
+  "started": "2026-10-24T06:40:00Z",
+  "branch": "claude/optimistic-cray-c2d0fc",
+  "statuses": [
+    "PASS",
+    "FAIL",
+    "FIXED",
+    "WATCH",
+    "BLOCKED-OWNER",
+    "BLOCKED-PROVIDER",
+    "NOT-TESTED"
+  ],
+  "baseline": [
+    {
+      "check": "typecheck app+worker",
+      "kind": "static",
+      "result": "0 errors",
+      "status": "PASS"
+    },
+    {
+      "check": "unit tests",
+      "kind": "unit",
+      "result": "1015 passed, 1 failed (domain-panel-r4), 2 skipped; after fix 1016 passed",
+      "status": "FIXED",
+      "finding": 1
+    },
+    {
+      "check": "database tests",
+      "kind": "db",
+      "result": "734/735 then 735/735 on rerun",
+      "status": "WATCH",
+      "finding": 2
+    },
+    {
+      "check": "deno check all 25 functions",
+      "kind": "static",
+      "result": "1 type error clerk.ts:285, fixed",
+      "status": "FIXED",
+      "finding": 3
+    },
+    {
+      "check": "build:cloudflare",
+      "kind": "build",
+      "result": "built, 10 pages prerendered",
+      "status": "PASS"
+    },
+    {
+      "check": "database tests on Cloudflare engine",
+      "kind": "cfdb",
+      "result": "629 passed, 97 failed, 9 skipped",
+      "status": "FAIL",
+      "note": "staging-only engine; see engine_gaps"
+    }
+  ],
+  "live": [
+    {
+      "check": "system log errors since round 3",
+      "kind": "live-read",
+      "result": "2 (one WhatsApp template submit: token expired)",
+      "status": "PASS"
+    },
+    {
+      "check": "scheduled jobs",
+      "kind": "live-read",
+      "result": "18 active, 0 failed runs in 3 days",
+      "status": "PASS"
+    },
+    {
+      "check": "security advisor",
+      "kind": "live-read",
+      "result": "0 ERROR; 32 anon functions = allowlist; 17 search-path warnings all non-definer, not anon",
+      "status": "PASS"
+    },
+    {
+      "check": "order and stock integrity",
+      "kind": "live-read",
+      "result": "0 mismatches on 3 orders (small sample)",
+      "status": "PASS"
+    },
+    {
+      "check": "queues",
+      "kind": "live-read",
+      "result": "0 stuck notifications, 0 old pending billing payments",
+      "status": "PASS"
+    },
+    {
+      "check": "WhatsApp channel",
+      "kind": "live-read",
+      "result": "FAILED since 2026-10-20 (token expired/revoked)",
+      "status": "BLOCKED-OWNER"
+    }
+  ],
+  "findings": [
+    {
+      "id": 1,
+      "module": "domains (test)",
+      "severity": "P3",
+      "summary": "fixture dates vs real clock",
+      "root_cause": "test fixtures dated 2026-10-20, panel uses real clock",
+      "fix": "vi.setSystemTime(NOW) in domain-panel-r4.test.ts",
+      "regression": "75/75",
+      "status": "FIXED"
+    },
+    {
+      "id": 2,
+      "module": "stock (test)",
+      "severity": "P3",
+      "summary": "stock-lock-order timed out once under full-suite load",
+      "root_cause": "not yet known",
+      "fix": "diagnostics: 10 s wait, reports order outcome and wait state",
+      "regression": "735/735 rerun",
+      "status": "WATCH (passed in the pass-4 full run)"
+    },
+    {
+      "id": 3,
+      "module": "edge functions",
+      "severity": "P3",
+      "summary": "deno check type error in Clerk proxy body",
+      "root_cause": "TS typed arrays by buffer (Deno 2.9)",
+      "fix": "Uint8Array<ArrayBuffer> in readBytes and proxyRequest",
+      "regression": "deno check 25 clean; tsc clean; 23 tests",
+      "status": "FIXED"
+    },
+    {
+      "id": 4,
+      "module": "WhatsApp page",
+      "severity": "P2",
+      "summary": "page said On while the sending number's token was dead",
+      "root_cause": "any connected number counted as working",
+      "fix": "reconnect warning, checklist and On state require status OK",
+      "regression": "typecheck; browser pending",
+      "status": "FIXED"
+    },
+    {
+      "id": 5,
+      "module": "messaging (test)",
+      "severity": "P3",
+      "summary": "test helper SQL not supported on Cloudflare engine",
+      "root_cause": "test helper",
+      "fix": "storeZone() in fixtures.ts",
+      "regression": "db 12/12, cfdb 11/12",
+      "status": "FIXED"
+    },
+    {
+      "id": 6,
+      "module": "tenant isolation",
+      "severity": "P2 (security low)",
+      "summary": "store B could save notes, production orders, history entries and fraud checks against store A's order id; a fraud check left that way blocks store A's store reset",
+      "root_cause": "row security hides the other store's order and the following checks passed on the empty result (null not in (...), no not-found check)",
+      "fix": "migration 20261128000100_same_store_order_refs.sql patches the live bodies in place (pg_get_functiondef): add_order_note, _raw_retain_order_advance, admin_create_production_order, record_fraud_check answer NOT_FOUND",
+      "regression": "cross-store-sweep.test.ts (sweep + focused test): fail without the migration (13 problems), pass with it",
+      "status": "FIXED (live on production; 0 cross-store rows existed before)"
+    },
+    {
+      "id": 7,
+      "module": "roles (Moderator)",
+      "severity": "P2 (security low)",
+      "summary": "Moderator could duplicate any order and read its customer from the copy",
+      "root_cause": "admin_duplicate_order checked only orders.create",
+      "fix": "same migration: also requires orders.view",
+      "regression": "role sweep + focused test",
+      "status": "FIXED (live on production; 0 cross-store rows existed before)"
+    },
+    {
+      "id": 8,
+      "module": "roles (Moderator)",
+      "severity": "P3",
+      "summary": "Moderator reads products.cost_price through the catalog used for new orders",
+      "root_cause": "all staff share one database role; catalog policy admits orders.create",
+      "fix": "proposed: cost-free catalog for the order form; products table only for people who may see costs",
+      "regression": "role sweep known-open entry",
+      "status": "OPEN - owner decision"
+    }
+  ],
+  "engine_gaps": [
+    {
+      "id": "E1",
+      "cause": "nested-repeat regex refused",
+      "tests": 75,
+      "effect": "custom domains"
+    },
+    {
+      "id": "E2",
+      "cause": "column-level privileges not enforced",
+      "tests": 3,
+      "effect": "Call/Moderator would see costs"
+    },
+    {
+      "id": "E3",
+      "cause": "missing functions/forms",
+      "tests": 12,
+      "effect": "HR month review, platform reports, PBX views"
+    },
+    {
+      "id": "E4",
+      "cause": "signup network limit",
+      "tests": 1,
+      "effect": "sign-up flood limit"
+    },
+    {
+      "id": "E5",
+      "cause": "messaging_due_carts column mapping",
+      "tests": 1,
+      "effect": "second cart reminder"
+    }
+  ],
+  "owner_actions": [
+    {
+      "what": "Decide finding 8: cost-free catalog for the Moderator's order form",
+      "where": "reply in chat"
+    },
+    {
+      "what": "Reconnect the WhatsApp Business number",
+      "where": "Admin > Messaging > Channels"
+    }
+  ],
+  "not_yet_tested": [
+    "real providers (Shopify, WooCommerce, couriers, bKash, PayStation, SSLCommerz, SMS, Meta/TikTok/Google) - BLOCKED-PROVIDER from this session"
+  ],
+  "browser": [
+    {
+      "suite": "admin-pages-e2e",
+      "result": "164/164",
+      "status": "PASS"
+    },
+    {
+      "suite": "super-admin-pages-e2e",
+      "result": "56/56 incl. credit top-up: one ledger entry of 2500 poisha with the reason",
+      "status": "PASS"
+    },
+    {
+      "suite": "storefront-e2e",
+      "result": "33/33",
+      "status": "PASS"
+    },
+    {
+      "suite": "order-lifecycle-e2e",
+      "result": "31/31; P&L net 1,090 matches hand calculation (2,080 - 800 - 140 - 50)",
+      "status": "PASS"
+    },
+    {
+      "suite": "messaging-e2e",
+      "result": "32/35 (3 stale expectations) then 42/42 with 7 new checks: unsubscribe page, one-click, unknown token, WhatsApp reconnect warning",
+      "status": "PASS"
+    }
+  ],
+  "load": {
+    "tool": "scripts/load-test.mjs",
+    "clients": 16,
+    "seconds": 20,
+    "today": {
+      "orders_per_s": [
+        133,
+        138
+      ],
+      "status_changes_per_s": [
+        458,
+        459
+      ],
+      "search_p95_ms": 25,
+      "orders_during_search_per_s": [
+        61,
+        64
+      ],
+      "errors": 0
+    },
+    "round3_record": {
+      "orders_per_s": 137,
+      "status_changes_per_s": 442,
+      "search_p95_ms": 26
+    },
+    "status": "PASS"
+  },
+  "module_checks": [
+    {
+      "module": "per-order fee",
+      "result": "charged once per order (unique order_id, lock, ledger key); 5 db tests",
+      "status": "PASS"
+    },
+    {
+      "module": "sign-up offer and plan billing",
+      "result": "19 db tests",
+      "status": "PASS"
+    },
+    {
+      "module": "platform payments",
+      "result": "14 db tests",
+      "status": "PASS"
+    },
+    {
+      "module": "tenant isolation of elevated functions (live)",
+      "result": "752 app_owner; 354 postgres-owned all on enforced exempt list; 3 id-taking user-callable functions act on caller's store only",
+      "status": "PASS"
+    },
+    {
+      "module": "WooCommerce plugin offline",
+      "result": "111/111; php -l 18 files clean",
+      "status": "PASS"
+    },
+    {
+      "module": "website Meta pixel (live)",
+      "result": "PageView/ViewContent/Lead from browser and server, EMQ 6.1, ip/ua/fbp/external_id 100%; CompleteRegistration/StartTrial unit-tested only (no sign-ups in 7 days)",
+      "status": "PASS"
+    },
+    {
+      "module": "cross-store sweep (automated)",
+      "result": "every authenticated and anon function called by store B with store A's ids, ids-only and filled; checks rows, answers, errors and cross-store foreign keys; 4 functions fixed, then 0 problems",
+      "status": "PASS after fix"
+    },
+    {
+      "module": "role sweep (automated)",
+      "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak fixed; catalog cost open",
+      "status": "PASS (Call), 1 OPEN (Moderator)"
+    }
+  ],
+  "regression_pass4": {
+    "db": "739/739 (105 files)",
+    "unit": "1016 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "cfdb": "632 passed, 96 failed, 11 skipped (baseline 629/97/9; no new failure)"
+  }
+}

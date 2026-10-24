@@ -12,13 +12,18 @@ afterAll(closePool)
 /** The Cloudflare engine runs one statement at a time: there are no row locks to order there. */
 const onEngine = Boolean(process.env.CF_DB_TESTS)
 
-async function waitUntilBlocked(watcher: Db, pid: number): Promise<void> {
-  for (let i = 0; i < 100; i++) {
+async function waitUntilBlocked(watcher: Db, pid: number, order: Promise<unknown>): Promise<void> {
+  // An order that ends (placed or refused) before it waits is reported as it is, not as a timeout.
+  let settled: string | null = null
+  order.then(() => { settled = 'the order was placed without waiting' }, (e: Error) => { settled = `the order failed: ${e.message}` })
+  for (let i = 0; i < 200; i++) {
     const waiting = await value<boolean>(watcher, `select coalesce((select wait_event_type = 'Lock' from pg_stat_activity where pid = $1), false)`, [pid])
     if (waiting) return
+    if (settled) throw new Error(settled)
     await new Promise((r) => setTimeout(r, 50))
   }
-  throw new Error('the order never waited for the held stock row')
+  const state = await value<string>(watcher, `select coalesce((select coalesce(wait_event_type, '') || '/' || coalesce(wait_event, '') || ' ' || state from pg_stat_activity where pid = $1), 'gone')`, [pid])
+  throw new Error(`the order never waited for the held stock row (${state})`)
 }
 
 describe.skipIf(onEngine)('stock rows are locked in one fixed order', () => {
@@ -51,7 +56,7 @@ describe.skipIf(onEngine)('stock rows are locked in one fixed order', () => {
       pending = buyer.query(`select id from public._create_order($1, 'STOREFRONT')`,
         [JSON.stringify(orderPayload({ phone: '01711000777', items: [{ variantId: high, quantity: 1 }, { variantId: low, quantity: 1 }] }))])
       pending.catch(() => undefined)
-      await waitUntilBlocked(prober, pid)
+      await waitUntilBlocked(prober, pid, pending)
 
       // While it waits, the higher product is still free: it took nothing out of order.
       await prober.query('begin')
