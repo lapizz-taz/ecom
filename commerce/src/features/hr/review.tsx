@@ -11,12 +11,12 @@ import { cn } from '@/lib/utils'
 import { attendanceBoard, employeeMonth, minutesLabel, type MonthDay, type MonthState, WEEKDAYS, zonedTime } from '@/services/hr'
 
 const STATE: Record<MonthState, { label: string; cell: string }> = {
-  PRESENT: { label: 'Present', cell: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
-  LATE: { label: 'Late', cell: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' },
-  HALF_DAY: { label: 'Half day', cell: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30' },
-  ABSENT: { label: 'Absent', cell: 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30' },
-  LEAVE: { label: 'Leave', cell: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30' },
-  HOLIDAY: { label: 'Holiday', cell: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30' },
+  PRESENT: { label: 'Present', cell: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' },
+  LATE: { label: 'Late', cell: 'bg-amber-500/15 text-amber-700 border-amber-500/30' },
+  HALF_DAY: { label: 'Half day', cell: 'bg-orange-500/15 text-orange-700 border-orange-500/30' },
+  ABSENT: { label: 'Absent', cell: 'bg-red-500/15 text-red-700 border-red-500/30' },
+  LEAVE: { label: 'Leave', cell: 'bg-violet-500/15 text-violet-700 border-violet-500/30' },
+  HOLIDAY: { label: 'Holiday', cell: 'bg-sky-500/15 text-sky-700 border-sky-500/30' },
   OFF: { label: 'Off', cell: 'bg-muted/40 text-muted-foreground border-transparent' },
   NOT_IN: { label: 'Not in yet', cell: 'border-dashed text-muted-foreground' },
   UPCOMING: { label: '', cell: 'border-transparent text-muted-foreground/50' },

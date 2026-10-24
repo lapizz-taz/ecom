@@ -204,7 +204,7 @@ export function WooPluginPanel({ channelId }: { channelId: string }) {
                   <tr key={e.id} className="border-b last:border-0">
                     <td className="py-1.5 pr-3 whitespace-nowrap" title={formatDateTime(e.created_at)}>{timeAgo(e.created_at)}</td>
                     <td className="pr-3">{e.type.replace(/_/g, ' ')}</td>
-                    <td className="pr-3"><span className={cn('rounded px-1.5 py-0.5 text-xs', e.status === 'OK' ? 'bg-muted' : e.status === 'DUPLICATE' ? 'text-muted-foreground' : 'bg-red-600/10 text-red-700 dark:text-red-300')}>{e.status.toLowerCase()}</span></td>
+                    <td className="pr-3"><span className={cn('rounded px-1.5 py-0.5 text-xs', e.status === 'OK' ? 'bg-muted' : e.status === 'DUPLICATE' ? 'text-muted-foreground' : 'bg-red-600/10 text-red-700')}>{e.status.toLowerCase()}</span></td>
                     <td className="max-w-md truncate text-xs text-muted-foreground" title={JSON.stringify(e.detail)}>{Object.entries(e.detail).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ')}</td>
                   </tr>
                 ))}

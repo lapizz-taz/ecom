@@ -38,4 +38,23 @@ describe('architecture', () => {
     const offenders = files(SRC).map(rel).filter((f) => !/^([a-z0-9]+(-[a-z0-9]+)*\/)*[a-z0-9]+(-[a-z0-9]+)*(\.d)?\.tsx?$/.test(f) && f !== 'App.tsx')
     expect(offenders).toEqual([])
   })
+
+  it('admin colours leave dark mode to the theme (no dark: override of a shade the theme already flips)', () => {
+    // index.css re-maps tinted shades under .dark: light shades become dark tints, dark shades
+    // readable text. A dark:text-amber-200 or dark:bg-amber-950 written for the stock palette is
+    // flipped twice there and comes out dark text on a light tint. Toasts are a deliberate light
+    // card; customer pages never run under .dark. Greys are re-mapped unevenly (zinc-800 stays dark)
+    // and are not covered here.
+    const dark = readFileSync(join(SRC, 'index.css'), 'utf8').match(/\.dark\s*\{([^}]*)\}/)?.[1] ?? ''
+    const flipped = new Set([...dark.matchAll(/--color-([a-z]+)-(\d+):/g)]
+      .filter((m) => !['zinc', 'gray', 'slate', 'neutral', 'stone'].includes(m[1])).map((m) => `${m[1]}-${m[2]}`))
+    expect(flipped.size).toBeGreaterThan(50)
+    const skip = (f: string) => f === 'lib/toast.tsx' || f.startsWith('pages/customer/')
+    const offenders = files(SRC).filter((f) => !skip(rel(f))).flatMap((f) =>
+      [...readFileSync(f, 'utf8').matchAll(/dark:(text|bg|border|ring)-([a-z]+)-(\d+)/g)]
+        .filter(([, prop, hue, shade]) => flipped.has(`${hue}-${shade}`)
+          && (prop === 'text' ? Number(shade) <= 300 : Number(shade) >= 600))
+        .map((m) => `${rel(f)}: ${m[0]}`))
+    expect(offenders).toEqual([])
+  })
 })

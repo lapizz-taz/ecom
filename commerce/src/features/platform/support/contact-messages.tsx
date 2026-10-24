@@ -38,7 +38,7 @@ export function ContactMessages() {
         {FILTERS.map(([v, l]) => (
           <button key={l} type="button" onClick={() => update({ status: v })}
             className={cn('rounded-md px-2.5 py-1 text-[13px]', state.status === v ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground')}>
-            {l}{v === 'NEW' && list.data?.new ? <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 text-[11px] text-amber-700 dark:text-amber-300">{list.data.new}</span> : null}
+            {l}{v === 'NEW' && list.data?.new ? <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 text-[11px] text-amber-700">{list.data.new}</span> : null}
           </button>
         ))}
       </div>

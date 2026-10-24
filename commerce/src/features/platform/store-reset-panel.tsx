@@ -80,7 +80,7 @@ export function StoreResetPanel({ detail }: { detail: MerchantDetail }) {
   const canReset = detail.can.manage
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-      <Card className="border-red-200 dark:border-red-900/60">
+      <Card className="border-red-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm"><ShieldAlert className="size-4 text-red-500" /> Reset store data</CardTitle>
           <p className="text-xs text-muted-foreground">Removes this store's day-to-day records so it can start again. This cannot be undone; the export below is the only copy.</p>

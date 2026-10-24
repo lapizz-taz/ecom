@@ -46,7 +46,7 @@ export function MerchantDeletePanel({ detail }: { detail: MerchantDetail }) {
   const exportReady = !!exportUntil && new Date(exportUntil) > new Date()
   const deleted = /^Deleted merchant #\d+$/.test(m.name)
   return (
-    <Card className="border-red-300 dark:border-red-900">
+    <Card className="border-red-300">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm"><Trash2 className="size-4 text-red-500" /> Delete merchant</CardTitle>
         <p className="text-xs text-muted-foreground">Permanent. Needs a full export from the last 24 hours (step 1 above), and a second Super Admin to approve when there is one.</p>

@@ -235,6 +235,32 @@ async function settle(page, re, ms = 30000) {
       const notOn = !/On\. Messages Meta approved/.test(await text(page))
       await page.screenshot({ path: join(S, 'msg-1440-whatsapp-reconnect.png'), fullPage: true })
       step('[1440] the WhatsApp page says the number needs reconnecting and never "On"', warned && notOn, (await text(page)).slice(0, 400))
+      // Dark mode: the warning must stay readable (the theme re-maps tints; a second flip made it dark on tan).
+      await page.evaluate(() => localStorage.setItem('admin-theme', 'dark'))
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await settle(page, /needs reconnecting: Meta no longer accepts its access token/, 20000)
+      const contrast = await page.evaluate(() => {
+        const rgba = (c) => {
+          const x = document.createElement('canvas').getContext('2d')
+          x.fillStyle = c
+          x.fillRect(0, 0, 1, 1)
+          const d = x.getImageData(0, 0, 1, 1).data
+          return [d[0], d[1], d[2], d[3] / 255]
+        }
+        const span = [...document.querySelectorAll('span')].find((s) => s.textContent.includes('needs reconnecting'))
+        if (!span || !document.documentElement.classList.contains('dark')) return null
+        // The colour behind the text: every background from the page down to the text, blended in order.
+        const layers = []
+        for (let el = span; el; el = el.parentElement) layers.unshift(rgba(getComputedStyle(el).backgroundColor))
+        let bg = [255, 255, 255]
+        for (const [r, g, b, a] of layers) bg = [r * a + bg[0] * (1 - a), g * a + bg[1] * (1 - a), b * a + bg[2] * (1 - a)]
+        const fg = rgba(getComputedStyle(span).color)
+        const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0)
+        const [hi, lo] = [lum(fg), lum(bg)].sort((p, q) => q - p)
+        return { ratio: Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100, fg: fg.slice(0, 3), bg: bg.map(Math.round) }
+      })
+      await page.screenshot({ path: join(S, 'msg-1440-whatsapp-reconnect-dark.png'), fullPage: false })
+      step('[1440, dark] the reconnect warning is readable (text contrast at least 4.5:1)', !!contrast && contrast.ratio >= 4.5, JSON.stringify(contrast))
       await ctx.close()
     }
   } catch (e) {

@@ -58,7 +58,7 @@ export function PlanPicker({ options, value, onChange }: { options: SignupOption
               </div>
             </div>
             {(p.trial_days > 0 || !!p.offer?.trial_months || p.offer?.first_price != null) && (
-              <p className="mt-3 inline-flex flex-wrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <p className="mt-3 inline-flex flex-wrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10">
                 {planOfferText(p, formatMoney)}{(p.trial_days > 0 || !!p.offer?.trial_months) && !p.offer?.trial_price ? ' · no payment now' : ' · pay to start'}
               </p>
             )}

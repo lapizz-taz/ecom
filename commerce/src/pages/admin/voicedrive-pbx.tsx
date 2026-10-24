@@ -69,7 +69,7 @@ function VoiceDrivePbxPageContent() {
       <PageHeader title="Cloud Calling" description="Browser phone for your team. Outgoing calls use a prepaid balance; incoming calls are free." />
       <StatusStrip ov={ov} />
       {ov.maintenance.state !== 'none' && (
-        <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-sm dark:bg-amber-950/20">
+        <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-sm">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
           <span>{ov.maintenance.state === 'active' ? 'Under maintenance — calls are paused' : 'Maintenance is scheduled'}
             {ov.maintenance.startsAt ? ` from ${formatDateTime(ov.maintenance.startsAt)}` : ''}{ov.maintenance.until ? ` until ${formatDateTime(ov.maintenance.until)}` : ''}.

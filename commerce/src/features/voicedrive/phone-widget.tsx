@@ -230,7 +230,7 @@ function PhoneOffPanel({ state, onStart }: { state: PhoneState; onStart: () => v
   const problems = ov.data?.lineProblems ?? []
   return (
     <div className="space-y-3 text-sm">
-      {state.error && state.status === 'error' && <p className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-600 dark:text-red-300">{state.error}</p>}
+      {state.error && state.status === 'error' && <p className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-600">{state.error}</p>}
       {problems.length > 0 ? (
         <div className="space-y-1 text-xs">
           <p className="font-medium">The line is not active yet</p>
@@ -361,7 +361,7 @@ function CallView({ state, autoShow }: { state: PhoneState; autoShow: boolean })
         <>
           <div className="grid grid-cols-3 gap-1.5">
             <button type="button" disabled={call.state !== 'active'} onClick={() => engine?.mute(!call.muted)}
-              className={cn('flex h-9 items-center justify-center gap-1.5 rounded-md text-sm hover:bg-accent disabled:opacity-40', call.muted ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'bg-muted')}>
+              className={cn('flex h-9 items-center justify-center gap-1.5 rounded-md text-sm hover:bg-accent disabled:opacity-40', call.muted ? 'bg-amber-500/20 text-amber-700' : 'bg-muted')}>
               {call.muted ? <MicOff className="size-4" /> : <Mic className="size-4" />} {call.muted ? 'Unmute' : 'Mute'}
             </button>
             <button type="button" disabled={call.state !== 'active'} onClick={() => setKeypad((k) => !k)}
@@ -382,7 +382,7 @@ function CallView({ state, autoShow }: { state: PhoneState; autoShow: boolean })
           <div className="flex flex-wrap gap-1">
             {OUTCOMES.map((o) => (
               <button key={o.value} type="button" onClick={() => setOutcome(o.value)}
-                className={cn('rounded-full border px-2 py-0.5 text-xs', outcome === o.value ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'hover:bg-accent')}>
+                className={cn('rounded-full border px-2 py-0.5 text-xs', outcome === o.value ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700' : 'hover:bg-accent')}>
                 {o.label}
               </button>
             ))}

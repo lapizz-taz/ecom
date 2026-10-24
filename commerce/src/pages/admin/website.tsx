@@ -340,7 +340,7 @@ function NewKeyDialog({ open, onClose, onCreated }: { open: boolean; onClose: ()
               <Textarea id="k-origins" rows={3} value={origins} onChange={(e) => setOrigins(e.target.value)} placeholder={'https://shop.com\nhttps://www.shop.com'} />
             </Field>
           )}
-          {create.error && <p className="rounded-lg bg-red-50 p-2.5 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200" role="alert">{toUserMessage(create.error)}</p>}
+          {create.error && <p className="rounded-lg bg-red-50 p-2.5 text-sm text-red-800" role="alert">{toUserMessage(create.error)}</p>}
         </form>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

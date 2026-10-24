@@ -212,7 +212,7 @@ export default function StoreThemePage() {
           <span className="hidden items-center gap-1.5 font-medium sm:flex"><Store className="size-3.5 text-zinc-500" />{config?.store.name ?? 'Store'}</span>
           {store.state && (
             <span className={cn('hidden rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline', store.state.online
-              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15'
               : 'bg-zinc-100 text-zinc-600 dark:bg-black/[0.07] dark:text-zinc-300')}>
               {store.state.label}
             </span>
@@ -306,7 +306,7 @@ export default function StoreThemePage() {
         {/* Preview */}
         <div className={cn('min-h-0 min-w-0 flex-1 overflow-auto p-2 lg:p-3', mobileView === 'edit' && 'max-lg:hidden')}>
           {previewError && (
-            <div role="alert" className="mx-auto mb-2 max-w-[1400px] rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            <div role="alert" className="mx-auto mb-2 max-w-[1400px] rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
               The preview could not load your store: {previewError}
             </div>
           )}

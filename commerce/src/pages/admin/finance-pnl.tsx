@@ -327,7 +327,7 @@ function SectionRows({ name, rows }: { name: string; rows: CalcRow[] }) {
               {x.certainty && <CertaintyBadge value={x.certainty} />}
               <span>{x.detail}</span>
             </div>
-            {x.warning && <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">{x.warning}</p>}
+            {x.warning && <p className="mt-0.5 text-xs text-amber-700">{x.warning}</p>}
           </td>
         </tr>
       ))}
@@ -465,7 +465,7 @@ function Channels({ r }: { r: OrderFinancials }) {
                   <div className="font-medium">{c.name}</div>
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     {PLATFORM[c.platform] ?? c.platform}
-                    {c.missing_cost_orders > 0 && <span className="text-amber-700 dark:text-amber-300">· {c.missing_cost_orders} without product cost</span>}
+                    {c.missing_cost_orders > 0 && <span className="text-amber-700">· {c.missing_cost_orders} without product cost</span>}
                   </div>
                 </td>
                 <td className="py-2 text-right tabular-nums">{formatNumber(c.orders)}</td>
@@ -644,7 +644,7 @@ function RebuildDialog({ open, onOpenChange, range, canApply }: { open: boolean;
               </p>
             )}
             {p.unknown_items > 0 && (
-              <p className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="text-xs text-amber-700">
                 {p.unknown_items} item{p.unknown_items === 1 ? '' : 's'} still have no cost on the product (for example items from a store that does not send costs). Add the cost in <Link to="/admin/products" className="underline">Products</Link> first.
               </p>
             )}

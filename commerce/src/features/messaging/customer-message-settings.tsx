@@ -184,7 +184,7 @@ function SummarySection({ settings: s, disabled, saving, onSave }: {
     <Section icon={<SunMedium />} title="Daily summary for the owner"
       description="One email each morning with yesterday’s orders, approvals, shipments, deliveries, returns, ad spend and profit, and what is still waiting.">
       {!s.email_ready && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
           It goes out through your email setup: <Link to="/admin/email?tab=sender" className="font-medium underline">set up sending and switch emails on</Link> first.
         </p>
       )}
