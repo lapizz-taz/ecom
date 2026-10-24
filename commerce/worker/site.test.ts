@@ -95,6 +95,9 @@ describe('the Fullfilio website pages', () => {
     const confirm = await get(`https://fullfilio.com/order-confirm/00000000-0000-4000-8000-000000000001/${'a'.repeat(40)}`)
     expect(confirm.status).toBe(200)
     expect(confirm.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
+    const unsubscribe = await get(`https://fullfilio.com/unsubscribe/00000000-0000-4000-8000-000000000001/${'a'.repeat(40)}`)
+    expect(unsubscribe.status).toBe(200)
+    expect(unsubscribe.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
   })
 
   it('previews and other names of the website stay out of the index and point at fullfilio.com', async () => {

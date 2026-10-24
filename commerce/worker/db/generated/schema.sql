@@ -1191,6 +1191,20 @@ CREATE TABLE delivery_zones (
 CREATE TRIGGER delivery_zones_updated_at AFTER UPDATE ON delivery_zones FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE delivery_zones SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
+CREATE TABLE email_preferences (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  email TEXT NOT NULL,
+  token TEXT NOT NULL,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  unsubscribed_at TEXT CHECK (unsubscribed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', unsubscribed_at) = unsubscribed_at),
+  unsubscribed_via TEXT,
+  PRIMARY KEY (merchant_id, email),
+  CONSTRAINT email_preferences_email_check CHECK (email = lower(email) AND length(email) <= 320),
+  CONSTRAINT email_preferences_unsubscribed_via_check CHECK (unsubscribed_via IN ('LINK', 'ONE_CLICK')),
+  CONSTRAINT email_preferences_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT email_preferences_token_key UNIQUE (token)
+) STRICT;
+
 CREATE TABLE features (
   code TEXT NOT NULL,
   name TEXT NOT NULL,

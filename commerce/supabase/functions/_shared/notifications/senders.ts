@@ -10,8 +10,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { InboxGraph, inboxChannelKey } from '../inbox/meta.ts'
 import { META_INBOX_APP_KEY } from '../inbox/oauth.ts'
 import { MetaApiError } from '../meta/graph.ts'
-import { appBase } from '../storefront.ts'
+import { appBase, customerLinkBase } from '../storefront.ts'
 import { adminClient, rpc } from '../supabase.ts'
+import { type Lang, withUnsubscribeFooter } from './defaults.ts'
 import { htmlToText, LiquidError, renderLiquid } from './liquid.ts'
 import { type MailMessage, sendSmtp, type SmtpConfig, SmtpError, type SmtpSecurity } from './smtp.ts'
 import { paramValue } from './whatsapp-template.ts'
@@ -38,7 +39,9 @@ export async function sendEmailService(apiKey: string, m: MailMessage, fetchFn: 
   const res = await fetchFn(RESEND_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(m.replyTo ? { reply_to: m.replyTo } : {}) }),
+    body: JSON.stringify({
+      from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(m.replyTo ? { reply_to: m.replyTo } : {}), ...(m.headers ? { headers: m.headers } : {}),
+    }),
     signal: AbortSignal.timeout(30_000),
   })
   const body = (await res.json().catch(() => ({}))) as { id?: string; message?: string; name?: string }
@@ -146,6 +149,10 @@ interface EmailPlan {
   vars: Record<string, unknown> | null
   /** The order confirmation asks the customer to confirm: the order's token (and store) for the page link. */
   reply_token?: string | null
+  /** A cart reminder or review request: the address's token for the unsubscribe page and headers. */
+  unsubscribe_token?: string | null
+  /** The store's message language (the unsubscribe line). */
+  language?: string | null
   merchant_id?: string | null
 }
 
@@ -164,8 +171,11 @@ interface WhatsappPlan {
 
 export interface QueuedMessage { id: string; channel: 'EMAIL' | 'WHATSAPP'; recipient: string; subject: string | null; body: string }
 
-/** Test seams: the network, the SMTP client, the platform's database client and where the app lives. */
-export interface Deps { fetchFn?: FetchFn; smtp?: typeof sendSmtp; platform?: SupabaseClient; appUrl?: string }
+/**
+ * Test seams: the network, the SMTP client, the platform's database client, where the app lives
+ * and where the store's customer links open.
+ */
+export interface Deps { fetchFn?: FetchFn; smtp?: typeof sendSmtp; platform?: SupabaseClient; appUrl?: string; linkBase?: string }
 
 /** Where the app lives, for the links an email carries (null: not set up, the email goes without them). */
 function appUrl(deps: Deps): string | null {
@@ -177,33 +187,64 @@ function appUrl(deps: Deps): string | null {
   }
 }
 
-/** The order's confirm / cancel page: https://<app>/order-confirm/<store>/<token>. */
+const TOKEN = /^[0-9a-f]{40}$/
+
+/** The order's confirm / cancel page: https://<store or app>/order-confirm/<store>/<token>. */
 export function replyUrl(base: string, merchantId: string, token: string): string {
   return `${base}/order-confirm/${merchantId}/${token}`
 }
 
-/** Links that depend on where the app runs, added to the email's data when it is rendered. */
-export function withAppLinks(vars: Record<string, unknown>, plan: Pick<EmailPlan, 'reply_token' | 'merchant_id'>, base: string | null): Record<string, unknown> {
-  if (!base) return vars
+/**
+ * The unsubscribe page: opening it changes nothing; a POST to the same address (a mail app's own
+ * unsubscribe button, RFC 8058) unsubscribes at once.
+ */
+export function unsubscribeUrl(base: string, merchantId: string, token: string): string {
+  return `${base}/unsubscribe/${merchantId}/${token}`
+}
+
+/** The headers that make Gmail, Outlook and Apple Mail show their own one-click unsubscribe. */
+export function unsubscribeHeaders(url: string): Record<string, string> {
+  return { 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+}
+
+/**
+ * Links that depend on where things run, added to the email's data when it is rendered: the
+ * customer's pages (confirm, unsubscribe) on the store's address, the owner's on the app's.
+ */
+export function withAppLinks(
+  vars: Record<string, unknown>, plan: Pick<EmailPlan, 'reply_token' | 'unsubscribe_token' | 'merchant_id'>, base: string | null, customerBase: string | null = base,
+): Record<string, unknown> {
   const out: Record<string, unknown> = { ...vars }
   const order = vars.order as Record<string, unknown> | undefined
-  if (order && plan.reply_token && plan.merchant_id && /^[0-9a-f]{40}$/.test(plan.reply_token)) {
-    out.order = { ...order, reply_url: replyUrl(base, plan.merchant_id, plan.reply_token) }
+  if (customerBase && order && plan.reply_token && plan.merchant_id && TOKEN.test(plan.reply_token)) {
+    out.order = { ...order, reply_url: replyUrl(customerBase, plan.merchant_id, plan.reply_token) }
+  }
+  if (customerBase && plan.unsubscribe_token && plan.merchant_id && TOKEN.test(plan.unsubscribe_token)) {
+    out.unsubscribe_url = unsubscribeUrl(customerBase, plan.merchant_id, plan.unsubscribe_token)
   }
   const summary = vars.summary as Record<string, unknown> | undefined
-  if (summary && !summary.admin_url) out.summary = { ...summary, admin_url: `${base}/admin` }
+  if (base && summary && !summary.admin_url) out.summary = { ...summary, admin_url: `${base}/admin` }
   return out
 }
 
+export interface RenderedEmail { subject: string; html: string; headers?: Record<string, string> }
+
 /** Renders a queued email (when its data came with it) and keeps the result on the log. */
-export async function renderQueuedEmail(admin: SupabaseClient, item: QueuedMessage, plan: EmailPlan, deps: Deps = {}): Promise<{ subject: string; html: string }> {
+export async function renderQueuedEmail(admin: SupabaseClient, item: QueuedMessage, plan: EmailPlan, deps: Deps = {}): Promise<RenderedEmail> {
   if (!plan.liquid || plan.rendered) return { subject: item.subject ?? '', html: item.body }
   try {
-    const vars = withAppLinks(plan.vars ?? {}, plan, plan.reply_token || plan.vars?.summary ? appUrl(deps) : null)
+    const app = plan.vars?.summary ? appUrl(deps) : null
+    const customer = plan.reply_token || plan.unsubscribe_token
+      ? deps.linkBase?.replace(/\/+$/, '') ?? await customerLinkBase(admin).catch(() => appUrl(deps))
+      : null
+    const vars = withAppLinks(plan.vars ?? {}, plan, app, customer)
     const subject = renderLiquid(item.subject ?? '', vars, { mode: 'text' }).replace(/\s+/g, ' ').trim()
-    const html = renderLiquid(item.body, vars)
+    let html = renderLiquid(item.body, vars)
+    const unsubscribe = typeof vars.unsubscribe_url === 'string' ? vars.unsubscribe_url : null
+    // Offers and reminders always say how to stop them, whatever the template.
+    if (unsubscribe) html = withUnsubscribeFooter(html, unsubscribe, (plan.language === 'bn' ? 'bn' : 'en') as Lang)
     await rpc(admin, '_notification_log_rendered', { p_id: item.id, p_subject: subject, p_body: html })
-    return { subject, html }
+    return { subject, html, ...(unsubscribe ? { headers: unsubscribeHeaders(unsubscribe) } : {}) }
   } catch (e) {
     if (e instanceof LiquidError) throw new SendError(`The email template has a mistake: ${e.message}`, true)
     throw e
@@ -244,8 +285,8 @@ export async function sendQueued(admin: SupabaseClient, item: QueuedMessage, dep
   const plan = await rpc<EmailPlan | WhatsappPlan | null>(admin, '_notification_send_plan', { p_log_id: item.id })
   if (!plan) throw new SendError('The message is gone.', true)
   if (plan.channel === 'EMAIL') {
-    const { subject, html } = await renderQueuedEmail(admin, item, plan, deps)
-    return sendEmail(admin, plan, { to: item.recipient, subject, html, text: htmlToText(html) }, deps)
+    const { subject, html, headers } = await renderQueuedEmail(admin, item, plan, deps)
+    return sendEmail(admin, plan, { to: item.recipient, subject, html, text: htmlToText(html), ...(headers ? { headers } : {}) }, deps)
   }
   if (!plan.approved || !plan.template || !plan.language) throw new SendError('This WhatsApp message is not approved by Meta yet.', true)
   if (!plan.connected || !plan.channel_id || !plan.phone_number_id) throw new SendError('The WhatsApp number is not connected: choose it on the WhatsApp page.', true)

@@ -17,7 +17,7 @@ function echo(name: string) {
     xff: req.headers.get('x-forwarded-for'), vercel: req.headers.get('x-vercel-forwarded-for'), auth: req.headers.get('authorization'),
   })
 }
-const fns = { channels: echo('channels'), 'clerk-proxy': echo('clerk-proxy'), checkout: echo('checkout') }
+const fns = { channels: echo('channels'), 'clerk-proxy': echo('clerk-proxy'), checkout: echo('checkout'), messaging: echo('messaging') }
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -59,6 +59,22 @@ describe('Worker routing', () => {
     expect(clerk).toMatchObject({ name: 'clerk-proxy', url: 'https://app.example.com/functions/v1/clerk-proxy/v1/client?_clerk_js_version=5' })
     const shop = await (await r.route(new Request('https://app.example.com/oauth/shopify/callback?code=c&shop=s.myshopify.com&state=t'))).json()
     expect(shop).toMatchObject({ name: 'channels', url: 'https://app.example.com/functions/v1/channels/callback/shopify?code=c&shop=s.myshopify.com&state=t' })
+  })
+
+  it('sends a mail app\'s one-click unsubscribe (POST) to messaging; opening the link shows the page', async () => {
+    const r = createRouter(env(), fns)
+    const store = '00000000-0000-4000-8000-000000000001'
+    const token = 'a'.repeat(40)
+    const res = await (await r.route(new Request(`https://shop.example.com/unsubscribe/${store}/${token}`, {
+      method: 'POST', body: 'List-Unsubscribe=One-Click', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }))).json()
+    expect(res).toMatchObject({ name: 'messaging', method: 'POST', url: `https://shop.example.com/functions/v1/messaging?unsubscribe=${store}.${token}` })
+    // Opening the link in a browser is the page, never an unsubscribe.
+    await r.route(new Request(`https://shop.example.com/unsubscribe/${store}/${token}`))
+    expect(assets.fetch).toHaveBeenCalledTimes(1)
+    // Anything that is not a store and a token is not sent on.
+    const bad = await r.route(new Request(`https://shop.example.com/unsubscribe/${store}/xyz`, { method: 'POST' }))
+    expect(await bad.text()).toBe('asset /unsubscribe/00000000-0000-4000-8000-000000000001/xyz')
   })
 
   it('answers 404 for an unknown function and leaves everything else to the site', async () => {

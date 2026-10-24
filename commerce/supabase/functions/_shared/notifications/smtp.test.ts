@@ -140,4 +140,15 @@ describe('SMTP', () => {
     expect(long.split('\r\n ').every((w) => w.length <= 76)).toBe(true)
     expect(() => buildMessage({ ...mail, to: 'not-an-email' })).toThrow(/not valid/)
   })
+
+  it('adds the unsubscribe headers, and never a header that would break a line', () => {
+    const raw = buildMessage({ ...mail, headers: {
+      'List-Unsubscribe': '<https://shop.example/unsubscribe/m/t>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      'X-Evil': 'a\r\nBcc: evil@x.com', 'Bad Name': 'x',
+    } })
+    const headers = raw.split('\r\n\r\n')[0]
+    expect(headers).toContain('List-Unsubscribe: <https://shop.example/unsubscribe/m/t>')
+    expect(headers).toContain('List-Unsubscribe-Post: List-Unsubscribe=One-Click')
+    expect(headers).not.toMatch(/^Bcc:|X-Evil|Bad Name/m)
+  })
 })

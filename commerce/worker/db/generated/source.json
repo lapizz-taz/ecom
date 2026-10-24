@@ -1,5 +1,5 @@
 {
-  "migrations": 178,
-  "last": "20261126000200_messaging_v2.sql",
-  "sha256": "2abb2f292dbe566ada44b9646f59d0c88ecc07c0bf34414e104a86a62ff2b2f0"
+  "migrations": 179,
+  "last": "20261127000100_messaging_unsubscribe.sql",
+  "sha256": "a52f9ce4219df5372ceb3fb25e672a9ac9444772611d3cf3714150ad22b4861d"
 }

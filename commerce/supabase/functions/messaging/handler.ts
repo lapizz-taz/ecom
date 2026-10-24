@@ -9,13 +9,19 @@
 // For customers (no sign-in; the order's unguessable token is the key):
 //   order_reply_view  the order behind an email's "Confirm your order" link
 //   order_reply       the customer's Confirm or Cancel from that page
+//   unsubscribe_view  the address behind a cart reminder's or review request's "Unsubscribe" link
+//   unsubscribe       the customer stops (or starts again) those emails from that page
+//   POST ?unsubscribe=<store>.<token>  a mail app's own Unsubscribe button (RFC 8058 one-click;
+//                     the Worker sends POST /unsubscribe/<store>/<token> here)
 // For pg_cron (x-cron-secret), every 5 minutes while a store uses them:
 //   scheduled         abandoned cart reminders, review requests and the owner's daily summary
 // Runs on Supabase in production (SUPABASE_FUNCTIONS), next to notifications-dispatch, so a mailbox
 // that passes the test here also works for the real emails.
 import { z } from 'zod'
 import { isCronRequest } from '../_shared/cron.ts'
-import { EVENT_INFO, type MessageEvent, SAMPLE_DATA, WHATSAPP_BUTTONS, WHATSAPP_VARIABLES } from '../_shared/notifications/defaults.ts'
+import {
+  EVENT_INFO, type MessageEvent, SAMPLE_DATA, UNSUBSCRIBE_EVENTS, WHATSAPP_BUTTONS, WHATSAPP_VARIABLES, withUnsubscribeFooter,
+} from '../_shared/notifications/defaults.ts'
 import { htmlToText, LiquidError, renderLiquid } from '../_shared/notifications/liquid.ts'
 import {
   listWhatsappTemplates, SendError, sendEmail, sendWhatsappTemplate, SMTP_SECRET, submitWhatsappTemplate, whatsappGraph,
@@ -35,6 +41,8 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('scheduled') }),
   z.object({ action: z.literal('order_reply_view'), merchant_id: uuid, token: replyToken }),
   z.object({ action: z.literal('order_reply'), merchant_id: uuid, token: replyToken, reply: z.enum(['confirm', 'cancel']) }),
+  z.object({ action: z.literal('unsubscribe_view'), merchant_id: uuid, token: replyToken }),
+  z.object({ action: z.literal('unsubscribe'), merchant_id: uuid, token: replyToken, subscribe: z.boolean().default(false) }),
   z.object({
     action: z.literal('email_connect'),
     host: z.string().trim().toLowerCase().min(3).max(253),
@@ -158,6 +166,11 @@ async function emailTest(staff: StaffContext, input: Extract<Input, { action: 'e
   } catch (e) {
     throw bad(e instanceof LiquidError ? `The email template has a mistake: ${e.message}` : String(e))
   }
+  // A cart reminder or review request shows its unsubscribe line, as the customer will see it.
+  if (UNSUBSCRIBE_EVENTS.includes(n.event as MessageEvent) && typeof data.unsubscribe_url === 'string') {
+    const { language } = await rpc<{ language: 'en' | 'bn' }>(staff.admin, 'messaging_settings')
+    html = withUnsubscribeFooter(html, data.unsubscribe_url, language === 'bn' ? 'bn' : 'en')
+  }
   const plan = emailPlan(s)
   await logged(staff, { channel: 'EMAIL', to, subject, body: html, provider: s.provider }, () =>
     sendEmail(staff.admin, plan, { to, subject, html, text: htmlToText(html) }).catch((e) => {
@@ -263,6 +276,32 @@ async function orderReply(req: Request, input: Extract<Input, { action: 'order_r
   return view
 }
 
+// ------------------------------------------------------------------ customers: unsubscribe from cart reminders and reviews
+interface UnsubscribeView { email: string; unsubscribed: boolean; [k: string]: unknown }
+
+/** The unsubscribe page (no sign-in): the address's token is the key. Order emails are not affected. */
+async function unsubscribe(req: Request, input: Extract<Input, { action: 'unsubscribe_view' | 'unsubscribe' }>) {
+  rateLimit(`unsubscribe:${clientIp(req)}`, 30)
+  const admin = adminClient(input.merchant_id)
+  const view = input.action === 'unsubscribe'
+    ? await rpc<UnsubscribeView | null>(admin, 'email_unsubscribe_apply', { p_token: input.token, p_subscribe: input.subscribe, p_via: 'LINK' })
+    : await rpc<UnsubscribeView | null>(admin, 'email_unsubscribe_view', { p_token: input.token })
+  if (!view) throw new HttpError(404, 'This link is not valid any more.', 'NOT_FOUND')
+  return view
+}
+
+const ONE_CLICK = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-f]{40})$/
+
+/** A mail app's Unsubscribe button posts "List-Unsubscribe=One-Click" to the link in the email's header. */
+async function oneClickUnsubscribe(req: Request, key: string) {
+  rateLimit(`unsubscribe:${clientIp(req)}`, 30)
+  const m = ONE_CLICK.exec(key)
+  if (!m) throw new HttpError(404, 'This link is not valid any more.', 'NOT_FOUND')
+  const view = await rpc<UnsubscribeView | null>(adminClient(m[1]), 'email_unsubscribe_apply', { p_token: m[2], p_subscribe: false, p_via: 'ONE_CLICK' })
+  if (!view) throw new HttpError(404, 'This link is not valid any more.', 'NOT_FOUND')
+  return { ok: true }
+}
+
 // ------------------------------------------------------------------ pg_cron: reminders, reviews, daily summary
 interface DueCart { source: 'own' | 'shopify'; id: string; step: number; url: string | null }
 
@@ -292,12 +331,15 @@ async function scheduled() {
 export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
+    const oneClick = new URL(req.url).searchParams.get('unsubscribe')
+    if (oneClick !== null) return json(req, await oneClickUnsubscribe(req, oneClick))
     const input = parse(schema, await readJson(req))
     if (input.action === 'scheduled') {
       if (!(await isCronRequest(req, adminClient()))) throw new HttpError(401, 'Unauthorized', 'UNAUTHORIZED')
       return json(req, await scheduled())
     }
     if (input.action === 'order_reply_view' || input.action === 'order_reply') return json(req, await orderReply(req, input))
+    if (input.action === 'unsubscribe_view' || input.action === 'unsubscribe') return json(req, await unsubscribe(req, input))
     const staff = await requireStaff(req, 'notifications.manage')
     switch (input.action) {
       case 'email_connect': return json(req, await emailConnect(staff, input))

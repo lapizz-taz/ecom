@@ -611,7 +611,27 @@ export const EMAIL_VARIABLES: Array<{ name: string; label: string; events?: Mess
   { name: 'cart.url', label: 'Cart link', events: ['CART_REMINDER'] }, { name: 'cart.total | money', label: 'Cart total', events: ['CART_REMINDER'] },
   { name: 'cart.item_count', label: 'Items in the cart', events: ['CART_REMINDER'] },
   { name: 'shop.review_url', label: 'Review link', events: ['REVIEW_REQUEST'] },
+  { name: 'unsubscribe_url', label: 'Unsubscribe link', events: ['CART_REMINDER', 'REVIEW_REQUEST'] },
 ]
+
+/** The emails a customer can unsubscribe from: offers and reminders, never order updates. */
+export const UNSUBSCRIBE_EVENTS: MessageEvent[] = ['CART_REMINDER', 'REVIEW_REQUEST']
+
+/** The line added under a cart reminder or review request that has no unsubscribe link of its own. */
+export const UNSUBSCRIBE_TEXT: Record<Lang, { line: string; link: string }> = {
+  en: { line: 'Don’t want these emails?', link: 'Unsubscribe' },
+  bn: { line: 'এমন ইমেইল আর চান না?', link: 'আনসাবস্ক্রাইব করুন' },
+}
+
+const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+/** The email with an unsubscribe line at the bottom, unless its template already links to the page. */
+export function withUnsubscribeFooter(html: string, url: string, lang: Lang = 'en'): string {
+  if (html.includes(url)) return html
+  const t = UNSUBSCRIBE_TEXT[lang] ?? UNSUBSCRIBE_TEXT.en
+  const footer = `<div style="text-align:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b7280;padding:4px 12px 28px;">${t.line} <a href="${attr(url)}" style="color:#6b7280;text-decoration:underline;">${t.link}</a></div>`
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${footer}</body>`) : html + footer
+}
 
 /** What a WhatsApp or SMS text can use (the same names in both). */
 export const WHATSAPP_VARIABLES: Array<{ name: string; label: string; example: string; events?: MessageEvent[] }> = [

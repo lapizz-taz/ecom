@@ -3179,6 +3179,41 @@ export type Database = {
           },
         ]
       }
+      email_preferences: {
+        Row: {
+          merchant_id: string
+          email: string
+          token: string
+          created_at: string
+          unsubscribed_at: string | null
+          unsubscribed_via: string | null
+        }
+        Insert: {
+          merchant_id?: string
+          email: string
+          token: string
+          created_at?: string
+          unsubscribed_at?: string | null
+          unsubscribed_via?: string | null
+        }
+        Update: {
+          merchant_id?: string
+          email?: string
+          token?: string
+          created_at?: string
+          unsubscribed_at?: string | null
+          unsubscribed_via?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_preferences_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       features: {
         Row: {
           code: string
@@ -16230,6 +16265,13 @@ export type Database = {
       }
       merchant_store_address: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      messaging_channel_stats: {
+        Args: {
+          p_channel: string
+          p_days?: number
+        }
         Returns: Json
       }
       messaging_language_set: {
