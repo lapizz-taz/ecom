@@ -93,7 +93,7 @@ export default (
 
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
     const input = parse(schema, await readJson<Record<string, unknown>>(req))
-    const staff = await requireStaff(req, PERMISSION[input.action], { supportView: input.action === 'status' })
+    const staff = await requireStaff(req, PERMISSION[input.action], { read: input.action === 'status' })
     const admin = staff.admin
 
     if (input.action === 'status') {

@@ -28,8 +28,8 @@ const schema = z.discriminatedUnion('action', [
 export default (
   handle(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'METHOD_NOT_ALLOWED')
-    const staff = await requireStaff(req, 'users.manage')
     const input = parse(schema, await readJson(req))
+    const staff = await requireStaff(req, 'users.manage', { read: input.action === 'list' })
     const admin = staff.admin
 
     switch (input.action) {

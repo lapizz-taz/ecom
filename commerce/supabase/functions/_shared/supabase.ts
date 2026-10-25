@@ -131,28 +131,58 @@ export interface StaffContext {
 }
 
 /**
- * Requires a signed-in, active staff member with the given permission.
+ * Requires a signed-in, active staff member with the given permission, under the
+ * store's rules: nothing while the account is restricted, only reads while it is
+ * read-only, and no operational work before checking in when the store requires it.
  *
- * A platform employee in a customer-view support session is refused unless the
- * caller marks the action as a pure read (`supportView`): edge functions act
- * with the service role, so row-level security cannot keep a viewer from
- * placing calls, importing data or spending the merchant's credits here.
+ * `read` marks an action that only reads. A platform employee in a customer-view
+ * support session is refused anything else (and reads that need more than a view):
+ * edge functions act with the service role, so row-level security cannot keep a
+ * viewer from placing calls, importing data or spending the merchant's credits here.
+ * A read stays open in a read-only store and before check-in, as views do.
  */
-export async function requireStaff(req: Request, permission: string, options: { supportView?: boolean } = {}): Promise<StaffContext> {
+export async function requireStaff(req: Request, permission: string, options: { read?: boolean } = {}): Promise<StaffContext> {
   const user = await optionalUser(req)
   if (!user) throw new HttpError(401, 'Please sign in', 'UNAUTHENTICATED')
   const client = userClient(req)
   const { data, error } = await client.rpc('get_my_access')
   if (error) throw fromDbError(error)
-  const access = data as { role: string; permissions: string[]; merchant_id: string | null; support_session?: { id: string } | null } | null
+  const access = data as {
+    role: string; permissions: string[]; merchant_id: string | null; access_mode?: string; support_session?: { id: string } | null
+  } | null
   if (!access?.merchant_id) throw new HttpError(403, 'Staff access required', 'PERMISSION_DENIED')
-  if (access.support_session && !(options.supportView && permission.endsWith('.view'))) {
+  if (access.support_session && !(options.read && permission.endsWith('.view'))) {
     throw new HttpError(403, 'You are viewing this business as support: nothing can be changed or sent from here', 'SUPPORT_READ_ONLY')
   }
   if (access.role !== 'OWNER' && !access.permissions.includes(permission)) {
     throw new HttpError(403, `${permission} is required`, 'PERMISSION_DENIED')
   }
+  // The role allows it; the rules for the whole store must too: its access (closed, suspended, first
+  // payment not made or plan lapsed: nothing, or only viewing) and, in the operational modules, the
+  // check-in rule. has_permission is the check every table and database function makes; most actions
+  // here go on with the service role, which it would not stop.
+  if (!access.support_session) {
+    if (options.read) {
+      if (access.access_mode === 'BLOCKED') throw await storeRuleRefusal(client, 'BLOCKED')
+    } else if (!(await rpc<boolean>(client, 'has_permission', { p_code: permission }))) {
+      throw await storeRuleRefusal(client, access.access_mode)
+    }
+  }
   return { user, client, admin: adminClient(access.merchant_id), merchantId: access.merchant_id, role: access.role, permissions: access.permissions }
+}
+
+/** Why the store's rules refuse a staff member their role's permission, in the words the admin uses. */
+async function storeRuleRefusal(client: SupabaseClient, mode: string | undefined): Promise<HttpError> {
+  if (mode === 'BLOCKED') {
+    return new HttpError(403, 'This account is restricted: nothing can be changed or sent until it is active again. Open Billing or contact Fullfilio support.', 'ACCOUNT_RESTRICTED')
+  }
+  if (mode === 'READ_ONLY') {
+    return new HttpError(403, 'Read-only: you can view and export, but changes are paused until the plan is renewed.', 'READ_ONLY')
+  }
+  const day = await rpc<{ gate?: string | null } | null>(client, 'hr_my_day').catch(() => null)
+  if (day?.gate === 'CHECK_IN_REQUIRED') return new HttpError(403, 'Check in under HRM → Attendance to start work', 'CHECK_IN_REQUIRED')
+  if (day?.gate === 'ON_BREAK') return new HttpError(403, 'End your break to continue working', 'ON_BREAK')
+  return new HttpError(403, 'You do not have permission to do that', 'PERMISSION_DENIED')
 }
 
 /** Calls an RPC and converts database errors into HTTP errors. */

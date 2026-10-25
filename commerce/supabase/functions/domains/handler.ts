@@ -551,7 +551,7 @@ export default (
       return json(req, await platformAction(req, parse(platformActions, body)))
     }
     const input = parse(actions, body)
-    const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage', { supportView: input.action === 'list' })
+    const staff = await requireStaff(req, input.action === 'list' ? 'settings.view' : 'settings.manage', { read: input.action === 'list' })
     const admin = staff.admin
     // Ownership gate BEFORE any provider call: the Cloudflare zone / Vercel
     // project are shared across merchants, so a staffer must not be able to

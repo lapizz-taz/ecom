@@ -213,7 +213,17 @@
       "root_cause": "that export used its own CSV writer instead of the shared guarded one",
       "fix": "abandonedCsv uses toCsv from src/lib/csv.ts",
       "regression": "src/lib/csv.test.ts",
-      "status": "FIXED in code - needs Publish (website only)"
+      "status": "FIXED - live on production 25 Oct (website)"
+    },
+    {
+      "id": 13,
+      "module": "Backend functions (store rules)",
+      "severity": "P2",
+      "summary": "backend functions skipped the store's access mode (restricted / read-only) and the check-in rule: a suspended store's owner passed the staff check on 50 of 53 actions, a not-checked-in manager on courier booking, sync and history checks",
+      "root_cause": "requireStaff checked only the role's permission list from get_my_access; most actions then use the service role",
+      "fix": "requireStaff also calls has_permission (device, access mode, check-in) and names the reason; read-only actions (read option) stay open in read-only stores and before check-in",
+      "regression": "_shared/require-staff.test.ts (7; 6 fail without the fix); scripts/audit/functions-access-sweep.cjs 9/11 before, 14/14 after",
+      "status": "FIXED in code - needs Publish (website + channels, courier, meta-ads, ad-platforms, messaging on Supabase; no migration)"
     }
   ],
   "engine_gaps": [
@@ -397,6 +407,11 @@
       "module": "other check-then-call money flows (review)",
       "result": "refunds: start marks the payment REFUND_PENDING under a row lock, a second start is refused; SMS and lookups: charged once per message/request (existing tests); HR self-service writes only the caller's rows; email previews sandboxed; SSR head escaped",
       "status": "PASS"
+    },
+    {
+      "module": "store rules in backend functions (pass 10)",
+      "result": "135 staff actions: suspended owner 80 refused / 0 through; read-only owner 60 changes refused, 8 reads open; manager not checked in 18/18 refused; checked in 11 reached (control)",
+      "status": "PASS after finding 13"
     }
   ],
   "regression_pass4": {
@@ -449,5 +464,14 @@
     "typecheck": "0 errors",
     "build": "clean",
     "correction": "pass 8 unit count predates copying the rebuilt engine schema; worker/db/db.test.ts table count (208) failed until updated in pass 9"
+  },
+  "regression_pass10": {
+    "access_sweep": "14/14 (9/11 before the fix)",
+    "unit": "1031 passed, 2 skipped (require-staff.test.ts fails 6/7 without the fix)",
+    "typecheck": "0 errors",
+    "functions_check": "clean",
+    "build": "clean",
+    "browser": "functions-auth-sweep 5/5, admin 164/164, super-admin 56/56, messaging 43/43, order-lifecycle 31/31, moderator 16/16",
+    "db": "not rerun (no SQL change since pass 9: 757/757)"
   }
 }
