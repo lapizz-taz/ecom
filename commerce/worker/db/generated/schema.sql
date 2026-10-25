@@ -4381,6 +4381,19 @@ CREATE TABLE settings (
 CREATE TRIGGER settings_updated_at AFTER UPDATE ON settings FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE settings SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
+CREATE TABLE shipment_booking_claims (
+  order_id TEXT NOT NULL CHECK (length(order_id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  courier_id TEXT CHECK (courier_id IS NULL OR length(courier_id) = 36),
+  claimed_by TEXT CHECK (claimed_by IS NULL OR length(claimed_by) = 36),
+  claimed_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', claimed_at) = claimed_at),
+  PRIMARY KEY (order_id),
+  CONSTRAINT shipment_booking_claims_claimed_by_fkey FOREIGN KEY (claimed_by) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT shipment_booking_claims_courier_id_fkey FOREIGN KEY (courier_id) REFERENCES couriers (id) ON DELETE CASCADE,
+  CONSTRAINT shipment_booking_claims_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT shipment_booking_claims_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+) STRICT;
+
 CREATE TABLE shipment_charges (
   id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
   shipment_id TEXT NOT NULL CHECK (length(shipment_id) = 36),

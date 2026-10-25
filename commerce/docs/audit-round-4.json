@@ -130,7 +130,7 @@
       "root_cause": "any connected number counted as working",
       "fix": "reconnect warning, checklist and On state require status OK",
       "regression": "typecheck; browser pending",
-      "status": "FIXED"
+      "status": "FIXED (browser check passed: messaging-e2e)"
     },
     {
       "id": 5,
@@ -191,8 +191,19 @@
       "root_cause": "storefrontBase()/customerLinkBase() read store_domains with the service client (skips row security) without a merchant filter",
       "fix": "supabase/functions/_shared/storefront.ts primaryDomain() filters by merchant_id for a store's service client",
       "regression": "storefront.test.ts: store B gets its own subdomain, store A its own domain (fails without the fix)",
-      "status": "FIXED in code - needs Publish (Worker) and a Supabase backend-function deploy (messaging, notifications-dispatch, channels)",
+      "status": "FIXED - live on production 25 Oct (Worker + Supabase messaging, notifications-dispatch, channels)",
       "production": "1 live custom domain; 2 active stores and 1 onboarding; number of affected links sent not checked (customer messages)"
+    },
+    {
+      "id": 11,
+      "module": "Couriers (booking)",
+      "severity": "P2",
+      "summary": "two simultaneous bookings of one order both created a parcel at the courier; the second overwrote the first's tracking number, leaving an untracked live parcel",
+      "root_cause": "check-then-call-then-save with nothing holding the order between the check and the save",
+      "fix": "migration 20261201000100_shipment_booking_claims.sql (claim before the courier call, cleared by assign_courier, released on refusal, lapses after 3 min); withBookingClaim in the courier function",
+      "regression": "shipment-booking-claims.test.ts (incl. a two-connection race); booking.test.ts",
+      "status": "FIXED in code - needs the migration, the courier backend function deploy and Publish",
+      "production": "0 shipments in production, so no duplicate parcels yet"
     }
   ],
   "engine_gaps": [
@@ -225,6 +236,12 @@
       "cause": "messaging_due_carts column mapping",
       "tests": 1,
       "effect": "second cart reminder"
+    },
+    {
+      "id": "E6",
+      "cause": "text-to-integer cast run by SQLite truncates (1.5 -> 1) instead of refusing",
+      "tests": 1,
+      "effect": "none today: checkout validation refuses fractions first; stored quantity priced and reserved consistently"
     }
   ],
   "owner_actions": [
@@ -350,6 +367,21 @@
       "module": "signed-in-callable functions (live advisor)",
       "result": "566 definer functions; 9 internal are read-only policy checks; 25 unreferenced each have their own check or only read",
       "status": "PASS"
+    },
+    {
+      "module": "webhooks and outside callbacks (automated)",
+      "result": "courier, payment (bKash/PayStation/SSLCommerz), Shopify, WooCommerce, WordPress plugin, Meta inbox, Clerk, connect callbacks: every forged/unsigned/stale call refused; one signed control accepted per endpoint; 18 business tables unchanged",
+      "status": "PASS (40/40)"
+    },
+    {
+      "module": "storefront checkout tampering (automated)",
+      "result": "client prices/totals/statuses ignored; other store's, hidden and switched-off products, bad quantities, oversell, fake coupon refused with no order or reservation",
+      "status": "PASS (7/7; engine 6/7, E6)"
+    },
+    {
+      "module": "external API keys and other stores (automated)",
+      "result": "other store's order (number/id), lists, shared SKU stock and a mismatched store all out of reach",
+      "status": "PASS (4/4, engine 4/4)"
     }
   ],
   "regression_pass4": {
@@ -378,5 +410,13 @@
     "functions_check": "clean",
     "build": "clean",
     "note": "one unit run under parallel load had 1 failure; two reruns (one under the same load) passed in full; test name not captured"
+  },
+  "regression_pass8": {
+    "db": "757/757 (109 files)",
+    "unit": "1022 passed / 2 skipped",
+    "typecheck": "0 errors",
+    "functions_check": "clean",
+    "build": "clean",
+    "engine": "booking test 3/3 (race is Postgres-only)"
   }
 }

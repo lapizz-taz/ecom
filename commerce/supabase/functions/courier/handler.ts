@@ -11,6 +11,7 @@ import {
   COURIER_OPTIONAL_FIELDS, type CourierOptions, courierOptions, credentialHint, invalidCredentialFields, itemDescription,
   missingCredentialFields,
 } from '../_shared/courier/registry.ts'
+import { withBookingClaim } from '../_shared/courier/booking.ts'
 import { PathaoProvider, type PathaoStore, RedxProvider } from '../_shared/courier/providers.ts'
 import { CourierNotSupportedError } from '../_shared/courier/types.ts'
 import { isCronRequest } from '../_shared/cron.ts'
@@ -171,7 +172,7 @@ async function bookOrder(client: SupabaseClient, admin: SupabaseClient, orderId:
   const weightGrams = items.every((i) => i.product_variants?.weight_grams)
     ? items.reduce((s, i) => s + i.quantity * Number(i.product_variants!.weight_grams), 0) : null
   const parcelNote = note?.trim() || opts.default_note || null
-  const created = await provider.createShipment({
+  const created = await withBookingClaim(client, order.id, courier.id, () => provider.createShipment({
     orderNumber: order.order_number,
     recipientName: order.customer_name,
     recipientPhone: order.customer_phone,
@@ -184,7 +185,7 @@ async function bookOrder(client: SupabaseClient, admin: SupabaseClient, orderId:
     note: parcelNote,
     itemDescription: opts.send_product_names ? itemDescription(items) : null,
     storeId: storeId ?? null,
-  })
+  }))
   return rpc(client, 'assign_courier', {
     p_order_id: order.id,
     p_courier_id: courier.id,
