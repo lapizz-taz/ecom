@@ -542,6 +542,11 @@
       "module": "browser suites after the pass 14-15 database fixes (rerun, pass 15)",
       "result": "order-lifecycle-e2e 31/31 (P&L date in the test changed from UTC to the store's day), storefront-e2e 33/33",
       "status": "PASS"
+    },
+    {
+      "module": "scheduled jobs, plan refunds, credit grants, database dates, CSV exports (review, pass 15)",
+      "result": "no other job with the #17 pattern; refunds locked; grants keyed; store days used; Super Admin billing dashboard days from UTC midnight (noted); CSV formula guard on every export",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
