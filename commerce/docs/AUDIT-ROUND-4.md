@@ -155,6 +155,8 @@ failure; the two sweeps skip on the engine (they read the Postgres catalogs) and
 Status: **FAIL — BLOCKED for switch-over**, not a production defect. Recorded for D1-8; not fixed in
 this round (an engine change is not a small, safe fix).
 
+Regression after pass 10 (§4 #13, backend functions under the store's rules; no database change): new `functions-access-sweep` **14/14** (before the fix 9/11), unit **1031 passed / 2 skipped** (the new `require-staff.test.ts` included; it fails 6 of 7 without the fix), typecheck 0 errors, `functions:check` clean, production build clean; the backend sweep `functions-auth-sweep` 5/5 and the browser suites that drive the backend functions as an owner of an active store all pass on the fixed code — admin pages **164/164**, Super Admin **56/56** (customer-view support reads included), messaging **43/43**, order lifecycle **31/31**, Moderator **16/16**. Database tests not rerun: no SQL changed since pass 9 (757/757). Noted, not changed: scheduled jobs run for every store that is not closed (a suspended store's orders keep syncing), as `activeMerchants` states.
+
 ## 6. Needs the owner
 
 | What | Why | Where |

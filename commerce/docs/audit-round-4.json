@@ -464,5 +464,14 @@
     "typecheck": "0 errors",
     "build": "clean",
     "correction": "pass 8 unit count predates copying the rebuilt engine schema; worker/db/db.test.ts table count (208) failed until updated in pass 9"
+  },
+  "regression_pass10": {
+    "access_sweep": "14/14 (9/11 before the fix)",
+    "unit": "1031 passed, 2 skipped (require-staff.test.ts fails 6/7 without the fix)",
+    "typecheck": "0 errors",
+    "functions_check": "clean",
+    "build": "clean",
+    "browser": "functions-auth-sweep 5/5, admin 164/164, super-admin 56/56, messaging 43/43, order-lifecycle 31/31, moderator 16/16",
+    "db": "not rerun (no SQL change since pass 9: 757/757)"
   }
 }
