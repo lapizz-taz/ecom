@@ -254,6 +254,16 @@
       "fix": "migration 20261203000200: lock every stock row by variant id before the first change",
       "regression": "staff-stock-lock-order.test.ts 0/2 without the migration, 2/2 with it; related stock tests 18/18; engine 14 passed, 2 skipped",
       "status": "FIXED - live on production 25 Oct (migration)"
+    },
+    {
+      "id": 17,
+      "module": "Orders (unpaid advance job)",
+      "severity": "P3",
+      "summary": "the job that cancels unpaid-advance orders could cancel an order whose advance payment was confirmed while the job ran",
+      "root_cause": "expire_unpaid_advance_orders read its list without a lock and did not check each order again before cancelling",
+      "fix": "migration 20261204000100: lock each order and check it again before cancelling",
+      "regression": "payment-races.test.ts new case: 1 paid order cancelled without the migration, 0 with it; related 45/45; engine 19 passed, 3 skipped",
+      "status": "FIXED in code - migration not yet run on production"
     }
   ],
   "engine_gaps": [
@@ -506,6 +516,16 @@
     {
       "module": "staff stock saves and web orders at the same moment (new, pass 14)",
       "result": "bug -> finding #16 (deadlock-prone lock order), fixed in code",
+      "status": "FIXED"
+    },
+    {
+      "module": "order numbers, automatic merge, store sync jobs, a late advance payment (review, pass 15)",
+      "result": "no bug; note: one order-number sequence shared by all stores (numbers skip, gaps hint at platform volume); a payment after the advance deadline lands under Unresolved advances",
+      "status": "PASS"
+    },
+    {
+      "module": "unpaid-advance job and a payment at the same moment (new, pass 15)",
+      "result": "bug -> finding #17, fixed in code",
       "status": "FIXED"
     }
   ],

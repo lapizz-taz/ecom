@@ -1,6 +1,7 @@
 // The gateway's own notice and the shopper's browser coming back usually confirm an advance payment
 // at the same moment. They run here as real transactions on two connections, in a database of their
-// own (like stock-race.test.ts): one payment is counted once on the order, however the two meet.
+// own (like stock-race.test.ts): one payment is counted once on the order, however the two meet, and
+// the job that cancels orders whose advance never came does not cancel one that was just paid.
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { asService, asSystem, createTestDatabase, MERCHANT_1, num, one, value, type Db } from '../support/db'
@@ -66,6 +67,16 @@ async function paidOnOrder(db: Db, orderId: string) {
   })
 }
 
+/** Returns once the connection waits for a lock, or its work has ended (whichever is first). */
+async function waitingOrDone(watcher: Db, pid: number, work: Promise<unknown>): Promise<void> {
+  let done = false
+  work.then(() => { done = true }, () => { done = true })
+  for (let i = 0; i < 100 && !done; i++) {
+    if (await value<boolean>(watcher, `select coalesce((select wait_event_type = 'Lock' from pg_stat_activity where pid = $1), false)`, [pid])) return
+    await new Promise((r) => setTimeout(r, 50))
+  }
+}
+
 async function withTwo(test: (a: Db, b: Db) => Promise<void>) {
   const a = (await pool.connect()) as Db
   const b = (await pool.connect()) as Db
@@ -87,6 +98,35 @@ describe.skipIf(onEngine)('an advance payment confirmed twice at the same moment
       ])
       expect(results.filter((r) => r === 'succeeded')).toHaveLength(1)
       expect(results.some((r) => r.startsWith('error'))).toBe(false)
+      expect(await paidOnOrder(a, order.id)).toEqual({ status: 'CONFIRMED', paid: 55, lines: 1 })
+    }))
+
+  it('a payment confirmed while the unpaid-advance job runs: the paid order is not cancelled', () =>
+    withTwo(async (a, b) => {
+      const { order, payment } = await waitingForAdvance(a, '01711800003')
+      await committed(a, async () => {
+        await asSystem(a, MERCHANT_1)
+        await a.query(`update public.orders set advance_due_at = now() - interval '1 minute' where id = $1`, [order.id])
+      })
+      // The payment is being confirmed (the order is locked, not yet saved) when the job reads its list.
+      await a.query('begin')
+      await asService(a)
+      await a.query(`select public.confirm_payment($1, 'bkash', 'TRX-R3', 55, 'bkash:trx:TRX-R3', 'test', '{}'::jsonb, true)`, [payment.reference])
+      await b.query('begin')
+      await asService(b)
+      const pid = await value<number>(b, 'select pg_backend_pid()')
+      const job = b.query(`select public.expire_unpaid_advance_orders() as n`)
+      job.catch(() => undefined)
+      const watcher = (await pool.connect()) as Db
+      try {
+        await waitingOrDone(watcher, pid, job)
+      } finally {
+        watcher.release()
+      }
+      await a.query('commit')
+      const expired = (await job).rows[0].n
+      await b.query('commit')
+      expect(expired).toBe(0)
       expect(await paidOnOrder(a, order.id)).toEqual({ status: 'CONFIRMED', paid: 55, lines: 1 })
     }))
 

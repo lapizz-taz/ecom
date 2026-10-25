@@ -1,5 +1,5 @@
 {
-  "migrations": 186,
-  "last": "20261203000200_staff_stock_lock_order.sql",
-  "sha256": "ba363586c602b4bfbc684d7185fa22766088160706925b5632b71d2b4599d98f"
+  "migrations": 187,
+  "last": "20261204000100_unpaid_advance_job_recheck.sql",
+  "sha256": "e69fcb1f24e62e7c6273563bcdd3f956178d53ce0473c01955b9ceefe5921e0a"
 }
