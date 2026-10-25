@@ -224,6 +224,16 @@
       "fix": "requireStaff also calls has_permission (device, access mode, check-in) and names the reason; read-only actions (read option) stay open in read-only stores and before check-in",
       "regression": "_shared/require-staff.test.ts (7; 6 fail without the fix); scripts/audit/functions-access-sweep.cjs 9/11 before, 14/14 after",
       "status": "FIXED - live on production 25 Oct (website; courier v12, channels v27, meta-ads v6, ad-platforms v4, messaging v5)"
+    },
+    {
+      "id": 14,
+      "module": "Orders (new customer, two orders at once)",
+      "severity": "P3",
+      "summary": "two orders for a new phone at the same moment: the second failed on customers_phone_key and was not placed",
+      "root_cause": "_create_order inserted a missing customer with nothing serializing two orders for a new phone",
+      "fix": "migration 20261202000100: lock on (store, phone) and look again before creating the customer",
+      "regression": "checkout-races.test.ts 3/5 without the migration, 5/5 with it",
+      "status": "FIXED in code - needs migration run (no function or website change)"
     }
   ],
   "engine_gaps": [
@@ -412,6 +422,16 @@
       "module": "store rules in backend functions (pass 10)",
       "result": "135 staff actions: suspended owner 80 refused / 0 through; read-only owner 60 changes refused, 8 reads open; manager not checked in 18/18 refused; checked in 11 reached (control)",
       "status": "PASS after finding 13"
+    },
+    {
+      "module": "checkouts at the same moment (pass 11)",
+      "result": "coupon limits held; known customer ok; new customer second order failed (finding 14); 5/5 after the migration",
+      "status": "PASS after finding 14"
+    },
+    {
+      "module": "order merge and courier statements (review, pass 11)",
+      "result": "merge refuses paid / started / booked orders, locks both, store-scoped; statement COD paid once per line and capped at what the order owes",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
@@ -473,5 +493,11 @@
     "build": "clean",
     "browser": "functions-auth-sweep 5/5, admin 164/164, super-admin 56/56, messaging 43/43, order-lifecycle 31/31, moderator 16/16",
     "db": "not rerun (no SQL change since pass 9: 757/757)"
+  },
+  "regression_pass11": {
+    "db": "762/762 (110 files)",
+    "unit": "1031 passed, 2 skipped",
+    "cfdb": "order tests pass; tampering 6/7 (E6); race tests skip on the engine",
+    "note": "two DB runs stopped early on a full session disk; cleared caches, reran clean"
   }
 }
