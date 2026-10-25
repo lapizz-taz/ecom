@@ -263,7 +263,7 @@
       "root_cause": "expire_unpaid_advance_orders read its list without a lock and did not check each order again before cancelling",
       "fix": "migration 20261204000100: lock each order and check it again before cancelling",
       "regression": "payment-races.test.ts new case: 1 paid order cancelled without the migration, 0 with it; related 45/45; engine 19 passed, 3 skipped",
-      "status": "FIXED in code - migration not yet run on production"
+      "status": "FIXED - live on production 25 Oct (migration)"
     }
   ],
   "engine_gaps": [
