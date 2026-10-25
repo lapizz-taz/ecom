@@ -10,24 +10,17 @@
 -- shopper's order or the whole stock save.
 --
 -- Both now lock their stock rows by variant id before changing any. Patched in place (CREATE OR
--- REPLACE keeps owner and grants), one self-contained block per function: the Supabase SQL Editor may
--- run statements on different connections, so no temporary helper function. Safe to re-run.
+-- REPLACE keeps owner and grants), one self-contained block per function, every line of code written
+-- as a one-line E'' string: the script is pasted into the SQL Editor by hand, and a pasted multi-line
+-- string can lose its exact spaces and line breaks. Safe to re-run.
 -- =============================================================================
 
 -- 1. Bulk stock edit: every listed product's stock row, by variant, before the first change.
 do $$
 declare
   v_old text := replace(pg_get_functiondef('public.inventory_bulk_adjust(jsonb,text)'::regprocedure), E'\r', '');
-  v_from text := $a$  for v_item in select * from jsonb_array_elements(p_items) loop
-    v_mode := upper(coalesce(v_item ->> 'mode', 'ADD'));$a$;
-  v_to text := $b$  -- Same fixed lock order as web orders (by variant), so a save and an order never wait in a circle.
-  perform 1 from public.inventory
-  where variant_id in (select (e ->> 'variant_id')::uuid from jsonb_array_elements(p_items) e)
-  order by variant_id
-  for update;
-
-  for v_item in select * from jsonb_array_elements(p_items) loop
-    v_mode := upper(coalesce(v_item ->> 'mode', 'ADD'));$b$;
+  v_from text := E'  for v_item in select * from jsonb_array_elements(p_items) loop\n'
+              || E'    v_mode := upper(coalesce(v_item ->> ''mode'', ''ADD''));';
   v_hits int;
 begin
   if position('fixed lock order' in v_old) > 0 then
@@ -37,21 +30,20 @@ begin
   if v_hits <> 1 then
     raise exception 'staff stock lock order: inventory_bulk_adjust has changed (% matches)', v_hits;
   end if;
-  execute replace(v_old, v_from, v_to);
+  execute replace(v_old, v_from,
+    E'  -- Same fixed lock order as web orders (by variant), so a save and an order never wait in a circle.\n'
+    || E'  perform 1 from public.inventory\n'
+    || E'  where variant_id in (select (e ->> ''variant_id'')::uuid from jsonb_array_elements(p_items) e)\n'
+    || E'  order by variant_id\n'
+    || E'  for update;\n\n'
+    || v_from);
 end $$;
 
 -- 2. Receiving a purchase order: its products' stock rows, by variant, before the first line.
 do $$
 declare
   v_old text := replace(pg_get_functiondef('public.receive_purchase_order(uuid,jsonb,text)'::regprocedure), E'\r', '');
-  v_from text := $a$  for v_item in select * from public.purchase_order_items where purchase_order_id = p_id for update loop$a$;
-  v_to text := $b$  -- Same fixed lock order as web orders (by variant), so receiving and an order never wait in a circle.
-  perform 1 from public.inventory
-  where variant_id in (select variant_id from public.purchase_order_items where purchase_order_id = p_id)
-  order by variant_id
-  for update;
-
-  for v_item in select * from public.purchase_order_items where purchase_order_id = p_id for update loop$b$;
+  v_from text := E'  for v_item in select * from public.purchase_order_items where purchase_order_id = p_id for update loop';
   v_hits int;
 begin
   if position('fixed lock order' in v_old) > 0 then
@@ -61,7 +53,13 @@ begin
   if v_hits <> 1 then
     raise exception 'staff stock lock order: receive_purchase_order has changed (% matches)', v_hits;
   end if;
-  execute replace(v_old, v_from, v_to);
+  execute replace(v_old, v_from,
+    E'  -- Same fixed lock order as web orders (by variant), so receiving and an order never wait in a circle.\n'
+    || E'  perform 1 from public.inventory\n'
+    || E'  where variant_id in (select variant_id from public.purchase_order_items where purchase_order_id = p_id)\n'
+    || E'  order by variant_id\n'
+    || E'  for update;\n\n'
+    || v_from);
 end $$;
 
 select public._tenancy_own_functions();
