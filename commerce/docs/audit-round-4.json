@@ -467,6 +467,11 @@
       "module": "script in shopper / Facebook text (review, pass 13)",
       "result": "no raw HTML sinks with user text; labels print React-escaped DOM; no custom HTML blocks",
       "status": "PASS"
+    },
+    {
+      "module": "browser security headers, live (pass 13)",
+      "result": "frame-ancestors self, object-src none, base-uri self, XFO SAMEORIGIN, HSTS 1y, nosniff, referrer policy; script-src not limited (possible hardening)",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
