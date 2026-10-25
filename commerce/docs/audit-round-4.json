@@ -213,7 +213,7 @@
       "root_cause": "that export used its own CSV writer instead of the shared guarded one",
       "fix": "abandonedCsv uses toCsv from src/lib/csv.ts",
       "regression": "src/lib/csv.test.ts",
-      "status": "FIXED in code - needs Publish (website only)"
+      "status": "FIXED - live on production 25 Oct (website)"
     }
   ],
   "engine_gaps": [
