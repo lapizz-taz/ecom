@@ -191,7 +191,7 @@
       "root_cause": "storefrontBase()/customerLinkBase() read store_domains with the service client (skips row security) without a merchant filter",
       "fix": "supabase/functions/_shared/storefront.ts primaryDomain() filters by merchant_id for a store's service client",
       "regression": "storefront.test.ts: store B gets its own subdomain, store A its own domain (fails without the fix)",
-      "status": "FIXED in code - needs Publish (Worker) and a Supabase backend-function deploy (messaging, notifications-dispatch, channels)",
+      "status": "FIXED - live on production 25 Oct (Worker + Supabase messaging, notifications-dispatch, channels)",
       "production": "1 live custom domain; 2 active stores and 1 onboarding; number of affected links sent not checked (customer messages)"
     }
   ],
