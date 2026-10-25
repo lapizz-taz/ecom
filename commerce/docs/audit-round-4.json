@@ -524,5 +524,9 @@
     "unit": "1031 passed, 2 skipped",
     "cfdb": "order tests pass; tampering 6/7 (E6); race tests skip on the engine",
     "note": "two DB runs stopped early on a full session disk; cleared caches, reran clean"
+  },
+  "regression_pass12": {
+    "db": "764/764 (111 files)",
+    "note": "no product change in pass 12"
   }
 }

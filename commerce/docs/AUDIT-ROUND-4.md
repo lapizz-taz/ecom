@@ -167,6 +167,8 @@ Regression after pass 10 (§4 #13, backend functions under the store's rules; no
 
 Regression after pass 11 (§4 #14, migration `20261202000100`): database tests **762/762** (110 files, the new race tests included; two runs first stopped early because the session's disk allowance was full — the npm download cache and old local Worker data were cleared, nothing of the product), unit 1031 passed / 2 skipped, engine schema rebuilt; on the Cloudflare engine the order tests pass (coupons 9/9, checkout and fulfilment), tampering 6/7 as before (E6), the race tests skip there by design (one statement at a time).
 
+Regression after pass 12 (payment race test, reviews; no product change): database tests **764/764** (111 files).
+
 ## 6. Needs the owner
 
 | What | Why | Where |
