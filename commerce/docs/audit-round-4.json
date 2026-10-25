@@ -442,6 +442,21 @@
       "module": "redirects, public checkout lookups, website API, HR dates, SMS credits (review, pass 12)",
       "result": "same-store redirects only; checkout lookups cached, BD mobile only, rate limited, decision only; website API uses server-side checkout; store-local HR dates; SMS charged once and refunded on failure",
       "status": "PASS"
+    },
+    {
+      "module": "advance payment confirmed twice at once (pass 12)",
+      "result": "payment-races.test.ts 2/2: counted once, no error",
+      "status": "PASS"
+    },
+    {
+      "module": "order status changed by two at once (review, pass 12)",
+      "result": "order locked, move checked under the lock",
+      "status": "PASS"
+    },
+    {
+      "module": "uploaded files (review, pass 12)",
+      "result": "raster images only in the public bucket; bytes sniffed; nosniff, sandbox CSP, downloads; signed private links",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
