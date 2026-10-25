@@ -202,7 +202,7 @@
       "root_cause": "check-then-call-then-save with nothing holding the order between the check and the save",
       "fix": "migration 20261201000100_shipment_booking_claims.sql (claim before the courier call, cleared by assign_courier, released on refusal, lapses after 3 min); withBookingClaim in the courier function",
       "regression": "shipment-booking-claims.test.ts (incl. a two-connection race); booking.test.ts",
-      "status": "FIXED in code - needs the migration, the courier backend function deploy and Publish",
+      "status": "FIXED - live on production 25 Oct (migration, courier function v11, website)",
       "production": "0 shipments in production, so no duplicate parcels yet"
     }
   ],
