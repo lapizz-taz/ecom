@@ -19,6 +19,7 @@ import { recordExport } from '@/services/platform-data'
 import { formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { listPlatformAudit, type PlatformAuditRow } from '@/services/platform'
+import { isoDate } from '@/lib/dates'
 
 const PAGE_SIZE = 50
 const RESULT = { SUCCESS: 'success', FAILED: 'danger', DENIED: 'warning', REQUESTED: 'info' } as const
@@ -42,7 +43,7 @@ export default function PlatformAuditPage() {
     const all = await listPlatformAudit(filters, 1, 500)
     // Recorded before the file is made: an export that cannot be recorded does not happen.
     await recordExport('AUDIT', { rows: all.items.length, filters })
-    downloadCsv<PlatformAuditRow>(`platform-audit-${new Date().toISOString().slice(0, 10)}.csv`, all.items, [
+    downloadCsv<PlatformAuditRow>(`platform-audit-${isoDate(new Date())}.csv`, all.items, [
       { header: 'When', value: (r) => r.created_at },
       { header: 'Who', value: (r) => r.actor_email ?? 'system' },
       { header: 'Action', value: (r) => r.action },

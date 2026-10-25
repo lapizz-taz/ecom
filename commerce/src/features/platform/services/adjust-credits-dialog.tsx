@@ -12,6 +12,7 @@ import { toast } from '@/lib/toast'
 import { adjustCredits, type CreditType, formatCredits, isMoneyCredit } from '@/services/credits'
 import type { MerchantRef } from '@/services/platform'
 import { MerchantPicker } from './merchant-picker'
+import { isoDate } from '@/lib/dates'
 
 type Mode = 'PROMO' | 'ADD' | 'DEDUCT'
 
@@ -87,7 +88,7 @@ export function AdjustCreditsDialog({ merchant: fixed, open, onOpenChange, thres
         </Field>
         {mode !== 'DEDUCT' && (
           <Field label="Expires (optional)" hint="Unused credits are removed after this day">
-            <DatePicker clearable placeholder="No expiry" min={new Date().toISOString().slice(0, 10)} value={form.expires} onChange={(v) => setForm((f) => ({ ...f, expires: v }))} />
+            <DatePicker clearable placeholder="No expiry" min={isoDate(new Date())} value={form.expires} onChange={(v) => setForm((f) => ({ ...f, expires: v }))} />
           </Field>
         )}
       </div>

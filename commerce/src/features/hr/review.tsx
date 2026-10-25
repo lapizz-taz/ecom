@@ -9,6 +9,7 @@ import { useMyDay } from '@/features/hr/attendance'
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { attendanceBoard, employeeMonth, minutesLabel, type MonthDay, type MonthState, WEEKDAYS, zonedTime } from '@/services/hr'
+import { isoDate } from '@/lib/dates'
 
 const STATE: Record<MonthState, { label: string; cell: string }> = {
   PRESENT: { label: 'Present', cell: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' },
@@ -33,7 +34,7 @@ const monthName = (m: string) => new Date(`${m}T00:00:00Z`).toLocaleDateString('
 /** One employee's month at a glance, for HR (and for themselves). */
 export function AttendanceReview() {
   const me = useMyDay()
-  const today = me.data?.date ?? new Date().toISOString().slice(0, 10)
+  const today = me.data?.date ?? isoDate(new Date())
   const tz = me.data?.tz ?? 'Asia/Dhaka'
   const [month, setMonth] = useState(() => monthOf(today))
   const [who, setWho] = useState('')

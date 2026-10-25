@@ -25,6 +25,7 @@ import {
 import { clearPurchasePrefill, inventoryInsights, readPurchasePrefill } from '@/services/inventory'
 import type { Enums } from '@/types/database'
 import { PO_STATUS, SETTLEMENT } from './purchases'
+import { isoDate } from '@/lib/dates'
 
 interface Line { variant_id: string; label: string; quantity: number; unit_cost: number }
 
@@ -37,7 +38,7 @@ export default function PurchaseEditPage() {
   const po = useQuery({ queryKey: ['purchase', id], enabled: !isNew, queryFn: () => getPurchaseOrder(id!) })
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers })
   const [supplierId, setSupplierId] = useState('')
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10))
+  const [orderDate, setOrderDate] = useState(isoDate(new Date()))
   const [expected, setExpected] = useState('')
   const [shipping, setShipping] = useState('0')
   const [notes, setNotes] = useState('')

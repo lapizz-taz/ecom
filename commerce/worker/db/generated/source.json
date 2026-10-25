@@ -1,5 +1,5 @@
 {
-  "migrations": 183,
-  "last": "20261201000100_shipment_booking_claims.sql",
-  "sha256": "3cdd3133cdf07a96ff6b70f9d8d4d560579c0a2df06e37b8b398ac20284f8c3c"
+  "migrations": 187,
+  "last": "20261204000100_unpaid_advance_job_recheck.sql",
+  "sha256": "e69fcb1f24e62e7c6273563bcdd3f956178d53ce0473c01955b9ceefe5921e0a"
 }

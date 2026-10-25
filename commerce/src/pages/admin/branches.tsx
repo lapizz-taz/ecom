@@ -23,9 +23,10 @@ import {
   type Branch, type BranchKind, branchesOverview, branchReport, deleteBranch, enableBranches, saveBranch, setBranchStaff, setCentralBranch,
 } from '@/services/branches'
 import { listStaffUsers } from '@/services/users'
+import { isoDate } from '@/lib/dates'
 
 const KIND: Record<BranchKind, { label: string; icon: typeof Store }> = { STORE: { label: 'Store', icon: Store }, WAREHOUSE: { label: 'Warehouse', icon: Warehouse } }
-const isoDay = (d: Date) => d.toISOString().slice(0, 10)
+const isoDay = (d: Date) => isoDate(d)
 
 /** Inventory → Branches: track stock separately for each branch. */
 export default function BranchesPage() {

@@ -34,6 +34,7 @@ import {
 } from '@/services/abandoned'
 import { imageUrl } from '@/services/catalog'
 import { messagingSettings } from '@/services/messaging'
+import { isoDate } from '@/lib/dates'
 
 const PAGE_SIZE = 25
 
@@ -357,7 +358,7 @@ function ShopifySection() {
     const blob = new Blob([abandonedCsv(list)], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `abandoned-checkouts-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `abandoned-checkouts-${isoDate(new Date())}.csv`
     a.click()
     URL.revokeObjectURL(a.href)
   }
