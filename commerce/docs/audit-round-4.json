@@ -580,7 +580,7 @@
     "note": "no product change in pass 12"
   },
   "regression_pass14": {
-    "db": "766/766 with finding #15 (full suite, before #16); #16: focused 18/18",
+    "db": "768/768 (full suite with migrations 20261203000100 and 20261203000200)",
     "engine": "branches + inventory: 18 passed, 4 race/lock tests skipped (no row locks on the engine)"
   }
 }

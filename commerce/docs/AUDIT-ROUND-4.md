@@ -177,6 +177,8 @@ Regression after pass 11 (§4 #14, migration `20261202000100`): database tests *
 
 Regression after pass 12 (payment race test, reviews; no product change): database tests **764/764** (111 files).
 
+Regression after pass 14 (§4 #15 and #16, migrations `20261203000100` and `20261203000200`): database tests **768/768** (113 files, the new race and lock-order tests included; 766/766 with #15 alone); each new test fails without its migration and passes with it; engine schema rebuilt (only the three changed functions differ); on the Cloudflare engine branches and inventory pass 18/18, the 4 race and lock tests skip there by design. Production checked read-only before handing over the SQL: in `branch_transfer`, `inventory_bulk_adjust` and `receive_purchase_order` the text each migration replaces appears exactly once, none is patched yet, all owned by app_owner.
+
 ## 6. Needs the owner
 
 | What | Why | Where |
