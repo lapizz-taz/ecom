@@ -14,7 +14,7 @@ function cell(value: unknown): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
 }
 
-function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
+export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
   const lines = [columns.map((c) => cell(c.header)).join(',')]
   for (const row of rows) lines.push(columns.map((c) => cell(c.value(row))).join(','))
   return '﻿' + lines.join('\r\n')

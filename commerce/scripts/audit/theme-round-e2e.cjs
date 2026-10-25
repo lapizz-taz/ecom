@@ -417,27 +417,28 @@ async function until(fn, ms = 15000) {
       const st = await cta.evaluate((el) => { const s = getComputedStyle(el); return { img: s.backgroundImage, border: s.borderTopColor, color: s.color, radius: s.borderTopLeftRadius, h: el.getBoundingClientRect().height } })
       const box = await cta.boundingBox()
       await p.mouse.move(box.x + 12, box.y + box.height / 2)
-      // The light fades in: part-way after a moment, full a little later (not an on/off switch).
+      // The light (the button's ::before layer since 22 Oct) fades in: part-way after a moment, full a little later.
       await p.waitForTimeout(60)
-      const fadeEarly = await cta.evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--glow-a')))
+      const glow = (el) => Number(getComputedStyle(el, '::before').opacity)
+      const fadeEarly = await cta.evaluate(glow)
       await p.waitForTimeout(600)
-      const fadeFull = await cta.evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--glow-a')))
+      const fadeFull = await cta.evaluate(glow)
       const left = await cta.evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
       await p.mouse.move(box.x + box.width - 12, box.y + box.height / 2)
-      // The light glides after the cursor rather than jumping to it.
-      await p.waitForTimeout(40)
-      const glideX = await cta.evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue('--glow-x')))
+      // The light sits right under the cursor: moved once per frame, straight to the pointer, never trailing.
+      await p.waitForTimeout(80)
+      const followX = await cta.evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue('--glow-x')))
       await p.waitForTimeout(600)
-      const right = await cta.evaluate((el) => ({ img: getComputedStyle(el).backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
-      const smooth = fadeEarly > 0 && fadeEarly < 1 && fadeFull === 1 && glideX > 12 && glideX < box.width - 12
-      const hover = width < 500 ? 'rgb(195, 228, 255) (phone: no cursor)'
-        : !smooth ? `not smooth: ${JSON.stringify({ fadeEarly, fadeFull, glideX })}`
+      const right = await cta.evaluate((el) => ({ img: getComputedStyle(el, '::before').backgroundImage, x: el.style.getPropertyValue('--glow-x') }))
+      const smooth = fadeEarly > 0 && fadeEarly < 1 && fadeFull === 1 && Math.abs(followX - (box.width - 12)) <= 3
+      const hover = width < 500 ? 'rgba(240, 248, 255) (phone: no cursor)'
+        : !smooth ? `not smooth: ${JSON.stringify({ fadeEarly, fadeFull, followX })}`
           : (parseInt(left.x) < 30 && parseInt(right.x) > box.width - 30 ? right.img : `glow did not follow: ${left.x} → ${right.x}`)
       await p.locator('section').first().screenshot({ path: join(S, `round-site-${width}${light ? '-white' : ''}.png`) })
       const overflow = await p.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth)
       const footer = await p.locator('footer').innerText()
-      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && /^rgba\(255, 255, 255, 0\.07\)$/.test(st.border) && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgba?\(195, 228, 255/.test(hover) && overflow <= 1
-      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, see-through border, a light that fades in and glides after the cursor`, ok, JSON.stringify({ ...st, hover, overflow }))
+      const ok = /radial-gradient/.test(st.img) && /rgb\(93, 170, 255\)/.test(st.img) && /rgb\(14, 80, 192\)/.test(st.img) && /^rgba\(255, 255, 255, 0\.07\)$/.test(st.border) && st.color === 'rgb(255, 255, 255)' && st.radius === '10px' && /rgba?\(240, 248, 255/.test(hover) && overflow <= 1
+      step(`website ${width}px${light ? ' (white version)' : ''}: blue glow button (sky-blue middle, royal-blue edge), white text, 10px corners, see-through border, a light that fades in and sits under the cursor`, ok, JSON.stringify({ ...st, hover, overflow }))
       step(`website ${width}px${light ? ' (white version)' : ''}: footer shows help@fullfilio.com`, /help@fullfilio\.com/.test(footer))
       await c.close()
     }

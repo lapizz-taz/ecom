@@ -354,7 +354,7 @@ function ShopifySection() {
   const rows = q.data?.items ?? []
   const selectedRows = rows.filter((r) => selected.has(r.id))
   const downloadCsv = (list: ShopifyAbandoned[]) => {
-    const blob = new Blob(['﻿' + abandonedCsv(list)], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([abandonedCsv(list)], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = `abandoned-checkouts-${new Date().toISOString().slice(0, 10)}.csv`

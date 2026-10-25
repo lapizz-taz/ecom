@@ -204,6 +204,16 @@
       "regression": "shipment-booking-claims.test.ts (incl. a two-connection race); booking.test.ts",
       "status": "FIXED - live on production 25 Oct (migration, courier function v11, website)",
       "production": "0 shipments in production, so no duplicate parcels yet"
+    },
+    {
+      "id": 12,
+      "module": "Abandoned checkouts (export)",
+      "severity": "P3",
+      "summary": "abandoned-checkout CSV wrote shopper-typed fields unguarded, so a leading = + - @ ran as a spreadsheet formula",
+      "root_cause": "that export used its own CSV writer instead of the shared guarded one",
+      "fix": "abandonedCsv uses toCsv from src/lib/csv.ts",
+      "regression": "src/lib/csv.test.ts",
+      "status": "FIXED in code - needs Publish (website only)"
     }
   ],
   "engine_gaps": [
@@ -382,6 +392,11 @@
       "module": "external API keys and other stores (automated)",
       "result": "other store's order (number/id), lists, shared SKU stock and a mismatched store all out of reach",
       "status": "PASS (4/4, engine 4/4)"
+    },
+    {
+      "module": "other check-then-call money flows (review)",
+      "result": "refunds: start marks the payment REFUND_PENDING under a row lock, a second start is refused; SMS and lookups: charged once per message/request (existing tests); HR self-service writes only the caller's rows; email previews sandboxed; SSR head escaped",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
@@ -418,5 +433,21 @@
     "functions_check": "clean",
     "build": "clean",
     "engine": "booking test 3/3 (race is Postgres-only)"
+  },
+  "regression_pass9": {
+    "browser": {
+      "admin-pages-e2e": "164/164",
+      "super-admin-pages-e2e": "56/56",
+      "storefront-e2e": "33/33",
+      "order-lifecycle-e2e": "31/31",
+      "messaging-e2e": "43/43",
+      "moderator-e2e": "16/16",
+      "theme-presets-e2e": "11/11",
+      "theme-round-e2e": "36/36 (after copying dist/_site and updating its hover check to the 22 Oct glow design)"
+    },
+    "unit": "1024 passed / 2 skipped",
+    "typecheck": "0 errors",
+    "build": "clean",
+    "correction": "pass 8 unit count predates copying the rebuilt engine schema; worker/db/db.test.ts table count (208) failed until updated in pass 9"
   }
 }
