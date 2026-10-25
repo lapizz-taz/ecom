@@ -437,6 +437,11 @@
       "module": "purchase receiving (review, pass 11)",
       "result": "order, lines and stock locked; at most the outstanding quantity; a second receive finds nothing to receive",
       "status": "PASS"
+    },
+    {
+      "module": "redirects, public checkout lookups, website API, HR dates, SMS credits (review, pass 12)",
+      "result": "same-store redirects only; checkout lookups cached, BD mobile only, rate limited, decision only; website API uses server-side checkout; store-local HR dates; SMS charged once and refunded on failure",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
