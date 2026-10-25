@@ -171,6 +171,17 @@
       "fix": "migration 20261129000100_order_catalog.sql: products/product_variants tables closed to order creators; order forms and inbox products read order_catalog (cost only with _can_see_costs, stock count only with inventory.view/products.view); converter copy of _can_read_catalog fixed and checked by worker/db/snapshot.test.ts",
       "regression": "role sweep (no known-open entries), moderator-role.test.ts, snapshot.test.ts, browser moderator-e2e.cjs 16/16",
       "status": "FIXED - pending production migration"
+    },
+    {
+      "id": 9,
+      "module": "Super Admin (approvals)",
+      "severity": "P2",
+      "summary": "any platform employee could file an approval request directly with any module/action/payload; an approver of that module (e.g. a custom role with support.approve) could thereby make a Viewer Super Admin",
+      "root_cause": "internal helper platform_request_approval granted to authenticated and trusted the given module",
+      "fix": "migration 20261130000100_platform_approval_requests.sql: revoked from staff (flows only), action bound to its module",
+      "regression": "platform-approval-requests.test.ts; Super Admin roles write sweep",
+      "status": "FIXED - pending production migration",
+      "production": "1 platform employee, no custom roles, 7 requests all legitimate merchant deletions"
     }
   ],
   "engine_gaps": [
@@ -207,7 +218,7 @@
   ],
   "owner_actions": [
     {
-      "what": "Run migration 20261129000100_order_catalog.sql, then say Publish",
+      "what": "Run migration 20261130000100_platform_approval_requests.sql (finding 9)",
       "where": "Supabase SQL Editor"
     },
     {
@@ -337,5 +348,11 @@
     "build": "clean",
     "cfdb": "633 passed, 96 failed, 11 skipped (no new failure; new Moderator test passes)",
     "browser": "moderator-e2e 16/16"
+  },
+  "regression_pass6": {
+    "db": "745/745 (107 files)",
+    "unit": "1018 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "cfdb": "636 passed, 95 failed, 14 skipped (no new failure)"
   }
 }
