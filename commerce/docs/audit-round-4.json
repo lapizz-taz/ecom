@@ -457,6 +457,16 @@
       "module": "uploaded files (review, pass 12)",
       "result": "raster images only in the public bucket; bytes sniffed; nosniff, sandbox CSP, downloads; signed private links",
       "status": "PASS"
+    },
+    {
+      "module": "payments to Fullfilio confirmed twice (review, pass 13)",
+      "result": "billing payment, invoice, subscription and PBX transaction locked; second confirmation is already_succeeded",
+      "status": "PASS"
+    },
+    {
+      "module": "script in shopper / Facebook text (review, pass 13)",
+      "result": "no raw HTML sinks with user text; labels print React-escaped DOM; no custom HTML blocks",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
