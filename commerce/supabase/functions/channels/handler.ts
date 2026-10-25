@@ -818,7 +818,7 @@ export default (
     const staff = await requireStaff(req,
       input.action === 'retry_import' ? 'orders.create' : input.action === 'process_jobs' || input.action === 'order_action' ? 'orders.update' : input.action === 'import_catalog' ? 'inventory.view' : input.action === 'abandoned_sync' ? 'orders.view'
         : input.action === 'ad_tracking_get' ? 'settings.view' : 'settings.manage',
-      { supportView: input.action === 'ad_tracking_get' })
+      { read: input.action === 'ad_tracking_get' || input.action === 'plugin_status' })
     const admin = staff.admin
     const actor = staff.user.id
 

@@ -98,7 +98,7 @@ export default (
     const input = parse(schema, { action: 'check', ...body })
     // Linking New Order's own recent check to the order it just created needs only orders.create.
     const reuseOnly = input.action === 'check' && input.reuse && !!input.order_id
-    const staff = await requireStaff(req, reuseOnly ? 'orders.create' : PERMISSION[input.action], { supportView: input.action === 'courier_history_status' || input.action === 'courier_panel_status' })
+    const staff = await requireStaff(req, reuseOnly ? 'orders.create' : PERMISSION[input.action], { read: input.action === 'courier_history_status' || input.action === 'courier_panel_status' })
     const admin = staff.admin
     const settings = await getSettings<FraudSettings>(admin, 'fraud')
 

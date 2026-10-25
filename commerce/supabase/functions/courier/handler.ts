@@ -311,7 +311,7 @@ export default (
       // Scheduled: only stores that turned the automatic check on, and only when it is due.
       return json(req, await forEachMerchant('courier', (admin) => scheduledCheck(admin)))
     }
-    const staff = await requireStaff(req, PERMISSION[input.action] ?? 'shipments.manage')
+    const staff = await requireStaff(req, PERMISSION[input.action] ?? 'shipments.manage', { read: input.action === 'tracking' })
     const client = staff.client
     const admin = staff.admin
 
