@@ -233,7 +233,7 @@
       "root_cause": "_create_order inserted a missing customer with nothing serializing two orders for a new phone",
       "fix": "migration 20261202000100: lock on (store, phone) and look again before creating the customer",
       "regression": "checkout-races.test.ts 3/5 without the migration, 5/5 with it",
-      "status": "FIXED in code - needs migration run (no function or website change)"
+      "status": "FIXED - live on production 25 Oct (migration)"
     }
   ],
   "engine_gaps": [
