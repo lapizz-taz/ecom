@@ -602,5 +602,9 @@
   "regression_pass14": {
     "db": "768/768 (full suite with migrations 20261203000100 and 20261203000200)",
     "engine": "branches + inventory: 18 passed, 4 race/lock tests skipped (no row locks on the engine)"
+  },
+  "regression_pass15": {
+    "db": "769/769 (full suite with migration 20261204000100)",
+    "engine": "finance-payments 19/19, 3 race cases skipped"
   }
 }

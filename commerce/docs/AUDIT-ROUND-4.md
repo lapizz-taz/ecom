@@ -182,6 +182,8 @@ Regression after pass 12 (payment race test, reviews; no product change): databa
 
 Regression after pass 14 (§4 #15 and #16, migrations `20261203000100` and `20261203000200`): database tests **768/768** (113 files, the new race and lock-order tests included; 766/766 with #15 alone); each new test fails without its migration and passes with it; engine schema rebuilt (only the three changed functions differ); on the Cloudflare engine branches and inventory pass 18/18, the 4 race and lock tests skip there by design. Production checked read-only before handing over the SQL: in `branch_transfer`, `inventory_bulk_adjust` and `receive_purchase_order` the text each migration replaces appears exactly once, none is patched yet, all owned by app_owner.
 
+Regression after pass 15 (§4 #17, migration `20261204000100`): database tests **769/769** (113 files, the new payment race case included; it fails without the migration and passes with it); engine schema rebuilt (only `expire_unpaid_advance_orders` differs); on the Cloudflare engine finance-payments 19/19, the race cases skip there by design. Production checked read-only before handing over the SQL: the text the migration replaces appears exactly once, not yet patched, owned by app_owner.
+
 ## 6. Needs the owner
 
 | What | Why | Where |
