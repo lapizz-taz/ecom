@@ -51,6 +51,7 @@ import { listChannelImports } from '@/services/channels'
 import { syncAllShipments } from '@/services/couriers'
 import type { DuplicateGroup } from '@/services/orders'
 import type { CheckoutLead, OrderListItem, OrderStatus, ReviewStatus } from '@/types/domain'
+import { isoDate } from '@/lib/dates'
 
 type View = 'all' | 'web' | 'approved'
 const PAGE_SIZE = 25
@@ -252,7 +253,7 @@ export function OrdersPage({ view }: { view: View }) {
     setExporting(true)
     try {
       const rows = selected.size ? (orders.data?.items ?? []).filter((o) => selected.has(o.id)) : await exportOrders(filters)
-      downloadCsv(`orders-${view}-${new Date().toISOString().slice(0, 10)}`, rows, [
+      downloadCsv(`orders-${view}-${isoDate(new Date())}`, rows, [
         { header: 'Order', value: (o) => o.order_number },
         { header: 'Date', value: (o) => formatDateTime(o.created_at) },
         { header: 'Stage', value: (o) => STAGE[o.stage]?.label ?? o.stage },

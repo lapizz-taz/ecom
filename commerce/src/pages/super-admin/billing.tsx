@@ -27,8 +27,9 @@ import {
   type BillingControls, billingControls, billingDashboard, billingPayment, type BillingPaymentDetail, checkRefund, PAYMENT_STATUS, type PaymentPurpose,
   type PaymentStatus, PURPOSE_LABEL, recheckPayment, reconcilePayments, refundPayment, resolveBillingReview, saveBillingControls,
 } from '@/services/billing-payments'
+import { isoDate } from '@/lib/dates'
 
-const iso = (d: Date) => d.toISOString().slice(0, 10)
+const iso = (d: Date) => isoDate(d)
 const PAGE = 50
 const err = (e: unknown) => toast.error((e as Error).message)
 

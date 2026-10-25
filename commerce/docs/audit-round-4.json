@@ -264,6 +264,16 @@
       "fix": "migration 20261204000100: lock each order and check it again before cancelling",
       "regression": "payment-races.test.ts new case: 1 paid order cancelled without the migration, 0 with it; related 45/45; engine 19 passed, 3 skipped",
       "status": "FIXED - live on production 25 Oct (migration)"
+    },
+    {
+      "id": 18,
+      "module": "Admin dates (today from UTC)",
+      "severity": "P3",
+      "summary": "from midnight to 6 AM in Bangladesh some screens used yesterday's date (HR setup board, default report ranges, purchase order date, credit expiry minimum, CSV names)",
+      "root_cause": "toISOString().slice(0, 10) is the UTC date; the rest of the admin uses isoDate (local calendar date)",
+      "fix": "10 screens switched to isoDate; three UTC-on-purpose helpers kept",
+      "regression": "architecture.test.ts guard (fails on the old screens); unit 1032 passed; typecheck; build",
+      "status": "FIXED in code - website not yet published"
     }
   ],
   "engine_gaps": [

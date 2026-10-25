@@ -22,6 +22,7 @@ import {
   listShifts, listSops, saveDepartment, saveEmployee, saveHoliday, saveHrSettings, saveShift, saveSop, setDepartmentMembers, type Shift, type Sop, sopSteps, timeLabel,
   WEEKDAYS,
 } from '@/services/hr'
+import { isoDate } from '@/lib/dates'
 
 const COLORS = ['#0ea5e9', '#14b8a6', '#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7', '#64748b']
 const invalidate = (qc: ReturnType<typeof useQueryClient>) => { void qc.invalidateQueries({ queryKey: ['hr'] }) }
@@ -158,7 +159,7 @@ export function DepartmentsSop() {
 
 function DepartmentCards({ departments, onEdit }: { departments: Department[]; onEdit: (d: Department) => void }) {
   const { can } = useAuth()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = isoDate(new Date())
   const employees = useQuery({ queryKey: ['hr', 'employees'], queryFn: listEmployees })
   const sops = useQuery({ queryKey: ['hr', 'sops'], queryFn: listSops })
   const board = useQuery({ queryKey: ['hr', 'board', today], queryFn: () => attendanceBoard(today), enabled: can('hr.view') })
@@ -317,7 +318,7 @@ function ComplianceView() {
 
 function DepartmentDialog({ dept, onClose }: { dept: Partial<Department>; onClose: () => void }) {
   const qc = useQueryClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = isoDate(new Date())
   const staff = useQuery({ queryKey: ['hr', 'board', today], queryFn: () => attendanceBoard(today) })
   const [v, setV] = useState(dept)
   const save = useMutation({ mutationFn: () => saveDepartment(v), onSuccess: () => { toast.success('Department saved'); invalidate(qc); onClose() }, onError })
@@ -391,7 +392,7 @@ function SopDialog({ sop, departments, onClose }: { sop: Partial<Sop>; departmen
 /** Staff: department, shift, designation, code and joining date. */
 function StaffAssignment({ departments }: { departments: Department[] }) {
   const { can } = useAuth()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = isoDate(new Date())
   const board = useQuery({ queryKey: ['hr', 'board', today], queryFn: () => attendanceBoard(today) })
   const employees = useQuery({ queryKey: ['hr', 'employees'], queryFn: listEmployees })
   const shifts = useQuery({ queryKey: ['hr', 'shifts'], queryFn: listShifts })
@@ -641,7 +642,7 @@ const fromTri = (t: Tri) => (t === 'inherit' ? '' : t === 'on')
 /** People with their own rules: exempt from the check-in rule, own break limit, auto break or check-out on/off. */
 function EmployeeOverrides() {
   const { can } = useAuth()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = isoDate(new Date())
   const employees = useQuery({ queryKey: ['hr', 'employees'], queryFn: listEmployees })
   const board = useQuery({ queryKey: ['hr', 'board', today], queryFn: () => attendanceBoard(today) })
   const [editing, setEditing] = useState<string | null>(null)

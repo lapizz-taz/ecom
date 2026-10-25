@@ -34,6 +34,14 @@ describe('architecture', () => {
     expect(offenders).toEqual([])
   })
 
+  it("takes today's date from the local calendar (isoDate), not from UTC", () => {
+    // toISOString() is the UTC date: from midnight to 6 AM in Bangladesh that is still yesterday. These
+    // only do arithmetic on date strings already in UTC, or read dates a library gives in UTC.
+    const utcOnPurpose = ['features/hr/attendance.tsx', 'features/hr/review.tsx', 'features/couriers/statement-parse.ts']
+    const offenders = files(SRC).filter((f) => !utcOnPurpose.includes(rel(f)) && readFileSync(f, 'utf8').includes('toISOString().slice(0, 10)')).map(rel)
+    expect(offenders).toEqual([])
+  })
+
   it('names files in kebab-case', () => {
     const offenders = files(SRC).map(rel).filter((f) => !/^([a-z0-9]+(-[a-z0-9]+)*\/)*[a-z0-9]+(-[a-z0-9]+)*(\.d)?\.tsx?$/.test(f) && f !== 'App.tsx')
     expect(offenders).toEqual([])

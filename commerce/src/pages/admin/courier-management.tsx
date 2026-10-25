@@ -27,6 +27,7 @@ import {
 } from '@/services/couriers'
 import { assignOrders, autoPickOverview } from '@/services/order-tools'
 import { setOrderTags } from '@/services/orders'
+import { isoDate } from '@/lib/dates'
 
 const TABS: Array<{ value: ParcelTab; label: string; total: string }> = [
   { value: 'in_transit', label: 'In transit', total: 'Total in-transit parcels' },
@@ -501,7 +502,7 @@ function HistoryDialog({ parcel, onClose }: { parcel: Parcel | null; onClose: ()
   )
 }
 
-const iso = (d: Date) => d.toISOString().slice(0, 10)
+const iso = (d: Date) => isoDate(d)
 
 function ReturnAnalysisView() {
   const [range, setRange] = useState(() => ({ from: iso(new Date(Date.now() - 29 * 86_400_000)), to: iso(new Date()) }))
