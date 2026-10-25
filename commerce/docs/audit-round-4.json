@@ -193,6 +193,17 @@
       "regression": "storefront.test.ts: store B gets its own subdomain, store A its own domain (fails without the fix)",
       "status": "FIXED - live on production 25 Oct (Worker + Supabase messaging, notifications-dispatch, channels)",
       "production": "1 live custom domain; 2 active stores and 1 onboarding; number of affected links sent not checked (customer messages)"
+    },
+    {
+      "id": 11,
+      "module": "Couriers (booking)",
+      "severity": "P2",
+      "summary": "two simultaneous bookings of one order both created a parcel at the courier; the second overwrote the first's tracking number, leaving an untracked live parcel",
+      "root_cause": "check-then-call-then-save with nothing holding the order between the check and the save",
+      "fix": "migration 20261201000100_shipment_booking_claims.sql (claim before the courier call, cleared by assign_courier, released on refusal, lapses after 3 min); withBookingClaim in the courier function",
+      "regression": "shipment-booking-claims.test.ts (incl. a two-connection race); booking.test.ts",
+      "status": "FIXED in code - needs the migration, the courier backend function deploy and Publish",
+      "production": "0 shipments in production, so no duplicate parcels yet"
     }
   ],
   "engine_gaps": [
@@ -399,5 +410,13 @@
     "functions_check": "clean",
     "build": "clean",
     "note": "one unit run under parallel load had 1 failure; two reruns (one under the same load) passed in full; test name not captured"
+  },
+  "regression_pass8": {
+    "db": "757/757 (109 files)",
+    "unit": "1022 passed / 2 skipped",
+    "typecheck": "0 errors",
+    "functions_check": "clean",
+    "build": "clean",
+    "engine": "booking test 3/3 (race is Postgres-only)"
   }
 }

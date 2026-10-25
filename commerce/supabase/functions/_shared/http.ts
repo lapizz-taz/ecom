@@ -96,6 +96,8 @@ const DB_CODES: Record<string, number> = {
   LIMIT_REACHED: 402,
   ACCOUNT_RESTRICTED: 403,
   DOMAIN_REJECTED: 422,
+  ALREADY_BOOKED: 409,
+  BOOKING_IN_PROGRESS: 409,
 }
 
 export function fromDbError(error: { message?: string; code?: string; details?: string } | null | undefined): HttpError {
