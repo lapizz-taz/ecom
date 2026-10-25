@@ -244,6 +244,16 @@
       "fix": "migration 20261203000100: lock the source rows by variant id before checking",
       "regression": "branch-races.test.ts 0/2 without the migration, 2/2 with it; branches.test.ts 4/4; engine 4 passed, 2 skipped",
       "status": "FIXED in code - migration not yet run on production"
+    },
+    {
+      "id": 16,
+      "module": "Stock (bulk edit, purchase receiving)",
+      "severity": "P3",
+      "summary": "a bulk stock edit or a purchase receipt locked stock rows in list order; with a web order for the same products one of them could be aborted (deadlock)",
+      "root_cause": "inventory_bulk_adjust and receive_purchase_order were not covered by the variant-order locking of migration 20261109002400",
+      "fix": "migration 20261203000200: lock every stock row by variant id before the first change",
+      "regression": "staff-stock-lock-order.test.ts 0/2 without the migration, 2/2 with it; related stock tests 18/18; engine 14 passed, 2 skipped",
+      "status": "FIXED in code - migration not yet run on production"
     }
   ],
   "engine_gaps": [
@@ -492,6 +502,11 @@
       "module": "stock moved between branches at the same moment (new, pass 14)",
       "result": "bug -> finding #15 (central branch over-allocated; deadlock-prone lock order), fixed in code",
       "status": "FIXED"
+    },
+    {
+      "module": "staff stock saves and web orders at the same moment (new, pass 14)",
+      "result": "bug -> finding #16 (deadlock-prone lock order), fixed in code",
+      "status": "FIXED"
     }
   ],
   "regression_pass4": {
@@ -563,5 +578,9 @@
   "regression_pass12": {
     "db": "764/764 (111 files)",
     "note": "no product change in pass 12"
+  },
+  "regression_pass14": {
+    "db": "766/766 with finding #15 (full suite, before #16); #16: focused 18/18",
+    "engine": "branches + inventory: 18 passed, 4 race/lock tests skipped (no row locks on the engine)"
   }
 }

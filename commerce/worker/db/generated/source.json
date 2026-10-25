@@ -1,5 +1,5 @@
 {
-  "migrations": 185,
-  "last": "20261203000100_branch_transfer_locks.sql",
-  "sha256": "9f9332a1d4e1750a47ad5e6e60d5b7bec1001a1c938160cf6cf6d84e1ff2f36d"
+  "migrations": 186,
+  "last": "20261203000200_staff_stock_lock_order.sql",
+  "sha256": "ba363586c602b4bfbc684d7185fa22766088160706925b5632b71d2b4599d98f"
 }
