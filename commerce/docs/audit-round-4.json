@@ -234,6 +234,16 @@
       "fix": "migration 20261202000100: lock on (store, phone) and look again before creating the customer",
       "regression": "checkout-races.test.ts 3/5 without the migration, 5/5 with it",
       "status": "FIXED - live on production 25 Oct (migration)"
+    },
+    {
+      "id": 15,
+      "module": "Branch stock (transfers)",
+      "severity": "P3",
+      "summary": "two transfers out of the central branch at the same moment both passed the stock check (10 units: 8 + 8 moved); a multi-product transfer could deadlock with another",
+      "root_cause": "branch_transfer computed the central branch's share without a lock and locked source rows in item order",
+      "fix": "migration 20261203000100: lock the source rows by variant id before checking",
+      "regression": "branch-races.test.ts 0/2 without the migration, 2/2 with it; branches.test.ts 4/4; engine 4 passed, 2 skipped",
+      "status": "FIXED in code - migration not yet run on production"
     }
   ],
   "engine_gaps": [
@@ -472,6 +482,16 @@
       "module": "browser security headers, live (pass 13)",
       "result": "frame-ancestors self, object-src none, base-uri self, XFO SAMEORIGIN, HSTS 1y, nosniff, referrer policy; script-src not limited (possible hardening)",
       "status": "PASS"
+    },
+    {
+      "module": "returns, refunds, Open Next, editing a booked order (review, pass 14)",
+      "result": "returns capped per line with order and lines locked; refunds capped by amount paid under the order lock; Open Next uses skip locked and assigns in the same step; booked-order edits warned in the UI",
+      "status": "PASS"
+    },
+    {
+      "module": "stock moved between branches at the same moment (new, pass 14)",
+      "result": "bug -> finding #15 (central branch over-allocated; deadlock-prone lock order), fixed in code",
+      "status": "FIXED"
     }
   ],
   "regression_pass4": {
