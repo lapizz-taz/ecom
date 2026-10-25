@@ -223,7 +223,7 @@
       "root_cause": "requireStaff checked only the role's permission list from get_my_access; most actions then use the service role",
       "fix": "requireStaff also calls has_permission (device, access mode, check-in) and names the reason; read-only actions (read option) stay open in read-only stores and before check-in",
       "regression": "_shared/require-staff.test.ts (7; 6 fail without the fix); scripts/audit/functions-access-sweep.cjs 9/11 before, 14/14 after",
-      "status": "FIXED in code - needs Publish (website + channels, courier, meta-ads, ad-platforms, messaging on Supabase; no migration)"
+      "status": "FIXED - live on production 25 Oct (website; courier v12, channels v27, meta-ads v6, ad-platforms v4, messaging v5)"
     }
   ],
   "engine_gaps": [
