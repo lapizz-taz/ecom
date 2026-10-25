@@ -170,7 +170,29 @@
       "root_cause": "all staff share one database role; catalog policy admits orders.create",
       "fix": "migration 20261129000100_order_catalog.sql: products/product_variants tables closed to order creators; order forms and inbox products read order_catalog (cost only with _can_see_costs, stock count only with inventory.view/products.view); converter copy of _can_read_catalog fixed and checked by worker/db/snapshot.test.ts",
       "regression": "role sweep (no known-open entries), moderator-role.test.ts, snapshot.test.ts, browser moderator-e2e.cjs 16/16",
-      "status": "FIXED - pending production migration"
+      "status": "FIXED - live on production 25 Oct"
+    },
+    {
+      "id": 9,
+      "module": "Super Admin (approvals)",
+      "severity": "P2",
+      "summary": "any platform employee could file an approval request directly with any module/action/payload; an approver of that module (e.g. a custom role with support.approve) could thereby make a Viewer Super Admin",
+      "root_cause": "internal helper platform_request_approval granted to authenticated and trusted the given module",
+      "fix": "migration 20261130000100_platform_approval_requests.sql: revoked from staff (flows only), action bound to its module",
+      "regression": "platform-approval-requests.test.ts; Super Admin roles write sweep",
+      "status": "FIXED - live on production 25 Oct",
+      "production": "1 platform employee, no custom roles, 7 requests all legitimate merchant deletions"
+    },
+    {
+      "id": 10,
+      "module": "Customer links (custom domain)",
+      "severity": "P2",
+      "summary": "payment returns, cart-reminder links and customer email links used any store's live custom domain instead of the store's own",
+      "root_cause": "storefrontBase()/customerLinkBase() read store_domains with the service client (skips row security) without a merchant filter",
+      "fix": "supabase/functions/_shared/storefront.ts primaryDomain() filters by merchant_id for a store's service client",
+      "regression": "storefront.test.ts: store B gets its own subdomain, store A its own domain (fails without the fix)",
+      "status": "FIXED in code - needs Publish (Worker) and a Supabase backend-function deploy (messaging, notifications-dispatch, channels)",
+      "production": "1 live custom domain; 2 active stores and 1 onboarding; number of affected links sent not checked (customer messages)"
     }
   ],
   "engine_gaps": [
@@ -206,10 +228,6 @@
     }
   ],
   "owner_actions": [
-    {
-      "what": "Run migration 20261129000100_order_catalog.sql, then say Publish",
-      "where": "Supabase SQL Editor"
-    },
     {
       "what": "Reconnect the WhatsApp Business number",
       "where": "Admin > Messaging > Channels"
@@ -312,6 +330,26 @@
       "module": "role sweep (automated)",
       "result": "Call role: no cost/profit/expense in any function, table or view. Moderator: duplicate-order leak and catalog cost fixed",
       "status": "PASS (Call), PASS (Moderator) after fixes 7-8"
+    },
+    {
+      "module": "role write sweep (automated)",
+      "result": "8 built-in staff roles x every callable function; 81 role/function writes, all backed by a non-view permission the function names, or the caller's own records, or an audit entry alone",
+      "status": "PASS"
+    },
+    {
+      "module": "messaging v2 end to end",
+      "result": "dispatcher records once, stuck sends fail without resend; db 20 tests, unit 42, browser 42/42",
+      "status": "PASS (live delivery blocked: WhatsApp number needs reconnecting)"
+    },
+    {
+      "module": "backend functions over HTTP (automated)",
+      "result": "162 actions of 25 functions; signed out: no staff action answers; Viewer: 97 refusals, only phone record + public webhook allowed; catalog refresh, abandoned-cart refresh, click-to-call reviewed as by design",
+      "status": "PASS"
+    },
+    {
+      "module": "signed-in-callable functions (live advisor)",
+      "result": "566 definer functions; 9 internal are read-only policy checks; 25 unreferenced each have their own check or only read",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
@@ -327,5 +365,18 @@
     "build": "clean",
     "cfdb": "633 passed, 96 failed, 11 skipped (no new failure; new Moderator test passes)",
     "browser": "moderator-e2e 16/16"
+  },
+  "regression_pass6": {
+    "db": "745/745 (107 files)",
+    "unit": "1018 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "cfdb": "636 passed, 95 failed, 14 skipped (no new failure)"
+  },
+  "regression_pass7": {
+    "unit": "1019 passed / 2 skipped",
+    "typecheck": "0 errors",
+    "functions_check": "clean",
+    "build": "clean",
+    "note": "one unit run under parallel load had 1 failure; two reruns (one under the same load) passed in full; test name not captured"
   }
 }

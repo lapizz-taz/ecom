@@ -34,6 +34,15 @@ async function storeIdentity(admin: SupabaseClient): Promise<{ slug: string | nu
   }
 }
 
+/** The store's live primary custom domain. A service client skips row security, so it names the store. */
+async function primaryDomain(admin: SupabaseClient): Promise<string | null> {
+  let q = admin.from('store_domains').select('domain').eq('is_primary', true).eq('status', 'ACTIVE')
+  const id = merchantOf(admin)
+  if (id) q = q.eq('merchant_id', id)
+  const { data } = await q.maybeSingle()
+  return data?.domain ? String(data.domain) : null
+}
+
 /**
  * The store's public address, for customer links and payment returns: the
  * business's live primary custom domain, else its store subdomain
@@ -42,8 +51,8 @@ async function storeIdentity(admin: SupabaseClient): Promise<{ slug: string | nu
  * Localhost only when the backend itself is local.
  */
 export async function storefrontBase(admin: SupabaseClient): Promise<string> {
-  const { data: primary } = await admin.from('store_domains').select('domain').eq('is_primary', true).eq('status', 'ACTIVE').maybeSingle()
-  if (primary?.domain) return `https://${primary.domain}`
+  const primary = await primaryDomain(admin)
+  if (primary) return `https://${primary}`
   const { slug, root } = await storeIdentity(admin).catch(() => ({ slug: null, root: null }))
   if (slug && root) return `https://${slug}.${root}`
   const configured = env('STOREFRONT_URL')
@@ -64,8 +73,8 @@ export async function storefrontBase(admin: SupabaseClient): Promise<string> {
 export async function customerLinkBase(admin: SupabaseClient): Promise<string> {
   const { slug, root } = await storeIdentity(admin).catch(() => ({ slug: null, root: null }))
   if (slug) {
-    const { data: primary } = await admin.from('store_domains').select('domain').eq('is_primary', true).eq('status', 'ACTIVE').maybeSingle()
-    if (primary?.domain) return `https://${primary.domain}`
+    const primary = await primaryDomain(admin)
+    if (primary) return `https://${primary}`
     if (root) return `https://${slug}.${root}`
   }
   return appBase()
