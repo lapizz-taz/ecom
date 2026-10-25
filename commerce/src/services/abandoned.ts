@@ -1,3 +1,4 @@
+import { toCsv } from '@/lib/csv'
 import { invokeFunction } from '@/lib/functions'
 import { supabase } from '@/lib/supabase'
 
@@ -61,14 +62,22 @@ export const fetchShopifyAbandoned = (days: number | null, channelId?: string, c
   invokeFunction<AbandonedSyncResult>('channels', { action: 'abandoned_sync', days, channel_id: channelId, cursor: cursor ?? undefined })
 export const bulkShopifyAbandoned = (ids: string[], status: 'CONTACTED' | 'DISMISSED' | 'OPEN') => rpc<number>('admin_bulk_shopify_abandoned', { p_ids: ids, p_status: status })
 
-/** CSV of abandoned checkouts (opens in Excel / Google Sheets). */
-export function abandonedCsv(rows: ShopifyAbandoned[]): string {
-  const esc = (v: unknown) => { const t = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
-  const head = ['Checkout', 'Created', 'Customer', 'Phone', 'Email', 'Region', 'City', 'Items', 'Total', 'Currency', 'Recovery status', 'Follow-up', 'Checkout link']
-  const lines = rows.map((r) => [r.name ?? `#${r.legacy_id}`, r.shop_created_at, r.customer_name, r.phone, r.email, r.country, r.city,
-    r.items.map((i) => `${i.title}${i.variant ? ` (${i.variant})` : ''} x${i.quantity}`).join('; '), r.total, r.currency,
-    r.status === 'RECOVERED' ? 'Recovered' : 'Not recovered', r.follow_up, r.recovery_url].map(esc).join(','))
-  return [head.join(','), ...lines].join('\n')
-}
+/** CSV of abandoned checkouts (opens in Excel / Google Sheets). The shopper typed most of these fields, so they go
+ *  through the shared writer, which keeps a name like "=HYPERLINK(…)" from running as a formula. */
+export const abandonedCsv = (rows: ShopifyAbandoned[]): string => toCsv(rows, [
+  { header: 'Checkout', value: (r) => r.name ?? `#${r.legacy_id}` },
+  { header: 'Created', value: (r) => r.shop_created_at },
+  { header: 'Customer', value: (r) => r.customer_name },
+  { header: 'Phone', value: (r) => r.phone },
+  { header: 'Email', value: (r) => r.email },
+  { header: 'Region', value: (r) => r.country },
+  { header: 'City', value: (r) => r.city },
+  { header: 'Items', value: (r) => r.items.map((i) => `${i.title}${i.variant ? ` (${i.variant})` : ''} x${i.quantity}`).join('; ') },
+  { header: 'Total', value: (r) => r.total },
+  { header: 'Currency', value: (r) => r.currency },
+  { header: 'Recovery status', value: (r) => (r.status === 'RECOVERED' ? 'Recovered' : 'Not recovered') },
+  { header: 'Follow-up', value: (r) => r.follow_up },
+  { header: 'Checkout link', value: (r) => r.recovery_url },
+])
 
 export const abandonedCounts = () => rpc<{ store: number; shopify: number }>('abandoned_counts')

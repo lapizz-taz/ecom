@@ -32,7 +32,7 @@ describe('values', () => {
 
 describe('schema', () => {
   it('has every table and the reference data of the Postgres migrations', () => {
-    expect(Number(sql.all("SELECT count(*) AS n FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE '\\_%' ESCAPE '\\' AND name <> 'sqlite_sequence'")[0].n)).toBe(207) // the migrations' tables + sessions (stands in for auth.sessions)
+    expect(Number(sql.all("SELECT count(*) AS n FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE '\\_%' ESCAPE '\\' AND name <> 'sqlite_sequence'")[0].n)).toBe(208) // the migrations' tables + sessions (stands in for auth.sessions)
     expect(Number(sql.all('SELECT count(*) AS n FROM permissions')[0].n)).toBeGreaterThan(40)
     expect(sql.all('SELECT code FROM roles WHERE merchant_id = ? ORDER BY rank DESC LIMIT 1', [MERCHANT_1])[0].code).toBe('OWNER')
   })
