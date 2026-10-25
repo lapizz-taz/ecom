@@ -130,7 +130,7 @@
       "root_cause": "any connected number counted as working",
       "fix": "reconnect warning, checklist and On state require status OK",
       "regression": "typecheck; browser pending",
-      "status": "FIXED"
+      "status": "FIXED (browser check passed: messaging-e2e)"
     },
     {
       "id": 5,
@@ -350,6 +350,11 @@
       "module": "signed-in-callable functions (live advisor)",
       "result": "566 definer functions; 9 internal are read-only policy checks; 25 unreferenced each have their own check or only read",
       "status": "PASS"
+    },
+    {
+      "module": "webhooks and outside callbacks (automated)",
+      "result": "courier, payment (bKash/PayStation/SSLCommerz), Shopify, WooCommerce, WordPress plugin, Meta inbox, Clerk, connect callbacks: every forged/unsigned/stale call refused; one signed control accepted per endpoint; 18 business tables unchanged",
+      "status": "PASS (40/40)"
     }
   ],
   "regression_pass4": {
