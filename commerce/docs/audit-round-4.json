@@ -329,6 +329,16 @@
       "module": "messaging v2 end to end",
       "result": "dispatcher records once, stuck sends fail without resend; db 20 tests, unit 42, browser 42/42",
       "status": "PASS (live delivery blocked: WhatsApp number needs reconnecting)"
+    },
+    {
+      "module": "backend functions over HTTP (automated)",
+      "result": "162 actions of 25 functions; signed out: no staff action answers; Viewer: 97 refusals, only phone record + public webhook allowed; catalog refresh, abandoned-cart refresh, click-to-call reviewed as by design",
+      "status": "PASS"
+    },
+    {
+      "module": "signed-in-callable functions (live advisor)",
+      "result": "566 definer functions; 9 internal are read-only policy checks; 25 unreferenced each have their own check or only read",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
