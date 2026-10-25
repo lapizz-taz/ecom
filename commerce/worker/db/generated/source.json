@@ -1,5 +1,5 @@
 {
-  "migrations": 184,
-  "last": "20261202000100_new_customer_orders_at_once.sql",
-  "sha256": "74e56de8586eb980cef9e830c8def5dc0fb6ba63c870a774311dd15e1a181958"
+  "migrations": 185,
+  "last": "20261203000100_branch_transfer_locks.sql",
+  "sha256": "9f9332a1d4e1750a47ad5e6e60d5b7bec1001a1c938160cf6cf6d84e1ff2f36d"
 }
