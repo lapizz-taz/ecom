@@ -164,7 +164,8 @@ const order = async (id) => (await call('GET', `/rest/v1/orders?id=eq.${id}&sele
       JSON.stringify({ noReason: noReason.error?.message, cancel: cancel.error, before: iRes, after: iCan }))
 
     // --- profit & loss, checked by hand ----------------------------------------------------------------
-    const today = new Date().toISOString().slice(0, 10)
+    // The store's own date (money is booked by the store's day, Asia/Dhaka), not the UTC date: they differ after 18:00 UTC.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' })
     const pl = await owner.client.rpc('report_profit_loss', { p_from: today, p_to: today })
     const d = pl.data ?? {}
     // Independently: only the delivered order counts. 2 × 1000 product revenue, cost 2 × 400.
