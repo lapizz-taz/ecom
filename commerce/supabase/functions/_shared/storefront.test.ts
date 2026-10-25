@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { appBase, isLocalBackend, storefrontBase } from './storefront.ts'
+import { appBase, customerLinkBase, isLocalBackend, storefrontBase } from './storefront.ts'
 
 const merchant = vi.hoisted(() => ({ id: null as string | null }))
 vi.mock('./supabase.ts', async (load) => ({ ...(await load<typeof import('./supabase.ts')>()), merchantOf: () => merchant.id }))
@@ -67,6 +67,40 @@ describe('site addresses', () => {
     expect(await storefrontBase(client({ mode: 'OWN' }, 'nadia.shop', 'nadia', 'fullfilio.com'))).toBe('https://nadia.shop')
     // Store switched off: no store address.
     expect(await storefrontBase(client({ mode: 'OFF' }, null, 'nadia', 'fullfilio.com'))).toBe('https://app.example.com')
+    merchant.id = null
+  })
+
+  it("uses the store's own custom domain, never another store's (service reads skip row security)", async () => {
+    // Store A has a live custom domain; store B has none. Every filter the code sets is applied.
+    const domains = [{ merchant_id: 'store-a', domain: 'a-shop.com', is_primary: true, status: 'ACTIVE' }]
+    const filtered = (store: Record<string, unknown>, slug: string) => ({
+      from: (table: string) => {
+        const where: Record<string, unknown> = {}
+        const chain = {
+          select: () => chain,
+          eq: (col: string, val: unknown) => { where[col] = val; return chain },
+          maybeSingle: async () => {
+            if (table === 'store_domains') {
+              const rows = domains.filter((d) => Object.entries(where).every(([k, v]) => (d as Record<string, unknown>)[k] === v))
+              return rows.length > 1 ? { data: null, error: { message: 'more than one row' } } : { data: rows[0] ?? null, error: null }
+            }
+            if (table === 'merchants') return { data: { slug }, error: null }
+            if (table === 'platform_settings') return { data: { value: { root_domain: 'fullfilio.com' } }, error: null }
+            return { data: { value: store }, error: null }
+          },
+        }
+        return chain
+      },
+    }) as unknown as SupabaseClient
+    vi.stubEnv('SUPABASE_URL', 'https://abc.supabase.co')
+    vi.stubEnv('STOREFRONT_URL', '')
+    vi.stubEnv('PLATFORM_URL', 'https://app.example.com')
+    merchant.id = 'store-b'
+    expect(await storefrontBase(filtered({ mode: 'OWN' }, 'bina'))).toBe('https://bina.fullfilio.com')
+    expect(await customerLinkBase(filtered({ mode: 'OWN' }, 'bina'))).toBe('https://bina.fullfilio.com')
+    merchant.id = 'store-a'
+    expect(await storefrontBase(filtered({ mode: 'OWN' }, 'anika'))).toBe('https://a-shop.com')
+    expect(await customerLinkBase(filtered({ mode: 'OWN' }, 'anika'))).toBe('https://a-shop.com')
     merchant.id = null
   })
 })

@@ -170,7 +170,7 @@
       "root_cause": "all staff share one database role; catalog policy admits orders.create",
       "fix": "migration 20261129000100_order_catalog.sql: products/product_variants tables closed to order creators; order forms and inbox products read order_catalog (cost only with _can_see_costs, stock count only with inventory.view/products.view); converter copy of _can_read_catalog fixed and checked by worker/db/snapshot.test.ts",
       "regression": "role sweep (no known-open entries), moderator-role.test.ts, snapshot.test.ts, browser moderator-e2e.cjs 16/16",
-      "status": "FIXED - pending production migration"
+      "status": "FIXED - live on production 25 Oct"
     },
     {
       "id": 9,
@@ -182,6 +182,17 @@
       "regression": "platform-approval-requests.test.ts; Super Admin roles write sweep",
       "status": "FIXED - live on production 25 Oct",
       "production": "1 platform employee, no custom roles, 7 requests all legitimate merchant deletions"
+    },
+    {
+      "id": 10,
+      "module": "Customer links (custom domain)",
+      "severity": "P2",
+      "summary": "payment returns, cart-reminder links and customer email links used any store's live custom domain instead of the store's own",
+      "root_cause": "storefrontBase()/customerLinkBase() read store_domains with the service client (skips row security) without a merchant filter",
+      "fix": "supabase/functions/_shared/storefront.ts primaryDomain() filters by merchant_id for a store's service client",
+      "regression": "storefront.test.ts: store B gets its own subdomain, store A its own domain (fails without the fix)",
+      "status": "FIXED in code - needs Publish (Worker) and a Supabase backend-function deploy (messaging, notifications-dispatch, channels)",
+      "production": "1 live custom domain; 2 active stores and 1 onboarding; number of affected links sent not checked (customer messages)"
     }
   ],
   "engine_gaps": [
@@ -360,5 +371,12 @@
     "unit": "1018 passed, 2 skipped",
     "typecheck": "0 errors",
     "cfdb": "636 passed, 95 failed, 14 skipped (no new failure)"
+  },
+  "regression_pass7": {
+    "unit": "1019 passed / 2 skipped",
+    "typecheck": "0 errors",
+    "functions_check": "clean",
+    "build": "clean",
+    "note": "one unit run under parallel load had 1 failure; two reruns (one under the same load) passed in full; test name not captured"
   }
 }
