@@ -273,7 +273,7 @@
       "root_cause": "toISOString().slice(0, 10) is the UTC date; the rest of the admin uses isoDate (local calendar date)",
       "fix": "10 screens switched to isoDate; three UTC-on-purpose helpers kept",
       "regression": "architecture.test.ts guard (fails on the old screens); unit 1032 passed; typecheck; build",
-      "status": "FIXED in code - website not yet published"
+      "status": "FIXED - live 25 Oct (website published)"
     }
   ],
   "engine_gaps": [
