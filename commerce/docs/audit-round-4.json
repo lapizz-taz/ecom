@@ -180,7 +180,7 @@
       "root_cause": "internal helper platform_request_approval granted to authenticated and trusted the given module",
       "fix": "migration 20261130000100_platform_approval_requests.sql: revoked from staff (flows only), action bound to its module",
       "regression": "platform-approval-requests.test.ts; Super Admin roles write sweep",
-      "status": "FIXED - pending production migration",
+      "status": "FIXED - live on production 25 Oct",
       "production": "1 platform employee, no custom roles, 7 requests all legitimate merchant deletions"
     }
   ],
@@ -217,10 +217,6 @@
     }
   ],
   "owner_actions": [
-    {
-      "what": "Run migration 20261130000100_platform_approval_requests.sql (finding 9)",
-      "where": "Supabase SQL Editor"
-    },
     {
       "what": "Reconnect the WhatsApp Business number",
       "where": "Admin > Messaging > Channels"
