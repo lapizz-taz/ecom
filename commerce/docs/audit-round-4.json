@@ -432,6 +432,11 @@
       "module": "order merge and courier statements (review, pass 11)",
       "result": "merge refuses paid / started / booked orders, locks both, store-scoped; statement COD paid once per line and capped at what the order owes",
       "status": "PASS"
+    },
+    {
+      "module": "purchase receiving (review, pass 11)",
+      "result": "order, lines and stock locked; at most the outstanding quantity; a second receive finds nothing to receive",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
