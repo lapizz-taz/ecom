@@ -366,6 +366,11 @@
       "module": "storefront checkout tampering (automated)",
       "result": "client prices/totals/statuses ignored; other store's, hidden and switched-off products, bad quantities, oversell, fake coupon refused with no order or reservation",
       "status": "PASS (7/7; engine 6/7, E6)"
+    },
+    {
+      "module": "external API keys and other stores (automated)",
+      "result": "other store's order (number/id), lists, shared SKU stock and a mismatched store all out of reach",
+      "status": "PASS (4/4, engine 4/4)"
     }
   ],
   "regression_pass4": {

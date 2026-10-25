@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
 import { MERCHANT_1, asService, asSystem, asUser, closePool, expectError, inTx, value, type Db } from '../support/db'
-import { createOrder, createProduct, createStaff } from '../support/fixtures'
+import { createOrder, createProduct, createStaff, inventory } from '../support/fixtures'
+import { createMerchant } from '../support/sweep'
 
 afterAll(closePool)
 
@@ -107,5 +108,55 @@ describe('external API data', () => {
       expect(await value(db, `select public.api_key_check($1)`, [sha(key.key)])).toMatchObject({ feature: false })
       await asUser(db, owner)
       await expectError(db, `select public.admin_api_key_create('x', '{orders:read}')`, [], /FEATURE_OFF/)
+    }))
+})
+
+describe('external API keys and other stores', () => {
+  it("reach only their own store: another store's order, SKU, products and customers stay out of reach", () =>
+    inTx(async (db) => {
+      const owner = await createStaff(db, 'OWNER')
+      const sku = `SHARED-${randomUUID().slice(0, 6).toUpperCase()}`
+      const mine = await createProduct(db, { name: 'Mine Tee', price: 500, variants: [{ sku, title: 'M', stock: 8 }] })
+      const reader = await makeKey(db, owner, ['orders:read', 'products:read', 'inventory:read', 'customers:read'])
+      const writer = await makeKey(db, owner, ['orders:write', 'inventory:write'])
+
+      // Store B: the same SKU, its own order and customer.
+      const other = await createMerchant(db)
+      const theirs = await createProduct(db, { name: 'Their Secret Tee', price: 900, variants: [{ sku, title: 'M', stock: 5 }], merchantId: other })
+      const order = await createOrder(db, { phone: '01711400001', name: 'Store B Customer', items: [{ variantId: theirs.variantIds[0], quantity: 1 }], merchantId: other })
+      await asSystem(db, other)
+      const status = await value<string>(db, `select status::text from public.orders where id = $1`, [order.id])
+
+      await asService(db)
+      // Their order, by number or id: not found.
+      for (const ref of [order.order_number, order.id]) {
+        await expectError(db, `select public.api_order($1, $2)`, [reader.id, ref], /not found|no order/i)
+        await expectError(db, `select public.api_order_set_status($1, $2, 'CANCELLED', 'x')`, [writer.id, ref], /not found|no order/i)
+      }
+      // Lists hold only this store's records.
+      const all = JSON.stringify([
+        await value(db, `select public.api_orders($1, '{"limit": 200}')`, [reader.id]),
+        await value(db, `select public.api_products($1, '{"limit": 200}')`, [reader.id]),
+        await value(db, `select public.api_customers($1, '{"limit": 200}')`, [reader.id]),
+        await value(db, `select public.api_inventory($1, '{"limit": 200}')`, [reader.id]),
+      ])
+      expect(all).not.toContain(order.order_number)
+      expect(all).not.toContain('Their Secret Tee')
+      expect(all).not.toContain('01711400001')
+      expect(all).not.toContain('Store B Customer')
+      // The shared SKU changes this store's stock only.
+      expect(await value(db, `select public.api_inventory_adjust($1, $2, 'set', 30, 'Count')`, [writer.id, sku])).toMatchObject({ on_hand: 30 })
+      await asSystem(db, other)
+      expect((await inventory(db, theirs.variantIds[0])).on_hand).toBe(5)
+      expect(await value<string>(db, `select status::text from public.orders where id = $1`, [order.id])).toBe(status)
+      await asSystem(db)
+      expect((await inventory(db, mine.variantIds[0])).on_hand).toBe(30)
+
+      // A key sent with another store as the request's store is refused outright.
+      await asService(db, other)
+      await expectError(db, `select public.api_orders($1)`, [reader.id], /not valid or has been turned off/)
+      await expectError(db, `select public.api_inventory_adjust($1, $2, 'set', 0, 'x')`, [writer.id, sku], /not valid or has been turned off/)
+      await asSystem(db, other)
+      expect((await inventory(db, theirs.variantIds[0])).on_hand).toBe(5)
     }))
 })
