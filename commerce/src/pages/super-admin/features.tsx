@@ -143,7 +143,7 @@ function Bulk() {
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-2 text-xs">
                 {preview.data.items.map((i) => (
                   <div key={i.id} className="flex justify-between gap-2">
-                    <span className="truncate">#{i.number} {i.name}</span>
+                    <span className="truncate">{i.allowed ? `#${i.number} ${i.name}` : 'A store not assigned to you'}</span>
                     {i.allowed ? <Badge variant={ENTITLEMENT[i.now].variant}>now: {ENTITLEMENT[i.now].label}</Badge> : <Badge variant="danger">not yours — skipped</Badge>}
                   </div>
                 ))}

@@ -274,6 +274,46 @@
       "fix": "10 screens switched to isoDate; three UTC-on-purpose helpers kept",
       "regression": "architecture.test.ts guard (fails on the old screens); unit 1032 passed; typecheck; build",
       "status": "FIXED - live 25 Oct (website published)"
+    },
+    {
+      "id": 19,
+      "module": "Order fee (orders the system approves)",
+      "severity": "P2",
+      "summary": "with the fee on and the refuse-when-empty policy, an empty balance failed approvals nobody makes by hand: a low-risk checkout (order never placed), a gateway-reported advance (payment not recorded), a customer's Confirm reply (order left waiting); fee is off on production today",
+      "root_cause": "_order_fee_charge raised the refuse error for every approval, and checkout, confirm_payment and order_reply_apply approve in the same transaction without catching it",
+      "fix": "migration 20261205000100: approvals made by the system are never refused; the fee is recorded as owed (UNPAID); staff approvals still refused",
+      "regression": "order-fee-automatic.test.ts: checkout and payment fail and the reply leaves PENDING without the migration; placed/paid/confirmed with UNPAID fee with it; staff still refused",
+      "status": "FIXED - live on production 26 Oct (migration)"
+    },
+    {
+      "id": 20,
+      "module": "Order fee (free orders at the same moment)",
+      "severity": "P3",
+      "summary": "two approvals at the same moment could both use the month's last free order",
+      "root_cause": "_order_fee_charge read the free-order count before taking the store's fee lock",
+      "fix": "migration 20261205000100: terms read again after the lock",
+      "regression": "race test: FREE+FREE without the migration, FREE+CHARGED with it",
+      "status": "FIXED - live on production 26 Oct (migration)"
+    },
+    {
+      "id": 21,
+      "module": "Plan & Billing (orders this month)",
+      "severity": "P3",
+      "summary": "the orders-this-month counter started at midnight UTC (6 AM in Bangladesh)",
+      "root_cause": "merchant_usage used date_trunc('month', now()) on a UTC database",
+      "fix": "migration 20261205000100: count from midnight on the 1st in the store's time zone (_merchant_month_start)",
+      "regression": "order at 1 AM Dhaka on the 1st counted (0 without the migration)",
+      "status": "FIXED - live on production 26 Oct (migration)"
+    },
+    {
+      "id": 22,
+      "module": "Super Admin (employees limited to some stores)",
+      "severity": "P3",
+      "summary": "an employee limited to some stores saw other stores' names in the announcement preview and the bulk feature preview, and could send an announcement to every store",
+      "root_cause": "the announcement audience and bulk preview did not use the employee's stores (_platform_merchant_ids)",
+      "fix": "migration 20261205000200: preview limited to own stores; limited employees send only to a list of their own stores; bulk preview names only stores they may change",
+      "regression": "idor-sweep.test.ts: sweep + 2 focused cases fail without the migration, pass with it",
+      "status": "FIXED - live on production 26 Oct (migration); Features page label with the next publish"
     }
   ],
   "engine_gaps": [
@@ -318,6 +358,10 @@
     {
       "what": "Reconnect the WhatsApp Business number",
       "where": "Admin > Messaging > Channels"
+    },
+    {
+      "what": "Decide: orders over a plan's monthly limit (no live plan has an overage price, so they are neither blocked nor billed)",
+      "where": "Super Admin > Plans (overage price) or a product change"
     }
   ],
   "not_yet_tested": [
@@ -550,7 +594,32 @@
     },
     {
       "module": "order repeats, plan limits, website prices (review, pass 16)",
-      "result": "repeat-safe order key holds; stores, products (manual), staff limits enforced; monthly orders billed as overage; imports not counted against the product limit (owner: allow, warn in admin - done); site prices read live plans; business memory updated to the live plans (owner decision)",
+      "result": "repeat-safe order key holds; stores, products (manual), staff limits enforced; monthly orders not blocked (overage billed only with a plan overage price; none live, corrected pass 17); imports not counted against the product limit (owner: allow, warn in admin - done); site prices read live plans; business memory updated to the live plans (owner decision)",
+      "status": "PASS"
+    },
+    {
+      "module": "money: per-order fee (review + new tests, pass 17)",
+      "result": "charged once per order, month in store time zone, exempt/free/unpaid by policy; automatic approvals (checkout, payment, reply) failed with an empty balance (#19); free-order race (#20)",
+      "status": "FIXED"
+    },
+    {
+      "module": "money: plan invoices and order limit (review, pass 17)",
+      "result": "offer sequence covered by signup-offer.test.ts (19/19); overage billed only with a plan overage price, none set live (owner decision); usage counter on UTC month (#21)",
+      "status": "FIXED"
+    },
+    {
+      "module": "IDOR sweep: every staff role of another store (pass 18)",
+      "result": "8 roles x ~2,700 calls with store A ids: nothing changed, shown or linked",
+      "status": "PASS"
+    },
+    {
+      "module": "IDOR sweep: platform employees limited to other stores (pass 18)",
+      "result": "6 roles x ~2,700 calls: announcement preview/send and bulk feature preview reached other stores (#22); export record and sign-up request link reviewed and kept",
+      "status": "FIXED"
+    },
+    {
+      "module": "load, today's code (pass 19)",
+      "result": "A/B with 24 Oct code on the same server: same throughput (orders 122-137/s vs 101-130/s, status 448-460/s vs 441-456/s, search p95 23-24 ms), 0 errors",
       "status": "PASS"
     }
   ],
@@ -643,7 +712,63 @@
       "question": "Should a store sync respect the plan product limit",
       "decision": "allow, but warn",
       "date": "2026-10-26",
-      "done": "imports unchanged; Products page and Plan & Billing show an at/over-limit notice (src/features/billing/product-limit.tsx)"
+      "done": "imports unchanged; Products page and Plan & Billing show an at/over-limit notice (src/features/billing/product-limit.tsx); live 2026-10-26"
     }
-  ]
+  ],
+  "regression_pass17": {
+    "db": "774/774 (114 files, with migration 20261205000100)",
+    "unit": "1035 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "engine": "order-fee-automatic 4 passed, race skipped; one pre-existing cart-reminder engine failure"
+  },
+  "regression_pass18": {
+    "db": "778/778 (115 files, with migration 20261205000200)",
+    "unit": "1035 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "build": "clean",
+    "engine": "related files 36 passed, 4 sweeps skipped"
+  },
+  "load_pass19": {
+    "tool": "scripts/load-test.mjs",
+    "clients": 16,
+    "seconds": 20,
+    "environment": "local PostgreSQL 16.14, 4 cores, fresh database per run",
+    "today": {
+      "orders_per_s": [
+        122,
+        133,
+        137
+      ],
+      "status_changes_per_s": [
+        448,
+        452,
+        460
+      ],
+      "search_p95_ms": [
+        23,
+        24
+      ],
+      "orders_during_search_per_s": [
+        60,
+        62,
+        63
+      ],
+      "errors": 0
+    },
+    "code_24_oct_05288e1": {
+      "orders_per_s": [
+        101,
+        130
+      ],
+      "status_changes_per_s": [
+        441,
+        456
+      ],
+      "search_p95_ms": 23,
+      "orders_during_search_per_s": 64,
+      "errors": 0
+    },
+    "noise": "two runs of today's code at 75-79 orders/s with machine load 4+ (one 3 minutes after start); the old code dipped the same way",
+    "status": "PASS"
+  }
 }

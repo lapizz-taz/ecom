@@ -154,7 +154,7 @@ export const saveFeature = (code: string, p: Record<string, unknown>) => platfor
 export const setMerchantFeature = (merchant: string, code: string, enabled: boolean | null, reason: string, expiresAt?: string | null) =>
   platformRpc<Entitlement>('platform_merchant_feature_set', { p_merchant: merchant, p_code: code, p_enabled: enabled, p_reason: reason, p_limit: null, p_expires_at: expiresAt ?? null })
 export const previewFeatureBulk = (merchants: string[], code: string, enabled: boolean | null) =>
-  platformRpc<{ items: Array<{ id: string; number: number; name: string; now: EntitlementState; allowed: boolean }>; token: string }>('platform_feature_bulk_preview', { p_merchants: merchants, p_code: code, p_enabled: enabled })
+  platformRpc<{ items: Array<{ id: string; allowed: true; number: number; name: string; now: EntitlementState } | { id: string; allowed: false }>; token: string }>('platform_feature_bulk_preview', { p_merchants: merchants, p_code: code, p_enabled: enabled })
 export const applyFeatureBulk = (merchants: string[], code: string, enabled: boolean | null, reason: string, token: string) =>
   platformRpc<{ changed: number }>('platform_feature_bulk_apply', { p_merchants: merchants, p_code: code, p_enabled: enabled, p_reason: reason, p_token: token })
 export const merchantBilling = (merchant: string) => platformRpc<MerchantBilling>('platform_merchant_billing', { p_merchant: merchant })
