@@ -616,6 +616,11 @@
       "module": "IDOR sweep: platform employees limited to other stores (pass 18)",
       "result": "6 roles x ~2,700 calls: announcement preview/send and bulk feature preview reached other stores (#22); export record and sign-up request link reviewed and kept",
       "status": "FIXED"
+    },
+    {
+      "module": "load, today's code (pass 19)",
+      "result": "A/B with 24 Oct code on the same server: same throughput (orders 122-137/s vs 101-130/s, status 448-460/s vs 441-456/s, search p95 23-24 ms), 0 errors",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
@@ -722,5 +727,48 @@
     "typecheck": "0 errors",
     "build": "clean",
     "engine": "related files 36 passed, 4 sweeps skipped"
+  },
+  "load_pass19": {
+    "tool": "scripts/load-test.mjs",
+    "clients": 16,
+    "seconds": 20,
+    "environment": "local PostgreSQL 16.14, 4 cores, fresh database per run",
+    "today": {
+      "orders_per_s": [
+        122,
+        133,
+        137
+      ],
+      "status_changes_per_s": [
+        448,
+        452,
+        460
+      ],
+      "search_p95_ms": [
+        23,
+        24
+      ],
+      "orders_during_search_per_s": [
+        60,
+        62,
+        63
+      ],
+      "errors": 0
+    },
+    "code_24_oct_05288e1": {
+      "orders_per_s": [
+        101,
+        130
+      ],
+      "status_changes_per_s": [
+        441,
+        456
+      ],
+      "search_p95_ms": 23,
+      "orders_during_search_per_s": 64,
+      "errors": 0
+    },
+    "noise": "two runs of today's code at 75-79 orders/s with machine load 4+ (one 3 minutes after start); the old code dipped the same way",
+    "status": "PASS"
   }
 }
