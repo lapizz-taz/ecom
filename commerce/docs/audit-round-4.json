@@ -283,7 +283,7 @@
       "root_cause": "_order_fee_charge raised the refuse error for every approval, and checkout, confirm_payment and order_reply_apply approve in the same transaction without catching it",
       "fix": "migration 20261205000100: approvals made by the system are never refused; the fee is recorded as owed (UNPAID); staff approvals still refused",
       "regression": "order-fee-automatic.test.ts: checkout and payment fail and the reply leaves PENDING without the migration; placed/paid/confirmed with UNPAID fee with it; staff still refused",
-      "status": "FIXED - in repository, migration for the owner"
+      "status": "FIXED - live on production 26 Oct (migration)"
     },
     {
       "id": 20,
@@ -293,7 +293,7 @@
       "root_cause": "_order_fee_charge read the free-order count before taking the store's fee lock",
       "fix": "migration 20261205000100: terms read again after the lock",
       "regression": "race test: FREE+FREE without the migration, FREE+CHARGED with it",
-      "status": "FIXED - in repository, migration for the owner"
+      "status": "FIXED - live on production 26 Oct (migration)"
     },
     {
       "id": 21,
@@ -303,7 +303,7 @@
       "root_cause": "merchant_usage used date_trunc('month', now()) on a UTC database",
       "fix": "migration 20261205000100: count from midnight on the 1st in the store's time zone (_merchant_month_start)",
       "regression": "order at 1 AM Dhaka on the 1st counted (0 without the migration)",
-      "status": "FIXED - in repository, migration for the owner"
+      "status": "FIXED - live on production 26 Oct (migration)"
     }
   ],
   "engine_gaps": [
@@ -352,10 +352,6 @@
     {
       "what": "Decide: orders over a plan's monthly limit (no live plan has an overage price, so they are neither blocked nor billed)",
       "where": "Super Admin > Plans (overage price) or a product change"
-    },
-    {
-      "what": "Run migration 20261205000100_order_fee_automatic_approvals.sql (fixes #19-#21; needed before the per-order fee is switched on)",
-      "where": "Supabase SQL Editor"
     }
   ],
   "not_yet_tested": [
