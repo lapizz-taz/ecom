@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 22 Oct 2026.
+Last updated: 26 Oct 2026.
 
 ## What Fullfilio is
 
@@ -16,18 +16,24 @@ own, or with the seller's Shopify or WooCommerce store.
 
 ## Pricing (live in the database)
 
-All prices are in BDT, per month. Every public plan has a 14-day trial.
+All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 
 | Plan | Price | Limits | Extra features |
 |---|---|---|---|
-| Starter | ৳990 | 3 staff · 1 store · 300 products · 500 orders/month | Shopify, WooCommerce, SMS, reports, custom domain, courier history (fraud check) |
-| Growth | ৳2,490 | 10 staff · 3 stores · 3,000 products · 3,000 orders/month | + two-way stock sync, ad attribution, abandoned carts, website API, external API |
-| Pro | ৳5,990 | 30 staff · 10 stores · no product or order limit | + Cloud Calling (phone system) |
+| Starter | ৳1,600 | 3 staff · 1 store · 100 products · 1,100 orders/month | Shopify, WooCommerce, two-way stock sync, SMS, reports, abandoned carts, courier history (fraud check) |
+| Growth | ৳3,100 | 5 staff · 1 store · 300 products · 2,600 orders/month | + ad attribution, custom domain |
+| Pro | ৳5,990 | 20 staff · 10 stores · 900 products · 6,000 orders/month | + website API, external API, Cloud Calling (phone system) |
 | Founder | free, hidden | none | Everything. This is the original business on the platform. |
+
+- **Free trial** (used when the new-business offer is off): 2 days on Starter and Growth, 14 days on Pro.
+- **Product limit**: products added by hand stop at the limit. Products synced from Shopify or
+  WooCommerce keep coming in, and the admin then shows an "over the limit" notice with a link to the plans.
 
 - **New-business offer** (switched on): ৳99 for the first month plus 2 days. Then a one-time
   setup fee of ৳1,000 together with the first month at the plan price. After that, the plan price.
-- **Per-order fee**: ৳1.5 for each approved order (Super Admin can change it).
+- **Per-order fee**: ৳1.5 for each approved order (Super Admin can change it). Switched off for now.
+- **Sign-up**: open sign-up is switched off. New businesses send a sign-up request by WhatsApp,
+  and the platform team opens the business from it (Super Admin can switch open sign-up back on).
 - **Credits**: SMS and fraud checks are sold as credits. Top-ups are paid by bKash, PayStation or SSLCommerz.
 
 ## What we have (features)
@@ -98,7 +104,8 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
 **Primary target: Bangladeshi COD brands that sell through a Facebook page or Instagram and are growing.**
 
 - Sell fashion, cosmetics, gadgets, home goods, food or gifts.
-- 30 to 300 orders a day (about 1,000 to 9,000 a month). This is the Growth plan, and Pro at the top end.
+- 30 to 300 orders a day (about 1,000 to 9,000 a month). Up to about 85 a day fits Growth (2,600 a month),
+  up to about 200 a day fits Pro (6,000 a month). The top of this range is above every public plan's order limit.
 - A small team of 3 to 15: page moderators or call agents who confirm orders, packers, and an owner who watches money.
 - Spend real money on Meta ads, and want to know which ads make *profit*, not just orders.
 - Ship mainly by Steadfast, Pathao, RedX or Carrybee, almost all COD.
@@ -114,7 +121,7 @@ All prices are in BDT, per month. Every public plan has a 14-day trial.
    operations in Excel and courier panels. Selling point: "Connect in a minute; everything syncs back to your store."
 2. **New sellers starting out.** One person, under 30 orders a day. Hook: the ৳99 first month,
    the Starter plan, and a free own store so they need no Shopify bill.
-3. **Multi-brand owners and small agencies running several shops.** This is the Pro plan (10 stores, 30 staff).
+3. **Multi-brand owners and small agencies running several shops.** This is the Pro plan (10 stores, 20 staff).
 
 **Not a good fit** (don't spend ad money here)
 - Sellers paid up front only, with no COD.

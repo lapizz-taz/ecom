@@ -273,7 +273,7 @@
       "root_cause": "toISOString().slice(0, 10) is the UTC date; the rest of the admin uses isoDate (local calendar date)",
       "fix": "10 screens switched to isoDate; three UTC-on-purpose helpers kept",
       "regression": "architecture.test.ts guard (fails on the old screens); unit 1032 passed; typecheck; build",
-      "status": "FIXED in code - website not yet published"
+      "status": "FIXED - live 25 Oct (website published)"
     }
   ],
   "engine_gaps": [
@@ -547,6 +547,11 @@
       "module": "scheduled jobs, plan refunds, credit grants, database dates, CSV exports (review, pass 15)",
       "result": "no other job with the #17 pattern; refunds locked; grants keyed; store days used; Super Admin billing dashboard days from UTC midnight (noted); CSV formula guard on every export",
       "status": "PASS"
+    },
+    {
+      "module": "order repeats, plan limits, website prices (review, pass 16)",
+      "result": "repeat-safe order key holds; stores, products (manual), staff limits enforced; monthly orders billed as overage; imports not counted against the product limit (owner: allow, warn in admin - done); site prices read live plans; business memory updated to the live plans (owner decision)",
+      "status": "PASS"
     }
   ],
   "regression_pass4": {
@@ -626,5 +631,19 @@
   "regression_pass15": {
     "db": "769/769 (full suite with migration 20261204000100)",
     "engine": "finance-payments 19/19, 3 race cases skipped"
-  }
+  },
+  "owner_decisions": [
+    {
+      "question": "Business memory plans or live plans",
+      "decision": "live plans are right",
+      "date": "2026-10-26",
+      "done": "docs/BUSINESS-MEMORY.md updated to the live plans; no website or app change"
+    },
+    {
+      "question": "Should a store sync respect the plan product limit",
+      "decision": "allow, but warn",
+      "date": "2026-10-26",
+      "done": "imports unchanged; Products page and Plan & Billing show an at/over-limit notice (src/features/billing/product-limit.tsx)"
+    }
+  ]
 }
