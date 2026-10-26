@@ -313,7 +313,7 @@
       "root_cause": "the announcement audience and bulk preview did not use the employee's stores (_platform_merchant_ids)",
       "fix": "migration 20261205000200: preview limited to own stores; limited employees send only to a list of their own stores; bulk preview names only stores they may change",
       "regression": "idor-sweep.test.ts: sweep + 2 focused cases fail without the migration, pass with it",
-      "status": "FIXED - in repository, migration for the owner"
+      "status": "FIXED - live on production 26 Oct (migration); Features page label with the next publish"
     }
   ],
   "engine_gaps": [
@@ -362,10 +362,6 @@
     {
       "what": "Decide: orders over a plan's monthly limit (no live plan has an overage price, so they are neither blocked nor billed)",
       "where": "Super Admin > Plans (overage price) or a product change"
-    },
-    {
-      "what": "Run migration 20261205000200_platform_scope_announcements_features.sql (fixes #22)",
-      "where": "Supabase SQL Editor"
     }
   ],
   "not_yet_tested": [
