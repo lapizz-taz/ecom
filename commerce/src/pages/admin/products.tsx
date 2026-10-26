@@ -24,6 +24,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
+import { ProductLimitNotice } from '@/features/billing/product-limit'
 import { useUrlState } from '@/hooks/use-url-state'
 import { SeoEditorDialog } from '@/features/seo/seo-editor'
 import { toUserMessage } from '@/lib/errors'
@@ -45,6 +46,7 @@ export default function ProductsPage() {
     <div className="space-y-4">
       <PageHeader title="Products" description="Everything you sell, its stock and what it earns."
         actions={<Can permission="products.manage"><Button size="sm" asChild><Link to="/admin/products/new"><Plus /> Add product</Link></Button></Can>} />
+      <ProductLimitNotice />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Products" icon={<Package />} value={s ? formatNumber(s.products) : '—'} hint={s ? `${formatNumber(s.active)} active · ${formatNumber(s.variants)} variants` : undefined} />
         <StatCard label="Stock" icon={<Boxes />} value={s ? formatNumber(s.stock) : '—'} hint={s?.low_stock ? `${s.low_stock} running low` : 'Units on hand'} />

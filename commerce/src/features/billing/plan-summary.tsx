@@ -111,6 +111,7 @@ export function PlanSummary({ compact }: { compact?: boolean }) {
                 <div key={k} className="space-y-1 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">{LIMIT_LABEL[k]}</span><span className="tabular-nums">{formatNumber(used)} / {limit != null ? formatNumber(limit) : 'no limit'}</span></div>
                   {limit != null && <div className="h-1.5 rounded-full bg-muted"><div className={cn('h-full rounded-full', pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500')} style={{ width: `${pct}%` }} /></div>}
+                  {k === 'products' && limit != null && used >= limit && <p className="text-xs text-muted-foreground">{used > limit ? 'Over the limit: ' : 'At the limit: '}products from your Shopify or WooCommerce store keep syncing, but you can't add more by hand until you upgrade.</p>}
                 </div>
               )
             })}
