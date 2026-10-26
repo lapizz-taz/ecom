@@ -313,7 +313,7 @@
       "root_cause": "the announcement audience and bulk preview did not use the employee's stores (_platform_merchant_ids)",
       "fix": "migration 20261205000200: preview limited to own stores; limited employees send only to a list of their own stores; bulk preview names only stores they may change",
       "regression": "idor-sweep.test.ts: sweep + 2 focused cases fail without the migration, pass with it",
-      "status": "FIXED - live on production 26 Oct (migration); Features page label with the next publish"
+      "status": "FIXED - live on production 26 Oct (migration + website)"
     }
   ],
   "engine_gaps": [
