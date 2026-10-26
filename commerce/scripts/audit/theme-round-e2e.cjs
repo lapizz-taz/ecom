@@ -13,7 +13,7 @@
 //   node scripts/audit/order-lifecycle-e2e.cjs
 // Needs Chromium (PLAYWRIGHT_BROWSERS_PATH) and worker/db/generated/seed.sql (npm run db:seed).
 const { spawn } = require('node:child_process')
-const { readFileSync, writeFileSync, mkdtempSync } = require('node:fs')
+const { existsSync, readFileSync, writeFileSync, mkdtempSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const { createClient } = require(join(__dirname, '../../node_modules/@supabase/supabase-js'))
@@ -26,6 +26,10 @@ const base = `http://127.0.0.1:${port}`
 const SERVICE = 'e2e-service-key-not-a-secret'
 const ANON = 'sb_publishable_e2e'
 const M1 = '00000000-0000-4000-8000-000000000001'
+if (!existsSync(join(__dirname, 'dist/_site/index.txt'))) {
+  console.error('dist/_site is missing: run npm run build:cloudflare, then cp -r dist/_site scripts/audit/dist/_site')
+  process.exit(2)
+}
 const persist = mkdtempSync(join(tmpdir(), 'audit-r3-'))
 
 const dev = spawn(join(ROOT, 'node_modules/.bin/wrangler'),

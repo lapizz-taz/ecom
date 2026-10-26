@@ -201,6 +201,8 @@ Regression after pass 17 (§4 #19–#21, migration `20261205000100`): database t
 
 Regression after pass 18 (§4 #22, migration `20261205000200`, the IDOR sweep): database tests **778/778** (115 files, the new `idor-sweep.test.ts` included: two sweeps of about 38,000 calls between them, and two focused cases that fail without the migration). Unit **1035 passed / 2 skipped**, typecheck 0 errors, production build clean. Cloudflare engine: the related files 36 passed, the 4 sweeps skipped (they read the Postgres catalogs). The cross-store sweep's fingerprint helpers moved to `supabase/tests/support/sweep.ts` and are shared.
 
+Regression after pass 20 (every browser and backend-function suite on today's code, `1ea9c3c`, the code live since 26 Oct: 189 migrations, the engine schema with both pass-17 and pass-18 migrations): all 11 suites on the local Worker pass, **449/449** checks, the same as their last runs — admin pages **164/164**, Super Admin **56/56**, storefront **33/33**, order lifecycle **31/31** (the hand-checked P&L still matches: revenue 2,000, cost of goods 800, net 1,090), messaging **43/43**, Moderator **16/16**, theme presets **11/11**, theme round **36/36**, forged webhooks **40/40**, backend functions under the store's rules **14/14**, backend sign-in sweep **5/5**. Theme round first read 35/36: the one check that the website still gets its prerendered HTML failed because this run's build lacked `dist/_site`, as in pass 9; with the pages copied in it passes. The suite now stops at the start with that instruction when the pages are missing, instead of failing one check without a reason. No product change.
+
 ## 6. Needs the owner
 
 | What | Why | Where |
@@ -217,12 +219,14 @@ Decided by the owner (26 Oct):
 
 ## 7. Plan for the next passes
 
-1. Browser suites on the local Worker: every admin page, every Super Admin page, storefront + checkout,
-   order lifecycle + P&L, messaging (incl. the new unsubscribe page and the WhatsApp reconnect warning).
+1. ~~Browser suites on the local Worker: every admin page, every Super Admin page, storefront + checkout,
+   order lifecycle + P&L, messaging (incl. the new unsubscribe page and the WhatsApp reconnect warning)~~
+   done (pass 9, rerun in pass 20 on today's code: 449/449).
 2. ~~Module deep checks for everything since round 3~~ done: messaging v2 (§3b), Moderator and Call roles
    and every other built-in role (role sweep, role write sweep), plan change with the setup fee (§3b sign-up
    offer), theme presets (`theme-presets-e2e`), website pixel (§3b).
-3. Money: re-derive the P&L, plan/offer billing (৳99 → ৳1,000 + plan → plan) and the per-order fee by
-   hand and compare with the database.
+3. ~~Money: re-derive the P&L, plan/offer billing (৳99 → ৳1,000 + plan → plan) and the per-order fee by
+   hand and compare with the database~~ done (pass 17: the fee and plan invoices, findings #19–#21; the P&L
+   by hand in `order-lifecycle-e2e`, rerun in pass 20).
 4. ~~Security: IDOR sweep on every RPC that takes an id, for a second store and for each role~~ done (pass 18: every store role and every platform role limited to other stores; finding #22).
 5. ~~Load: repeat the round-3 load test on today's code~~ done (pass 19: no regression, A/B with the 24 Oct code).
