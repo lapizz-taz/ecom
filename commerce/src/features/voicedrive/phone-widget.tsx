@@ -88,6 +88,14 @@ export function PhoneWidget() {
   useLayoutEffect(() => { fit() }, [fit, settings.minimized])
   useEffect(() => { window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit) }, [fit])
 
+  // While the phone floats over the page, the inbox keeps room under its message box (admin layout).
+  const shown = !!engine && !!state
+  useEffect(() => {
+    if (!shown) return
+    document.documentElement.dataset.phoneBar = ''
+    return () => { delete document.documentElement.dataset.phoneBar }
+  }, [shown])
+
   // Drag anywhere on the bar that is not a button.
   const drag = useRef<{ x: number; y: number; right: number; bottom: number; moved: boolean } | null>(null)
   const [dragPos, setDragPos] = useState<{ right: number; bottom: number } | null>(null)

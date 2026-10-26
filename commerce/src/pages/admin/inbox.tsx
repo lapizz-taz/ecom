@@ -70,7 +70,8 @@ export default function InboxPage() {
           {can('inbox.manage') && <Button asChild><Link to="/admin/inbox/channels" className="gap-1.5"><PlugZap /> Connect a channel</Link></Button>}
         </div>
       ) : (
-        <div className="grid h-[calc(100dvh-8.5rem)] min-h-[480px] overflow-hidden rounded-xl border bg-card lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_auto]">
+        // Ends at the screen's bottom edge: header, page padding, the tabs row and its gap above (+ the panel's frame and border on lg).
+        <div className="grid h-[calc(100dvh-7.75rem)] min-h-[480px] overflow-hidden sm:h-[calc(100dvh-9.25rem)] lg:h-[calc(100dvh-10.25rem-2px)] rounded-xl border bg-card lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_auto]">
           <aside className={cn('min-h-0 border-r', state.c && 'hidden lg:block')}>
             <ConversationList overview={overview.data} selected={state.c || null} onSelect={open} filters={filters} onFilters={setFilters} />
           </aside>

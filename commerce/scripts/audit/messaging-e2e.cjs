@@ -263,6 +263,60 @@ async function settle(page, re, ms = 30000) {
       step('[1440, dark] the reconnect warning is readable (text contrast at least 4.5:1)', !!contrast && contrast.ratio >= 4.5, JSON.stringify(contrast))
       await ctx.close()
     }
+
+    // The inbox chat ends at the screen's bottom edge: no empty band under the message box (it had the
+    // 6rem other pages keep for floating bars), and the page itself does not scroll.
+    const conv = await call('POST', '/rest/v1/inbox_conversations', { prefer: 'return=representation', body: {
+      merchant_id: M1, channel_id: channelId, kind: 'MESSAGE', thread_key: 'r4-chat-1', customer_name: 'Rahima Akter',
+      last_message_at: new Date().toISOString(), last_customer_message_at: new Date().toISOString() } })
+    const convId = conv.body?.[0]?.id
+    const msgs = await call('POST', '/rest/v1/inbox_messages', { body: Array.from({ length: 30 }, (_, i) => ({
+      merchant_id: M1, conversation_id: convId, direction: i % 2 ? 'OUT' : 'IN', status: i % 2 ? 'SENT' : 'RECEIVED',
+      body: i === 29 ? 'Last message: is size M in stock?' : `Message ${i + 1}`, created_at: new Date(Date.now() - (30 - i) * 60000).toISOString() })) })
+    step('a chat with 30 messages', Boolean(convId) && msgs.status < 300, JSON.stringify({ conv: conv.body, msgs: msgs.status }).slice(0, 300))
+    // A Moderator has no phone (Cloud Calling), so nothing floats over the bottom of the chat.
+    const moderator = await staff('msg-moderator@example.com', 'MODERATOR')
+    const openChat = async (user, w, h) => {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h } })
+      const page = await ctx.newPage()
+      current = page
+      await page.goto(`${base}/admin/login`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      await page.evaluate(([k, s]) => { localStorage.setItem(k, s); localStorage.setItem('admin-whats-new-seen', '9999-12-31'); localStorage.setItem('admin-major-update-seen', '9999-12-31|seen') }, [`sb-${new URL(base).hostname.split('.')[0]}-auth-token`, JSON.stringify(user.session)])
+      await page.goto(`${base}/admin/inbox?c=${convId}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+      const shown = await settle(page, /Last message: is size M in stock\?/, 30000)
+      await page.waitForTimeout(800)
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      const m = await page.evaluate(() => {
+        const box = document.querySelector('textarea')?.closest('.grid')?.getBoundingClientRect()
+        const input = document.querySelector('textarea')?.getBoundingClientRect()
+        // Whether something from outside the chat lies over the Send button or the typing box (the floating phone, for one).
+        // A disabled button lets the pointer through, so the test is what is on top there, not the button itself.
+        const chat = document.querySelector('textarea')?.closest('.grid')
+        const free = (el) => { if (!el || !chat) return false; const r = el.getBoundingClientRect(); return chat.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) }
+        const send = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Send')
+        return { gap: box ? Math.round(innerHeight - box.bottom) : null, inputBottom: input ? Math.round(input.bottom) : null, innerHeight,
+          pageScroll: document.documentElement.scrollHeight - innerHeight, phone: document.documentElement.hasAttribute('data-phone-bar'),
+          sendFree: free(send), inputFree: free(document.querySelector('textarea')) }
+      })
+      return { ctx, page, shown, m }
+    }
+    step('Moderator signed in (no phone)', Boolean(moderator.session), JSON.stringify(moderator.error ?? moderator.setError))
+    for (const [w, h] of [[390, 844], [768, 1024], [1440, 900]]) {
+      const { ctx, page, shown, m } = await openChat(moderator, w, h)
+      await page.screenshot({ path: join(S, `msg-${w}-inbox-chat.png`) })
+      // What may stay below: the page padding (12 px on phones, 24 px from 640 px wide) and, from 1024 px, the panel's border and 8 px frame.
+      const allowed = w >= 1024 ? 33 : w >= 640 ? 24 : 12
+      step(`[${w}] the inbox chat reaches the bottom of the screen (only the page's ${allowed} px edge below, the page does not scroll)`,
+        shown && !m.phone && m.gap !== null && m.gap >= 0 && m.gap <= allowed && m.pageScroll <= 1 && m.inputBottom <= m.innerHeight && m.sendFree && m.inputFree, JSON.stringify(m))
+      await ctx.close()
+    }
+    {
+      // The owner has the phone: the chat keeps room under it, so the phone never covers Send or the typing box.
+      const { ctx, page, shown, m } = await openChat(owner, 390, 844)
+      await page.screenshot({ path: join(S, 'msg-390-inbox-chat-phone.png') })
+      step('[390] with the phone floating at the bottom, Send and the typing box stay uncovered', shown && m.phone && m.sendFree && m.inputFree, JSON.stringify(m))
+      await ctx.close()
+    }
   } catch (e) {
     step('run finished without an exception', false, e && e.stack)
     await current?.screenshot({ path: join(S, 'msg-failure.png'), fullPage: true }).catch(() => undefined)
