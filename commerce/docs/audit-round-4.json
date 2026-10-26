@@ -318,6 +318,14 @@
     {
       "what": "Reconnect the WhatsApp Business number",
       "where": "Admin > Messaging > Channels"
+    },
+    {
+      "what": "Decide: business memory plans or live plans (live changed 23 Oct: Starter 1,600 / Growth 3,100 and lower limits)",
+      "where": "Super Admin > Plans, or docs/BUSINESS-MEMORY.md"
+    },
+    {
+      "what": "Decide: should a store sync respect the plan's product limit (imports are not counted today)",
+      "where": "_channel_catalog_adopt, _channel_variant"
     }
   ],
   "not_yet_tested": [
@@ -546,6 +554,11 @@
     {
       "module": "scheduled jobs, plan refunds, credit grants, database dates, CSV exports (review, pass 15)",
       "result": "no other job with the #17 pattern; refunds locked; grants keyed; store days used; Super Admin billing dashboard days from UTC midnight (noted); CSV formula guard on every export",
+      "status": "PASS"
+    },
+    {
+      "module": "order repeats, plan limits, website prices (review, pass 16)",
+      "result": "repeat-safe order key holds; stores, products (manual), staff limits enforced; monthly orders billed as overage; imports not counted against the product limit (owner decision); site prices read live plans; business memory out of date (owner decision)",
       "status": "PASS"
     }
   ],
