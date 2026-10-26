@@ -193,6 +193,8 @@ Regression after pass 14 (§4 #15 and #16, migrations `20261203000100` and `2026
 
 Regression after pass 15 (§4 #17, migration `20261204000100`): database tests **769/769** (113 files, the new payment race case included; it fails without the migration and passes with it); engine schema rebuilt (only `expire_unpaid_advance_orders` differs); on the Cloudflare engine finance-payments 19/19, the race cases skip there by design. Production checked read-only before handing over the SQL: the text the migration replaces appears exactly once, not yet patched, owned by app_owner.
 
+Regression after pass 17 (§4 #19–#21, migration `20261205000100`): database tests **774/774** (114 files, the new `order-fee-automatic.test.ts` included; without the migration its 5 cases fail: the checkout and the advance payment fail with the fee error, the confirmed reply leaves the order waiting, the free-order race gives two free orders, the monthly count misses the 1 AM order). Unit **1035 passed / 2 skipped**, typecheck 0 errors. Cloudflare engine: the new file 4 passed and the race skipped; the order-fee and messaging files pass except one cart-reminder case that already fails on the committed engine (not from this change). Engine schema regenerated (`functions.json`, `meta.json` with the new helper; the overload pick of `_meta_cost` kept as before).
+
 ## 6. Needs the owner
 
 | What | Why | Where |

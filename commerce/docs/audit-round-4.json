@@ -693,5 +693,11 @@
       "date": "2026-10-26",
       "done": "imports unchanged; Products page and Plan & Billing show an at/over-limit notice (src/features/billing/product-limit.tsx); live 2026-10-26"
     }
-  ]
+  ],
+  "regression_pass17": {
+    "db": "774/774 (114 files, with migration 20261205000100)",
+    "unit": "1035 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "engine": "order-fee-automatic 4 passed, race skipped; one pre-existing cart-reminder engine failure"
+  }
 }
