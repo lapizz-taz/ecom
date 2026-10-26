@@ -356,8 +356,8 @@
   ],
   "owner_actions": [
     {
-      "what": "Reconnect the WhatsApp Business number",
-      "where": "Admin > Messaging > Channels"
+      "what": "Reconnect WhatsApp only to record the App Review video: the connected number is Meta's test number with a 24-hour token (ran out 20 Oct); no store has a real WhatsApp number until the WhatsApp permissions are approved",
+      "where": "developers.facebook.com > Fullfilio > WhatsApp > API Setup, then Admin > Messaging > Channels"
     },
     {
       "what": "Decide: orders over a plan's monthly limit (no live plan has an overage price, so they are neither blocked nor billed)",

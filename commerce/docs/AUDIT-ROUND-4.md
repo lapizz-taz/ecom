@@ -207,7 +207,7 @@ Regression after pass 20 (every browser and backend-function suite on today's co
 
 | What | Why | Where |
 |---|---|---|
-| Reconnect the WhatsApp Business number | Its Meta access token expired or was revoked on 20 Oct; no WhatsApp message (or template submission) can go out until it is reconnected | Admin → Messaging → Channels → WhatsApp → Reconnect |
+| Reconnect WhatsApp only to record the App Review video | The connected number is Meta's free test number (+1 555…), connected on 19 Oct with Meta's 24-hour token; the token ran out on 20 Oct. No store has a real WhatsApp number yet: merchants can connect one after Meta approves the WhatsApp permissions (second App Review). Reconnect it with a fresh test token on the day the WhatsApp video is recorded | developers.facebook.com → Fullfilio → WhatsApp → API Setup, then Admin → Messaging → Channels → WhatsApp |
 | Decide: orders over a plan's monthly limit | Every live plan has an order limit (Starter 1,100, Growth 2,600, Pro 6,000 a month) but no overage price, so a store can take any number of orders on any plan: nothing is blocked and nothing is billed. The website and Plan & Billing show the limit. Choose: set an overage price per order on each plan (Super Admin → Plans; the invoice then counts every order created in the month, cancelled and fake-blocked ones included, unless that is changed too), block new orders at the limit, or keep it as a soft limit | Super Admin → Plans (overage), or a product change |
 
 Decided by the owner (26 Oct):
