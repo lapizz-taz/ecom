@@ -643,7 +643,7 @@
       "question": "Should a store sync respect the plan product limit",
       "decision": "allow, but warn",
       "date": "2026-10-26",
-      "done": "imports unchanged; Products page and Plan & Billing show an at/over-limit notice (src/features/billing/product-limit.tsx)"
+      "done": "imports unchanged; Products page and Plan & Billing show an at/over-limit notice (src/features/billing/product-limit.tsx); live 2026-10-26"
     }
   ]
 }

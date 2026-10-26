@@ -199,7 +199,7 @@ Decided by the owner (26 Oct):
 | Question | Decision | Done |
 |---|---|---|
 | The business memory's plans, or the live plans? | The live plans are right | `docs/BUSINESS-MEMORY.md` now has the live prices, limits, trials and features per plan, and says the per-order fee and open sign-up are switched off. No change to the website or app (both already read the live plans) |
-| Should a store sync respect the plan's product limit? | Allow, but warn | Imports keep working past the limit. The Products page shows a notice at the limit (amber) and over it (red, with the count), with a link to the plans; Plan & Billing says the same under the products bar. `src/features/billing/product-limit.tsx`, tested in `product-limit.test.ts`. Ready to publish |
+| Should a store sync respect the plan's product limit? | Allow, but warn | Imports keep working past the limit. The Products page shows a notice at the limit (amber) and over it (red, with the count), with a link to the plans; Plan & Billing says the same under the products bar. `src/features/billing/product-limit.tsx`, tested in `product-limit.test.ts`. Live since 26 Oct |
 
 ## 7. Plan for the next passes
 
