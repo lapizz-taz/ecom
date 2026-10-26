@@ -304,6 +304,16 @@
       "fix": "migration 20261205000100: count from midnight on the 1st in the store's time zone (_merchant_month_start)",
       "regression": "order at 1 AM Dhaka on the 1st counted (0 without the migration)",
       "status": "FIXED - live on production 26 Oct (migration)"
+    },
+    {
+      "id": 22,
+      "module": "Super Admin (employees limited to some stores)",
+      "severity": "P3",
+      "summary": "an employee limited to some stores saw other stores' names in the announcement preview and the bulk feature preview, and could send an announcement to every store",
+      "root_cause": "the announcement audience and bulk preview did not use the employee's stores (_platform_merchant_ids)",
+      "fix": "migration 20261205000200: preview limited to own stores; limited employees send only to a list of their own stores; bulk preview names only stores they may change",
+      "regression": "idor-sweep.test.ts: sweep + 2 focused cases fail without the migration, pass with it",
+      "status": "FIXED - in repository, migration for the owner"
     }
   ],
   "engine_gaps": [
@@ -352,6 +362,10 @@
     {
       "what": "Decide: orders over a plan's monthly limit (no live plan has an overage price, so they are neither blocked nor billed)",
       "where": "Super Admin > Plans (overage price) or a product change"
+    },
+    {
+      "what": "Run migration 20261205000200_platform_scope_announcements_features.sql (fixes #22)",
+      "where": "Supabase SQL Editor"
     }
   ],
   "not_yet_tested": [
@@ -596,6 +610,16 @@
       "module": "money: plan invoices and order limit (review, pass 17)",
       "result": "offer sequence covered by signup-offer.test.ts (19/19); overage billed only with a plan overage price, none set live (owner decision); usage counter on UTC month (#21)",
       "status": "FIXED"
+    },
+    {
+      "module": "IDOR sweep: every staff role of another store (pass 18)",
+      "result": "8 roles x ~2,700 calls with store A ids: nothing changed, shown or linked",
+      "status": "PASS"
+    },
+    {
+      "module": "IDOR sweep: platform employees limited to other stores (pass 18)",
+      "result": "6 roles x ~2,700 calls: announcement preview/send and bulk feature preview reached other stores (#22); export record and sign-up request link reviewed and kept",
+      "status": "FIXED"
     }
   ],
   "regression_pass4": {
@@ -695,5 +719,12 @@
     "unit": "1035 passed, 2 skipped",
     "typecheck": "0 errors",
     "engine": "order-fee-automatic 4 passed, race skipped; one pre-existing cart-reminder engine failure"
+  },
+  "regression_pass18": {
+    "db": "778/778 (115 files, with migration 20261205000200)",
+    "unit": "1035 passed, 2 skipped",
+    "typecheck": "0 errors",
+    "build": "clean",
+    "engine": "related files 36 passed, 4 sweeps skipped"
   }
 }

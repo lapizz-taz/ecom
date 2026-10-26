@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { MERCHANT_1, asAnon, asSystem, asUser, closePool, expectError, inTx, one, value, type Db } from '../support/db'
 import { advanceOrder, createOrder, createProduct, createStaff } from '../support/fixtures'
-import { PHONE_A, callEach, callable, createMerchant, label, storeIds, type Call, type Target } from '../support/sweep'
+import { PHONE_A, callEach, callable, createMerchant, crossLinksSql, label, snapshotSql, storeIds, type Call, type Target } from '../support/sweep'
 
 afterAll(closePool)
 
@@ -23,35 +23,6 @@ afterAll(closePool)
 const onEngine = Boolean(process.env.CF_DB_TESTS)
 
 const MARK = 'IDORMARK'
-
-/** One fingerprint over every row of a store (the database owner reads past row security). */
-async function snapshotSql(db: Db): Promise<string> {
-  const tables = await db.query<{ t: string }>(
-    `select c.table_name as t from information_schema.columns c
-       join information_schema.tables x on x.table_schema = c.table_schema and x.table_name = c.table_name and x.table_type = 'BASE TABLE'
-      where c.table_schema = 'public' and c.column_name = 'merchant_id' order by 1`,
-  )
-  const parts = tables.rows.map(({ t }) => `select '${t}' as t, md5(coalesce(string_agg(x::text, '|' order by x::text), '')) as h from public.${t} x where merchant_id = $1`)
-  return `select md5(string_agg(t || ':' || h, ',' order by t)) from (${parts.join(' union all ')}) s`
-}
-
-/** Names every foreign key along which a row of one store points at a row of another (none may). */
-async function crossLinksSql(db: Db): Promise<string> {
-  const fks = await db.query<{ child: string; col: string; parent: string; pcol: string }>(
-    `select c.relname as child, a.attname as col, p.relname as parent, pa.attname as pcol
-       from pg_constraint k
-       join pg_class c on c.oid = k.conrelid join pg_namespace n on n.oid = c.relnamespace
-       join pg_class p on p.oid = k.confrelid
-       join pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
-       join pg_attribute pa on pa.attrelid = k.confrelid and pa.attnum = k.confkey[1]
-      where k.contype = 'f' and n.nspname = 'public' and array_length(k.conkey, 1) = 1 and p.relnamespace = n.oid
-        and exists (select 1 from pg_attribute m where m.attrelid = c.oid and m.attname = 'merchant_id' and not m.attisdropped)
-        and exists (select 1 from pg_attribute m where m.attrelid = p.oid and m.attname = 'merchant_id' and not m.attisdropped)
-      order by 1, 2`,
-  )
-  const parts = fks.rows.map((f) => `select '${f.child}.${f.col}' as link where exists (select 1 from public.${f.child} c join public.${f.parent} p on p.${f.pcol} = c.${f.col} where c.merchant_id is distinct from p.merchant_id)`)
-  return `select coalesce(string_agg(link, ', '), '') as links from (${parts.join(' union all ')}) s`
-}
 
 describe('cross-store sweep', () => {
   it.skipIf(onEngine)('lets no store reach another store\'s rows through any function it may call', { timeout: 900_000 }, () =>
