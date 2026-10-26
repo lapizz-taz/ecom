@@ -231,6 +231,7 @@ export default function AdminLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const matches = useMatches()
+  const fullHeight = location.pathname.replace(/\/+$/, '') === '/admin/inbox'
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [dialog, setDialog] = useState<ShellAction | null>(null)
@@ -406,7 +407,9 @@ export default function AdminLayout() {
           </div>
         </header>
         <AnnouncementBanner />
-        <main className="print-area w-full min-w-0 flex-1 p-3 pb-24 sm:px-6 sm:py-6 sm:pb-24">
+        {/* The inbox fills the screen to its bottom edge (unless the phone floats there); other pages keep room for the floating bars. */}
+        <main className={cn('print-area w-full min-w-0 flex-1 p-3 sm:px-6 sm:py-6',
+          fullHeight ? 'pb-3 sm:pb-6 in-data-[phone-bar]:pb-24 sm:in-data-[phone-bar]:pb-24' : 'pb-24 sm:pb-24')}>
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
             {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}

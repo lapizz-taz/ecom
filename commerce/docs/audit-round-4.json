@@ -313,7 +313,7 @@
       "root_cause": "the announcement audience and bulk preview did not use the employee's stores (_platform_merchant_ids)",
       "fix": "migration 20261205000200: preview limited to own stores; limited employees send only to a list of their own stores; bulk preview names only stores they may change",
       "regression": "idor-sweep.test.ts: sweep + 2 focused cases fail without the migration, pass with it",
-      "status": "FIXED - live on production 26 Oct (migration); Features page label with the next publish"
+      "status": "FIXED - live on production 26 Oct (migration + website)"
     }
   ],
   "engine_gaps": [
@@ -356,8 +356,8 @@
   ],
   "owner_actions": [
     {
-      "what": "Reconnect the WhatsApp Business number",
-      "where": "Admin > Messaging > Channels"
+      "what": "Reconnect WhatsApp only to record the App Review video: the connected number is Meta's test number with a 24-hour token (ran out 20 Oct); no store has a real WhatsApp number until the WhatsApp permissions are approved",
+      "where": "developers.facebook.com > Fullfilio > WhatsApp > API Setup, then Admin > Messaging > Channels"
     },
     {
       "what": "Decide: orders over a plan's monthly limit (no live plan has an overage price, so they are neither blocked nor billed)",
@@ -769,6 +769,25 @@
       "errors": 0
     },
     "noise": "two runs of today's code at 75-79 orders/s with machine load 4+ (one 3 minutes after start); the old code dipped the same way",
+    "status": "PASS"
+  },
+  "regression_pass20": {
+    "code": "1ea9c3c (live since 26 Oct), 189 migrations",
+    "browser": {
+      "admin-pages-e2e": "164/164",
+      "super-admin-pages-e2e": "56/56",
+      "storefront-e2e": "33/33",
+      "order-lifecycle-e2e": "31/31 (P&L by hand: revenue 2,000, COGS 800, net 1,090)",
+      "messaging-e2e": "43/43",
+      "moderator-e2e": "16/16",
+      "theme-presets-e2e": "11/11",
+      "theme-round-e2e": "36/36 (first 35/36: dist/_site missing from the run's build, as in pass 9; the suite now stops early with the instruction)",
+      "webhook-forgery": "40/40",
+      "functions-access-sweep": "14/14",
+      "functions-auth-sweep": "5/5"
+    },
+    "total": "449/449",
+    "product_change": "none",
     "status": "PASS"
   }
 }

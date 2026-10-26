@@ -155,7 +155,8 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 ## Facts to keep straight
 
 - Payments to Fullfilio: bKash, PayStation, SSLCommerz. The currency is BDT.
-- Messaging uses Meta app 1653473169830242. Do not change that app.
+- Messaging (the inbox and "Continue with Facebook") uses the Meta app "Fullfilio", 1733096427752798.
+  Do not change the old app, 1653473169830242.
 - fullfilio.com has its own Meta pixel, sent from the browser and from our server with one event id:
   PageView, ViewContent (the prices), Lead (contact form, WhatsApp sign-up), CompleteRegistration and
   StartTrial (a new store). Pixel: the "FullFilio" dataset, 1871039407582107 (`SITE_META_PIXEL` in `src/features/site/site-meta.ts`); server
