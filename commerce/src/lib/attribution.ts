@@ -8,7 +8,7 @@
 // Both travel with the order; the server classifies them (Facebook Ads,
 // Organic, Direct, …) — the browser never decides the source on its own.
 
-import { storeKey } from '@/lib/merchant'
+import { currentSite, storeBasename, storeKey } from '@/lib/merchant'
 
 export interface Touch {
   at: string
@@ -65,9 +65,18 @@ function randomId(): string {
 }
 
 const VID = /^[A-Za-z0-9_-]{8,64}$/
+
+/**
+ * The ff_vid cookie is shared by every page of its host, so only a store on its own address uses it
+ * (there the store's server keeps it for that store alone, worker/storefront.ts). On the platform
+ * host, stores opened by /s/<name> and the website keep the id only under their own key (security
+ * audit run 6).
+ */
+const ownAddress = () => typeof document !== 'undefined' && !storeBasename() && currentSite().kind === 'store'
+
 /** The same id in a first-party cookie (ff_vid), which the store's server refreshes on every page. */
 function vidCookie(): string {
-  if (typeof document === 'undefined') return ''
+  if (!ownAddress()) return ''
   const m = document.cookie.match(/(?:^|; )ff_vid=([^;]*)/)
   return m && VID.test(m[1]) ? m[1] : ''
 }
@@ -79,7 +88,7 @@ export function visitorId(): string {
     id = vidCookie() || randomId()
     write(VISITOR_KEY, id)
   }
-  if (typeof document !== 'undefined' && vidCookie() !== id) {
+  if (ownAddress() && vidCookie() !== id) {
     try {
       document.cookie = `ff_vid=${id}; path=/; max-age=${365 * 86_400}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`
     } catch { /* cookies off */ }

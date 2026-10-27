@@ -64,14 +64,45 @@ export async function siteEventPayload(raw: unknown, req: Request, origin: strin
   }
 }
 
+/** The body as text, or null when it is longer than MAX_BODY: reading stops there, the rest is never taken in. */
+async function smallBody(req: Request): Promise<string | null> {
+  const declared = Number(req.headers.get('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > MAX_BODY) return null
+  if (!req.body) return null
+  const reader = req.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > MAX_BODY) {
+        await reader.cancel().catch(() => {})
+        return null
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return null
+  }
+  const bytes = new Uint8Array(size)
+  let at = 0
+  for (const c of chunks) {
+    bytes.set(c, at)
+    at += c.byteLength
+  }
+  return new TextDecoder().decode(bytes)
+}
+
 export async function siteEvent(req: Request, url: URL, env: SiteEventsEnv, fetchFn: typeof fetch = fetch, pixel = SITE_META_PIXEL): Promise<Response> {
   if (req.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
   const origin = siteOrigin(env, url)
   // Only the website itself, from its own pages.
   if (!isCanonicalHost(url, env) || req.headers.get('origin') !== origin) return done()
   if (!pixel || !env.SITE_META_CAPI_TOKEN) return done()
-  const text = await req.text().catch(() => '')
-  if (!text || text.length > MAX_BODY) return done()
+  const text = await smallBody(req)
+  if (!text) return done()
   let raw: unknown
   try { raw = JSON.parse(text) } catch { return done() }
   const event = await siteEventPayload(raw, req, origin)

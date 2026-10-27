@@ -24,7 +24,8 @@ import {
 } from '../_shared/notifications/defaults.ts'
 import { htmlToText, LiquidError, renderLiquid } from '../_shared/notifications/liquid.ts'
 import {
-  listWhatsappTemplates, SendError, sendEmail, sendWhatsappTemplate, SMTP_SECRET, submitWhatsappTemplate, whatsappGraph,
+  listWhatsappTemplates, sameMailbox, type SavedMailbox, SendError, sendEmail, sendWhatsappTemplate, SMTP_SECRET, submitWhatsappTemplate,
+  whatsappGraph,
 } from '../_shared/notifications/senders.ts'
 import { isEmail, sendSmtp, SMTP_PORTS, SmtpError, smtpHostProblem } from '../_shared/notifications/smtp.ts'
 import { exampleValues, fillWhatsapp, templateName, toPositional, whatsappProblems } from '../_shared/notifications/whatsapp-template.ts'
@@ -124,13 +125,18 @@ async function emailConnect(staff: StaffContext, input: Extract<Input, { action:
   if (problem) throw bad(problem)
   const to = staff.user.email
   if (!to || !isEmail(to)) throw bad('Your sign-in has no email address to send the test to.')
+  const s = await rpc<EmailSettings>(staff.admin, 'email_settings')
   let password = input.password ?? ''
   if (!password) {
+    // The kept password only goes back to the mailbox it was saved for, never to a new server or username
     const { data } = await staff.admin.rpc('integration_secret_get', { p_key: SMTP_SECRET })
-    password = (data as { password?: string } | null)?.password ?? ''
-    if (!password) throw bad('Enter the password (or app password) of the mailbox.')
+    const saved = data as SavedMailbox | null
+    if (!saved?.password) throw bad('Enter the password (or app password) of the mailbox.')
+    if (!sameMailbox(saved, { host: input.host, port: input.port, security: input.security, username: input.username }, s.smtp?.host ? s.smtp : null)) {
+      throw bad('Enter the password (or app password) of the mailbox: the mail server or username changed.')
+    }
+    password = saved.password
   }
-  const s = await rpc<EmailSettings>(staff.admin, 'email_settings')
   const fromName = s.from_name || s.store.name || 'Store'
   try {
     await sendSmtp({ host: input.host, port: input.port, security: input.security, username: input.username, password }, {
@@ -143,7 +149,7 @@ async function emailConnect(staff: StaffContext, input: Extract<Input, { action:
     throw bad(e instanceof SmtpError ? e.message : `Could not send the test email: ${(e as Error).message}`, 'SMTP_FAILED')
   }
   await rpc(staff.admin, 'integration_secret_store', {
-    p_key: SMTP_SECRET, p_value: { username: input.username, password }, p_hint: hint(input.username, input.host), p_actor: staff.user.id,
+    p_key: SMTP_SECRET, p_value: { host: input.host, port: input.port, security: input.security, username: input.username, password }, p_hint: hint(input.username, input.host), p_actor: staff.user.id,
   })
   await rpc(staff.admin, '_email_smtp_connected', {
     p_smtp: { host: input.host, port: input.port, security: input.security, username: input.username, from_email: input.from_email }, p_actor: staff.user.id,

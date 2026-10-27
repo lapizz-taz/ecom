@@ -25,6 +25,11 @@ const MAX_SOCKETS = 5000
 const JOIN_DEADLINE_MS = 30_000
 const VISITOR_LIFETIME_MS = 30 * 60_000
 const MAX_VISITOR_SOCKETS = 1000
+// Signed-in sockets (security audit run 6): closed once the access token has expired (plus a few
+// minutes for the page to send its refreshed one), when the page sends a token that no longer
+// verifies, and past MAX_ACCOUNT_SOCKETS for one account.
+const TOKEN_GRACE_MS = 5 * 60_000
+const MAX_ACCOUNT_SOCKETS = 20
 
 function close(ws: WebSocket, reason: string): void {
   try {
@@ -127,10 +132,22 @@ export class Database extends DurableObject {
     const state = ws.deserializeAttachment() as SocketState
     const m = live.decode(message, state.vsn)
     if (!m) return
+    const before = state.uid
     const replies = await live.handle(state, m, (token) => this.verifyLiveToken(token))
     ws.serializeAttachment(state)
     for (const r of replies) ws.send(live.encode(r, state.vsn))
-    if (state.joined && !state.uid && this.visitorSockets() > MAX_VISITOR_SOCKETS) close(ws, 'Too many live connections')
+    // Signed out or the token no longer verifies: the page reconnects with the one it has now.
+    if (before && !state.uid) close(ws, 'Sign in again')
+    else if (state.uid && state.uid !== before && this.accountSockets(state.uid) > MAX_ACCOUNT_SOCKETS) close(ws, 'Too many live connections')
+    else if (state.joined && !state.uid && this.visitorSockets() > MAX_VISITOR_SOCKETS) close(ws, 'Too many live connections')
+  }
+
+  private accountSockets(uid: string): number {
+    let n = 0
+    for (const ws of this.ctx.getWebSockets()) {
+      if ((ws.deserializeAttachment() as SocketState | null)?.uid === uid) n++
+    }
+    return n
   }
 
   private visitorSockets(): number {
@@ -146,7 +163,7 @@ export class Database extends DurableObject {
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + JOIN_DEADLINE_MS)
   }
 
-  /** Closes sockets that never joined, and visitors' sockets past their lifetime. */
+  /** Closes sockets that never joined, visitors' sockets past their lifetime, and signed-in ones whose token has expired. */
   async alarm(): Promise<void> {
     const now = Date.now()
     let open = 0
@@ -154,7 +171,8 @@ export class Database extends DurableObject {
       const st = ws.deserializeAttachment() as SocketState | null
       const at = st?.at ?? now // sockets from before this rule start their clock now
       if (st && st.at === undefined) ws.serializeAttachment({ ...st, at: now, joined: st.joined ?? st.subs.length > 0 })
-      const stale = !st || (!(st.joined ?? st.subs.length > 0) ? now - at > JOIN_DEADLINE_MS : !st.uid && now - at > VISITOR_LIFETIME_MS)
+      const stale = !st || (!(st.joined ?? st.subs.length > 0) ? now - at > JOIN_DEADLINE_MS
+        : st.uid ? st.exp * 1000 + TOKEN_GRACE_MS < now : now - at > VISITOR_LIFETIME_MS)
       if (stale) close(ws, 'Live connection timed out')
       else open++
     }

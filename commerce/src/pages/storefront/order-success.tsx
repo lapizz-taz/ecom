@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, Clock, Layers } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { Money } from '@/components/common/money'
 import { ErrorState, LoadingState } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +12,7 @@ import { WhatsAppConfirm } from '@/features/storefront/whatsapp-confirm'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { normalizePhone } from '@/lib/phone'
 import { trackOrder } from '@/services/storefront'
-import { lastOrderKey } from '@/features/cart/last-order'
+import { lastOrderKey, readMergedLines } from '@/features/cart/last-order'
 
 function storedPhone(orderNumber: string): string {
   try {
@@ -31,6 +32,48 @@ const PAYMENT_MESSAGES: Record<string, { tone: string; icon: React.ReactNode; te
   unavailable: { tone: 'bg-amber-50 text-amber-900', icon: <AlertTriangle className="size-5" />, text: 'Your order is placed, but online payment could not open just now. Please try again or choose another way to pay below.' },
 }
 
+/**
+ * A checkout that joined the same number's earlier order. The page shows what was just added and
+ * never the earlier order itself: its number and details come to the customer by SMS (security
+ * audit run 6: anyone could type someone else's number at checkout).
+ */
+function MergedThankYou() {
+  const [lines] = useState(readMergedLines)
+  return (
+    <div className="mx-auto max-w-xl px-4 py-12">
+      <div className="mb-8 text-center">
+        <Layers className="mx-auto mb-3 size-10 text-sky-600" />
+        <h1 className="text-2xl font-semibold text-balance">Added to your earlier order</h1>
+        <p className="mt-2 text-muted-foreground text-pretty">
+          This mobile number already has an order with us, so these items go in the same parcel, with <strong>one delivery charge</strong>.
+          We'll confirm the updated order by SMS.
+        </p>
+      </div>
+      {lines && lines.items.length > 0 && (
+        <div className="rounded-xl border p-4">
+          <p className="mb-2 text-sm font-medium">Just added</p>
+          <ul className="divide-y text-sm">
+            {lines.items.map((item, i) => (
+              <li key={i} className="flex items-baseline justify-between gap-3 py-2">
+                <span className="min-w-0">
+                  <span className="font-medium">{item.product_name}</span>
+                  <span className="text-muted-foreground">{item.variant_title ? ` · ${item.variant_title}` : ''} · Qty {item.quantity}</span>
+                </span>
+                <Money value={item.line_subtotal} />
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex justify-between border-t pt-2 text-sm font-medium"><span>Items</span><Money value={lines.subtotal} /></div>
+        </div>
+      )}
+      <div className="mt-8 flex flex-wrap justify-center gap-2">
+        <Button asChild variant="outline"><Link to="/track-order">Track an order</Link></Button>
+        <Button asChild><Link to="/shop">Continue shopping</Link></Button>
+      </div>
+    </div>
+  )
+}
+
 export default function OrderSuccessPage() {
   const [params] = useSearchParams()
   const orderNumber = params.get('order') ?? ''
@@ -47,6 +90,7 @@ export default function OrderSuccessPage() {
     refetchInterval: (q) => (q.state.data?.status === 'ADVANCE_REQUIRED' ? 15_000 : false),
   })
 
+  if (!orderNumber && merged) return <MergedThankYou />
   if (!orderNumber) {
     return <div className="mx-auto max-w-md px-4 py-20 text-center"><p>No order selected.</p><Button asChild className="mt-4"><Link to="/track-order">Track an order</Link></Button></div>
   }
@@ -86,12 +130,6 @@ export default function OrderSuccessPage() {
           </div>
         )}
       </div>
-      {merged && (
-        <div className="mb-6 flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
-          <Layers className="size-5 shrink-0" />
-          <span>You ordered again a moment ago, so we added these items to the same order — <strong>one parcel, one delivery charge</strong>.</span>
-        </div>
-      )}
       {banner && <div className={`mb-6 flex items-center gap-3 rounded-lg p-4 text-sm ${banner.tone}`}>{banner.icon}{banner.text}</div>}
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">

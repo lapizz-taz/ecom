@@ -195,7 +195,9 @@ describe('automatic merge of repeat checkouts', () => {
       const second = await checkout(db, { phone: '01711000201', items: [{ variantId: b.variantIds[0], quantity: 2 }] },
         { idempotency_key: 'retry-key-1', customer_note: 'Please call first' })
       expect(second.merged).toBe(true)
-      expect(second.id).toBe(first.id)
+      // Only this checkout's own lines come back, never the order it joined (audit run 6).
+      expect(second.id).toBeNull()
+      expect(second.order_number).toBeNull()
       expect(await value(db, `select count(*)::int from public.orders where customer_phone = '01711000201'`)).toBe(1)
 
       const merged = await one<{ subtotal: string; delivery_charge: string; total_amount: string; merged_count: number; customer_note: string }>(db,
@@ -211,7 +213,7 @@ describe('automatic merge of repeat checkouts', () => {
 
       // A retry of the second checkout returns the same order without adding items twice.
       const retry = await checkout(db, { phone: '01711000201', items: [{ variantId: b.variantIds[0], quantity: 2 }] }, { idempotency_key: 'retry-key-1' })
-      expect(retry.id).toBe(first.id)
+      expect(retry.id).toBeNull()
       expect(retry.merged).toBe(true)
       expect(await itemsOf(db, first.id)).toHaveLength(2)
       expect(await value(db, `select count(*)::int from public.order_merges where order_id = $1`, [first.id])).toBe(1)

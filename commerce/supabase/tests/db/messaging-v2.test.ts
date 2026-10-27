@@ -122,10 +122,14 @@ describe('messages v2: Confirm / Cancel', () => {
       await db.query(`update public.notifications set is_enabled = true where id = $1`, [created])
       expect(await enqueue(db, o.id, 'ORDER_CREATED')).toBe(1)
       const [log] = await logsOf(db, `order_id = $1 and channel = 'EMAIL'`, [o.id])
-      const token = log.data?.reply_token as string
-      expect(token).toMatch(/^[0-9a-f]{40}$/)
+      // The log keeps only "with buttons"; the token is made when the message is sent (audit run 6).
+      expect(log.data).toMatchObject({ reply: true })
+      expect(log.data).not.toHaveProperty('reply_token')
       await asService(db)
-      expect(await value<Record<string, any>>(db, `select public._notification_send_plan($1)`, [log.id])).toMatchObject({ reply_token: token, merchant_id: expect.any(String) })
+      const plan = await value<Record<string, any>>(db, `select public._notification_send_plan($1)`, [log.id])
+      expect(plan).toMatchObject({ reply_token: expect.stringMatching(/^[0-9a-f]{40}$/), merchant_id: expect.any(String) })
+      const token = plan.reply_token as string
+      expect(await value(db, `select public._order_reply_token($1)`, [o.id])).toBe(token)
 
       const view = await value<Record<string, any>>(db, `select public.order_reply_view($1)`, [token])
       expect(view).toMatchObject({ state: 'OPEN', can_confirm: true, can_cancel: true, language: 'en', order: { number: o.order_number, customer_first_name: 'Rahim' } })
@@ -190,10 +194,11 @@ describe('messages v2: Confirm / Cancel', () => {
       await approve(db, 'ORDER_CREATED', true)
       expect(await enqueue(db, o.id, 'ORDER_CREATED')).toBe(1)
       const [log] = await logsOf(db, `order_id = $1 and channel = 'WHATSAPP'`, [o.id])
-      const token = log.data?.reply_token as string
-      expect(token).toMatch(/^[0-9a-f]{40}$/)
+      expect(log.data).not.toHaveProperty('reply_token')
       await asService(db)
       const plan = await value<Record<string, any>>(db, `select public._notification_send_plan($1)`, [log.id])
+      const token = await value<string>(db, `select public._order_reply_token($1)`, [o.id])
+      expect(token).toMatch(/^[0-9a-f]{40}$/)
       expect(plan.buttons).toEqual([`ffo:confirm:${token}`, `ffo:cancel:${token}`])
 
       await asSystem(db)
@@ -300,8 +305,9 @@ describe('messages v2: abandoned cart reminders', () => {
       await smsOn(db, ['CART_REMINDER'])
       await db.query(`update public.notifications set is_enabled = true where channel = 'EMAIL' and event = 'CART_REMINDER'`)
       await db.query(`update public.customers set email = 'karim@example.com' where phone = (select customer_phone from public.orders where id = $1)`, [o.id])
-      const cart = await value<string>(db, `insert into public.store_carts(visitor_id, status, reached_checkout, items, item_count, subtotal, phone, customer_name, last_activity_at)
-        values ('visitor-0001', 'ACTIVE', true, $1::jsonb, 2, 1200, (select customer_phone from public.orders where id = $2), 'Karim Ahmed', now() - interval '2 hours')
+      const cart = await value<string>(db, `insert into public.store_carts(visitor_id, status, reached_checkout, items, item_count, subtotal, phone, customer_name, last_activity_at, customer_id)
+        values ('visitor-0001', 'ACTIVE', true, $1::jsonb, 2, 1200, (select customer_phone from public.orders where id = $2), 'Karim Ahmed', now() - interval '2 hours',
+                (select customer_id from public.orders where id = $2))
         returning id`, [JSON.stringify([{ variant_id: '00000000-0000-4000-8000-0000000000c1', name: 'Cotton panjabi', variant: 'L', quantity: 2, unit_price: 600, image: null }]), o.id])
 
       await daytime(db, false)

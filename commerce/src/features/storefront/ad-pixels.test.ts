@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const merchantFetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{}', { status: 202 }))
 const site = { kind: 'store', merchant_id: 'aaaaaaaa-0000-4000-8000-000000000001' as string | null }
-vi.mock('@/lib/merchant', () => ({ merchantFetch, currentSite: () => site, storeKey: (name: string) => name }))
+const path = { base: '' }
+vi.mock('@/lib/merchant', () => ({ merchantFetch, currentSite: () => site, storeKey: (name: string) => name, storeBasename: () => path.base }))
 vi.mock('@/lib/functions', () => ({ functionHeaders: async () => ({ apikey: 'anon', Authorization: 'Bearer anon' }) }))
 vi.mock('@/lib/env', () => ({ functionsUrl: (n: string) => `https://fn.example.com/${n}` }))
 
@@ -39,6 +40,7 @@ beforeEach(() => {
   ;(g.sessionStorage as Storage).clear()
   ;(g.localStorage as Storage).clear()
   site.merchant_id = STORE_A
+  path.base = ''
 })
 afterEach(() => { delete g.fbq; delete g.gtag; delete g.ttq })
 
@@ -54,6 +56,24 @@ describe('ad pixels', () => {
   it('passes on only well-formed browser ids', () => {
     ;(g.document as { cookie: string }).cookie = '_fbp=fb.1.1700000000000.1234567890; _fbc=bad; _ttp=abcDEF123456; _ga=GA1.1.123456789.1700000000'
     expect(browserIds()).toEqual({ fbp: 'fb.1.1700000000000.1234567890', ttp: 'abcDEF123456', ga: '123456789.1700000000' })
+  })
+
+  it('a store opened by path never sends the host-wide ad cookies another store or the website wrote (audit run 6)', async () => {
+    path.base = '/s/store-b'
+    ;(g.document as { cookie: string }).cookie = '_fbp=fb.1.1700000000000.1111111111; _fbc=fb.1.1700000000000.StoreAClick; _ttp=abcDEF123456; _ga=GA1.1.123456789.1700000000'
+    expect(browserIds()).toEqual({})
+    // Its own Meta ids are kept under its own key, not in the shared cookies.
+    await startAdPixels(on)
+    adEvent('PageView')
+    await flush()
+    const ids = browserIds()
+    expect(ids.fbp).toMatch(/^fb\.1\.\d+\.\d+$/)
+    expect(ids.fbp).not.toBe('fb.1.1700000000000.1111111111')
+    expect(ids.fbc).toBeUndefined()
+    expect((g.localStorage as Storage).getItem('ff_fbp')).toBe(ids.fbp)
+    expect((g.document as { cookie: string }).cookie).toContain('_fbp=fb.1.1700000000000.1111111111')
+    const body = JSON.parse(String(merchantFetch.mock.calls.at(-1)![1]!.body))
+    expect(body.browser).toEqual({ fbp: ids.fbp })
   })
 
   it('holds events until the settings arrive, then fires the pixel and the server copy with one id', async () => {

@@ -34,12 +34,17 @@ const MAX_TEMPLATE = 200_000
 const MAX_OUTPUT = 600_000
 const MAX_STEPS = 20_000
 const MAX_DEPTH = 40
+/** All the text the filters may build in one render (assign and capture values included). */
+const MAX_WORK = 10 * MAX_OUTPUT
+const MAX_CONDITIONS = 100
 
 // ------------------------------------------------------------------ tokens
 type Token =
   | { kind: 'text'; value: string; line: number }
   | { kind: 'out'; value: string; line: number }
   | { kind: 'tag'; name: string; args: string; line: number }
+
+const SPACES = /\s+/y
 
 function tokenize(src: string): Token[] {
   const out: Token[] = []
@@ -71,7 +76,7 @@ function tokenize(src: string): Token[] {
     if (trimRight) inner = inner.slice(0, -1)
     if (trimLeft && out.length && out[out.length - 1].kind === 'text') {
       const t = out[out.length - 1] as { value: string }
-      t.value = t.value.replace(/\s+$/, '')
+      t.value = t.value.trimEnd()
     }
     const tokenLine = line
     if (isTag) {
@@ -96,10 +101,10 @@ function tokenize(src: string): Token[] {
     lineAt(start, close + 2)
     i = close + 2
     if (trimRight) {
-      const ws = src.slice(i).match(/^\s+/)
-      if (ws) {
-        lineAt(i, i + ws[0].length)
-        i += ws[0].length
+      SPACES.lastIndex = i
+      if (SPACES.test(src)) {
+        lineAt(i, SPACES.lastIndex)
+        i = SPACES.lastIndex
       }
     }
   }
@@ -129,8 +134,14 @@ function parseExpr(raw: string, line: number): Expr {
   if (s === 'true' || s === 'false') return { t: 'lit', v: s === 'true' }
   if (s === 'nil' || s === 'null') return { t: 'lit', v: null }
   if (s === 'blank' || s === 'empty') return { t: 'lit', v: BLANK }
-  const range = s.match(/^\(\s*(.+?)\s*\.\.\s*(.+?)\s*\)$/)
-  if (range) return { t: 'range', from: parseExpr(range[1], line), to: parseExpr(range[2], line) }
+  // (from..to), found by position: a pattern with two lazy groups is slow on long spaces
+  if (s.startsWith('(') && s.endsWith(')')) {
+    const inner = s.slice(1, -1).trim()
+    const dots = inner.indexOf('..', 1)
+    if (dots > 0 && inner.slice(dots + 2).trim()) {
+      return { t: 'range', from: parseExpr(inner.slice(0, dots), line), to: parseExpr(inner.slice(dots + 2), line) }
+    }
+  }
   // a.b[0].c["d"]
   const path: Array<string | Expr> = []
   let rest = s
@@ -199,14 +210,35 @@ type Cond =
 
 function parseCond(raw: string, line: number): Cond {
   // Liquid reads and/or from the right: a or b and c  ==  a or (b and c)
-  const words = splitOutside(raw, ' ').filter((w) => w !== '')
-  const idx = words.findIndex((w) => w === 'and' || w === 'or')
-  if (idx >= 0) {
-    return { t: words[idx] as 'and' | 'or', a: parseCond(words.slice(0, idx).join(' '), line), b: parseCond(words.slice(idx + 1).join(' '), line) }
+  const parts: string[][] = [[]]
+  const joins: Array<'and' | 'or'> = []
+  for (const w of splitOutside(raw, ' ')) {
+    if (w === 'and' || w === 'or') {
+      joins.push(w)
+      parts.push([])
+    } else if (w !== '') {
+      parts[parts.length - 1].push(w)
+    }
   }
-  const s = words.join(' ')
-  const m = s.match(/^(.+?)\s*(==|!=|<>|>=|<=|>|<|\scontains\s)\s*(.+)$/)
-  if (m) return { t: 'cmp', op: m[2].trim(), a: parseExpr(m[1], line), b: parseExpr(m[3], line) }
+  if (joins.length > MAX_CONDITIONS) throw new LiquidError(`a condition has more than ${MAX_CONDITIONS} and/or`, line)
+  let cond = parseCompare(parts[parts.length - 1].join(' '), line)
+  for (let i = joins.length - 1; i >= 0; i--) cond = { t: joins[i], a: parseCompare(parts[i].join(' '), line), b: cond }
+  return cond
+}
+
+const OPERATORS = ['==', '!=', '<>', '>=', '<=', '>', '<']
+
+/** a == b, a contains b, or just a: the first operator after the first character, found in one pass. */
+function parseCompare(s: string, line: number): Cond {
+  for (let q = 1; q < s.length; q++) {
+    let op = OPERATORS.find((o) => s.startsWith(o, q))
+    let len = op?.length ?? 0
+    if (!op && /\s/.test(s[q]) && s.startsWith('contains', q + 1) && /\s/.test(s[q + 9] ?? '')) {
+      op = 'contains'
+      len = 10
+    }
+    if (op && s.slice(q + len).trim()) return { t: 'cmp', op, a: parseExpr(s.slice(0, q), line), b: parseExpr(s.slice(q + len), line) }
+  }
   return { t: 'truthy', a: parseExpr(s, line) }
 }
 
@@ -216,7 +248,7 @@ type Node =
   | { t: 'out'; o: Output; line: number }
   | { t: 'if'; branches: Array<{ cond: Cond | null; body: Node[] }>; negate: boolean }
   | { t: 'for'; name: string; coll: Expr; limit?: Expr; offset?: Expr; reversed: boolean; body: Node[]; empty: Node[]; line: number }
-  | { t: 'assign'; name: string; o: Output }
+  | { t: 'assign'; name: string; o: Output; line: number }
   | { t: 'capture'; name: string; body: Node[] }
 
 function parse(tokens: Token[]): Node[] {
@@ -256,16 +288,19 @@ function parse(tokens: Token[]): Node[] {
         return { t: 'if', branches, negate: name === 'unless' }
       }
       case 'for': {
-        const m = args.match(/^([A-Za-z_]\w*)\s+in\s+(\([^)]*\)|\S+)(.*)$/)
-        if (!m) throw new LiquidError('write {% for item in list %}', line)
-        const opts = m[3]
+        const head = args.match(/^([A-Za-z_]\w*)\s+in\s+/)
+        const rest = head ? args.slice(head[0].length) : ''
+        const close = rest.startsWith('(') ? rest.indexOf(')') : -1
+        const coll = close > 0 ? rest.slice(0, close + 1) : rest.match(/^\S+/)?.[0]
+        if (!head || !coll) throw new LiquidError('write {% for item in list %}', line)
+        const opts = rest.slice(coll.length)
         const limit = opts.match(/limit\s*:\s*(\S+)/)
         const offset = opts.match(/offset\s*:\s*(\S+)/)
         const body = block(['else', 'endfor'], depth + 1)
         let empty: Node[] = []
         if (body.end && body.end.kind === 'tag' && body.end.name === 'else') empty = block(['endfor'], depth + 1).nodes
         return {
-          t: 'for', name: m[1], coll: parseExpr(m[2], line), line, reversed: /\breversed\b/.test(opts),
+          t: 'for', name: head[1], coll: parseExpr(coll, line), line, reversed: /\breversed\b/.test(opts),
           limit: limit ? parseExpr(limit[1], line) : undefined, offset: offset ? parseExpr(offset[1], line) : undefined,
           body: body.nodes, empty,
         }
@@ -273,7 +308,7 @@ function parse(tokens: Token[]): Node[] {
       case 'assign': {
         const m = args.match(/^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/)
         if (!m || m[1].startsWith('__')) throw new LiquidError('write {% assign name = value %}', line)
-        return { t: 'assign', name: m[1], o: parseOutput(m[2], line) }
+        return { t: 'assign', name: m[1], o: parseOutput(m[2], line), line }
       }
       case 'capture': {
         const m = args.match(/^([A-Za-z_]\w*)$/)
@@ -436,6 +471,20 @@ function formatDate(v: unknown, fmt: string, ctx: Ctx): string {
   })
 }
 
+const tooLong = () => new LiquidError('the message is too long')
+
+/** Stops a value before it is built when it would be longer than a whole message may be. */
+function fits(length: number): void {
+  if (length > MAX_OUTPUT) throw tooLong()
+}
+
+/** replace / remove, measured before the new text is made. */
+function swap(s: string, from: string, to: string): string {
+  const parts = s.split(from)
+  fits(s.length + (parts.length - 1) * (to.length - from.length))
+  return parts.join(to)
+}
+
 type FilterFn = (v: unknown, args: unknown[], ctx: Ctx) => unknown
 const FILTERS: Record<string, FilterFn> = {
   money: (v, _a, ctx) => `${ctx.currency}${formatAmount(num(v))}`,
@@ -453,10 +502,10 @@ const FILTERS: Record<string, FilterFn> = {
     const tail = a[1] === undefined ? '...' : str(a[1])
     return s.length > n ? s.slice(0, Math.max(n - tail.length, 0)) + tail : s
   },
-  append: (v, a) => str(v) + str(a[0]),
-  prepend: (v, a) => str(a[0]) + str(v),
-  replace: (v, a) => str(v).split(str(a[0])).join(str(a[1])),
-  remove: (v, a) => str(v).split(str(a[0])).join(''),
+  append: (v, a) => { const s = str(v); const t = str(a[0]); fits(s.length + t.length); return s + t },
+  prepend: (v, a) => { const s = str(v); const t = str(a[0]); fits(s.length + t.length); return t + s },
+  replace: (v, a) => swap(str(v), str(a[0]), str(a[1])),
+  remove: (v, a) => swap(str(v), str(a[0]), ''),
   plus: (v, a) => num(v) + num(a[0]),
   minus: (v, a) => num(v) - num(a[0]),
   times: (v, a) => num(v) * num(a[0]),
@@ -465,29 +514,42 @@ const FILTERS: Record<string, FilterFn> = {
   size: (v) => (Array.isArray(v) || typeof v === 'string' ? v.length : 0),
   first: (v) => (Array.isArray(v) ? v[0] : str(v).charAt(0)),
   last: (v) => (Array.isArray(v) ? v[v.length - 1] : str(v).slice(-1)),
-  join: (v, a) => (Array.isArray(v) ? v.map(str).join(a[0] === undefined ? ' ' : str(a[0])) : str(v)),
+  join: (v, a) => {
+    if (!Array.isArray(v)) return str(v)
+    const parts = v.map(str)
+    const sep = a[0] === undefined ? ' ' : str(a[0])
+    fits(parts.reduce((n, p) => n + p.length, 0) + Math.max(parts.length - 1, 0) * sep.length)
+    return parts.join(sep)
+  },
   url_encode: (v) => encodeURIComponent(str(v)),
   newline_to_br: (v) => new SafeHtml(escapeHtml(str(v)).replace(/\r?\n/g, '<br>')),
-  strip_html: (v) => str(v).replace(/<[^>]*>/g, ''),
+  strip_html: (v) => stripTags(str(v)),
 }
 
 // ------------------------------------------------------------------ render
-interface Ctx { mode: 'html' | 'text'; currency: string; now: Date; timeZone: string; steps: number; size: number }
+interface Ctx { mode: 'html' | 'text'; currency: string; now: Date; timeZone: string; steps: number; size: number; work: number }
 
 function show(v: unknown, ctx: Ctx): string {
   if (v instanceof SafeHtml) return v.html
   const s = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100)) : str(v)
+  fits(s.length) // before escaping, which can make it six times longer
   return ctx.mode === 'html' ? escapeHtml(s) : s
 }
 
+// Every filter result counts, kept or not: assign and capture values can't grow past the limits.
 function evalOutput(scopes: Scope[], o: Output, ctx: Ctx, line: number): unknown {
   let v = lookup(scopes, o.expr, ctx)
   for (const f of o.filters) {
     try {
       v = FILTERS[f.name](v, f.args.map((a) => lookup(scopes, a, ctx)), ctx)
     } catch (e) {
+      if (e instanceof LiquidError) throw new LiquidError(e.message, line)
       throw new LiquidError(`the ${f.name} filter failed: ${(e as Error).message}`, line)
     }
+    const length = v instanceof SafeHtml ? v.html.length : typeof v === 'string' ? v.length : 0
+    if (length > MAX_OUTPUT) throw new LiquidError(tooLong().message, line)
+    ctx.work += length
+    if (ctx.work > MAX_WORK) throw new LiquidError('the template does too much work (its values are too long)', line)
   }
   return v
 }
@@ -499,7 +561,7 @@ function run(nodes: Node[], scopes: Scope[], ctx: Ctx, out: string[]): void {
     switch (n.t) {
       case 'text': piece = n.v; break
       case 'out': piece = show(evalOutput(scopes, n.o, ctx, n.line), ctx); break
-      case 'assign': scopes[0][n.name] = evalOutput(scopes, n.o, ctx, 0); break
+      case 'assign': scopes[0][n.name] = evalOutput(scopes, n.o, ctx, n.line); break
       case 'capture': {
         const buf: string[] = []
         run(n.body, scopes, ctx, buf)
@@ -529,6 +591,7 @@ function run(nodes: Node[], scopes: Scope[], ctx: Ctx, out: string[]): void {
           break
         }
         items.forEach((item, i) => {
+          if (++ctx.steps > MAX_STEPS) throw new LiquidError('the template does too much work (loops are too long)')
           const forloop = { index: i + 1, index0: i, rindex: items.length - i, rindex0: items.length - i - 1, first: i === 0, last: i === items.length - 1, length: items.length }
           run(n.body, [...scopes, { [n.name]: item, forloop }], ctx, out)
         })
@@ -567,6 +630,7 @@ export function renderLiquid(template: string, data: Record<string, unknown>, op
     timeZone: options.timeZone ?? 'Asia/Dhaka',
     steps: 0,
     size: 0,
+    work: 0,
   }
   const out: string[] = []
   run(compile(template), [{ ...data }], ctx, out)
@@ -575,16 +639,94 @@ export function renderLiquid(template: string, data: Record<string, unknown>, op
 
 /** The plain-text version of an HTML email (for mail apps that show text only). */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, '\n')
-    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, text: string) => {
-      const t = text.replace(/<[^>]*>/g, '').trim()
-      return t && t !== href ? `${t} (${href})` : href
-    })
-    .replace(/<[^>]*>/g, '')
+  const linked = linksToText(
+    removeBlocks(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, '\n'),
+  )
+  const text = stripTags(linked)
     .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return trimLineEnds(text).replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// htmlToText reads each part of the email once: an unclosed <style, <a or < can't make it scan
+// the rest of the email again and again.
+
+/** indexOf for searches that only move forward (from never goes back), so the text is scanned once. */
+function forwardFinder(text: string, pattern: RegExp): (from: number) => number {
+  let at = -2
+  return (from) => {
+    if (at === -1 || at >= from) return at
+    pattern.lastIndex = from
+    at = pattern.exec(text)?.index ?? -1
+    return at
+  }
+}
+
+/** Drops <style>, <script> and <head> blocks. */
+function removeBlocks(html: string): string {
+  const opener = /<(style|script|head)/gi
+  const closers: Record<string, (from: number) => number> = {}
+  let out = ''
+  let last = 0
+  for (let m = opener.exec(html); m; m = opener.exec(html)) {
+    const tag = m[1].toLowerCase()
+    closers[tag] ??= forwardFinder(html, new RegExp(`</${tag}>`, 'gi'))
+    const end = closers[tag](m.index + m[0].length)
+    if (end < 0) continue
+    out += html.slice(last, m.index)
+    last = end + tag.length + 3
+    opener.lastIndex = last
+  }
+  return out + html.slice(last)
+}
+
+/** <a href="url">text</a> → "text (url)", or the url alone when the text is the url. */
+function linksToText(html: string): string {
+  const opener = /<a\s/gi
+  const tagEnd = forwardFinder(html, />/g)
+  const closer = forwardFinder(html, /<\/a>/gi)
+  let out = ''
+  let last = 0
+  for (let m = opener.exec(html); m; m = opener.exec(html)) {
+    const end = tagEnd(m.index)
+    if (end < 0) break
+    let href = ''
+    for (const h of html.slice(m.index, end).matchAll(/href="([^"]*)"/gi)) if (h[1]) href = h[1]
+    const close = closer(end + 1)
+    if (close < 0) break
+    if (!href) {
+      opener.lastIndex = end + 1
+      continue
+    }
+    const t = stripTags(html.slice(end + 1, close)).trim()
+    out += html.slice(last, m.index) + (t && t !== href ? `${t} (${href})` : href)
+    last = close + 4
+    opener.lastIndex = last
+  }
+  return out + html.slice(last)
+}
+
+/** Removes <…> tags; a < with no > after it stays as text. */
+function stripTags(s: string): string {
+  const tagEnd = forwardFinder(s, />/g)
+  let out = ''
+  let last = 0
+  for (let i = s.indexOf('<'); i >= 0; i = s.indexOf('<', i)) {
+    const end = tagEnd(i)
+    if (end < 0) break
+    out += s.slice(last, i)
+    last = i = end + 1
+  }
+  return out + s.slice(last)
+}
+
+/** Spaces and tabs at the end of each line (not the last). */
+function trimLineEnds(s: string): string {
+  const lines = s.split('\n')
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i]
+    let e = line.length
+    while (e > 0 && (line[e - 1] === ' ' || line[e - 1] === '\t')) e--
+    lines[i] = line.slice(0, e)
+  }
+  return lines.join('\n')
 }

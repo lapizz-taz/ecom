@@ -32,8 +32,10 @@ async function shopper(db: Db) {
   await db.query(`update public.orders set customer_email = 'Karim@Example.com' where id = $1`, [o.id])
   await db.query(`update public.customers set email = 'Karim@Example.com' where phone = (select customer_phone from public.orders where id = $1)`, [o.id])
   await db.query(`update public.notifications set is_enabled = true where channel = 'EMAIL' and event in ('CART_REMINDER', 'ORDER_CREATED')`)
-  const cart = await value<string>(db, `insert into public.store_carts(visitor_id, status, reached_checkout, items, item_count, subtotal, phone, customer_name, last_activity_at)
-    values ('visitor-0871', 'ACTIVE', true, $1::jsonb, 1, 600, (select customer_phone from public.orders where id = $2), 'Karim Ahmed', now() - interval '2 hours')
+  // The signed-in customer's own cart: reminder emails go only to their own address (audit run 6).
+  const cart = await value<string>(db, `insert into public.store_carts(visitor_id, status, reached_checkout, items, item_count, subtotal, phone, customer_name, last_activity_at, customer_id)
+    values ('visitor-0871', 'ACTIVE', true, $1::jsonb, 1, 600, (select customer_phone from public.orders where id = $2), 'Karim Ahmed', now() - interval '2 hours',
+            (select customer_id from public.orders where id = $2))
     returning id`, [JSON.stringify([{ variant_id: p.variantIds[0], name: 'Cotton panjabi', variant: 'L', quantity: 1, unit_price: 600, image: null }]), o.id])
   await daytime(db)
   return { order: o, cart }

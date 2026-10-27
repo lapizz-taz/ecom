@@ -69,6 +69,38 @@ describe('website pixel: the server copy', () => {
     expect(f).not.toHaveBeenCalled()
   })
 
+  it('stops reading a body past 4 KB instead of taking it all in (audit run 6)', async () => {
+    const streamed = (total: number) => {
+      let pulled = 0
+      const chunk = new Uint8Array(64 * 1024).fill(32)
+      const stream = new ReadableStream<Uint8Array>({
+        pull(c) {
+          if (pulled >= total) return c.close()
+          pulled += chunk.byteLength
+          c.enqueue(chunk)
+        },
+      })
+      return { stream, pulled: () => pulled }
+    }
+    const f = ok()
+    // A declared Content-Length over the limit is refused before reading.
+    const big = streamed(8 * 1024 * 1024)
+    const declared = new Request(`${SITE}/__site/event`, {
+      method: 'POST', body: big.stream, headers: { Origin: SITE, 'Content-Length': String(8 * 1024 * 1024) }, duplex: 'half',
+    } as RequestInit)
+    expect((await send(declared, f)).status).toBe(204)
+    expect(big.pulled()).toBeLessThanOrEqual(64 * 1024)
+    // Without a length, the reader stops at the first chunk past the limit.
+    const open = streamed(8 * 1024 * 1024)
+    const undeclared = new Request(`${SITE}/__site/event`, { method: 'POST', body: open.stream, headers: { Origin: SITE }, duplex: 'half' } as RequestInit)
+    expect((await send(undeclared, f)).status).toBe(204)
+    expect(open.pulled()).toBeLessThanOrEqual(3 * 64 * 1024)
+    expect(f).not.toHaveBeenCalled()
+    // An ordinary event still goes through.
+    await send(post(body()), f)
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps only hashes, a sane value and the BDT currency', async () => {
     const ev = await siteEventPayload(body({
       user: { em: 'someone@example.com', ph: '01711000000', fn: HASH }, data: { value: -5, currency: 'USD', content_name: 'Pricing' }, fbp: 'nope', fbclid: 'bad id!',

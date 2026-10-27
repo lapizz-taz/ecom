@@ -65,6 +65,46 @@ describe('liquid', () => {
     expect(() => renderLiquid(loop, data)).toThrow(/too much work/)
   })
 
+  it('caps values that are kept, not only what is shown (audit run 6)', () => {
+    const doubling = `{% assign x = "aaaaaaaaaa" %}${'{% assign x = x | append: x %}'.repeat(17)}{{ x | size }}`
+    expect(() => renderLiquid(doubling, data)).toThrow(/too long/)
+    const fromCapture = `{% capture c %}${'a'.repeat(1000)}{% endcapture %}${'{% assign c = c | append: c %}'.repeat(10)}{{ c | size }}`
+    expect(() => renderLiquid(fromCapture, data)).toThrow(/too long/)
+    expect(() => renderLiquid(`{% assign y = "${'b'.repeat(5000)}" %}{% assign z = y | replace: "", y %}{{ z | size }}`, data)).toThrow(/too long/)
+    expect(() => renderLiquid(`{% assign s = "${'c'.repeat(1000)}" %}{{ (1..1000) | join: s | size }}`, data)).toThrow(/too long/)
+    // many values, each under the limit, still stop
+    const wide = `{% assign s = "${'d'.repeat(5000)}" %}{% assign s = s | append: s | append: s | append: s %}${
+      Array.from({ length: 200 }, (_, i) => `{% assign v${i} = s | replace: "d", "ee" %}`).join('')}ok`
+    expect(() => renderLiquid(wide, data)).toThrow(/too much work/)
+    // ordinary use is unchanged
+    expect(renderLiquid('{{ "a-b-c" | replace: "-", "+" }} {{ "x" | append: "y" | prepend: "w" }} {{ (1..3) | join: ", " }}', data)).toBe('a+b+c wxy 1, 2, 3')
+    expect(renderLiquid('{{ "<i>a</i> < b" | strip_html }}', data, { mode: 'text' })).toBe('a < b')
+  })
+
+  it('reads long runs of spaces, tabs and unclosed tags in linear time (audit run 6)', () => {
+    const n = 100_000
+    const started = performance.now()
+    expect(() => renderLiquid(`x${' '.repeat(n)}y{{- order.name }}`, data)).not.toThrow()
+    expect(() => renderLiquid(`{{ order.name }}${' '.repeat(n)}y{%- if true %}{% endif %}`, data)).not.toThrow()
+    expect(liquidError(`{% if a${'\t'.repeat(n)}b %}{% endif %}`)).not.toBeNull()
+    expect(liquidError(`{{ (a${' '.repeat(n)}b) }}`)).not.toBeNull()
+    expect(liquidError(`{% for x in a${'a'.repeat(n)}\nb %}{% endfor %}`)).toBeNull()
+    expect(liquidError(`{% if ${Array.from({ length: 150 }, () => 'a').join(' and ')} %}{% endif %}`)?.message).toMatch(/and\/or/)
+    expect(htmlToText('<'.repeat(n))).toBe('<'.repeat(n))
+    expect(htmlToText('<a x '.repeat(n / 5) + '>t')).toBe('t')
+    expect(htmlToText('<style '.repeat(n / 7))).toBe('<style '.repeat(n / 7).trim().replace(/<[^>]*>/g, ''))
+    expect(htmlToText(`a${' \t'.repeat(n / 2)}b\n`)).toBe(`a${' \t'.repeat(n / 2)}b`)
+    expect(performance.now() - started).toBeLessThan(2_000)
+  })
+
+  it('turns links, blocks and entities into text like before', () => {
+    expect(htmlToText('<a data-href="https://wrong" href="https://right">Go</a> <A HREF="https://up">UP</A> <a href="https://same">https://same</a>'))
+      .toBe('Go (https://right) UP (https://up) https://same')
+    expect(htmlToText('<head><title>t</title></head><SCRIPT>x()</SCRIPT>a <unclosed and <style> never closed <a href="x">no close'))
+      .toBe('a  never closed no close')
+    expect(htmlToText('<p>one</p>\n\n\n\n<p>two</p>\t \n x &amp; &lt;y&gt;')).toBe('one\n\ntwo\n\n x & <y>')
+  })
+
   it('turns an HTML email into readable text', () => {
     const html = '<html><head><style>p{}</style></head><body><h1>Hi Rahim</h1><p>Total: ৳1,250<br>Thanks</p><a href="https://x.co/t">Track</a></body></html>'
     expect(htmlToText(html)).toBe('Hi Rahim\nTotal: ৳1,250\nThanks\nTrack (https://x.co/t)')

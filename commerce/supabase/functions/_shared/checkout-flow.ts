@@ -198,8 +198,12 @@ export async function placeOrder(admin: SupabaseClient, input: PlaceInput, ctx: 
   const order = ctx.siteKeyId
     ? await rpc<Record<string, unknown>>(admin, 'site_api_place_order', { p_key_id: ctx.siteKeyId, p_payload: payload, p_fraud_check_id: checkId })
     : await rpc<Record<string, unknown>>(admin, 'place_storefront_order', { p_payload: payload, p_fraud_check_id: checkId })
-  await rpc(admin, 'record_order_client', { p_order_id: order.id, p_ip: ctx.ip, p_user_agent: ctx.userAgent ?? null })
-    .catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not save the order IP', error }))
+  // A checkout that joined an earlier order is told only "merged" and its own lines (security audit
+  // run 6): no order id or number comes back, and the earlier order keeps its own IP and source.
+  if (order.id) {
+    await rpc(admin, 'record_order_client', { p_order_id: order.id, p_ip: ctx.ip, p_user_agent: ctx.userAgent ?? null })
+      .catch((error) => logEvent({ level: 'WARN', category: 'FUNCTION', source: 'checkout', message: 'Could not save the order IP', error }))
+  }
   // Where the sale came from (kept with the original order when merged).
   if (!order.merged) {
     await rpc(admin, 'record_order_attribution', { p_order_id: order.id, p_attribution: input.attribution ?? {} })

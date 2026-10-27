@@ -189,6 +189,40 @@ function appUrl(deps: Deps): string | null {
 
 const TOKEN = /^[0-9a-f]{40}$/
 
+/** The saved mailbox password, with the mail server it was connected to (passwords saved before the server was kept have none). */
+export interface SavedMailbox { host?: string; port?: number; security?: string; username?: string; password?: string }
+
+/**
+ * Whether a saved mailbox password may sign in to this server: only the one it was connected with.
+ * For a password saved without its server, the server recorded when the mailbox was connected counts.
+ */
+export function sameMailbox(
+  saved: SavedMailbox | null,
+  server: { host: string; port: number; security: string; username: string },
+  connected: { host: string; port: number; security: string } | null = null,
+): boolean {
+  if (!saved?.password || !saved.username || saved.username !== server.username) return false
+  const was = saved.host ? { host: saved.host, port: saved.port, security: saved.security } : connected
+  return !!was?.host && was.host.toLowerCase() === server.host.toLowerCase() && was.port === server.port && was.security === server.security
+}
+
+/**
+ * The copy of a sent email kept for the log has "hidden" in place of the customer's link tokens.
+ * Sending it again puts them back from this send's plan.
+ */
+export function restoreHiddenLinks(html: string, plan: Pick<EmailPlan, 'reply_token' | 'unsubscribe_token'>): { html: string; unsubscribe: string | null } {
+  let out = html
+  if (plan.reply_token && TOKEN.test(plan.reply_token)) {
+    out = out.replace(/(\/order-confirm\/[0-9a-fA-F-]{36}\/)hidden\b/g, `$1${plan.reply_token}`)
+  }
+  let unsubscribe: string | null = null
+  if (plan.unsubscribe_token && TOKEN.test(plan.unsubscribe_token)) {
+    out = out.replace(/(\/unsubscribe\/[0-9a-fA-F-]{36}\/)hidden\b/g, `$1${plan.unsubscribe_token}`)
+    unsubscribe = /https?:\/\/[^\s"'<>]+\/unsubscribe\/[0-9a-fA-F-]{36}\/[0-9a-f]{40}/.exec(out)?.[0] ?? null
+  }
+  return { html: out, unsubscribe }
+}
+
 /** The order's confirm / cancel page: https://<store or app>/order-confirm/<store>/<token>. */
 export function replyUrl(base: string, merchantId: string, token: string): string {
   return `${base}/order-confirm/${merchantId}/${token}`
@@ -231,7 +265,12 @@ export interface RenderedEmail { subject: string; html: string; headers?: Record
 
 /** Renders a queued email (when its data came with it) and keeps the result on the log. */
 export async function renderQueuedEmail(admin: SupabaseClient, item: QueuedMessage, plan: EmailPlan, deps: Deps = {}): Promise<RenderedEmail> {
-  if (!plan.liquid || plan.rendered) return { subject: item.subject ?? '', html: item.body }
+  if (!plan.liquid) return { subject: item.subject ?? '', html: item.body }
+  if (plan.rendered) {
+    // Sent before (this is "Send again"): the kept copy, with the customer's links put back.
+    const { html, unsubscribe } = restoreHiddenLinks(item.body, plan)
+    return { subject: item.subject ?? '', html, ...(unsubscribe ? { headers: unsubscribeHeaders(unsubscribe) } : {}) }
+  }
   try {
     const app = plan.vars?.summary ? appUrl(deps) : null
     const customer = plan.reply_token || plan.unsubscribe_token
@@ -258,8 +297,13 @@ export async function sendEmail(admin: SupabaseClient, plan: EmailPlan, m: Omit<
     if (!plan.smtp?.host) throw new SendError('Connect your mailbox on the Email page.', true)
     const { data, error } = await admin.rpc('integration_secret_get', { p_key: SMTP_SECRET })
     if (error) throw new SendError(`Could not read the mailbox password: ${error.message}`)
-    const password = (data as { password?: string } | null)?.password
+    const saved = data as SavedMailbox | null
+    const password = saved?.password
     if (!password) throw new SendError('The mailbox is disconnected: connect it again on the Email page.', true)
+    // The password signs in only to the server it was connected with.
+    if (saved?.host && !sameMailbox(saved, plan.smtp)) {
+      throw new SendError('The mail server changed since the mailbox was connected: connect it again on the Email page.', true)
+    }
     const cfg: SmtpConfig = { host: plan.smtp.host, port: plan.smtp.port, security: plan.smtp.security, username: plan.smtp.username, password }
     try {
       const r = await (deps.smtp ?? sendSmtp)(cfg, message(plan.smtp.from_email, plan.from_name))
