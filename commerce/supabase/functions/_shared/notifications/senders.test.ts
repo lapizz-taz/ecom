@@ -2,7 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it, vi } from 'vitest'
 import { InboxGraph } from '../inbox/meta.ts'
 import { EMAIL_DEFAULTS, SAMPLE_DATA } from './defaults.ts'
-import { replyUrl, SendError, sendEmailService, sendQueued, sendWhatsappTemplate, submitWhatsappTemplate, unsubscribeUrl, withAppLinks } from './senders.ts'
+import {
+  replyUrl, restoreHiddenLinks, sameMailbox, SendError, sendEmailService, sendQueued, sendWhatsappTemplate, submitWhatsappTemplate, unsubscribeUrl, withAppLinks,
+} from './senders.ts'
 import { SmtpError } from './smtp.ts'
 
 type Calls = Array<{ fn: string; args: Record<string, unknown> }>
@@ -175,6 +177,46 @@ describe('sending a queued message', () => {
     expect(msg.from).toEqual({ name: 'Isolation', email: 'shop@gmail.com' })
     expect(msg.replyTo).toBe('help@isolation.com')
     expect(msg.text).toContain('Cotton panjabi')
+  })
+
+  it('the saved password signs in only to the mail server it was connected with (audit run 6)', async () => {
+    const server = { host: 'smtp.gmail.com', port: 465, security: 'ssl', username: 'shop@gmail.com' }
+    const saved = { ...server, password: 'app-pass' }
+    expect(sameMailbox(saved, server)).toBe(true)
+    expect(sameMailbox(saved, { ...server, host: 'SMTP.Gmail.com' })).toBe(true)
+    expect(sameMailbox(saved, { ...server, host: 'mail.attacker.test' })).toBe(false)
+    expect(sameMailbox(saved, { ...server, port: 587 })).toBe(false)
+    expect(sameMailbox(saved, { ...server, username: 'other@gmail.com' })).toBe(false)
+    // Saved before the server was kept: the server recorded at connection counts.
+    expect(sameMailbox({ username: 'shop@gmail.com', password: 'p' }, server, server)).toBe(true)
+    expect(sameMailbox({ username: 'shop@gmail.com', password: 'p' }, { ...server, host: 'mail.attacker.test' }, server)).toBe(false)
+    expect(sameMailbox({ username: 'shop@gmail.com', password: 'p' }, server, null)).toBe(false)
+    // Sending refuses a server that differs from the saved one.
+    const smtp = vi.fn(async () => ({ messageId: 'm-9', response: 'OK' }))
+    const moved = { ...emailPlan('smtp'), smtp: { ...emailPlan('smtp').smtp, host: 'mail.attacker.test' } }
+    const e = await sendQueued(db({ _notification_send_plan: moved, integration_secret_get: saved }), queuedEmail, { smtp }).catch((x) => x)
+    expect(e.message).toMatch(/mail server changed/)
+    expect(smtp).not.toHaveBeenCalled()
+  })
+
+  it('"Send again" puts the hidden link tokens back into the kept copy (audit run 6)', async () => {
+    const reply = 'e'.repeat(40)
+    const unsub = 'f'.repeat(40)
+    const store = '11111111-2222-3333-4444-555555555555'
+    const kept = `<a href="https://isolation.shop/order-confirm/${store}/hidden">Confirm</a> <a href="https://isolation.shop/unsubscribe/${store}/hidden">Unsubscribe</a>`
+    const r = restoreHiddenLinks(kept, { reply_token: reply, unsubscribe_token: unsub })
+    expect(r.html).toContain(`/order-confirm/${store}/${reply}`)
+    expect(r.html).toContain(`/unsubscribe/${store}/${unsub}`)
+    expect(r.unsubscribe).toBe(`https://isolation.shop/unsubscribe/${store}/${unsub}`)
+    expect(restoreHiddenLinks(kept, { reply_token: 'not-a-token', unsubscribe_token: null }).html).toBe(kept)
+    const calls: Calls = []
+    const smtp = vi.fn(async () => ({ messageId: 'm-10', response: 'OK' }))
+    const plan = { ...emailPlan('smtp'), rendered: true, reply_token: reply, unsubscribe_token: unsub }
+    await sendQueued(db({ _notification_send_plan: plan, integration_secret_get: { password: 'p' } }, calls), { ...queuedEmail, body: kept }, { smtp })
+    const msg = (smtp.mock.calls[0] as unknown as [unknown, Record<string, any>])[1]
+    expect(msg.html).toContain(reply)
+    expect(msg.headers['List-Unsubscribe']).toContain(unsub)
+    expect(calls.find((c) => c.fn === '_notification_log_rendered')).toBeUndefined()
   })
 
   it('a mistake in the template, a wrong password or a missing mailbox stops it for good', async () => {

@@ -17,7 +17,7 @@
 import { functionHeaders } from '@/lib/functions'
 import { functionsUrl } from '@/lib/env'
 import { lastClickIds, visitorId } from '@/lib/attribution'
-import { currentSite, merchantFetch, storeKey } from '@/lib/merchant'
+import { currentSite, merchantFetch, storeBasename, storeKey } from '@/lib/merchant'
 import type { AdLine, AdPurchase, StoreAdConfig } from '@/services/storefront'
 
 export type { AdLine, AdPurchase, StoreAdConfig }
@@ -76,19 +76,44 @@ const TTP = /^[A-Za-z0-9_.-]{8,80}$/
 const GA = /^\d{5,12}\.\d{9,12}$/
 const CLICK = /^[A-Za-z0-9_.-]{1,500}$/
 
+// Stores opened by path (/s/<name>) share the platform host's cookies with every other store and
+// the website (security audit run 6). There the Meta ids sent with our server copies are kept per
+// store (storeKey), and the host-wide TikTok and Google cookies are not sent at all.
+const pathStore = () => storeBasename() !== ''
+const AD_KEYS = { _fbp: storeKey('ff_fbp'), _fbc: storeKey('ff_fbc') } as const
+
+function adId(name: keyof typeof AD_KEYS): string {
+  if (!pathStore()) return cookie(name)
+  try {
+    return localStorage.getItem(AD_KEYS[name]) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function keepAdId(name: keyof typeof AD_KEYS, value: string) {
+  if (!pathStore()) return setCookie(name, value, 90)
+  try {
+    localStorage.setItem(AD_KEYS[name], value)
+  } catch {
+    /* private mode */
+  }
+}
+
 /** The browser's own ad ids (Meta _fbp/_fbc, TikTok _ttp, GA client id), for the server-side events. */
 export function browserIds(): { fbp?: string; fbc?: string; ttp?: string; ga?: string } {
   if (typeof document === 'undefined') return {}
-  const ga = cookie('_ga').split('.').slice(2).join('.')
-  const out = { fbp: cookie('_fbp'), fbc: cookie('_fbc'), ttp: cookie('_ttp'), ga }
+  const shared = pathStore()
+  const ga = shared ? '' : cookie('_ga').split('.').slice(2).join('.')
+  const out = { fbp: adId('_fbp'), fbc: adId('_fbc'), ttp: shared ? '' : cookie('_ttp'), ga }
   return Object.fromEntries(Object.entries(out).filter(([k, v]) => v && { fbp: FBP, fbc: FBC, ttp: TTP, ga: GA }[k]!.test(v)))
 }
 
-/** Meta's first-party cookies, as its pixel writes them, so the server copy can match the visit. */
+/** Meta's first-party ids, as its pixel writes them, so the server copy can match the visit. */
 function metaCookies() {
-  if (!FBP.test(cookie('_fbp'))) setCookie('_fbp', `fb.1.${Date.now()}.${1_000_000_000 + Math.floor(Math.random() * 9_000_000_000)}`, 90)
+  if (!FBP.test(adId('_fbp'))) keepAdId('_fbp', `fb.1.${Date.now()}.${1_000_000_000 + Math.floor(Math.random() * 9_000_000_000)}`)
   const fbclid = lastClickIds().fbclid
-  if (fbclid && CLICK.test(fbclid) && cookie('_fbc').split('.').slice(3).join('.') !== fbclid) setCookie('_fbc', `fb.1.${Date.now()}.${fbclid}`, 90)
+  if (fbclid && CLICK.test(fbclid) && adId('_fbc').split('.').slice(3).join('.') !== fbclid) keepAdId('_fbc', `fb.1.${Date.now()}.${fbclid}`)
 }
 
 async function sha256(value: string): Promise<string> {

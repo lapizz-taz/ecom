@@ -103,9 +103,24 @@ export interface PlaceOrderInput {
   attribution?: Attribution | null
 }
 
+/**
+ * A checkout that joined the same customer's open order (one parcel, one delivery charge). Only
+ * this checkout's own lines come back: never the earlier order's number, name or address.
+ */
+export interface MergedCheckout {
+  id: string | null
+  order_number: null
+  status: 'MERGED'
+  merged: true
+  items: Array<{ product_name: string; variant_title: string | null; quantity: number; unit_price: number; line_subtotal: number }>
+  subtotal: number
+  amount_due_now: 0
+  payment_requirement: null
+}
+
 export function placeOrder(input: PlaceOrderInput) {
   return invokeFunction<{
-    order: PublicOrder & { merged?: boolean }; payment: { status: string; amount: number } | null; payment_error: string | null
+    order: (PublicOrder & { merged?: false }) | MergedCheckout; payment: { status: string; amount: number } | null; payment_error: string | null
     /** The ad pixels' Purchase, when the store counts it as soon as the order is placed. */
     tracking?: { purchase: AdPurchase } | null
   }>('checkout', { action: 'place', ...input })

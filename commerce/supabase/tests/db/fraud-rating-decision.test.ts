@@ -31,8 +31,13 @@ async function place(db: Db, phone: string, checkId: string | null, extra: Recor
   const placed = await value<Record<string, any>>(db, `select public.place_storefront_order($1, $2)`,
     [JSON.stringify({ ...orderPayload({ phone, items: [{ variantId: p.variantIds[0], quantity: 1 }] }), ...extra }), checkId])
   await asSystem(db)
+  // A checkout that joined an earlier order is told only "merged" (audit run 6): read the order it joined.
+  const id = placed.merged
+    ? await value<string>(db, `select coalesce((select merged_into from public.orders where id = $1::uuid),
+        (select id from public.orders where customer_phone = public.clean_phone($2) and merged_into is null order by created_at desc limit 1))`, [placed.id, phone])
+    : placed.id
   const order = await one<{ id: string; order_number: string; status: string; advance_required: string; amount_paid: string; fraud_decision: string; delivery_charge: string }>(db,
-    `select id, order_number, status, advance_required, amount_paid, fraud_decision, delivery_charge from public.orders where id = $1`, [placed.id])
+    `select id, order_number, status, advance_required, amount_paid, fraud_decision, delivery_charge from public.orders where id = $1`, [id])
   return { placed, order }
 }
 

@@ -8,7 +8,7 @@
 //
 // A new account's e-mail, phone and name leave the browser only as SHA-256 hashes (advanced
 // matching), to the pixel and to our server alike. Nothing about the visitor is kept here.
-import { lastClickIds, visitorId } from '@/lib/attribution'
+import { lastClickIds } from '@/lib/attribution'
 import { SITE_EVENT_CODES, SITE_EVENT_PATH, SITE_META_PIXEL, SITE_ORIGIN, type SiteEvent } from './site-meta'
 
 export type { SiteEvent }
@@ -19,7 +19,6 @@ export interface SiteMatching { em?: string; ph?: string; fn?: string; ln?: stri
 
 const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const FBP = /^fb\.\d\.\d{10,13}\.\d{1,25}$/
-const FBC = /^fb\.\d\.\d{10,13}\.[A-Za-z0-9_.-]{4,550}$/
 
 export function siteEventId(event: SiteEvent): string {
   const bytes = crypto.getRandomValues(new Uint8Array(20))
@@ -60,6 +59,25 @@ function cookie(name: string): string {
   try { return m ? decodeURIComponent(m[1]) : '' } catch { return '' }
 }
 
+// The website's own anonymous id (security audit run 6). Stores opened by /s/<name> share this
+// host's storage and cookies, so the website never uses theirs (attribution.ts visitorId, the
+// ff_vid cookie): a name of its own that no store key uses.
+const SITE_VID = 'ffw_vid'
+const VID = /^[A-Za-z0-9_-]{8,64}$/
+
+function siteVisitorId(): string {
+  const fresh = () => crypto.randomUUID().replace(/-/g, '')
+  try {
+    const v = localStorage.getItem(SITE_VID)
+    if (v && VID.test(v)) return v
+    const id = fresh()
+    localStorage.setItem(SITE_VID, id)
+    return id
+  } catch {
+    return fresh()
+  }
+}
+
 const live = () => !!SITE_META_PIXEL && typeof window !== 'undefined' && window.location.origin === SITE_ORIGIN
 
 let loading: Promise<string> | null = null
@@ -67,7 +85,7 @@ let loading: Promise<string> | null = null
 /** Loads the pixel once (Meta's own loader stub) and resolves to the visitor's hashed id. */
 function loadPixel(): Promise<string> {
   loading ??= (async () => {
-    const ext = await sha256(visitorId())
+    const ext = await sha256(siteVisitorId())
     if (!window.fbq) {
       const n = function (...args: unknown[]) {
         if (n.callMethod) n.callMethod(...args)
@@ -124,11 +142,13 @@ export function trackSite(event: SiteEvent, data: SiteEventData = {}, person?: S
       // Advanced matching from here on: the pixel takes SHA-256 values as they are.
       if (Object.keys(user).length) window.fbq?.('init', SITE_META_PIXEL, { external_id: ext, ...user })
       window.fbq?.('track', event, data, { eventID: id })
+      // _fbp is the browser id Meta's own pixel sends from this page anyway. The _fbc click cookie is
+      // not sent: on this host a store opened by path may have written it for its own ad. The
+      // server builds the click from the website's own fbclid instead.
       const fbp = cookie('_fbp')
-      const fbc = cookie('_fbc')
       post({
         event, id, url: window.location.href, data, user, external_id: ext,
-        fbp: FBP.test(fbp) ? fbp : undefined, fbc: FBC.test(fbc) ? fbc : undefined, fbclid: lastClickIds().fbclid,
+        fbp: FBP.test(fbp) ? fbp : undefined, fbclid: lastClickIds().fbclid,
       })
     } catch {
       /* a blocked pixel never breaks the website */

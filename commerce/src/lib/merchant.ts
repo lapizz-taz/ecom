@@ -108,7 +108,41 @@ function websiteBoot(): boolean {
 }
 const website = !booted && websiteBoot()
 
+/**
+ * Per-store browser entries belong to the business that held this address when they were written
+ * (security audit run 6). A store name, and with it /s/<name> and <name>.<root domain>, can pass to
+ * another business after a rename, so the address keeps its owner's id: when the address's business
+ * changes, the previous owner's entries go ("<key>@<name>" for a store opened by path, everything
+ * on a store's own address). Returns whether anything was dropped.
+ */
+function claimAddress(merchantId: string): boolean {
+  if (typeof location === 'undefined' || isPreviewFrame()) return false
+  const slug = storeSlugInPath()
+  const stamp = slug ? `owner@${slug}` : 'owner'
+  try {
+    const owner = localStorage.getItem(stamp)
+    if (owner === merchantId) return false
+    let dropped = false
+    if (owner) {
+      for (const s of [localStorage, sessionStorage]) {
+        for (let i = s.length - 1; i >= 0; i--) {
+          const k = s.key(i)
+          if (!k || k === stamp || k.startsWith('site:v2:') || (slug && !k.endsWith(`@${slug}`))) continue
+          s.removeItem(k)
+          dropped = true
+        }
+      }
+    }
+    localStorage.setItem(stamp, merchantId)
+    return dropped
+  } catch {
+    return false
+  }
+}
+
 let site: SiteInfo | null = booted ? booted.site : website ? { kind: 'platform' } : readCache()
+// Before any module reads its entries (they import this one first).
+if (site?.kind === 'store' && site.merchant_id) claimAddress(site.merchant_id)
 if (booted) writeCache(booted.site)
 
 /** What this address shows (the remembered answer until the lookup returns). */
@@ -189,8 +223,9 @@ export function resolveSite(lookup: (host: string, slug: string | null, preview:
     if (next.kind === 'store' && !(next.merchant_id && UUID.test(next.merchant_id))) next.kind = 'missing'
     site = next
     storefrontMerchantId = next.kind === 'store' ? next.merchant_id! : null
+    const dropped = next.kind === 'store' && claimAddress(next.merchant_id!)
     writeCache(next)
-    if (remembered && (remembered.kind !== next.kind || (remembered.merchant_id ?? null) !== (next.merchant_id ?? null))) location.reload()
+    if (dropped || (remembered && (remembered.kind !== next.kind || (remembered.merchant_id ?? null) !== (next.merchant_id ?? null)))) location.reload()
     return next
   })
   return resolving

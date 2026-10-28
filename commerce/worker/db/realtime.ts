@@ -117,7 +117,13 @@ export async function handle(state: SocketState, m: Message, verify: VerifyToken
     return [reply(m, 'ok', { postgres_changes: bindings })]
   }
   if (m.event === 'access_token') {
-    await useToken(state, m.payload.access_token, verify)
+    // A token that no longer verifies (signed out, expired, blocked) drops the identity it replaces
+    if (!(await useToken(state, m.payload.access_token, verify)) && state.uid) {
+      state.uid = null
+      state.sid = null
+      state.exp = 0
+      state.subs = []
+    }
     return []
   }
   if (m.event === 'phx_leave') {

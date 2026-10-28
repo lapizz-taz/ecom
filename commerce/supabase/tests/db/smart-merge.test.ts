@@ -4,7 +4,7 @@ import { advanceOrder, createProduct, createStaff, inventory, orderPayload, setS
 
 afterAll(closePool)
 
-type Placed = { id: string; order_number: string; merged: boolean }
+type Placed = { id: string; order_number: string | null; merged: boolean; items?: Array<{ product_name: string; quantity: number }> }
 
 /** Storefront checkout exactly like the checkout function. */
 async function checkout(db: Db, input: OrderInput, extra: Record<string, unknown> = {}): Promise<Placed> {
@@ -42,7 +42,10 @@ describe('smart automatic merging', () => {
         { shipping: { address: 'Flat 5B, Road 9, Mirpur', district: 'Dhaka' } })
 
       expect(b.merged).toBe(true)
-      expect(b.id).toBe(a.id) // the customer is shown the first order
+      // The customer is told "added to your earlier order" with their own lines, never that order (audit run 6).
+      expect(b.id).not.toBe(a.id)
+      expect(b.order_number).toBeNull()
+      expect(b.items?.map((i) => i.quantity).sort()).toEqual([1, 2])
       const items = await db.query<{ variant_id: string; quantity: number }>(`select variant_id, quantity from public.order_items where order_id = $1 order by quantity desc`, [a.id])
       expect(items.rows).toEqual([{ variant_id: v.belt, quantity: 3 }, { variant_id: v.cap, quantity: 1 }])
       // Stock: the second order's 2 belts are reserved once (not twice, not lost).
@@ -67,7 +70,9 @@ describe('smart automatic merging', () => {
       const key = await value<string>(db, `select idempotency_key from public.orders where id = $1`, [merged.rows[0].id])
       if (key) {
         const again = await checkout(db, { phone, items: [{ variantId: v.belt, quantity: 2 }] }, { idempotency_key: key })
-        expect(again.id).toBe(a.id)
+        expect(again.merged).toBe(true)
+        expect(again.id).not.toBe(a.id)
+        expect(again.order_number).toBeNull()
         expect(num(await value(db, `select count(*) from public.orders where customer_phone = $1`, [phone]))).toBe(2)
       }
 
@@ -116,7 +121,8 @@ describe('smart automatic merging', () => {
       const c2 = await checkout(db, { phone: '01712345605', district: 'Chattogram', items: [{ variantId: v.cap, quantity: 1 }] },
         { idempotency_key: `k-${Date.now()}-c2` })
       expect(c2.merged).toBe(true)
-      expect(c2.id).toBe(c.id)
+      expect(c2.id).not.toBe(c.id)
+      expect(c2.order_number).toBeNull()
       expect((await row(db, c.id)).customer_note).toMatch(/had another address \(.*Chattogram\); the first order's address is used/)
 
       // Approved and already packed / ready to ship: protected — the new web order is only flagged.
@@ -137,8 +143,9 @@ describe('smart automatic merging', () => {
 
       // Switched off: nothing merges.
       await setSetting(db, 'orders', { auto_merge_web_enabled: false })
-      const e = await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })
-      await ago(db, e.id, 30)
+      await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })
+      // A checkout that joined an order is not told which one (audit run 6): move them all back.
+      await db.query(`update public.orders set created_at = now() - interval '30 minutes' where customer_phone = public.clean_phone('01712345607')`)
       expect((await checkout(db, { phone: '01712345607', items: [{ variantId: v.cap, quantity: 1 }] })).merged).toBe(false)
     }))
 

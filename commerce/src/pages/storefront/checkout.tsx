@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
 import { checkoutQuote, initiatePayment, placeOrder, trackEvent } from '@/services/storefront'
 import type { CheckoutFieldMode, PaymentMethod } from '@/types/domain'
-import { lastOrderKey } from '@/features/cart/last-order'
+import { lastOrderKey, mergedOrderKey } from '@/features/cart/last-order'
 
 /** A box the store can switch off, make optional or make required (Settings → Checkout fields). */
 const text = (mode: CheckoutFieldMode, max: number, message: string) =>
@@ -243,16 +243,23 @@ export default function CheckoutPage() {
       // callback, and an empty cart would otherwise redirect to /cart first.
       placed.current = true
       const phone = normalizePhone(values.phone)
-      sessionStorage.setItem(lastOrderKey(), JSON.stringify({ order_number: order.order_number, phone }))
       trackEvent('PURCHASE')
-      adPurchase(tracking?.purchase)
       // Hashed in this browser, for better matching of this buyer's next visits.
       void rememberShopper({ phone, email: values.email, name: fullName(values), district: values.district })
       clear()
       setIdempotencyKey(crypto.randomUUID())
+      if (order.merged) {
+        // Joined this number's earlier order: the thank-you page shows only what was just added.
+        try {
+          sessionStorage.setItem(mergedOrderKey(), JSON.stringify({ items: order.items, subtotal: order.subtotal }))
+        } catch { /* private mode: the page still says it was added */ }
+        navigate('/order-success?merged=1', { replace: true })
+        return
+      }
+      sessionStorage.setItem(lastOrderKey(), JSON.stringify({ order_number: order.order_number, phone }))
+      adPurchase(tracking?.purchase)
       if (payment_error) toast.warning(`Order placed, but your payment details need another look: ${payment_error}`)
       const params = new URLSearchParams({ order: order.order_number })
-      if (order.merged) params.set('merged', '1')
       // Straight on to bKash / PayStation. The order counts as paid only when the
       // gateway confirms it to our server, never because the customer came back.
       if (gateway && Number(order.amount_due_now) > 0) {
