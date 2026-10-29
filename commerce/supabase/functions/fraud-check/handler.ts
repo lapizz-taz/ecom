@@ -136,7 +136,10 @@ export default (
     }
 
     if (input.action === 'phone_record') {
-      const mayLookUp = staff.role === 'OWNER' || staff.permissions.includes('orders.create') || staff.permissions.includes('fraud.review')
+      // A fresh lookup only for staff who may take orders or review them under the store's rules: a
+      // read-only store (the shared demo account) only reads the records it already has.
+      const may = (code: string) => rpc<boolean>(staff.client, 'has_permission', { p_code: code }).catch(() => false)
+      const mayLookUp = (await may('orders.create')) || (await may('fraud.review'))
       let lookupError: string | null = null
       if (mayLookUp && settings.enabled !== false) {
         try {

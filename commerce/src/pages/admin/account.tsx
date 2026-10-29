@@ -23,8 +23,19 @@ export default function AccountPage() {
       <PageHeader title="Your account" description={user?.email} actions={
         <Button variant="outline" size="sm" onClick={async () => { await signOut(); navigate('/admin/login') }}><LogOut /> Sign out</Button>
       } />
-      <Profile />
-      <ChangePassword />
+      {access?.view_only ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Demo account</CardTitle>
+            <CardDescription>This account is shared to show Fullfilio, so its name, email and password cannot be changed.</CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
+        <>
+          <Profile />
+          <ChangePassword />
+        </>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Your access</CardTitle>

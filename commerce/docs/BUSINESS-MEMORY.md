@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 27 Oct 2026.
+Last updated: 29 Oct 2026.
 
 ## What Fullfilio is
 
@@ -34,7 +34,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - **Per-order fee**: ৳1.5 for each approved order (Super Admin can change it). Switched off for now.
 - **Sign-up**: open sign-up is switched off. New businesses send a sign-up request by WhatsApp,
   and the platform team opens the business from it (Super Admin can switch open sign-up back on).
-- **Credits**: SMS and fraud checks are sold as credits. Top-ups are paid by bKash, PayStation or SSLCommerz.
+- **Credits**: SMS is sold as credits. Top-ups are paid by bKash, PayStation or SSLCommerz.
+- **Courier (fraud) checks**: free for every business since 29 Oct 2026 (0 credits per check, Super Admin usage
+  setting), up to 2,000 checks a month per business.
 
 ## What we have (features)
 
@@ -163,4 +165,4 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   token: Worker secret `SITE_META_CAPI_TOKEN`. Not on the admin or on stores.
 - fullfilio.com must never point at 144.24.232.70.
 - Security: six audits so far (the last one is `docs/SECURITY-AUDIT-RUN-6.md`). Nothing critical or high was found; run 6's
-  four medium and nine low findings are fixed in code and are live once its two migrations and functions are deployed.
+  four medium and nine low findings are fixed and live (database and functions 28 Oct, website and Worker 29 Oct 2026).

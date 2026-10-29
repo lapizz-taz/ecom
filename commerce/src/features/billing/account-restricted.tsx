@@ -142,7 +142,14 @@ export function RenewalBanner() {
 }
 
 /** A thin bar over every page while the account is read-only. */
-export function ReadOnlyBanner() {
+export function ReadOnlyBanner({ demo = false }: { demo?: boolean }) {
+  if (demo) {
+    return (
+      <div className="no-print mb-3 rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm">
+        Demo account: look around as much as you like. Changes are switched off here.
+      </div>
+    )
+  }
   return (
     <div className="no-print mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
       <span>Read-only: you can view and export, but changes are paused. Your store still takes orders.</span>
