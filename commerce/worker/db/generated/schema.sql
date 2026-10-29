@@ -2156,6 +2156,7 @@ CREATE TABLE merchants (
   status_changed_at TEXT CHECK (status_changed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', status_changed_at) = status_changed_at),
   status_changed_by TEXT CHECK (status_changed_by IS NULL OR length(status_changed_by) = 36),
   deleted_at TEXT CHECK (deleted_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', deleted_at) = deleted_at),
+  view_only INTEGER DEFAULT 0 NOT NULL CHECK (view_only IN (0, 1)),
   PRIMARY KEY (id),
   CONSTRAINT merchants_name_check CHECK (length(trim( name )) >= 1 AND length(trim( name )) <= 120),
   CONSTRAINT merchants_status_check CHECK (status IN ('ONBOARDING', 'ACTIVE', 'SUSPENDED', 'CLOSED')),

@@ -236,13 +236,15 @@ export class Context {
       if (!merchant) return 'BLOCKED'
       const rulesRow = this.sql.all("SELECT value FROM platform_settings WHERE key = 'access_rules'")[0]
       const rules = (rulesRow ? JSON.parse(String(rulesRow.value)) : {}) as Record<string, AccessMode | undefined>
-      const m = this.sql.all('SELECT status, onboarding FROM merchants WHERE id = ?', [merchant])[0]
+      const m = this.sql.all('SELECT status, onboarding, view_only FROM merchants WHERE id = ?', [merchant])[0]
       const status = m?.status as string | undefined
       if (!status || status === 'CLOSED') return 'BLOCKED'
       // A new business waiting for its first payment or for the team to activate it.
       const activation = m.onboarding ? (JSON.parse(String(m.onboarding)) as { activation?: string }).activation : undefined
       if (activation === 'awaiting_payment' || activation === 'awaiting_whatsapp') return 'BLOCKED'
-      const a = status === 'SUSPENDED' ? rules.MERCHANT_SUSPENDED ?? 'BLOCKED' : status === 'ONBOARDING' ? rules.MERCHANT_ONBOARDING ?? 'FULL' : 'FULL'
+      let a = status === 'SUSPENDED' ? rules.MERCHANT_SUSPENDED ?? 'BLOCKED' : status === 'ONBOARDING' ? rules.MERCHANT_ONBOARDING ?? 'FULL' : 'FULL'
+      // A look-only business (the shared demo account) can be viewed, never changed.
+      if (Number(m.view_only) === 1 && a !== 'BLOCKED') a = 'READ_ONLY'
       // The current subscription; when none, the last one that ended.
       const s = this.sql.all(
         `SELECT id, status, grace_until, intro_until, current_period_end FROM subscriptions WHERE merchant_id = ?

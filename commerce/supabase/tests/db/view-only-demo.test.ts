@@ -5,6 +5,9 @@ import { createMerchant } from '../support/sweep'
 
 afterAll(closePool)
 
+/** The Cloudflare database (staging) signs people in itself: no Supabase Auth tables to guard there. */
+const onEngine = Boolean(process.env.CF_DB_TESTS)
+
 // demo@gmail.com is handed to anyone who wants to see Fullfilio: its business is look-only, and the
 // account's sign-in details cannot be taken over.
 
@@ -41,7 +44,7 @@ describe('look-only demo business', () => {
       expect(await can(db, 'orders.update')).toBe(true)
     }))
 
-  it('its sign-in details cannot be changed, other accounts\' can', () =>
+  it.skipIf(onEngine)('its sign-in details cannot be changed, other accounts\' can', () =>
     inTx(async (db) => {
       const { owner } = await demoBusiness(db)
       const other = await createStaff(db, 'OWNER')
