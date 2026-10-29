@@ -76,8 +76,8 @@ Worker / website. The Cloudflare database snapshot (`worker/db/generated/`) is r
 **Deployed:** both migrations run in production and `messaging` (v6) and `notifications-dispatch` (v9)
 deployed on Supabase on 28 Oct 2026; both functions answer and refuse signed-out calls. `checkout`,
 `site-api`, the Worker and the website went to the live branch the same day; Cloudflare's first build
-of it failed (the same commit builds, fits the size limit and starts in under 100 ms locally), so the
-website and Worker fixes are not live until that build is run again.
+of it failed (the same commit builds, fits the size limit and starts in under 100 ms locally). The
+retried build succeeded on 29 Oct 2026 and fullfilio.com serves the new code.
 
 ## Verification
 

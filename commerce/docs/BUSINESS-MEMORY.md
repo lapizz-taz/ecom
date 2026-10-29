@@ -163,5 +163,4 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   token: Worker secret `SITE_META_CAPI_TOKEN`. Not on the admin or on stores.
 - fullfilio.com must never point at 144.24.232.70.
 - Security: six audits so far (the last one is `docs/SECURITY-AUDIT-RUN-6.md`). Nothing critical or high was found; run 6's
-  four medium and nine low findings are fixed; the database and Supabase function fixes are live (28 Oct 2026),
-  the website and Worker fixes go live with the next successful Cloudflare build of the live branch.
+  four medium and nine low findings are fixed and live (database and functions 28 Oct, website and Worker 29 Oct 2026).
