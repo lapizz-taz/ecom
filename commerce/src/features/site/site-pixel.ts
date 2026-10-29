@@ -10,6 +10,7 @@
 // matching), to the pixel and to our server alike. Nothing about the visitor is kept here.
 import { lastClickIds } from '@/lib/attribution'
 import { SITE_EVENT_CODES, SITE_EVENT_PATH, SITE_META_PIXEL, SITE_ORIGIN, type SiteEvent } from './site-meta'
+import { bdMobileIntl } from '../../../supabase/functions/_shared/phone.ts'
 
 export type { SiteEvent }
 export interface SiteEventData { content_name?: string; value?: number; currency?: 'BDT' }
@@ -31,13 +32,7 @@ async function sha256(value: string): Promise<string> {
 }
 
 /** 8801XXXXXXXXX for a Bangladeshi mobile number (how Meta wants it before hashing), else ''. */
-export function phoneDigits(phone: string): string {
-  let d = phone.replace(/\D/g, '')
-  if (d.startsWith('00')) d = d.slice(2)
-  if (d.startsWith('880')) d = d.slice(3)
-  if (d.startsWith('0')) d = d.slice(1)
-  return /^1[3-9]\d{8}$/.test(d) ? `880${d}` : ''
-}
+export const phoneDigits = (phone: string): string => bdMobileIntl(phone)
 
 const nameKey = (v: string) => v.toLowerCase().normalize('NFKD').replace(/[^\p{L}]/gu, '')
 

@@ -10,6 +10,8 @@
 // Pixel ids are public (they are in the page anyway); the API tokens and the
 // GA4 API secret are kept in Vault and only used here, on the server.
 
+import { bdMobileIntl } from '../phone.ts'
+
 type FetchFn = typeof fetch
 
 export const GRAPH = 'https://graph.facebook.com/v22.0'
@@ -87,13 +89,7 @@ export async function sha256(value: string): Promise<string> {
 }
 
 /** 8801XXXXXXXXX for a Bangladeshi mobile number (Meta's format: country code, no +), else ''. */
-export function phoneDigits(phone: string | null | undefined): string {
-  let d = String(phone ?? '').replace(/\D/g, '')
-  if (d.startsWith('00')) d = d.slice(2)
-  if (d.startsWith('880')) d = d.slice(3)
-  if (d.startsWith('0')) d = d.slice(1)
-  return /^1[3-9]\d{8}$/.test(d) ? `880${d}` : ''
-}
+export const phoneDigits = (phone: string | null | undefined): string => bdMobileIntl(phone)
 
 /** Lowercase letters only (Meta's rule for names and cities). */
 const nameKey = (v: string | null | undefined) => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[^\p{L}]/gu, '')

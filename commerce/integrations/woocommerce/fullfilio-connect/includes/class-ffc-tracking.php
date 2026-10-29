@@ -1002,17 +1002,14 @@ class FFC_Tracking {
 		return '' === $value ? null : hash( 'sha256', $value );
 	}
 
-	/** Bangladesh numbers as 8801XXXXXXXXX; other numbers keep their digits. */
+	/** Bangladesh mobile numbers as 8801XXXXXXXXX (the same rules as the checkout); other numbers keep their digits. */
 	public static function phone_digits( $phone ) {
-		$d = preg_replace( '/\D/', '', (string) $phone );
-		if ( 11 === strlen( $d ) && 0 === strpos( $d, '01' ) ) {
-			$d = '88' . $d;
-		} elseif ( 10 === strlen( $d ) && 0 === strpos( $d, '1' ) ) {
-			$d = '880' . $d;
-		} elseif ( 0 === strpos( $d, '00' ) ) {
-			$d = substr( $d, 2 );
+		$bd = FFC_Protect::normalize_phone( $phone );
+		if ( null !== $bd ) {
+			return '88' . $bd;
 		}
-		return $d;
+		$d = preg_replace( '/\D/', '', (string) $phone );
+		return 0 === strpos( $d, '00' ) ? substr( $d, 2 ) : $d;
 	}
 
 	/** Letters only, lower case (Meta's rule for city/state; keeps Bangla letters). */

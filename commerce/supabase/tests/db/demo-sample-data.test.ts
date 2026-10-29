@@ -10,6 +10,9 @@ afterAll(closePool)
 // database owner, who sees every business, so it must stay inside the one it is given.
 const script = readFileSync(new URL('../../demo-sample-data.sql', import.meta.url), 'utf8')
 
+/** The script is run on the live Postgres database only (it lifts record locks with ALTER TABLE). */
+const onEngine = Boolean(process.env.CF_DB_TESTS)
+
 // The live demo business's order rules (29 Oct 2026), so the test places orders the same way.
 const DEMO_RULES: Record<string, unknown> = {
   fraud: {
@@ -47,7 +50,7 @@ async function run(db: Db, merchant: string, backdate: 'on' | 'off'): Promise<Re
   return last.rows[0].demo_sample_data
 }
 
-describe('demo sample data', () => {
+describe.skipIf(onEngine)('demo sample data', () => {
   it('fills only the demo business, with a month of orders', () =>
     inTx(async (db) => {
       // Another business with a product and a courier named like the demo's.

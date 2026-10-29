@@ -19,6 +19,7 @@ import { functionsUrl } from '@/lib/env'
 import { lastClickIds, visitorId } from '@/lib/attribution'
 import { currentSite, merchantFetch, storeBasename, storeKey } from '@/lib/merchant'
 import type { AdLine, AdPurchase, StoreAdConfig } from '@/services/storefront'
+import { bdMobileIntl } from '../../../supabase/functions/_shared/phone.ts'
 
 export type { AdLine, AdPurchase, StoreAdConfig }
 
@@ -136,13 +137,7 @@ try { localStorage.removeItem('ff_am') } catch { /* the old, store-less key */ }
 const HEX64 = /^[0-9a-f]{64}$/
 
 /** 8801XXXXXXXXX for a Bangladeshi mobile number, else ''. */
-function phoneDigits(phone: string): string {
-  let d = phone.replace(/\D/g, '')
-  if (d.startsWith('00')) d = d.slice(2)
-  if (d.startsWith('880')) d = d.slice(3)
-  if (d.startsWith('0')) d = d.slice(1)
-  return /^1[3-9]\d{8}$/.test(d) ? `880${d}` : ''
-}
+const phoneDigits = (phone: string): string => bdMobileIntl(phone)
 const nameKey = (v?: string | null) => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[^\p{L}]/gu, '')
 
 /** The hashes kept from this browser's last order or sign-up (never the details themselves). */

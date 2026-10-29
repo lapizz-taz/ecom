@@ -9,6 +9,7 @@ import type { CatalogItem } from './shopify.ts'
 import { pluginAttribution, PLUGIN_SLUG } from './woo-plugin.ts'
 import { env } from '../env.ts'
 import { isPublicHttpUrl, safeFetch } from '../net.ts'
+import { pickPhone } from '../phone.ts'
 
 type FetchFn = typeof fetch
 
@@ -430,7 +431,7 @@ export function normalizeWooOrder(o: WooOrder): NormalizedOrder {
     test: false,
     customer: {
       name: clean([a.first_name, a.last_name].filter(Boolean).join(' ')) ?? clean([b.first_name, b.last_name].filter(Boolean).join(' ')),
-      phone: clean(s.phone) ?? clean(b.phone),
+      phone: pickPhone(clean(s.phone), clean(b.phone)),
       email: clean(b.email),
     },
     shipping: {

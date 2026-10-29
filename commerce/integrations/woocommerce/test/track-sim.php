@@ -76,6 +76,7 @@ class MockOrder extends WC_Order {
 	public function save_meta_data() {}
 }
 
+require __DIR__ . '/../fullfilio-connect/includes/class-ffc-protect.php';
 require __DIR__ . '/../fullfilio-connect/includes/class-ffc-tracking.php';
 
 $ok = 0; $fail = 0;
@@ -207,6 +208,7 @@ check( 'match summary averages the purchases', null !== FFC_Tracking::match_summ
 
 echo "\nScenario 10 — phone formats normalise to the same 8801… digits\n";
 check( '01712-345678 / +880 1712 345678 / 1712345678 / 008801712345678', count( array_unique( array_map( array( 'FFC_Tracking', 'phone_digits' ), array( '01712-345678', '+880 1712 345678', '1712345678', '008801712345678' ) ) ) ) === 1 );
+check( '+880 01712345678 / +88 1712345678 / Bangla digits give 8801712345678', array( '8801712345678' ) === array_values( array_unique( array_map( array( 'FFC_Tracking', 'phone_digits' ), array( '+880 01712345678', '+88 1712345678', '০১৭১২৩৪৫৬৭৮' ) ) ) ) );
 
 echo "\nScenario 11 — first-party route: only POSTs to this site's own path\n";
 check( 'POST /k7f3q2m9/ and /k7f3q2m9 match', FFC_Tracking::route_matches( 'POST', '/k7f3q2m9/', array(), 'k7f3q2m9', '' ) && FFC_Tracking::route_matches( 'post', '/k7f3q2m9?x=1', array(), 'k7f3q2m9', '' ) );
