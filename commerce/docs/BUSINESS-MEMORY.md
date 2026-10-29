@@ -151,6 +151,7 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   - Facebook-page trainers.
 - **Proof to show:**
   - the interactive dashboard demo on the website;
+  - the demo account (demo@gmail.com), a look-only admin full of sample data;
   - a before/after RTS rate from the Founder store;
   - a short Bangla video of one order going from Facebook to delivered.
 
@@ -164,5 +165,8 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   StartTrial (a new store). Pixel: the "FullFilio" dataset, 1871039407582107 (`SITE_META_PIXEL` in `src/features/site/site-meta.ts`); server
   token: Worker secret `SITE_META_CAPI_TOKEN`. Not on the admin or on stores.
 - fullfilio.com must never point at 144.24.232.70.
+- The demo account demo@gmail.com opens the business "Demo": look only (view and export, no changes, sign-in
+  details locked) and kept out of the Super Admin figures. Since 29 Oct 2026 it holds sample data from
+  `supabase/demo-sample-data.sql`: a fashion shop with 12 products and 60 orders (prefix DEMO) over 30 days.
 - Security: six audits so far (the last one is `docs/SECURITY-AUDIT-RUN-6.md`). Nothing critical or high was found; run 6's
   four medium and nine low findings are fixed and live (database and functions 28 Oct, website and Worker 29 Oct 2026).
