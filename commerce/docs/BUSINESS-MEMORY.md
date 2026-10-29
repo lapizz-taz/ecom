@@ -34,7 +34,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - **Per-order fee**: ৳1.5 for each approved order (Super Admin can change it). Switched off for now.
 - **Sign-up**: open sign-up is switched off. New businesses send a sign-up request by WhatsApp,
   and the platform team opens the business from it (Super Admin can switch open sign-up back on).
-- **Credits**: SMS and fraud checks are sold as credits. Top-ups are paid by bKash, PayStation or SSLCommerz.
+- **Credits**: SMS is sold as credits. Top-ups are paid by bKash, PayStation or SSLCommerz.
+- **Courier (fraud) checks**: free for every business since 29 Oct 2026 (0 credits per check, Super Admin usage
+  setting), up to 2,000 checks a month per business.
 
 ## What we have (features)
 
