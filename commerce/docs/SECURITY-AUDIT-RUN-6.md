@@ -73,6 +73,12 @@ Run in this order, before deploying the functions (both safe to re-run):
 Then deploy the `messaging`, `notifications-dispatch`, `checkout` and `site-api` functions and the
 Worker / website. The Cloudflare database snapshot (`worker/db/generated/`) is regenerated.
 
+**Deployed:** both migrations run in production and `messaging` (v6) and `notifications-dispatch` (v9)
+deployed on Supabase on 28 Oct 2026; both functions answer and refuse signed-out calls. `checkout`,
+`site-api`, the Worker and the website went to the live branch the same day; Cloudflare's first build
+of it failed (the same commit builds, fits the size limit and starts in under 100 ms locally) and was
+run again on 29 Oct.
+
 ## Verification
 
 Typecheck, lint and the Deno check of all functions clean; production build passes. Unit 1048

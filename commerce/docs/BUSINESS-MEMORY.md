@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 27 Oct 2026.
+Last updated: 29 Oct 2026.
 
 ## What Fullfilio is
 
@@ -163,4 +163,4 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   token: Worker secret `SITE_META_CAPI_TOKEN`. Not on the admin or on stores.
 - fullfilio.com must never point at 144.24.232.70.
 - Security: six audits so far (the last one is `docs/SECURITY-AUDIT-RUN-6.md`). Nothing critical or high was found; run 6's
-  four medium and nine low findings are fixed in code and are live once its two migrations and functions are deployed.
+  four medium and nine low findings are fixed and live (deployed 28–29 Oct 2026).
