@@ -412,8 +412,8 @@ export default function AdminLayout() {
           fullHeight ? 'pb-3 sm:pb-6 in-data-[phone-bar]:pb-24 sm:in-data-[phone-bar]:pb-24' : 'pb-24 sm:pb-24')}>
           {/* Each page fades in when you move between menu items. */}
           <div key={location.pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 ease-out motion-reduce:animate-none">
-            {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner />}
-            {location.pathname.replace(/\/+$/, '') === '/admin' && <RenewalBanner />}
+            {access.access_mode === 'READ_ONLY' && <ReadOnlyBanner demo={access.view_only} />}
+            {location.pathname.replace(/\/+$/, '') === '/admin' && !access.view_only && <RenewalBanner />}
             {allowed ? <WorkGate><Outlet /></WorkGate> : <PermissionDenied />}
           </div>
         </main>

@@ -478,6 +478,8 @@ export interface MyAccess {
   merchant?: { id: string; number: number; name: string; status: string }
   /** What the account's subscription and status allow: read-only keeps viewing and exports; blocked keeps nothing. */
   access_mode?: 'FULL' | 'READ_ONLY' | 'BLOCKED'
+  /** A look-only business (the shared demo account): read-only, and its sign-in details stay as they are. */
+  view_only?: boolean
   email: string
   full_name: string
   role: string

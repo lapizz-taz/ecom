@@ -148,7 +148,7 @@ export async function requireStaff(req: Request, permission: string, options: { 
   const { data, error } = await client.rpc('get_my_access')
   if (error) throw fromDbError(error)
   const access = data as {
-    role: string; permissions: string[]; merchant_id: string | null; access_mode?: string; support_session?: { id: string } | null
+    role: string; permissions: string[]; merchant_id: string | null; access_mode?: string; view_only?: boolean; support_session?: { id: string } | null
   } | null
   if (!access?.merchant_id) throw new HttpError(403, 'Staff access required', 'PERMISSION_DENIED')
   if (access.support_session && !(options.read && permission.endsWith('.view'))) {
@@ -165,18 +165,19 @@ export async function requireStaff(req: Request, permission: string, options: { 
     if (options.read) {
       if (access.access_mode === 'BLOCKED') throw await storeRuleRefusal(client, 'BLOCKED')
     } else if (!(await rpc<boolean>(client, 'has_permission', { p_code: permission }))) {
-      throw await storeRuleRefusal(client, access.access_mode)
+      throw await storeRuleRefusal(client, access.access_mode, access.view_only)
     }
   }
   return { user, client, admin: adminClient(access.merchant_id), merchantId: access.merchant_id, role: access.role, permissions: access.permissions }
 }
 
 /** Why the store's rules refuse a staff member their role's permission, in the words the admin uses. */
-async function storeRuleRefusal(client: SupabaseClient, mode: string | undefined): Promise<HttpError> {
+async function storeRuleRefusal(client: SupabaseClient, mode: string | undefined, viewOnly = false): Promise<HttpError> {
   if (mode === 'BLOCKED') {
     return new HttpError(403, 'This account is restricted: nothing can be changed or sent until it is active again. Open Billing or contact Fullfilio support.', 'ACCOUNT_RESTRICTED')
   }
   if (mode === 'READ_ONLY') {
+    if (viewOnly) return new HttpError(403, 'This is a demo account: you can look around, but changes are switched off.', 'READ_ONLY')
     return new HttpError(403, 'Read-only: you can view and export, but changes are paused until the plan is renewed.', 'READ_ONLY')
   }
   const day = await rpc<{ gate?: string | null } | null>(client, 'hr_my_day').catch(() => null)
