@@ -1,5 +1,5 @@
 {
-  "migrations": 191,
-  "last": "20261206000200_audit_run6_messaging.sql",
-  "sha256": "f1a90d9b14f6068e3249f6278cafd8c585ec15809e895533098d824c4eae5c2e"
+  "migrations": 192,
+  "last": "20261207000100_channel_store_release.sql",
+  "sha256": "9da62a7179cde85ec37177d29500d68d0e0b85167e04d91bd275e4f6c4528df3"
 }

@@ -5661,7 +5661,9 @@ CREATE INDEX sales_channel_variants_merchant_idx ON sales_channel_variants (merc
 
 CREATE INDEX sales_channel_variants_variant_idx ON sales_channel_variants (variant_id);
 
-CREATE UNIQUE INDEX sales_channels_domain_uq ON sales_channels (platform, lower(shop_domain));
+CREATE UNIQUE INDEX sales_channels_domain_uq ON sales_channels (platform, lower(shop_domain)) WHERE (status IN ('CONNECTED', 'ERROR'));
+
+CREATE UNIQUE INDEX sales_channels_merchant_domain_uq ON sales_channels (merchant_id, platform, lower(shop_domain));
 
 CREATE INDEX sales_channels_merchant_idx ON sales_channels (merchant_id);
 
