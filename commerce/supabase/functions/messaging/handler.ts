@@ -33,6 +33,7 @@ import { MetaApiError } from '../_shared/meta/graph.ts'
 import { clientIp, handle, HttpError, json, rateLimit, readJson } from '../_shared/http.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { parse } from '../_shared/schemas.ts'
+import { bdMobileIntl } from '../_shared/phone.ts'
 import { storefrontBase } from '../_shared/storefront.ts'
 import { adminClient, forEachMerchant, requireStaff, rpc, type StaffContext } from '../_shared/supabase.ts'
 
@@ -81,8 +82,9 @@ const hint = (username: string, host: string) => `${username.slice(0, 40)} @ ${h
 
 /** Bangladesh mobile numbers in WhatsApp's form (8801XXXXXXXXX); other countries as typed, digits only. */
 function waPhone(raw: string): string {
-  let d = raw.replace(/\D/g, '')
-  if (/^01[3-9]\d{8}$/.test(d)) d = `88${d}`
+  const bd = bdMobileIntl(raw)
+  if (bd) return bd
+  const d = raw.replace(/\D/g, '')
   if (!/^\d{10,15}$/.test(d)) throw bad('Enter the phone number with its country code, like 01711000000 or 8801711000000.')
   return d
 }

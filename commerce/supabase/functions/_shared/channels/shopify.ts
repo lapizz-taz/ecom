@@ -6,6 +6,7 @@
 // Webhooks are signed with the app secret (X-Shopify-Hmac-Sha256); we check
 // every one before reading it.
 import { env } from '../env.ts'
+import { pickPhone } from '../phone.ts'
 import { type Check, ChannelError, clean, hmacBase64, hmacHex, money, type NormalizedOrder, safeEqual, type SeenFulfillment, touchFrom } from './common.ts'
 
 type FetchFn = typeof fetch
@@ -831,7 +832,8 @@ export function normalizeShopifyOrder(o: ShopifyOrder): NormalizedOrder {
     test: !!o.test,
     customer: {
       name: clean(a?.name) ?? clean([a?.firstName, a?.lastName].filter(Boolean).join(' ')) ?? clean(customerName),
-      phone: clean(a?.phone) ?? clean(o.phone) ?? clean(o.billingAddress?.phone) ?? clean(o.customer?.phone),
+      // The first field with a mobile number in it (a shipping phone of "-" must not hide a good billing one).
+      phone: pickPhone(clean(a?.phone), clean(o.phone), clean(o.billingAddress?.phone), clean(o.customer?.phone)),
       email: clean(o.email) ?? clean(o.customer?.email),
     },
     shipping: {
@@ -923,7 +925,7 @@ export function abandonedRow(n: AbandonedNode): AbandonedRow {
     recovery_url: n.abandonedCheckoutUrl ?? null,
     customer_name: name,
     email: c?.defaultEmailAddress?.emailAddress ?? c?.email ?? null,
-    phone: c?.defaultPhoneNumber?.phoneNumber ?? c?.phone ?? ship?.phone ?? n.billingAddress?.phone ?? null,
+    phone: pickPhone(c?.defaultPhoneNumber?.phoneNumber, c?.phone, ship?.phone, n.billingAddress?.phone),
     address: [ship?.address1, ship?.address2].filter(Boolean).join(', ') || null,
     city: ship?.city ?? null,
     province: ship?.province ?? null,

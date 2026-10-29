@@ -5,7 +5,7 @@ Requires at least: 6.2
 Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.8
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPLv2 or later
 
 Connects your WooCommerce store to Fullfilio.
@@ -35,6 +35,10 @@ Works with the classic and the block checkout, and with WooCommerce's order stor
 The plugin sends Fullfilio the order and checkout details your staff need to process orders (customer name, phone, address, cart) and the visit information listed above. When you turn on ad tracking, your own server also sends the ad platforms you chose (Meta, TikTok, Google) the shop events, with customer details hashed. It sends nothing to any other service.
 
 == Changelog ==
+
+= 1.6.1 =
+* The checkout accepts the phone numbers customers really type: without the first 0 (1712345678), with an extra 0 after +880 (+880 01712345678), with +88 in front, in Bangla digits (০১৭১২৩৪৫৬৭৮), or two numbers in one field (the first is kept). The order keeps the clean 01XXXXXXXXX form, the same as in Fullfilio.
+* Ad tracking hashes these numbers the same way, so the browser and your server still match.
 
 = 1.6.0 =
 * First-party tracking: the browser sends every event (PageView, ViewContent, AddToCart, InitiateCheckout) to this store's own domain, on a path that is random for each site, and your server passes it to Meta and TikTok. An ad blocker or iOS that stops the pixel no longer loses the event — no extra server or service is needed.

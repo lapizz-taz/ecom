@@ -3,8 +3,9 @@
  * Checkout protection, decided on the server (the browser only helps):
  *
  * 1. Phone check. A Bangladeshi mobile number is required: 01[3-9] and 8 more
- *    digits; +880 / 880 / 0088 prefixes and spaces are accepted and the order
- *    keeps the clean 01XXXXXXXXX form. Strict also refuses made-up numbers
+ *    digits; +880 / 880 / 0088 / +88 prefixes, spaces, the 0 left off, Bangla
+ *    digits and two numbers in one field are accepted, and the order keeps the
+ *    clean 01XXXXXXXXX form. Strict also refuses made-up numbers
  *    (01711111111, 01712345678).
  * 2. Bot check. Signals: no typing, tapping or clicking on the checkout page,
  *    the order sent within a few seconds of opening the checkout, a filled
@@ -84,18 +85,44 @@ class FFC_Protect {
 
 	// --- phone ---------------------------------------------------------------------------------
 
-	/** The number as 01XXXXXXXXX, or null when it is not a Bangladeshi mobile number. */
+	/** Bangla digits as 0-9 (customers often type their number on a Bangla keyboard). */
+	const BANGLA_DIGITS = array( '০' => '0', '১' => '1', '২' => '2', '৩' => '3', '৪' => '4', '৫' => '5', '৬' => '6', '৭' => '7', '৮' => '8', '৯' => '9' );
+
+	/**
+	 * The number as 01XXXXXXXXX, or null when it is not a Bangladeshi mobile number. The same rules as
+	 * Fullfilio itself: +880 / 880 / 0088 / +88 in front, an extra 0 after the code (+880 01712…), the 0
+	 * left off (1712345678), Bangla digits, and the first of two numbers typed in one field.
+	 */
 	public static function normalize_phone( $phone ) {
-		$d = preg_replace( '/\D/', '', (string) $phone );
+		$text = strtr( (string) $phone, self::BANGLA_DIGITS );
+		$d    = self::local_digits( preg_replace( '/\D/', '', $text ) );
+		if ( preg_match( '/^01[3-9]\d{8}$/', $d ) ) {
+			return $d;
+		}
+		if ( preg_match( '/(?:^|[^0-9+])(\+?(?:00)?(?:88)?[ -]?0?1[3-9](?:[ -]?[0-9]){8})(?:[^0-9]|$)/', $text, $m ) ) {
+			$first = self::local_digits( preg_replace( '/\D/', '', $m[1] ) );
+			if ( preg_match( '/^01[3-9]\d{8}$/', $first ) ) {
+				return $first;
+			}
+		}
+		return null;
+	}
+
+	/** Digits in the local form: 0, then the national number. */
+	private static function local_digits( $d ) {
 		if ( 0 === strpos( $d, '00880' ) ) {
-			$d = substr( $d, 2 );
+			return '0' . ltrim( substr( $d, 5 ), '0' );
 		}
-		if ( 0 === strpos( $d, '880' ) ) {
-			$d = '0' . substr( $d, 3 );
-		} elseif ( 10 === strlen( $d ) && '1' === $d[0] ) {
-			$d = '0' . $d;
+		if ( 0 === strpos( $d, '880' ) && strlen( $d ) > 11 ) {
+			return '0' . ltrim( substr( $d, 3 ), '0' );
 		}
-		return preg_match( '/^01[3-9]\d{8}$/', $d ) ? $d : null;
+		if ( preg_match( '/^881[3-9]\d{8}$/', $d ) ) {
+			return '0' . substr( $d, 2 );
+		}
+		if ( preg_match( '/^0*1[3-9]\d{8}$/', $d ) ) {
+			return '0' . ltrim( $d, '0' );
+		}
+		return $d;
 	}
 
 	/** Made-up numbers: the last 8 digits all the same, or counting up or down (12345678, 87654321). */

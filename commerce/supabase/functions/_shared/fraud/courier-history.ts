@@ -1,5 +1,6 @@
 import { fetchWithRetry } from '../fetch-retry.ts'
 import { guardedFetch } from '../net.ts'
+import { bdMobile } from '../phone.ts'
 import type { FraudCheckInput, FraudProvider, FraudProviderResult } from './types.ts'
 
 type FetchFn = typeof fetch
@@ -94,14 +95,8 @@ export interface CourierHistorySummary {
   source_notes?: string[]
 }
 
-/** 01XXXXXXXXX for a Bangladeshi mobile number (+880 / 880 / 0 prefixes), else null. */
-export function bdMobile(phone: string): string | null {
-  let d = String(phone ?? '').replace(/\D/g, '')
-  if (d.startsWith('00880')) d = d.slice(2)
-  if (d.startsWith('880')) d = `0${d.slice(3)}`
-  else if (d.length === 10 && d.startsWith('1')) d = `0${d}`
-  return /^01[3-9]\d{8}$/.test(d) ? d : null
-}
+/** 01XXXXXXXXX for a Bangladeshi mobile number, else null (the shared phone rules). */
+export { bdMobile }
 
 function count(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(/[,\s]/g, ''))
