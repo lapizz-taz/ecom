@@ -68,7 +68,7 @@ export async function searchOrders(field: SearchField, raw: string): Promise<Ord
 
   if (want('invoice')) {
     jobs.push((async () => {
-      const { data, error } = await supabase.from('orders').select(ORDER_COLUMNS).or(`order_number.ilike.${orLike(q)},external_order_number.ilike.${orLike(q)}`).is('merged_into', null).order('created_at', { ascending: false }).limit(LIMIT)
+      const { data, error } = await supabase.from('orders').select(ORDER_COLUMNS).or(`order_number.ilike.${orLike(q)},external_order_number.ilike.${orLike(q)},web_number.ilike.${orLike(q)}`).is('merged_into', null).order('created_at', { ascending: false }).limit(LIMIT)
       if (error) throw error
       add(data as Row[], 'invoice', (r) => r.order_number)
     })())

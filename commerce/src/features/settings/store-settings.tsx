@@ -13,7 +13,7 @@ export function StoreSettings() {
   return (
     <div className="grid gap-4">
       <SettingCard setting={store} title="Business profile" description="Shown on the storefront, invoices and customer messages."
-        validate={() => (/^[A-Z0-9]{1,8}$/.test(String(store.get(['order_prefix']) ?? '')) ? null : 'Order prefix must be 1–8 uppercase letters or digits')}>
+        validate={() => (/^[A-Z0-9]{0,8}$/.test(String(store.get(['order_prefix']) ?? '')) ? null : 'Order prefix: up to 8 capital letters or digits, or leave it empty')}>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextSetting s={store} path={['name']} label="Store name" />
           <TextSetting s={store} path={['tagline']} label="Tagline" />

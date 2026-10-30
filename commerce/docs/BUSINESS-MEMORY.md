@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 29 Oct 2026.
+Last updated: 30 Oct 2026.
 
 ## What Fullfilio is
 
@@ -42,6 +42,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 
 **Orders**
 - Web Orders and Approved Orders with filters, search and bulk actions.
+- Order numbers: a web order has none of ours yet. It shows its Shopify or WooCommerce number, or a
+  web reference (W10501) for an order made in Fullfilio. On approval it gets the business's own
+  number: 1000, 1001, … (since 30 Oct 2026). A prefix is optional ("ATH" gives ATH-1000); none by default.
 - Super Edit, merge, duplicate detection and smart auto-merge.
 - Incomplete orders and abandoned carts.
 - The Auto-pick queue.

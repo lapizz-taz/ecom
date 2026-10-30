@@ -39,7 +39,7 @@ export function smsVariables(currency: string, store: { name?: string; phone?: s
   return [
     { key: 'customer_name', label: 'Customer name', sample: 'Rahim Uddin' },
     { key: 'customer_first_name', label: 'First name', sample: 'Rahim' },
-    { key: 'order_number', label: 'Order number', sample: 'ISO-10123' },
+    { key: 'order_number', label: 'Order number', sample: '1023' },
     { key: 'total', label: 'Order total', sample: amount(1250) },
     { key: 'cod_amount', label: 'Cash to collect', sample: amount(1195) },
     { key: 'due_amount', label: 'Still due', sample: amount(1195) },
@@ -48,7 +48,7 @@ export function smsVariables(currency: string, store: { name?: string; phone?: s
     { key: 'courier_name', label: 'Courier', sample: 'Pathao' },
     { key: 'tracking_number', label: 'Tracking number', sample: 'DL0310ABC123' },
     { key: 'tracking_url', label: 'Tracking link', sample: 'https://merchant.pathao.com/tracking?consignment_id=DL0310ABC123' },
-    { key: 'track_order_url', label: 'Order page link', sample: `${site}/track-order?order=ISO-10123` },
+    { key: 'track_order_url', label: 'Order page link', sample: `${site}/track-order?order=1023` },
     { key: 'cart_total', label: 'Cart total', sample: amount(1250), events: ['CART_REMINDER'] },
     { key: 'cart_url', label: 'Cart link', sample: `${site}/cart?restore=8f3a2c`, events: ['CART_REMINDER'] },
     { key: 'review_url', label: 'Review link', sample: 'https://www.facebook.com/yourpage/reviews', events: ['REVIEW_REQUEST'] },
