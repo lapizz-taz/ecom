@@ -9,12 +9,14 @@ import { Sparkline } from './sparkline'
  * KPI card: label, value, an optional change against the previous period and
  * an optional sparkline of the recent trend.
  */
-export function StatCard({ label, value, hint, icon, to, tone, className, trend, delta, invertDelta }: {
+export function StatCard({ label, value, hint, icon, to, onClick, tone, className, trend, delta, invertDelta }: {
   label: string
   value: ReactNode
   hint?: ReactNode
   icon?: ReactNode
   to?: string
+  /** Opens something in place (a dialog) instead of a page. */
+  onClick?: () => void
   tone?: 'default' | 'positive' | 'negative' | 'warning'
   className?: string
   /** Recent values, oldest first, drawn as a small line. */
@@ -26,7 +28,7 @@ export function StatCard({ label, value, hint, icon, to, tone, className, trend,
 }) {
   const good = delta == null ? null : invertDelta ? delta <= 0 : delta >= 0
   const body = (
-    <Card className={cn('h-full gap-2 px-4 py-4 transition-[border-color,box-shadow]', to && 'hover:border-foreground/15 hover:shadow-sm', className)}>
+    <Card className={cn('h-full gap-2 px-4 py-4 transition-[border-color,box-shadow]', (to || onClick) && 'hover:border-foreground/15 hover:shadow-sm', className)}>
       {/* min-h keeps the value on the same line in cards with and without an icon */}
       <div className="flex min-h-7 items-center justify-between gap-2">
         <span className="truncate text-[13px] text-muted-foreground">{label}</span>
@@ -57,7 +59,8 @@ export function StatCard({ label, value, hint, icon, to, tone, className, trend,
       </div>
     </Card>
   )
-  return to ? <Link to={to} className="block h-full">{body}</Link> : body
+  if (to) return <Link to={to} className="block h-full">{body}</Link>
+  return onClick ? <button type="button" onClick={onClick} className="block h-full w-full rounded-xl text-left">{body}</button> : body
 }
 
 /** Percentage change from `previous` to `current` (null when there is nothing to compare with). */

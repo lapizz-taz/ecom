@@ -27,7 +27,23 @@ export interface CommandCenter {
   recent_customers: Array<{ id: string; full_name: string; phone: string; district: string | null; total_orders: number; total_spent: number; created_at: string; risk_level: Enums<'risk_level'> | null }> | null
   sources: Array<{ source: string; orders: number; delivered: number; revenue: number }> | null
   ad_spend: number | null
-  finance?: { net_profit: number; gross_profit: number; courier_fees: number; marketing_costs: number; cod_collected: number; cod_receivable: number; today_profit: number }
+  finance?: {
+    net_profit: number; gross_profit: number; courier_fees: number; marketing_costs: number; cod_collected: number; cod_receivable: number; today_profit: number
+    /** Profit counted from the day an order is approved (absent until the database has it). */
+    estimate?: EstimatedProfit | null
+    today_estimate?: EstimatedProfit['totals']
+  }
+}
+
+/** report_estimated_profit: approved orders of the period (returns less the charges customers paid), ads and expenses by date. */
+export interface EstimatedProfit {
+  from: string
+  to: string
+  totals: { sales: number; other_income: number; return_charges: number; product_cost: number; courier_cost: number; ads: number; other_expense: number; profit: number }
+  orders: { approved: number; open: number; delivered: number; returned: number; cancelled: number; lost: number }
+  returns: { orders: number; courier_cost: number; paid: number; loss: number }
+  quality: { courier_estimated: number; missing_cost: number }
+  daily: Array<{ day: string; sales: number; profit: number }>
 }
 
 /** Courier and business overview, recent activity and top sources for the dashboard. */
