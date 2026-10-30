@@ -24,7 +24,7 @@ const COSTS: Array<{ key: keyof Totals; label: string; color: string }> = [
 
 const HOW = [
   ['Approved', 'An order counts on the day it is approved: its sale, less its product cost and courier charge. Before a parcel is booked, the delivery charge stands in for the courier’s fee.'],
-  ['Returned', 'No sale and no product cost, because the goods come back. The courier’s delivery and return charges are a loss, unless the customer paid them (an advance).'],
+  ['Returned', 'No sale and no product cost, because the goods come back. The courier’s delivery and return charges are a loss, less what the customer paid: an advance, or cash at the door that the courier reports. Paid in full, no loss.'],
   ['Cancelled', 'Nothing, unless the courier charged or you kept the advance.'],
   ['Ads and expenses', 'Counted on their own date, as in your books.'],
   ['The books', 'Finance → Profit & loss counts a sale only once it is delivered, so it shows a different number while orders are on their way.'],

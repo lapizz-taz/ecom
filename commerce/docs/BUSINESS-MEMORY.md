@@ -51,7 +51,7 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - Order Financials (profit and loss per order).
 - The dashboard's profit counts an order from the day it is approved (since 30 Oct 2026): its sale less product cost
   and courier charge. A returned order costs the courier's delivery and return charges, less what the customer paid
-  (an advance): a paid return charge is no loss, an unpaid one is. Finance → Profit & loss still counts a sale on delivery.
+  (an advance, or cash at the door that the courier's webhook reports): a paid return charge is no loss, an unpaid one is. Finance → Profit & loss still counts a sale on delivery.
 
 **Fake-order protection**
 - A courier-history fraud check on every order, with a risk label, reasons and success % per courier.
