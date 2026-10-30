@@ -58,7 +58,7 @@ export function CustomerMessageSettings({ canManage }: { canManage: boolean }) {
         channels={s.enabled.confirm} off="Switch on “Ask the customer to confirm” in the Order confirmation of Email or WhatsApp.">
         <SwitchRow checked={s.confirm.auto_approve} disabled={disabled} onChange={(on) => save.mutate({ confirm: { auto_approve: on } })}
           title="Approve the order when the customer confirms"
-          text="Off: the order is marked “Customer confirmed” and waits for your team. On: it is approved straight away (orders waiting for an advance or a check stay where they are). A cancel before approval always cancels the order; after approval your team gets a request on the order." />
+          text="Off: the order goes to Processing with the note “Confirmed by the customer” and waits for your team. On: it is approved straight away (orders waiting for an advance or a check stay where they are). A cancel before approval always cancels the order; after approval your team gets a request on the order." />
       </Section>
 
       <Section icon={<ShoppingCart />} title="Abandoned cart reminders"

@@ -14,12 +14,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useUrlState } from '@/hooks/use-url-state'
 import { formatDateTime, toNumber } from '@/lib/format'
-import { ORDER_STATUS, SHIPMENT_STATUS } from '@/lib/status'
+import { APPROVED_PLACES, ORDER_STATUS, placeName, placeOf, placeTarget, SHIPMENT_STATUS, WEB_PLACES } from '@/lib/status'
 import { listCouriers } from '@/services/couriers'
 import { type OverrideChanges, overrideHistory, overrideOrder } from '@/services/order-tools'
 import { getOrder } from '@/services/orders'
@@ -120,8 +120,9 @@ function OverrideForm({ orderId }: { orderId: string }) {
     setForce(false); setNotify(false)
   }, [orderId, shipment])
 
+  const place = o ? placeOf(o.status, o.confirmed_at) : null
   const changes: OverrideChanges = {}
-  if (status && o && status !== o.status) changes.status = status
+  if (status && o && status !== place) changes.status = placeTarget(status, o.status)
   const ship: NonNullable<OverrideChanges['shipment']> = {}
   if (courierId && courierId !== (shipment?.courier_id ?? '')) ship.courier_id = courierId
   if (tracking !== (shipment?.tracking_number ?? '')) ship.tracking_number = tracking
@@ -166,10 +167,22 @@ function OverrideForm({ orderId }: { orderId: string }) {
       </CardHeader>
       <CardContent>
         <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (hasChanges) setConfirmOpen(true) }}>
-          <Field label="Order status" htmlFor="se-status" hint="Allowed steps are walked one by one, so stock, finance and the courier record follow.">
-            <Select value={status || o.status} onValueChange={(v) => setStatus(v as OrderStatus)}>
+          <Field label="Order status" htmlFor="se-status" hint="The tabs of Web Orders and Approved Orders. Allowed steps are walked one by one, so stock, finance and the courier record follow.">
+            <Select value={status || place || undefined} onValueChange={(v) => setStatus(v as OrderStatus)}>
               <SelectTrigger id="se-status" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{Object.entries(ORDER_STATUS).map(([k, m]) => <SelectItem key={k} value={k}>{m.label}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {!o.confirmed_at && (
+                  <SelectGroup>
+                    <SelectLabel>Web Orders</SelectLabel>
+                    {WEB_PLACES.map((p) => <SelectItem key={p.to} value={p.to}>{p.label}</SelectItem>)}
+                  </SelectGroup>
+                )}
+                <SelectGroup>
+                  <SelectLabel>Approved Orders</SelectLabel>
+                  {APPROVED_PLACES.map((p) => <SelectItem key={p.to} value={p.to}>{p.label}</SelectItem>)}
+                </SelectGroup>
+                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+              </SelectContent>
             </Select>
           </Field>
 
@@ -212,7 +225,7 @@ function OverrideForm({ orderId }: { orderId: string }) {
         description="This bypasses the normal workflow. Check the changes."
         submitLabel="Override order" onSubmit={() => run.mutate()} busy={run.isPending}>
         <ul className="grid gap-1 rounded-lg bg-muted/50 p-3 text-sm">
-          {changes.status && <li>Status: <b>{ORDER_STATUS[o.status].label}</b> → <b>{ORDER_STATUS[changes.status].label}</b>{force ? ' (force allowed)' : ''}</li>}
+          {changes.status && place && status && <li>Status: <b>{placeName(place)}</b> → <b>{placeName(status)}</b>{force ? ' (force allowed)' : ''}</li>}
           {changes.shipment && Object.entries(changes.shipment).map(([k, v]) => (
             <li key={k}>{k.replace(/_/g, ' ')}: <b>{k === 'courier_id' ? couriers.data?.find((c) => c.id === v)?.name : String(v || '—')}</b></li>
           ))}

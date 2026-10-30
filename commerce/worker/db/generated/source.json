@@ -1,5 +1,5 @@
 {
-  "migrations": 196,
-  "last": "20261210000100_shopify_import_tag.sql",
-  "sha256": "8b3b0d17379469bdabe1a1f7a70aa96e1953b3c5b90209b0191ff5b51f3bd498"
+  "migrations": 197,
+  "last": "20261210000200_no_customer_confirmed.sql",
+  "sha256": "b594367795ff1f325653f8551c1a7ffda17c0d0b98149132bb456ae41d65151f"
 }

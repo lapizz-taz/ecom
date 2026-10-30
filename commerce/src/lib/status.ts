@@ -231,6 +231,48 @@ export function stageOf(status: OrderStatus, confirmedAt: string | null | undefi
   }
 }
 
+/**
+ * Super Edit's choices: the places an order can be put, by the names of the Web Orders and Approved Orders
+ * tabs (the other statuses are steps between them, which the override walks). An approved order cannot go
+ * back to Web Orders. Both lists have a Cancelled tab.
+ */
+export const WEB_PLACES: Array<{ to: OrderStatus; label: string }> = [
+  // No step leads back to Pending; "Confirmation required" is a web order in the call tabs too.
+  { to: 'CONFIRMATION_REQUIRED', label: 'Web order' },
+  { to: 'ADVANCE_REQUIRED', label: 'Advance due' },
+]
+export const APPROVED_PLACES: Array<{ to: OrderStatus; label: string }> = [
+  { to: 'PROCESSING', label: 'Pending' }, { to: 'READY_TO_SHIP', label: 'RTS' }, { to: 'SHIPPED', label: 'Shipped' },
+  { to: 'DELIVERED', label: 'Delivered' }, { to: 'PARTIALLY_DELIVERED', label: 'Partial' }, { to: 'RETURNING', label: 'Return pending' },
+  { to: 'RETURNED', label: 'Returned' }, { to: 'LOST', label: 'Lost' }, { to: 'PRE_ORDER', label: 'Pre-order' },
+  { to: 'PENDING_CANCEL', label: 'Cancel (ask courier)' },
+]
+
+export const placeName = (to: OrderStatus) => to === 'CANCELLED' ? 'Cancelled'
+  : WEB_PLACES.find((p) => p.to === to)?.label ?? `Approved · ${APPROVED_PLACES.find((p) => p.to === to)?.label ?? ORDER_STATUS[to].label}`
+
+/** The place an order is in now (the choice shown as picked). */
+export function placeOf(status: OrderStatus, confirmedAt: string | null | undefined): OrderStatus {
+  if (status === 'CANCELLED' || status === 'REJECTED_FRAUD') return 'CANCELLED'
+  if (!confirmedAt) return status === 'ADVANCE_REQUIRED' ? 'ADVANCE_REQUIRED' : 'CONFIRMATION_REQUIRED'
+  switch (stageOf(status, confirmedAt)) {
+    case 'PENDING': return 'PROCESSING'
+    case 'RTS': return 'READY_TO_SHIP'
+    case 'SHIPPED': return 'SHIPPED'
+    case 'DELIVERED': return 'DELIVERED'
+    case 'PARTIAL': return 'PARTIALLY_DELIVERED'
+    case 'RETURN_PENDING': return 'RETURNING'
+    case 'RETURNED': return 'RETURNED'
+    case 'LOST': return 'LOST'
+    case 'PRE_ORDER': return 'PRE_ORDER'
+    default: return status === 'PENDING_CANCEL' ? 'PENDING_CANCEL' : 'CANCELLED'
+  }
+}
+
+/** The status the override walks to for a place: back to Pending from RTS is packing (no step leads from RTS to processing). */
+export const placeTarget = (place: OrderStatus, current: OrderStatus): OrderStatus =>
+  place === 'PROCESSING' && current === 'READY_TO_SHIP' ? 'PACKING' : place
+
 export const COURIER_INVOICE_STATUS: Record<Enums<'courier_invoice_status'>, Meta> = {
   NEEDS_REVIEW: { label: 'Needs review', variant: 'warning' },
   DISCREPANCY: { label: 'Discrepancy', variant: 'danger' },
