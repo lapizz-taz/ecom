@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-30', tag: 'Improved', area: 'Finance', title: 'Profit counts an order when it is approved',
+    body: 'The dashboard’s profit now counts an order on the day it is approved: its sale, less the product cost and the courier charge. A returned order counts no sale; the courier’s delivery and return charges are a loss, unless the customer paid them (an advance), and then there is no loss. Ads and other expenses count on their own date. Tap Profit on the dashboard to see the calculation, in Bangla or English. Finance → Profit & loss still counts a sale once it is delivered.', to: '/admin' },
   { date: '2026-10-24', tag: 'Improved', area: 'Messaging', title: 'Unsubscribe link, store-address links and a clearer Email and WhatsApp page',
     body: 'Cart reminder and review request emails now have an Unsubscribe link, and Gmail and other mail apps show their own unsubscribe button, which keeps your emails out of spam. Customers who unsubscribe still get emails about their orders. Confirm and unsubscribe pages open on your online store’s own address. The Email and WhatsApp pages show a setup checklist and the last 30 days: sent, delivered, read, failed, confirmed by customers and unsubscribed.', to: '/admin/email' },
   { date: '2026-10-23', tag: 'Improved', area: 'Messaging', title: 'See what WhatsApp messages cost',

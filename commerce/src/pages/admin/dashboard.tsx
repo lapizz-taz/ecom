@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/features/auth/auth-context'
 import { useDashboardLayout } from '@/features/dashboard/use-dashboard-layout'
+import { EstimatedProfitDialog } from '@/features/finance/estimated-profit'
 import { OnlineStoreChoice } from '@/features/website/online-store-choice'
 import { useStoreConfig } from '@/hooks/use-store-config'
 import { BarsChart, ShareList, TrendChart } from '@/features/reports/charts'
@@ -41,6 +42,8 @@ interface Ctx {
   c: CommandCenter | undefined
   series: Array<Record<string, unknown>> | undefined
   can: (p: string) => boolean
+  /** Opens how the profit is made. */
+  onProfit: () => void
 }
 
 interface Widget {
@@ -160,6 +163,7 @@ export default function DashboardPage() {
   const [params, setParams] = useSearchParams()
   const [range, setRange] = useState<DateRange>(() => rangeFor('today'))
   const [editing, setEditing] = useState(false)
+  const [profitOpen, setProfitOpen] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const queryClient = useQueryClient()
   // Every number on the dashboard, including the order pipeline counts.
@@ -207,7 +211,8 @@ export default function DashboardPage() {
 
       {params.get('welcome') === '1' && <WelcomeChecklist onClose={() => { params.delete('welcome'); setParams(params, { replace: true }) }} />}
 
-      <KpiRow c={center.data} prev={before.data} series={series.data as Array<Record<string, unknown>> | undefined} finance={can('finance.view')} />
+      <KpiRow c={center.data} prev={before.data} series={series.data as Array<Record<string, unknown>> | undefined} finance={can('finance.view')} onProfit={() => setProfitOpen(true)} />
+      <EstimatedProfitDialog open={profitOpen} onOpenChange={setProfitOpen} estimate={center.data?.finance?.estimate} />
 
       <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0 space-y-6">
@@ -287,7 +292,7 @@ export default function DashboardPage() {
                       </CardAction>
                     )}
                   </CardHeader>
-                  {!hidden && <CardContent>{w.render({ d, c: center.data, series: series.data as Array<Record<string, unknown>> | undefined, can })}</CardContent>}
+                  {!hidden && <CardContent>{w.render({ d, c: center.data, series: series.data as Array<Record<string, unknown>> | undefined, can, onProfit: () => setProfitOpen(true) })}</CardContent>}
                 </Card>
               )
             })}
@@ -338,7 +343,7 @@ function StatusTiles() {
   )
 }
 
-function Tile({ label, value, hint, tone, to }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'positive' | 'negative'; to?: string }) {
+function Tile({ label, value, hint, tone, to, onClick }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'positive' | 'negative'; to?: string; onClick?: () => void }) {
   const body = (
     <>
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -346,22 +351,30 @@ function Tile({ label, value, hint, tone, to }: { label: string; value: ReactNod
       {hint && <p className="mt-0.5 truncate text-xs text-muted-foreground">{hint}</p>}
     </>
   )
-  return to ? <Link to={to} className="rounded-xl p-2.5 transition-colors hover:bg-muted/60">{body}</Link> : <div className="p-2.5">{body}</div>
+  if (to) return <Link to={to} className="rounded-xl p-2.5 transition-colors hover:bg-muted/60">{body}</Link>
+  return onClick
+    ? <button type="button" onClick={onClick} className="min-w-0 rounded-xl p-2.5 text-left transition-colors hover:bg-muted/60">{body}</button>
+    : <div className="p-2.5">{body}</div>
 }
 
-function BusinessOverview({ d, c, can }: Ctx) {
+function BusinessOverview({ d, c, can, onProfit }: Ctx) {
   if (!c) return <CardsSkeleton count={5} />
   const f = c.finance
+  const est = f?.estimate
   const returning = c.period.orders > 0 ? (100 * c.period.returning_orders) / c.period.orders : null
   return (
     <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-5">
       <Tile label="Today's sales" value={formatMoney(c.today.sales)} hint={`${formatNumber(c.today.orders)} orders today · ${formatNumber(c.today.delivered)} delivered`} to="/admin/orders" />
       <Tile label="Today's orders" value={formatNumber(c.today.orders)} hint={`${formatNumber(c.today.approved)} approved today`} to="/admin/orders/web" />
-      {f && <Tile label="Today's profit" value={formatMoney(f.today_profit)} tone={toNumber(f.today_profit) < 0 ? 'negative' : 'positive'} hint="delivered today, after costs" to="/admin/finance/profit-loss" />}
+      {f && (f.today_estimate
+        ? <Tile label="Today's profit" value={formatMoney(f.today_estimate.profit)} tone={toNumber(f.today_estimate.profit) < 0 ? 'negative' : 'positive'} hint="approved today, after costs" onClick={onProfit} />
+        : <Tile label="Today's profit" value={formatMoney(f.today_profit)} tone={toNumber(f.today_profit) < 0 ? 'negative' : 'positive'} hint="delivered today, after costs" to="/admin/finance/profit-loss" />)}
       <Tile label="COD with couriers" value={formatMoney(c.cod_in_transit)} hint={f ? `${formatMoney(f.cod_receivable)} delivered, not yet settled` : 'shipped, not yet delivered'} to={can('couriers.view') ? '/admin/couriers?tab=cod' : undefined} />
       {f && <Tile label="Courier fees" value={formatMoney(f.courier_fees)} hint="delivery, COD and return charges" to="/admin/couriers?tab=performance" />}
       {c.ad_spend !== null && <Tile label="Ad spend" value={formatMoney(c.ad_spend)} hint="Meta (synced) and other campaigns" to="/admin/marketing" />}
-      {f && <Tile label="Net profit" value={formatMoney(f.net_profit)} tone={toNumber(f.net_profit) < 0 ? 'negative' : 'positive'} hint={`gross profit ${formatMoney(f.gross_profit)}`} to="/admin/finance" />}
+      {f && (est
+        ? <Tile label="Profit" value={formatMoney(est.totals.profit)} tone={toNumber(est.totals.profit) < 0 ? 'negative' : 'positive'} hint={`${formatNumber(est.orders.approved)} approved orders, after all costs`} onClick={onProfit} />
+        : <Tile label="Net profit" value={formatMoney(f.net_profit)} tone={toNumber(f.net_profit) < 0 ? 'negative' : 'positive'} hint={`gross profit ${formatMoney(f.gross_profit)}`} to="/admin/finance" />)}
       <Tile label="Conversion rate" value={c.period.conversion_rate === null ? '—' : formatPercent(c.period.conversion_rate)}
         hint={c.period.sessions ? `${formatNumber(c.period.sessions)} store visits` : 'no store visits recorded'} />
       <Tile label="Average order value" value={formatMoney(c.period.average_order_value)} hint={`${formatNumber(c.period.orders)} orders · ${formatMoney(c.period.sales)}`} />
@@ -479,7 +492,7 @@ function RecentCustomers({ c }: { c: CommandCenter | undefined }) {
 }
 
 /** Headline numbers for the period with their trend and the change against the period before. */
-function KpiRow({ c, prev, series, finance }: { c: CommandCenter | undefined; prev: CommandCenter | undefined; series: Array<Record<string, unknown>> | undefined; finance: boolean }) {
+function KpiRow({ c, prev, series, finance, onProfit }: { c: CommandCenter | undefined; prev: CommandCenter | undefined; series: Array<Record<string, unknown>> | undefined; finance: boolean; onProfit: () => void }) {
   if (!c) return <CardsSkeleton count={4} />
   const line = (key: string) => series?.map((p) => toNumber(p[key])) ?? undefined
   const vs = (delta: number | null) => (delta != null ? 'vs previous period' : undefined)
@@ -487,13 +500,18 @@ function KpiRow({ c, prev, series, finance }: { c: CommandCenter | undefined; pr
     { label: 'Sales', value: formatMoney(c.period.sales), trend: line('gross_sales'), delta: prev ? percentChange(c.period.sales, prev.period.sales) : null, fallback: `${formatMoney(c.today.sales)} today`, icon: <Wallet />, to: '/admin/orders' },
     { label: 'Orders', value: formatNumber(c.period.orders), trend: line('orders'), delta: prev ? percentChange(c.period.orders, prev.period.orders) : null, fallback: `${formatNumber(c.today.orders)} today`, icon: <ShoppingCart />, to: '/admin/orders/web' },
     { label: 'Average order', value: formatMoney(c.period.average_order_value), trend: undefined, delta: prev ? percentChange(c.period.average_order_value, prev.period.average_order_value) : null, fallback: `${formatNumber(c.period.orders)} orders`, icon: <ClipboardList /> },
-    finance && c.finance
+    finance && c.finance?.estimate
+      ? { label: 'Profit', value: formatMoney(c.finance.estimate.totals.profit), trend: c.finance.estimate.daily.map((x) => toNumber(x.profit)),
+          delta: prev?.finance?.estimate ? percentChange(toNumber(c.finance.estimate.totals.profit), toNumber(prev.finance.estimate.totals.profit)) : null,
+          fallback: 'approved orders, after all costs', icon: <TrendingUp />, onClick: onProfit }
+      : finance && c.finance
       ? { label: 'Net profit', value: formatMoney(c.finance.net_profit), trend: line('profit'), delta: prev?.finance ? percentChange(c.finance.net_profit, prev.finance.net_profit) : null, fallback: `gross ${formatMoney(c.finance.gross_profit)}`, icon: <TrendingUp />, to: '/admin/finance/profit-loss' }
       : { label: 'COD with couriers', value: formatMoney(c.cod_in_transit), trend: undefined, delta: null, fallback: 'shipped, not yet delivered', icon: <Truck />, to: '/admin/couriers?tab=cod' },
   ].map((k) => ({ ...k, hint: vs(k.delta) ?? k.fallback }))
   return (
     <section aria-label="Key numbers" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      {cards.map((k) => <StatCard key={k.label} label={k.label} value={k.value} trend={k.trend} delta={k.delta} hint={k.hint} icon={k.icon} to={k.to} />)}
+      {cards.map((k) => <StatCard key={k.label} label={k.label} value={k.value} trend={k.trend} delta={k.delta} hint={k.hint} icon={k.icon}
+        to={'to' in k ? k.to : undefined} onClick={'onClick' in k ? k.onClick : undefined} />)}
     </section>
   )
 }
