@@ -22,7 +22,8 @@ describe('courier management parcels', () => {
       const ready = await createOrder(db, { phone: '01711000101', items: [{ variantId: p.variantIds[0], quantity: 2 }] })
       await advanceOrder(db, ready.id, ['CONFIRMED'])
       const booked = await createOrder(db, { phone: '01711000102', items: [{ variantId: p.variantIds[0], quantity: 1 }] })
-      await advanceOrder(db, booked.id, ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'])
+      // Approval gives the order its number (1000, 1001, …).
+      const bookedNumber = (await advanceOrder(db, booked.id, ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'])).order_number
       await asSystem(db)
       const consignment = 'DLT' + Math.floor(Math.random() * 1e6)
       const ship = await value<string>(db, `select id from public.assign_courier($1, $2, $3, 70, null, $3)`, [booked.id, courier, consignment])
@@ -36,7 +37,7 @@ describe('courier management parcels', () => {
       const byConsignment = await parcels(db, staff, { tab: 'assigned', q: consignment })
       expect(byConsignment.total).toBe(1)
       expect(byConsignment.items[0]).toMatchObject({
-        order_number: booked.order_number, rider: { name: 'Karim', phone: '01999000111' }, rider_note: 'Customer asked to come after 5pm', attempts: 1,
+        order_number: bookedNumber, rider: { name: 'Karim', phone: '01999000111' }, rider_note: 'Customer asked to come after 5pm', attempts: 1,
       })
       expect(byConsignment.items[0].courier.provider).toBe('pathao')
       expect(num(byConsignment.counts.assigned)).toBeGreaterThanOrEqual(1)

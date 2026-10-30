@@ -120,7 +120,7 @@ describe('WhatsApp templates', () => {
     const { text, params } = toPositional('Hi {{customer_first_name}}, order {{order_number}} for {{customer_first_name}} is ready.')
     expect(text).toBe('Hi {{1}}, order {{2}} for {{3}} is ready.')
     expect(params).toEqual(['customer_first_name', 'order_number', 'customer_first_name'])
-    expect(exampleValues(params)).toEqual(['Rahim', 'ISO-1042', 'Rahim'])
+    expect(exampleValues(params)).toEqual(['Rahim', '1042', 'Rahim'])
     expect(templateName('ORDER_SHIPPED', 2)).toBe('ff_order_shipped_v2')
     expect(paramValue('a\nb\t c     d')).toBe('a b  c   d')
     expect(paramValue('')).toBe('-')

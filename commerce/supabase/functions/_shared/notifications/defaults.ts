@@ -637,7 +637,7 @@ export function withUnsubscribeFooter(html: string, url: string, lang: Lang = 'e
 export const WHATSAPP_VARIABLES: Array<{ name: string; label: string; example: string; events?: MessageEvent[] }> = [
   { name: 'customer_first_name', label: 'First name', example: 'Rahim' },
   { name: 'customer_name', label: 'Customer name', example: 'Rahim Uddin' },
-  { name: 'order_number', label: 'Order number', example: 'ISO-1042', events: [...ORDER_EVENTS] },
+  { name: 'order_number', label: 'Order number', example: '1042', events: [...ORDER_EVENTS] },
   { name: 'total', label: 'Total', example: '৳1,250', events: [...ORDER_EVENTS] },
   { name: 'cod_amount', label: 'To pay on delivery', example: '৳1,195', events: [...ORDER_EVENTS] },
   { name: 'due_amount', label: 'Still to pay', example: '৳1,195', events: [...ORDER_EVENTS] },
@@ -646,7 +646,7 @@ export const WHATSAPP_VARIABLES: Array<{ name: string; label: string; example: s
   { name: 'courier_name', label: 'Courier', example: 'Steadfast', events: [...ORDER_EVENTS] },
   { name: 'tracking_number', label: 'Tracking number', example: 'SF12345678', events: [...ORDER_EVENTS] },
   { name: 'tracking_url', label: 'Tracking link', example: 'https://steadfast.com.bd/t/SF12345678', events: [...ORDER_EVENTS] },
-  { name: 'track_order_url', label: 'Order status page', example: 'https://isolation.com.bd/track-order?order=ISO-1042', events: [...ORDER_EVENTS] },
+  { name: 'track_order_url', label: 'Order status page', example: 'https://isolation.com.bd/track-order?order=1042', events: [...ORDER_EVENTS] },
   { name: 'cart_total', label: 'Cart total', example: '৳1,250', events: ['CART_REMINDER'] },
   { name: 'cart_url', label: 'Cart link', example: 'https://isolation.com.bd/cart?restore=8f3a2c', events: ['CART_REMINDER'] },
   { name: 'review_url', label: 'Review link', example: 'https://www.facebook.com/isolation/reviews', events: ['REVIEW_REQUEST'] },

@@ -250,7 +250,7 @@ function Code({ children }: { children: string }) {
 const ENDPOINTS: Array<{ method: 'GET' | 'POST'; path: string; scope: string; about: string; params?: string; body?: string }> = [
   { method: 'GET', path: '/me', scope: '—', about: 'The key and its permissions. Use it to test a connection.' },
   { method: 'GET', path: '/orders', scope: 'orders:read', about: 'Orders, newest change first.', params: 'status, updated_since (ISO time), limit (≤100), offset' },
-  { method: 'GET', path: '/orders/{order_number}', scope: 'orders:read', about: 'One order with items and shipment. Also accepts the order id.' },
+  { method: 'GET', path: '/orders/{order_number}', scope: 'orders:read', about: 'One order with items and shipment. Also accepts the order id, or the web reference an order had before it was approved.' },
   { method: 'POST', path: '/orders/{order_number}/status', scope: 'orders:write', about: 'Move an order along its normal path (e.g. CONFIRMED, PACKING, SHIPPED). Fraud and advance-payment decisions stay in the admin.', body: '{ "status": "CONFIRMED", "note": "Confirmed by ERP" }' },
   { method: 'GET', path: '/products', scope: 'products:read', about: 'Products with variants, prices and stock.', params: 'search, limit, offset' },
   { method: 'GET', path: '/inventory', scope: 'inventory:read', about: 'Stock per SKU: on hand, reserved for orders, available.', params: 'sku, limit (≤500), offset' },

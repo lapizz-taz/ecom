@@ -94,7 +94,8 @@ export async function listSmsMessages(f: { status?: MessageStatus | ''; event?: 
     if (/^[\d\s+-]+$/.test(q) && digits.length >= 3) {
       query = query.ilike('recipient', `%${digits.replace(/^0/, '')}%`)
     } else {
-      const { data: orders } = await supabase.from('orders').select('id').ilike('order_number', `%${q.replace(/[%,()]/g, '')}%`).limit(50)
+      const term = q.replace(/[%,()]/g, '')
+      const { data: orders } = await supabase.from('orders').select('id').or(`order_number.ilike.%${term}%,web_number.ilike.%${term}%`).limit(50)
       query = query.in('order_id', (orders ?? []).map((o) => o.id).concat('00000000-0000-0000-0000-000000000000'))
     }
   }

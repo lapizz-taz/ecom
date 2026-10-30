@@ -28,7 +28,7 @@ async function ingest(db: Db, channel: string, sku: string, number: string | nul
 }
 
 describe('Store order numbers (Shopify #10768 → order 10768)', () => {
-  it('uses the store number; falls back to the own counter when the number is taken or the option is off; web orders unchanged', () =>
+  it('uses the store number; falls back to a web reference when the number is taken or the option is off', () =>
     inTx(async (db) => {
       const sku = `NUM-${Math.floor(Math.random() * 1e6)}`
       await createProduct(db, { price: 990, stock: 20, variants: [{ sku, title: 'Default', stock: 20 }] })
@@ -40,25 +40,25 @@ describe('Store order numbers (Shopify #10768 → order 10768)', () => {
       expect(await value<Record<string, any>>(db, `select jsonb_build_object('n', order_number, 'ext', external_order_number) from public.orders where id = $1`, [first.order_id]))
         .toEqual({ n, ext: `#${n}` })
 
-      // A second store with the same number: own number instead, and a note says why.
+      // A second store with the same number: a web reference instead, and a note says why.
       const b = await shopify(db)
       const clash = await ingest(db, b, sku, `#${n}`)
       expect(clash.status).toBe('IMPORTED')
       expect(clash.order_number).not.toBe(n)
-      expect(clash.order_number).toMatch(/-\d+$/)
+      expect(clash.order_number).toMatch(/^W\d+$/)
       await asSystem(db)
       expect(await value<string>(db, `select string_agg(body, ' ') from public.order_notes where order_id = $1`, [clash.order_id])).toMatch(/already used here/)
 
-      // Option off → own counter.
+      // Option off → a web reference.
       const off = await shopify(db, { store_order_numbers: false })
       const own = await ingest(db, off, sku, `#${Number(n) + 1}`)
-      expect(own.order_number).toMatch(/-\d+$/)
+      expect(own.order_number).toMatch(/^W\d+$/)
 
       // A number that is not a plain code (spaces, symbols) is not used.
       const odd = await ingest(db, a, sku, 'Order 55 / A')
-      expect(odd.order_number).toMatch(/-\d+$/)
+      expect(odd.order_number).toMatch(/^W\d+$/)
 
-      // The setting is only for that one insert: a staff order right after still gets the own counter.
+      // The setting is only for that one insert: a staff order right after still gets a web reference.
       await asSystem(db)
       expect(await value<string>(db, `select coalesce(current_setting('app.order_number', true), '')`)).toBe('')
     }))

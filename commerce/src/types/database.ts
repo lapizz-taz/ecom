@@ -7280,6 +7280,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
         Insert: {
           id?: string
@@ -7366,6 +7367,7 @@ export type Database = {
           merchant_id?: string
           tax_amount?: number
           branch_id?: string | null
+          web_number?: string | null
         }
         Update: {
           id?: string
@@ -7452,6 +7454,7 @@ export type Database = {
           merchant_id?: string
           tax_amount?: number
           branch_id?: string | null
+          web_number?: string | null
         }
         Relationships: [
           {

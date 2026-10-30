@@ -13,17 +13,19 @@ export function AdvancedSettings() {
   const advanced = useSettingDraft('advanced')
   const queryClient = useQueryClient()
   const idle = Number(advanced.get(['idle_logout_minutes']) ?? 0)
+  const prefix = String(store.get(['order_prefix']) ?? '')
 
   return (
     <div className="grid gap-4">
       <SettingCard setting={store} title="Region & numbering" description="Money, dates and order numbers everywhere in the system."
-        validate={() => (/^[A-Z0-9]{1,8}$/.test(String(store.get(['order_prefix']) ?? '')) ? null : 'Order prefix must be 1–8 uppercase letters or digits')}>
+        validate={() => (/^[A-Z0-9]{0,8}$/.test(prefix) ? null : 'Order prefix: up to 8 capital letters or digits, or leave it empty')}>
         <div className="grid gap-4 sm:grid-cols-3">
           <TextSetting s={store} path={['currency']} label="Currency code" mono />
           <TextSetting s={store} path={['currency_symbol']} label="Currency symbol" />
           <TextSetting s={store} path={['locale']} label="Number format (locale)" mono hint="e.g. en-BD" />
           <TextSetting s={store} path={['timezone']} label="Time zone" mono hint="Reports, attendance and day boundaries use this" />
-          <TextSetting s={store} path={['order_prefix']} label="Order number prefix" mono hint="ISO → ISO-10001" />
+          <TextSetting s={store} path={['order_prefix']} label="Order number prefix" mono placeholder="None"
+            hint={`Orders get a number when approved: ${prefix ? `${prefix}-1000, ${prefix}-1001` : '1000, 1001'}, …`} />
           <TextSetting s={store} path={['phone_country_code']} label="Phone country code" mono />
         </div>
         <TextSetting s={store} path={['phone_pattern']} label="Local phone pattern" mono hint="Regular expression for valid local numbers; checkout rejects anything else" />

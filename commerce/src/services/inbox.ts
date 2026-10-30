@@ -238,7 +238,7 @@ export async function findOrdersToLink(q: string): Promise<Array<{ id: string; o
   const term = q.replace(/[%,()]/g, ' ').trim()
   if (term.length < 2) return []
   const { data, error } = await supabase.from('orders').select('id, order_number, status, total_amount, customer_name')
-    .or(`order_number.ilike.%${term}%,customer_phone.ilike.%${term.replace(/\D/g, '') || term}%`).order('created_at', { ascending: false }).limit(8)
+    .or(`order_number.ilike.%${term}%,web_number.ilike.%${term}%,customer_phone.ilike.%${term.replace(/\D/g, '') || term}%`).order('created_at', { ascending: false }).limit(8)
   if (error) throw error
   return (data ?? []).map((o) => ({ ...o, total_amount: Number(o.total_amount) }))
 }

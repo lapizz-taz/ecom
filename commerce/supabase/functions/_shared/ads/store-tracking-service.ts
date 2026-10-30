@@ -87,7 +87,7 @@ export async function testAdTracking(admin: SupabaseClient, platform: AdPlatform
 // --- the Purchase queue ------------------------------------------------------------------------
 
 interface OrderFacts {
-  order_number: string; status: string; total: number; currency: string
+  order_number: string; web_number?: string | null; status: string; total: number; currency: string
   customer_name: string | null; customer_phone: string | null; customer_email: string | null
   city: string | null; district: string | null; client_ip: string | null; user_agent: string | null; created_at: string
   merged_into: string | null; duplicate_of: string | null; receive_rate_tier: string | null
@@ -169,7 +169,8 @@ export async function browserPurchase(admin: SupabaseClient, orderId: string, me
   // Hashed email / phone for TikTok's identify and Google's enhanced conversions (the buyer's own details, to their own browser).
   const m = config.advanced_matching ? await hashPerson({ phone: order.customer_phone, email: order.customer_email }) : null
   return {
-    event_id: purchaseEventId(order.order_number), order_id: order.order_number, value: Number(order.total), currency: order.currency || 'BDT',
+    // The number the order was placed under: an order approved since then has a new one, the queued server copy does not.
+    event_id: purchaseEventId(order.web_number ?? order.order_number), order_id: order.order_number, value: Number(order.total), currency: order.currency || 'BDT',
     contents: order.items.map((i) => ({ id: i.id, name: i.name, quantity: Number(i.quantity), price: Number(i.price) })),
     matching: m && (m.em || m.ph_e164) ? { em: m.em, ph_e164: m.ph_e164 } : null,
   }

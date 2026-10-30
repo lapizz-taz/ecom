@@ -151,7 +151,8 @@ describe('discount calculation', () => {
       expect(num(order.total_amount)).toBe(1880)
       expect(num(order.cod_amount)).toBe(1880)
       expect(num(order.cost_total)).toBe(600)
-      expect(order.order_number).toMatch(/^ISO-\d{5,}$/)
+      // A web order waits under a web reference; our number comes when it is approved.
+      expect(order.order_number).toMatch(/^W\d+$/)
     }))
 
   it('honours a staff manual discount and delivery override, capped at the subtotal', () =>

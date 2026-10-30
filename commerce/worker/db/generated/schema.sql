@@ -2457,6 +2457,13 @@ CREATE TABLE order_blocks (
   CONSTRAINT order_blocks_source_order_id_fkey FOREIGN KEY (source_order_id) REFERENCES orders (id)
 ) STRICT;
 
+CREATE TABLE order_counters (
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  last_number INTEGER NOT NULL,
+  PRIMARY KEY (merchant_id),
+  CONSTRAINT order_counters_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id) ON DELETE CASCADE
+) STRICT;
+
 CREATE TABLE order_fee_charges (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
@@ -2782,6 +2789,7 @@ CREATE TABLE orders (
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
   tax_amount REAL DEFAULT 0 NOT NULL,
   branch_id TEXT CHECK (branch_id IS NULL OR length(branch_id) = 36),
+  web_number TEXT,
   PRIMARY KEY (id),
   CONSTRAINT orders_advance_required_check CHECK (advance_required >= 0),
   CONSTRAINT orders_amount_refunded_check CHECK (amount_refunded >= 0),
@@ -5473,6 +5481,8 @@ CREATE INDEX orders_shipped_at_idx ON orders (shipped_at) WHERE (shipped_at is n
 CREATE INDEX orders_status_created_idx ON orders (status, created_at desc);
 
 CREATE INDEX orders_utm_campaign_idx ON orders (utm_campaign) WHERE (utm_campaign is not null);
+
+CREATE INDEX orders_web_number_idx ON orders (merchant_id, web_number) WHERE (web_number is not null);
 
 CREATE INDEX orders_web_queue_idx ON orders (review_status, created_at desc) WHERE (confirmed_at is null);
 
