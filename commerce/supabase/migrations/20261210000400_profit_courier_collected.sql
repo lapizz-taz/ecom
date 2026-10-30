@@ -41,21 +41,14 @@ begin
   execute replace(v_old, p_from, p_to);
 end $$;
 
+-- Single-line texts only: an SQL editor may send its own line breaks, which would never match.
 select pg_temp.patch_fn('public._process_courier_webhook(uuid)',
-  $a$  v_note text;
-begin$a$,
-  $b$  v_note text;
-  v_collected boolean := false;
-begin$b$);
+  $a$  v_note text;$a$,
+  $b$  v_note text; v_collected boolean := false;$b$);
+-- What the customer paid the courier (on delivery, a partial delivery or a paid return), kept on the parcel.
 select pg_temp.patch_fn('public._process_courier_webhook(uuid)',
   $a$    v_result := case when v_applied or v_charged <> 0 then 'PROCESSED' else 'IGNORED' end;$a$,
-  $b$    -- What the customer paid the courier (on delivery, a partial delivery or a paid return).
-    if e.charges ->> 'collected' is not null and coalesce(e.new_status, v_ship.status) not in ('PENDING', 'BOOKED', 'CANCELLED')
-       and v_ship.collected_amount is distinct from (e.charges ->> 'collected')::numeric then
-      update public.shipments set collected_amount = (e.charges ->> 'collected')::numeric where id = v_ship.id;
-      v_collected := true;
-    end if;
-    v_result := case when v_applied or v_charged <> 0 or v_collected then 'PROCESSED' else 'IGNORED' end;$b$);
+  $b$    if e.charges ->> 'collected' is not null and coalesce(e.new_status, v_ship.status) not in ('PENDING', 'BOOKED', 'CANCELLED') and v_ship.collected_amount is distinct from (e.charges ->> 'collected')::numeric then update public.shipments set collected_amount = (e.charges ->> 'collected')::numeric where id = v_ship.id; v_collected := true; end if; v_result := case when v_applied or v_charged <> 0 or v_collected then 'PROCESSED' else 'IGNORED' end;$b$);
 
 -- Courier events already received: the latest amount each parcel was reported with (written as that business).
 do $$
