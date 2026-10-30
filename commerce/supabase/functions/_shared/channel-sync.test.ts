@@ -352,7 +352,7 @@ describe('Order status → Shopify (one job, each step once)', () => {
     expect(await fulfillJob(job('FULFILL'), h.rpc, h.shopify, opts)).toMatchObject({ outcome: 'DONE' })
     expect(cancelOrder).toHaveBeenCalledExactlyOnceWith('5001', expect.stringContaining('ISO-1'), false, false)
     expect(h.syncSaves[0]).toMatchObject({ cancel_status: 'REQUESTED', restocked_in_store: false, customer_emailed: false })
-    expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], ['Status: New'])
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Fullfilio', 'Status: Cancelled'], ['Status: New'])
   })
 
   it('cancelled here with the cancellation e-mail on: Shopify e-mails the customer, and the order log says so', async () => {
@@ -369,12 +369,12 @@ describe('Order status → Shopify (one job, each step once)', () => {
     expect(cancelOrder).toHaveBeenCalledTimes(1)
   })
 
-  it('Fullfilio tag: written only when every step went through; replaces old "Status:" tags; "needs attention" when a step failed; none while retrying', async () => {
+  it('Fullfilio tags: written only when every step went through; replace old "Status:" tags; "needs attention" when a step failed; none while retrying', async () => {
     const updateTags = vi.fn(async () => undefined)
-    // All good → "Fullfilio: Confirmed", the old "Status: New" tag removed.
+    // All good → "Fullfilio" and "Fullfilio: Confirmed", the old "Status: New" tag removed.
     const ok = harness2(base({ status_tag: 'Fullfilio: Confirmed' }), { orderState: async () => st(), updateTags })
     expect(await fulfillJob(job('FULFILL'), ok.rpc, ok.shopify, opts)).toMatchObject({ outcome: 'DONE' })
-    expect(updateTags).toHaveBeenLastCalledWith('5001', ['Fullfilio: Confirmed'], ['Status: New'])
+    expect(updateTags).toHaveBeenLastCalledWith('5001', ['Fullfilio', 'Fullfilio: Confirmed'], ['Status: New'])
 
     // Cancel refused by Shopify (permission) → "Fullfilio: needs attention", not the status.
     updateTags.mockClear()
@@ -383,7 +383,7 @@ describe('Order status → Shopify (one job, each step once)', () => {
       sync: { cancel_status: 'PENDING', paid_status: null, status_tag: 'Fullfilio: Confirmed', events: {} } }),
       { orderState: async () => st({ tags: ['Fullfilio: Confirmed'] }), cancelOrder: async () => { throw denied }, updateTags })
     expect((await fulfillJob(job('FULFILL'), bad.rpc, bad.shopify, opts)).outcome).toBe('FAILED')
-    expect(updateTags).toHaveBeenCalledWith('5001', ['Fullfilio: needs attention'], ['Fullfilio: Confirmed'])
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Fullfilio', 'Fullfilio: needs attention'], ['Fullfilio: Confirmed'])
 
     // Shopify busy → retried later, no tag written now.
     updateTags.mockClear()
@@ -397,7 +397,7 @@ describe('Order status → Shopify (one job, each step once)', () => {
   it('stock not synced: Shopify restocks itself; already cancelled on Shopify: nothing sent; fulfilled on Shopify: refused with a clear reason', async () => {
     const cancelOrder = vi.fn(async () => 'j')
     const ctx = (over = {}) => base({ order: { id: 'o1', order_number: 'ISO-1', status: 'CANCELLED', external_order_id: '5001', customer_email: null },
-      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: 'x', events: {} }, settings: { inventory_sync: false, mark_paid_on_delivery: true, status_tags: false, courier_events: true }, ...over })
+      sync: { cancel_status: 'PENDING', paid_status: null, status_tag: 'x', events: {} }, settings: { inventory_sync: false, mark_paid_on_delivery: true, status_tags: false, courier_events: true, import_tag: false }, ...over })
     const a = harness2(ctx(), { orderState: async () => st(), cancelOrder })
     await fulfillJob(job('FULFILL'), a.rpc, a.shopify, opts)
     expect(cancelOrder).toHaveBeenLastCalledWith('5001', expect.any(String), true, false)
@@ -423,8 +423,8 @@ describe('Order status → Shopify (one job, each step once)', () => {
     expect(await fulfillJob(job('FULFILL'), first.rpc, first.shopify, opts)).toMatchObject({ outcome: 'DONE' })
     expect(markDelivered).toHaveBeenCalledTimes(1)
     expect(markPaid).toHaveBeenCalledExactlyOnceWith('5001')
-    expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Delivered'], ['Status: Shipped'])
-    const again = harness2(delivered({ cancel_status: null, paid_status: 'MARKED', status_tag: 'Status: Delivered', events: {} },
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Fullfilio', 'Status: Delivered'], ['Status: Shipped'])
+    const again = harness2(delivered({ cancel_status: null, paid_status: 'MARKED', status_tag: 'Fullfilio | Status: Delivered', events: {} },
       { status: 'FULFILLED', tracking_number: 'DL1', fulfillment_id: 'gid://shopify/Fulfillment/9', delivered_status: 'MARKED' }), port)
     await fulfillJob(job('FULFILL'), again.rpc, again.shopify, opts)
     expect(markDelivered).toHaveBeenCalledTimes(1)
@@ -436,7 +436,7 @@ describe('Order status → Shopify (one job, each step once)', () => {
     const markEvent = vi.fn(async (_f: string, s: string) => ({ id: `ev-${s}`, existing: false }))
     const ctx = (status: string, events = {}) => base({ order: { id: 'o1', order_number: 'ISO-1', status, external_order_id: '5001', customer_email: null, was_delivered: false },
       fulfillment: { status: 'FULFILLED', tracking_number: 'DL1', fulfillment_id: 'F9', delivered_status: null }, delivered_target: 'F9',
-      sync: { cancel_status: null, paid_status: null, status_tag: 'x', events }, settings: { inventory_sync: true, mark_paid_on_delivery: true, status_tags: false, courier_events: true } })
+      sync: { cancel_status: null, paid_status: null, status_tag: 'x', events }, settings: { inventory_sync: true, mark_paid_on_delivery: true, status_tags: false, courier_events: true, import_tag: false } })
     const a = harness2(ctx('FAILED_DELIVERY'), { markEvent })
     await fulfillJob(job('FULFILL'), a.rpc, a.shopify, opts)
     expect(markEvent).toHaveBeenLastCalledWith('F9', 'ATTEMPTED_DELIVERY', null)
@@ -482,7 +482,62 @@ describe('Order without a fulfilment', () => {
     const out = await fulfillJob(job('FULFILL'), rpc, () => ({ orderState: async () => ({ cancelled: true, financialStatus: 'PENDING', tags: [], fulfilled: false }), updateTags }) as never, opts)
     expect(out.outcome).toBe('DONE')
     expect(saves).not.toContain('channel_fulfillment_update')
-    expect(updateTags).toHaveBeenCalledWith('5001', ['Status: Cancelled'], [])
+    expect(updateTags).toHaveBeenCalledWith('5001', ['Fullfilio', 'Status: Cancelled'], [])
+  })
+})
+
+describe('"Fullfilio" tag on imported Shopify orders', () => {
+  const base = (over: Record<string, unknown> = {}) => fulfilCtx({
+    order: { id: 'o1', order_number: 'W10501', status: 'PENDING', external_order_id: '5001', customer_email: null },
+    sync: { cancel_status: null, paid_status: null, status_tag: null, events: {} },
+    settings: { inventory_sync: true, mark_paid_on_delivery: true, status_tags: true, courier_events: true, import_tag: true },
+    status_tag: 'Fullfilio: New', merged_tag: null, delivered_target: null, fulfillment: null,
+    ...over,
+  })
+  const run = async (ctx: unknown, tags: string[]) => {
+    const updateTags = vi.fn(async () => undefined)
+    const syncSaves: Array<Record<string, unknown>> = []
+    const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'channel_fulfillment_context') return ctx
+      if (fn === 'channel_order_sync_update') syncSaves.push(args.p as Record<string, unknown>)
+      return null
+    }) as never
+    const shopify = () => ({ orderState: async () => ({ cancelled: false, financialStatus: 'PENDING', tags, fulfilled: false }), updateTags }) as never
+    const out = await fulfillJob(job('FULFILL'), rpc, shopify, opts)
+    return { out, updateTags, syncSaves }
+  }
+  const settings = (status_tags: boolean, import_tag: boolean) => ({ inventory_sync: true, mark_paid_on_delivery: true, status_tags, courier_events: true, import_tag })
+
+  it('a new import gets "Fullfilio" and its status tag at once, and nothing else is sent to Shopify', async () => {
+    const r = await run(base(), ['vip'])
+    expect(r.out.outcome).toBe('DONE')
+    expect(r.updateTags).toHaveBeenCalledExactlyOnceWith('5001', ['Fullfilio', 'Fullfilio: New'], [])
+    expect(r.syncSaves).toEqual([{ status_tag: 'Fullfilio | Fullfilio: New', tag_error: '' }])
+  })
+
+  it('"Fullfilio" stays when the status moves on; with status tags off only "Fullfilio" is added and the old tags are left', async () => {
+    const shipped = await run(base({ order: { id: 'o1', order_number: '1000', status: 'SHIPPED', external_order_id: '5001', customer_email: null },
+      status_tag: 'Fullfilio: Shipped', sync: { cancel_status: null, paid_status: null, status_tag: 'Fullfilio | Fullfilio: Confirmed', events: {} } }),
+      ['Fullfilio', 'Fullfilio: Confirmed'])
+    expect(shipped.updateTags).toHaveBeenCalledExactlyOnceWith('5001', ['Fullfilio: Shipped'], ['Fullfilio: Confirmed'])
+
+    const off = await run(base({ settings: settings(false, true), sync: { cancel_status: null, paid_status: null, status_tag: 'Fullfilio: Confirmed', events: {} } }),
+      ['Fullfilio: Confirmed'])
+    expect(off.updateTags).toHaveBeenCalledExactlyOnceWith('5001', ['Fullfilio'], [])
+  })
+
+  it('switched off: no "Fullfilio" tag; already on the order: nothing is sent again', async () => {
+    const none = await run(base({ settings: settings(false, false) }), [])
+    expect(none.updateTags).not.toHaveBeenCalled()
+    const statusOnly = await run(base({ settings: settings(true, false) }), [])
+    expect(statusOnly.updateTags).toHaveBeenCalledExactlyOnceWith('5001', ['Fullfilio: New'], [])
+
+    const again = await run(base({ sync: { cancel_status: null, paid_status: null, status_tag: 'Fullfilio | Fullfilio: New', events: {} } }), ['Fullfilio', 'Fullfilio: New'])
+    expect(again.updateTags).not.toHaveBeenCalled()
+    // On the order already (added by hand, or an earlier run that was not recorded): only recorded.
+    const present = await run(base(), ['Fullfilio', 'Fullfilio: New'])
+    expect(present.updateTags).not.toHaveBeenCalled()
+    expect(present.syncSaves).toEqual([{ status_tag: 'Fullfilio | Fullfilio: New', tag_error: '' }])
   })
 })
 

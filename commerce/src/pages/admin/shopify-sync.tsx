@@ -375,7 +375,7 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
   })
   const edit = can('settings.manage')
   type Key = 'fulfill_on_ship' | 'notify_customer' | 'fulfill_without_tracking' | 'inventory_sync' | 'auto_import_products' | 'mark_delivered'
-    | 'cancel_on_shopify' | 'cancel_email' | 'mark_paid_on_delivery' | 'status_tags' | 'courier_events' | 'update_products' | 'status_sync'
+    | 'cancel_on_shopify' | 'cancel_email' | 'mark_paid_on_delivery' | 'status_tags' | 'courier_events' | 'update_products' | 'status_sync' | 'import_tag'
   const row = (label: string, hint: string, key: Key) => (
     <label className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
       <span><span className="block text-sm font-medium">{label}</span><span className="block text-xs text-muted-foreground">{hint}</span></span>
@@ -404,6 +404,7 @@ function SettingsCard({ o, channelId, onSaved, store }: { o: SyncOverview; chann
             {row('Cancel on Shopify when cancelled here', 'From Web Orders or Approved Orders. Stock is never put back twice.', 'cancel_on_shopify')}
             {s.cancel_on_shopify && row("Send Shopify's cancellation e-mail", 'Shopify e-mails the customer that the order was cancelled (when the order has an e-mail). Merging orders never sends it.', 'cancel_email')}
             {row('Mark paid when delivered', 'Cash-on-delivery orders show Paid on Shopify once the courier delivers', 'mark_paid_on_delivery')}
+            {row('Tag imported orders "Fullfilio"', 'Every order that comes in here gets the tag Fullfilio on Shopify, so Orders → "Tagged with: Fullfilio" shows what was imported (and "Not tagged with" what was not)', 'import_tag')}
             {row('Show our status as a tag', 'Adds "Fullfilio: Confirmed / Shipped / Delivered / Returned …" to the Shopify order once everything is in step ("Fullfilio: needs attention" if something failed)', 'status_tags')}
             {row('Send courier updates', 'Failed delivery and returned parcels show on the Shopify fulfilment', 'courier_events')}
           </>}

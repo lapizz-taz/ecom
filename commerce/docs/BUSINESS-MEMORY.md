@@ -62,6 +62,8 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 
 **Sales channels**
 - Shopify, two-way: orders, fulfilment, status, stock, cost, products, collections, returns.
+  Every Shopify order imported into Fullfilio gets the tag "Fullfilio" in Shopify (since 30 Oct 2026; a
+  switch per store, on by default), so Shopify's "Tagged with: Fullfilio" filter shows what came in.
 - WooCommerce, through our WordPress plugin "Fullfilio Connect": order sync, stock, a risk-based
   advance at checkout, first-party ad tracking.
 - Only one channel can be active at a time.
