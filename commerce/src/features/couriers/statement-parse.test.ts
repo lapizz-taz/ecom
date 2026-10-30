@@ -25,6 +25,11 @@ describe('courier statement parsing', () => {
     ])
   })
 
+  it('takes the cash collected over the booked amount, and the merchant order over the invoice number', () => {
+    const headers = ['Invoice ID', 'Consignment ID', 'Amount to Collect', 'Merchant Order ID', 'Collected Amount', 'Delivery Charge']
+    expect(guessMapping(headers)).toMatchObject({ consignment_id: 1, order_ref: 3, cod_collected: 4, delivery_fee: 5 })
+  })
+
   it('understands taka signs, brackets and blanks, and reports text in amount columns', () => {
     expect(parseAmount('৳1,250')).toBe(1250)
     expect(parseAmount('Tk 80.50')).toBe(80.5)

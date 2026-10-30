@@ -1,5 +1,5 @@
 {
-  "migrations": 199,
-  "last": "20261210000400_profit_courier_collected.sql",
-  "sha256": "4d008bceb4c828460438fbf4f098e9df18eaab667d24f744b4518999977e3017"
+  "migrations": 200,
+  "last": "20261210000500_courier_statement_checks.sql",
+  "sha256": "63f21e0d46fd7de718987b9b4f2f0e50b6489fe70e0635d81865e200bc4d6da4"
 }

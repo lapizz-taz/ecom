@@ -1,9 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, FileDown, FileUp, Wallet } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileDown, FileUp, Trash2, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { DatePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { type Column, DataTable } from '@/components/common/data-table'
 import { Field } from '@/components/common/field'
 import { FormDialog } from '@/components/common/form-dialog'
@@ -24,8 +25,8 @@ import { formatDate, formatMoney, toNumber } from '@/lib/format'
 import { COURIER_INVOICE_STATUS } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import {
-  type CourierInvoiceDetail, type CourierInvoiceRow, type CourierInvoiceStatus, getCourierInvoice, importCourierInvoice, listCourierInvoices,
-  listCouriers, setCourierInvoiceStatus, statementFileUrl, uploadStatementFile,
+  type CourierInvoiceDetail, type CourierInvoiceRow, type CourierInvoiceStatus, deleteCourierInvoice, getCourierInvoice, importCourierInvoice,
+  invoiceDifference, listCourierInvoices, listCouriers, setCourierInvoiceStatus, statementFileUrl, uploadStatementFile,
 } from '@/services/couriers'
 import {
   type ColumnMapping, findHeaderRow, guessMapping, readStatementFile, STATEMENT_FIELDS, type StatementField, toLines,
@@ -42,11 +43,14 @@ function Difference({ value, className }: { value: number | string; className?: 
   )
 }
 
-/** Plain-words verdict shown at the top of a statement. */
-function Verdict({ difference, flagged, courier }: { difference: number | string | null; flagged: number; courier?: string | null }) {
+/** Plain-words verdict shown at the top of a statement: the money received once it is paid, else the statement. */
+function Verdict({ difference, flagged, courier, received }: {
+  difference: number | string | null; flagged: number; courier?: string | null; received?: { amount: number; statement: number }
+}) {
   const n = toNumber(difference ?? 0)
   const who = courier ?? 'The courier'
   const ok = Math.abs(n) < 1
+  const gap = received ? received.amount - received.statement : 0
   return (
     <div className={cn('flex items-start gap-3 rounded-lg border p-4 animate-in fade-in-0 slide-in-from-top-1 duration-300', ok ? 'border-foreground/20 bg-muted/40' : 'border-foreground/60')}>
       <span className={cn('grid size-9 shrink-0 place-items-center rounded-full', ok ? 'bg-foreground text-background' : 'ring-2 ring-foreground')}>
@@ -57,11 +61,32 @@ function Verdict({ difference, flagged, courier }: { difference: number | string
           {ok ? `${who} paid you correctly` : n < 0 ? `${who} paid ${formatMoney(Math.abs(n))} less than it should` : `${who} paid ${formatMoney(n)} more than expected`}
         </p>
         <p className="text-muted-foreground">
+          {received && (Math.abs(gap) < 1 ? `You received ${formatMoney(received.amount)}, as the statement says. `
+            : `You received ${formatMoney(received.amount)}, ${formatMoney(Math.abs(gap))} ${gap < 0 ? 'less' : 'more'} than the statement. `)}
           {flagged ? `${flagged} parcel${flagged === 1 ? '' : 's'} differ from your records — see the flagged list below.` : 'Every parcel matches your records.'}
-          {!ok && n < 0 && ' Raise the flagged parcels with the courier before marking it paid.'}
+          {!ok && n < 0 && !received && ' Raise the flagged parcels with the courier before marking it paid.'}
         </p>
       </div>
     </div>
+  )
+}
+
+/** The money received set against the statement and against your records, as it is typed in. */
+function ReceivedCheck({ received, statement, expected }: { received: number; statement: number; expected: number }) {
+  return (
+    <ul className="grid gap-1.5 rounded-lg border p-3 text-sm">
+      {([['Statement says', statement], ['Your records say', expected]] as const).map(([label, figure]) => {
+        const d = received - figure
+        return (
+          <li key={label} className="flex items-baseline justify-between gap-3">
+            <span className="text-muted-foreground">{label} <Money value={figure} /></span>
+            {Math.abs(d) < 1
+              ? <span className="inline-flex items-center gap-1 font-medium"><CheckCircle2 className="size-3.5" />Matches</span>
+              : <span className={cn('font-medium', d < 0 && 'text-red-700')}>{formatMoney(Math.abs(d))} {d < 0 ? 'short' : 'over'}</span>}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -95,7 +120,7 @@ export function CourierStatements({ hideUpload }: { hideUpload?: boolean } = {})
     },
     { key: 'expected', header: 'Expected payout', align: 'right', hideOnMobile: true, cell: (i) => <Money value={i.payout_expected} muted /> },
     { key: 'reported', header: 'Statement payout', align: 'right', cell: (i) => <Money value={i.payout_reported} /> },
-    { key: 'diff', header: 'Verdict', align: 'right', cell: (i) => <Difference value={i.difference ?? 0} /> },
+    { key: 'diff', header: 'Verdict', align: 'right', cell: (i) => <Difference value={invoiceDifference(i)} /> },
     { key: 'status', header: 'Status', cell: (i) => <StatusBadge value={i.status} map={COURIER_INVOICE_STATUS} /> },
   ]
   return (
@@ -266,8 +291,17 @@ function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<'flagged' | 'all'>('flagged')
   const [paying, setPaying] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [paid, setPaid] = useState({ amount: '', reference: '' })
   const invoice = useQuery({ queryKey: ['courier-invoice', id], queryFn: () => getCourierInvoice(id) })
+  const remove = useMutation({
+    mutationFn: () => deleteCourierInvoice(id),
+    onSuccess: () => {
+      toast.success('Statement deleted — you can upload it again')
+      void queryClient.invalidateQueries({ queryKey: ['courier-invoices'] })
+      onClose()
+    },
+  })
   const status = useMutation({
     mutationFn: (args: { status: CourierInvoiceStatus; amountPaid?: number; reference?: string }) =>
       setCourierInvoiceStatus(id, args.status, { amountPaid: args.amountPaid, reference: args.reference }),
@@ -331,14 +365,15 @@ function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
               </DialogDescription>
             </DialogHeader>
 
-            <Verdict difference={inv.difference} flagged={inv.line_count - inv.matched_count} courier={inv.couriers?.name} />
+            <Verdict difference={invoiceDifference(inv)} flagged={inv.line_count - inv.matched_count} courier={inv.couriers?.name}
+              received={locked ? { amount: toNumber(inv.amount_paid), statement: toNumber(inv.payout_reported) } : undefined} />
 
             <div className="grid gap-3 sm:grid-cols-4">
               {[
                 ['Expected payout', <Money key="e" value={inv.payout_expected} />],
                 ['Statement payout', <Money key="r" value={inv.payout_reported} />],
-                ['Verdict', <Difference key="d" value={inv.difference ?? 0} />],
-                [locked ? 'Amount paid' : 'Outstanding', <Money key="p" value={locked ? inv.amount_paid : inv.payout_reported} />],
+                ['Verdict', <Difference key="d" value={invoiceDifference(inv)} />],
+                [locked ? 'Received' : 'Outstanding', <Money key="p" value={locked ? inv.amount_paid : inv.payout_reported} />],
               ].map(([label, v]) => (
                 <div key={label as string} className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground">{label}</p>
@@ -385,6 +420,10 @@ function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
             {inv.notes && <p className="rounded-lg bg-muted/50 p-3 text-sm">{inv.notes}</p>}
             {!locked && (can('couriers.manage') || can('payments.record')) && (
               <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+                {/* Until it is verified nothing depends on it, so a wrong upload can go. */}
+                {can('couriers.manage') && inv.status !== 'VERIFIED' && !inv.charges_applied_at && (
+                  <Button variant="ghost" className="mr-auto" onClick={() => setDeleting(true)} disabled={remove.isPending}><Trash2 /> Delete</Button>
+                )}
                 {can('couriers.manage') && inv.status !== 'NEEDS_REVIEW' && (
                   <Button variant="ghost" onClick={() => status.mutate({ status: 'NEEDS_REVIEW' })} disabled={status.isPending}>Needs review</Button>
                 )}
@@ -396,7 +435,7 @@ function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
                     title="The statement's fees become each parcel's actual courier charges"><CheckCircle2 /> Verified</Button>
                 )}
                 {can('payments.record') && (
-                  <Button onClick={() => { setPaid({ amount: String(inv.payout_reported), reference: '' }); setPaying(true) }}><Wallet /> Mark paid</Button>
+                  <Button onClick={() => { setPaid({ amount: '', reference: '' }); setPaying(true) }}><Wallet /> Mark paid</Button>
                 )}
               </div>
             )}
@@ -407,11 +446,22 @@ function StatementDetail({ id, onClose }: { id: string; onClose: () => void }) {
         <FormDialog open={paying} onOpenChange={setPaying} title="Record the courier's payout" submitLabel="Record payout" busy={status.isPending}
           disabled={paid.amount === '' || Number(paid.amount) < 0}
           onSubmit={() => status.mutate({ status: 'PAID', amountPaid: Number(paid.amount), reference: paid.reference })}
-          description="The statement's fees become the parcels' courier charges, and the cash collected is marked received on each matched order. This cannot be undone.">
-          <Field label="Amount received" htmlFor="pay-amt"><Input id="pay-amt" type="number" step="0.01" value={paid.amount} onChange={(e) => setPaid((p) => ({ ...p, amount: e.target.value }))} /></Field>
+          description="Type what actually reached your bank or bKash. The statement's fees become the parcels' courier charges, and the cash collected is marked received on each matched order. This cannot be undone.">
+          <Field label="Amount received" htmlFor="pay-amt">
+            <Input id="pay-amt" type="number" step="0.01" placeholder={String(inv.payout_reported)} value={paid.amount}
+              onChange={(e) => setPaid((p) => ({ ...p, amount: e.target.value }))} />
+          </Field>
+          {paid.amount !== '' && Number.isFinite(Number(paid.amount)) && (
+            <ReceivedCheck received={Number(paid.amount)} statement={toNumber(inv.payout_reported)} expected={toNumber(inv.payout_expected)} />
+          )}
           <Field label="Reference (bank / bKash TrxID)" htmlFor="pay-ref"><Input id="pay-ref" value={paid.reference} onChange={(e) => setPaid((p) => ({ ...p, reference: e.target.value }))} /></Field>
           {status.isPending && <Spinner />}
         </FormDialog>
+      )}
+      {inv && (
+        <ConfirmDialog open={deleting} onOpenChange={setDeleting} title="Delete this statement?" confirmLabel="Delete" destructive
+          description={`Its ${inv.line_count} parcel line${inv.line_count === 1 ? '' : 's'} go with it, so you can upload it again with the right courier or columns. Nothing on your orders changes.`}
+          onConfirm={() => remove.mutateAsync()} />
       )}
     </Dialog>
   )

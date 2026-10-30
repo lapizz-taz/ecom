@@ -58,13 +58,18 @@ export async function readStatementFile(file: File): Promise<string[][]> {
 
 const norm = (h: string) => h.toLowerCase().replace(/[_\s]+/g, ' ').trim()
 
-/** Best guess of each field's column from the header row. */
+/**
+ * Best guess of each field's column from the header row. A field's patterns are tried in order, so
+ * "Collected amount" wins over a booked "COD amount" or "Amount to collect" wherever the columns stand.
+ */
 export function guessMapping(headers: string[]): ColumnMapping {
   const mapping: ColumnMapping = {}
   const used = new Set<number>()
   for (const field of STATEMENT_FIELDS) {
-    const idx = headers.findIndex((h, i) => !used.has(i) && field.patterns.some((p) => p.test(norm(h))))
-    if (idx >= 0) { mapping[field.key] = idx; used.add(idx) }
+    for (const p of field.patterns) {
+      const idx = headers.findIndex((h, i) => !used.has(i) && p.test(norm(h)))
+      if (idx >= 0) { mapping[field.key] = idx; used.add(idx); break }
+    }
   }
   return mapping
 }
