@@ -228,12 +228,21 @@ export async function listCourierInvoices(f: { courierId?: string; status?: Cour
 }
 export type CourierInvoiceRow = Awaited<ReturnType<typeof listCourierInvoices>>['items'][number]
 
+/**
+ * What the courier paid against what your records say it owes (+ over, − short): the money you received
+ * once the statement is paid, before that the statement's own payout.
+ */
+export function invoiceDifference(i: { status: CourierInvoiceStatus; difference: number | null; amount_paid: number; payout_expected: number }) {
+  return i.status === 'PAID' ? Number(i.amount_paid) - Number(i.payout_expected) : Number(i.difference ?? 0)
+}
+
 /** Totals across statements for the invoice page header. */
 export async function courierInvoiceSummary() {
-  const { data, error } = await supabase.from('courier_invoices').select('difference, status, payout_reported, line_count, matched_count').limit(2000)
+  const { data, error } = await supabase.from('courier_invoices')
+    .select('difference, status, payout_expected, amount_paid, line_count, matched_count').limit(2000)
   if (error) throw error
   const rows = data ?? []
-  const diff = (r: { difference: number | null }) => Number(r.difference ?? 0)
+  const diff = invoiceDifference
   return {
     statements: rows.length,
     correct: rows.filter((r) => Math.abs(diff(r)) < 1).length,
@@ -241,7 +250,7 @@ export async function courierInvoiceSummary() {
     short: rows.filter((r) => diff(r) <= -1).reduce((s, r) => s - diff(r), 0),
     overCount: rows.filter((r) => diff(r) >= 1).length,
     over: rows.filter((r) => diff(r) >= 1).reduce((s, r) => s + diff(r), 0),
-    received: rows.reduce((s, r) => s + Number(r.payout_reported ?? 0), 0),
+    received: rows.filter((r) => r.status === 'PAID').reduce((s, r) => s + Number(r.amount_paid ?? 0), 0),
     flagged: rows.reduce((s, r) => s + (r.line_count - r.matched_count), 0),
   }
 }
@@ -298,6 +307,15 @@ export async function setCourierInvoiceStatus(id: string, status: CourierInvoice
   const { error } = await supabase.rpc('set_courier_invoice_status', {
     p_invoice_id: id, p_status: status, p_note: opts.note || undefined, p_amount_paid: opts.amountPaid, p_reference: opts.reference || undefined,
   })
+  if (error) throw error
+}
+
+// Newer than the generated database types.
+type UntypedRpc = { rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ error: Error | null }> }
+
+/** Removes a statement uploaded by mistake (only until it is verified), so it can be uploaded again. */
+export async function deleteCourierInvoice(id: string) {
+  const { error } = await (supabase as unknown as UntypedRpc).rpc('delete_courier_invoice', { p_invoice_id: id })
   if (error) throw error
 }
 

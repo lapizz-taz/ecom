@@ -62,6 +62,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - Steadfast, Pathao, RedX and Carrybee: connect, book in bulk with live progress, status webhooks, retries.
 - Delivered, RTS and return handling.
 - Courier invoice upload and checking, courier charges, labels and invoices with a label builder, a barcode scanner.
+  The check matches each parcel to the order and compares the payout with your records; since 30 Oct 2026 it also
+  compares the money received (typed at Mark paid), expects cash paid at the door on a returned parcel (kept as income
+  when paid out), and a wrong upload can be deleted until it is verified.
 
 **Sales channels**
 - Shopify, two-way: orders, fulfilment, status, stock, cost, products, collections, returns.

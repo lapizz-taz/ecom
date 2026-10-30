@@ -219,6 +219,99 @@ describe('courier statements', () => {
       await expectError(db, `select public.set_courier_invoice_status($1, 'DISCREPANCY')`, [imported.invoice_id], /cannot be changed/)
     }))
 
+  it('expects the cash paid at the door on a returned parcel, and keeps it as income once paid out', () =>
+    inTx(async (db) => {
+      const courier = await pathaoCourier(db)
+      const paidReturn = await bookedOrder(db, courier, '01711000821', 'DL821') // only the statement knows the door payment
+      await bookedOrder(db, courier, '01711000822', 'DL822') // the courier's update said 50
+      await bookedOrder(db, courier, '01711000823', 'DL823')
+      for (const c of ['DL821', 'DL822', 'DL823']) await webhook(db, courier, event('order.picked', c, 'PICKED_UP'))
+      await webhook(db, courier, event('order.returned', 'DL821', 'RETURNED'))
+      await webhook(db, courier, event('order.paid-return', 'DL822', 'RETURNED', { charges: { collected: 50 } }))
+      await webhook(db, courier, event('order.returned', 'DL823', 'RETURNED'))
+      await asSystem(db)
+      const deliveryCharge = num(await value(db, `select delivery_charge from public.orders where id = $1`, [paidReturn.order.id]))
+      const staff = await createStaff(db, 'ADMIN')
+      await asUser(db, staff)
+      const imported = await value<{ invoice_id: string }>(db, `select public.import_courier_invoice($1)`, [JSON.stringify({
+        courier_id: courier, invoice_number: 'INV-81',
+        lines: [
+          { consignment_id: 'DL821', cod_collected: deliveryCharge, delivery_fee: 70 },
+          { consignment_id: 'DL822', cod_collected: 80, delivery_fee: 70 },
+          { consignment_id: 'DL823', cod_collected: deliveryCharge + 100, delivery_fee: 70 }, // more than a paid return can bring
+        ],
+      })])
+      await asSystem(db)
+      const lines = (await db.query(`select match_status, issues, expected_cod from public.courier_invoice_lines
+        where invoice_id = $1 order by line_no`, [imported.invoice_id])).rows
+      expect(lines.map((l) => [l.match_status, l.issues, num(l.expected_cod)])).toEqual([
+        ['MATCHED', [], deliveryCharge],
+        ['MISMATCH', ['Collected 80.00, expected 50.00'], 50],
+        ['MISMATCH', [`Collected ${(deliveryCharge + 100).toFixed(2)}, expected 0`], 0],
+      ])
+
+      // Paid out: the door payment is the business's income, not an advance waiting for a refund.
+      await asUser(db, staff)
+      await db.query(`select public.set_courier_invoice_status($1, 'PAID', null, null, 'BANK-2')`, [imported.invoice_id])
+      await asSystem(db)
+      const order = await one<Record<string, string>>(db, `select amount_paid, advance_resolution from public.orders where id = $1`, [paidReturn.order.id])
+      expect(order.advance_resolution).toBe('RETAINED')
+      expect(num(order.amount_paid)).toBe(deliveryCharge)
+      expect(await financeByCategory(db, paidReturn.order.id)).toMatchObject({ COD_COLLECTIONS: deliveryCharge, RETAINED_ADVANCES: deliveryCharge })
+    }))
+
+  it('expects the whole COD from a parcel our records still show on its way', () =>
+    inTx(async (db) => {
+      const courier = await pathaoCourier(db)
+      const late = await bookedOrder(db, courier, '01711000831', 'DL831')
+      await bookedOrder(db, courier, '01711000832', 'DL832')
+      for (const c of ['DL831', 'DL832']) await webhook(db, courier, event('order.picked', c, 'PICKED_UP'))
+      await asSystem(db)
+      const cod = num(await value(db, `select cod_amount from public.orders where id = $1`, [late.order.id]))
+      const staff = await createStaff(db, 'ADMIN')
+      await asUser(db, staff)
+      const imported = await value<{ invoice_id: string; difference: number }>(db, `select public.import_courier_invoice($1)`, [JSON.stringify({
+        courier_id: courier, invoice_number: 'INV-83',
+        lines: [
+          { consignment_id: 'DL831', cod_collected: cod, delivery_fee: 70 },
+          { consignment_id: 'DL832', cod_collected: cod - 100, delivery_fee: 70 }, // the rider kept 100
+        ],
+      })])
+      await asSystem(db)
+      const lines = (await db.query(`select issues, expected_cod from public.courier_invoice_lines where invoice_id = $1 order by line_no`,
+        [imported.invoice_id])).rows
+      expect(lines.map((l) => [l.issues, num(l.expected_cod)])).toEqual([
+        [['Still in transit in our records'], cod],
+        [['Still in transit in our records', `Collected ${(cod - 100).toFixed(2)}, expected ${cod.toFixed(2)}`], cod],
+      ])
+      // The verdict is the 100 the courier did not hand over, not the whole COD.
+      expect(num(imported.difference)).toBeCloseTo(-100, 2)
+    }))
+
+  it('deletes a statement uploaded by mistake until it is verified', () =>
+    inTx(async (db) => {
+      const { courier, cod } = await scenario(db)
+      const staff = await createStaff(db, 'ADMIN')
+      await asUser(db, staff)
+      const upload = () => value<{ invoice_id: string; duplicates: number }>(db, `select public.import_courier_invoice($1)`, [JSON.stringify({
+        courier_id: courier, invoice_number: 'INV-90', lines: [{ consignment_id: 'DL811', cod_collected: cod, delivery_fee: 70 }],
+      })])
+      const wrong = await upload()
+      await db.query(`select public.delete_courier_invoice($1)`, [wrong.invoice_id])
+      await asSystem(db)
+      expect(await value(db, `select count(*)::int from public.courier_invoice_lines where invoice_id = $1`, [wrong.invoice_id])).toBe(0)
+
+      // The same statement goes in again, and its parcel is not taken as billed twice.
+      await asUser(db, staff)
+      const again = await upload()
+      expect(again.duplicates).toBe(0)
+      await db.query(`select public.set_courier_invoice_status($1, 'VERIFIED')`, [again.invoice_id])
+      await expectError(db, `select public.delete_courier_invoice($1)`, [again.invoice_id], /cannot be deleted/)
+      const viewer = await createStaff(db, 'VIEWER')
+      await asUser(db, viewer)
+      await expectError(db, `select public.delete_courier_invoice($1)`, [again.invoice_id], /couriers.manage/)
+    }))
+
   it('reports courier performance and cost', () =>
     inTx(async (db) => {
       const { courier } = await scenario(db)

@@ -49,7 +49,7 @@ export default function CourierInvoicesPage() {
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Invoices checked" icon={<ScanSearch />} value={s ? formatNumber(s.statements) : '—'} hint={s ? `${formatMoney(s.received)} reported paid` : undefined} />
+        <StatCard label="Invoices checked" icon={<ScanSearch />} value={s ? formatNumber(s.statements) : '—'} hint={s ? `${formatMoney(s.received)} received` : undefined} />
         <StatCard label="Paid correctly" icon={<CheckCircle2 />} value={s ? formatNumber(s.correct) : '—'} hint={s?.flagged ? `${s.flagged} parcels flagged in total` : 'Every parcel matched'} />
         <StatCard label="Courier paid short" icon={<TrendingDown />} value={s ? formatMoney(s.short) : '—'} hint={s ? `${s.shortCount} invoice${s.shortCount === 1 ? '' : 's'}` : undefined} />
         <StatCard label="Courier paid over" icon={<TrendingUp />} value={s ? formatMoney(s.over) : '—'} hint={s ? `${s.overCount} invoice${s.overCount === 1 ? '' : 's'}` : undefined} />
