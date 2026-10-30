@@ -189,7 +189,7 @@ export default function WhatsappTemplatePage() {
                   <span className="block text-sm font-medium">Ask the customer to confirm</span>
                   <span className="block text-xs text-muted-foreground">
                     Adds <span className="font-medium text-foreground">Confirm order</span> and <span className="font-medium text-foreground">Cancel order</span> buttons.
-                    A tap marks the order “Customer confirmed” (or approves it, if you choose that in Settings → Customer messages), or cancels it before you approve it,
+                    A tap puts the order in Processing with the note “Confirmed by the customer” (or approves it, if you choose that in Settings → Customer messages), or cancels it before you approve it,
                     and the customer gets a short reply. The buttons are part of the message Meta approves: submit it again after changing this.
                   </span>
                 </span>

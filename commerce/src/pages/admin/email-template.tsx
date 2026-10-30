@@ -161,7 +161,7 @@ export default function EmailTemplatePage() {
                   <span className="block text-sm font-medium">Ask the customer to confirm</span>
                   <span className="block text-xs text-muted-foreground">
                     Adds a <span className="font-medium text-foreground">Confirm your order</span> button and a cancel link. A confirmed order is
-                    marked “Customer confirmed” (or approved, if you choose that in Settings → Customer messages); a cancel cancels it before you approve it.
+                    put in Processing with the note “Confirmed by the customer” (or approved, if you choose that in Settings → Customer messages); a cancel cancels it before you approve it.
                   </span>
                 </span>
                 <Switch checked={m.reply_buttons} disabled={!manage || confirm.isPending} onCheckedChange={(on) => confirm.mutate(on)} aria-label="Ask the customer to confirm" />

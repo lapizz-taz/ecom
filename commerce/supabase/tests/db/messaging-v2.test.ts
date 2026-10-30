@@ -85,7 +85,7 @@ const reply = (db: Db, token: string, action: string, via = 'EMAIL', phone: stri
   asService(db).then(() => value<Record<string, any>>(db, `select public.order_reply_apply($1, $2, $3, $4)`, [token, action, via, phone]))
 
 describe('messages v2: the store\'s new messages', () => {
-  it('every store has them, switched off, in English; and the "Customer confirmed" call status', () =>
+  it('every store has them, switched off, in English; there is no "Customer confirmed" call status', () =>
     inTx(async (db) => {
       await asSystem(db)
       const rows = (await db.query<{ event: string; channel: string; is_enabled: boolean; template: string; subject: string | null }>(
@@ -97,7 +97,7 @@ describe('messages v2: the store\'s new messages', () => {
         expect(rows.find((r) => r.event === e && r.channel === 'WHATSAPP')?.template).toBe(WHATSAPP_DEFAULTS[e])
         expect(rows.find((r) => r.event === e && r.channel === 'EMAIL')).toMatchObject({ template: EMAIL_DEFAULTS[e].template, subject: EMAIL_DEFAULTS[e].subject })
       }
-      expect(await value(db, `select label from public.order_review_statuses where code = 'CUSTOMER_CONFIRMED'`)).toBe('Customer confirmed')
+      expect(await value(db, `select count(*)::int from public.order_review_statuses where code = 'CUSTOMER_CONFIRMED'`)).toBe(0)
 
       // A store's first messages bring the new ones along (a new store is seeded with "Order placed" first).
       await db.query(`delete from public.notifications where event::text = any($1)`, [NEW_EVENTS])
@@ -142,7 +142,8 @@ describe('messages v2: Confirm / Cancel', () => {
 
       expect(await reply(db, token, 'confirm')).toMatchObject({ result: 'confirmed', order_number: o.order_number })
       await asSystem(db)
-      expect(await one(db, `select status::text, review_status from public.orders where id = $1`, [o.id])).toEqual({ status: 'PENDING', review_status: 'CUSTOMER_CONFIRMED' })
+      expect(await one(db, `select status::text, review_status, review_note from public.orders where id = $1`, [o.id]))
+        .toEqual({ status: 'PENDING', review_status: 'PROCESSING', review_note: 'Confirmed by the customer by email' })
       expect(await value(db, `select count(*)::int from public.order_status_history where order_id = $1 and message = 'Customer confirmed by email'`, [o.id])).toBe(1)
       expect(await reply(db, token, 'confirm')).toMatchObject({ result: 'confirmed' })
       expect(await value(db, `select count(*)::int from public.order_status_history where order_id = $1 and message = 'Customer confirmed by email'`, [o.id])).toBe(1)
@@ -180,6 +181,28 @@ describe('messages v2: Confirm / Cancel', () => {
       expect(await reply(db, t4, 'cancel', 'WHATSAPP', '8801999999999')).toMatchObject({ result: 'ignored' })
       expect(await reply(db, t4, 'confirm', 'WHATSAPP', '8801711000804')).toMatchObject({ result: 'confirmed' })
       expect(await reply(db, 'a'.repeat(40), 'confirm')).toEqual({ result: 'not_found' })
+    }))
+
+  it('a Confirm tap puts the order back in Processing with the note; the page stays confirmed whatever the call status becomes', () =>
+    inTx(async (db) => {
+      const o = await order(db, '01711000821')
+      await asSystem(db)
+      await db.query(`update public.orders set review_status = 'NO_RESPONSE' where id = $1`, [o.id])
+      await asService(db)
+      const token = await value<string>(db, `select public._order_reply_token($1)`, [o.id])
+      expect(await reply(db, token, 'confirm', 'WHATSAPP', null)).toMatchObject({ result: 'confirmed' })
+      await asSystem(db)
+      expect(await one(db, `select status::text, review_status, review_note from public.orders where id = $1`, [o.id]))
+        .toEqual({ status: 'PENDING', review_status: 'PROCESSING', review_note: 'Confirmed by the customer on WhatsApp' })
+      expect(await value(db, `select count(*)::int from public.order_review_statuses where code = 'CUSTOMER_CONFIRMED'`)).toBe(0)
+
+      // The team moves it on: the customer is not asked again, and a second tap changes nothing.
+      await db.query(`update public.orders set review_status = 'FOLLOW_UP', follow_up_at = now() + interval '1 hour' where id = $1`, [o.id])
+      await asService(db)
+      expect(await value<Record<string, any>>(db, `select public.order_reply_view($1)`, [token])).toMatchObject({ state: 'CONFIRMED', can_confirm: false })
+      expect(await reply(db, token, 'confirm', 'WHATSAPP', null)).toMatchObject({ result: 'confirmed' })
+      await asSystem(db)
+      expect(await value(db, `select review_status from public.orders where id = $1`, [o.id])).toBe('FOLLOW_UP')
     }))
 
   it('WhatsApp: the approved template carries Confirm / Cancel with the order\'s token; a tap without it is found by the message', () =>
