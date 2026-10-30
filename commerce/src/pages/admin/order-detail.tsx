@@ -991,7 +991,7 @@ function ShopifySyncRows({ s, store, canRetry, onRetry, busy }: { s: NonNullable
     <div className="space-y-1.5 border-t pt-2">
       {s.store_status && <Row label={`${store} status`} value={<span title={s.store_status_at ? formatDateTime(s.store_status_at) : undefined}>{STORE_STATUS_LABEL[s.store_status] ?? titleCase(s.store_status)}</span>} />}
       {restocked.length > 0 && <Row label={`Back in ${store} stock`} value={<span className="text-xs">{restocked.map((l) => `${l.quantity} × ${l.name ?? l.sku ?? 'item'}`).join(', ')}</span>} />}
-      {s.status_tag && <Row label="Shopify tag" value={<span className="text-xs">{s.status_tag}</span>} />}
+      {s.status_tag && <Row label="Shopify tags" value={<span className="text-xs">{s.status_tag.split(' | ').join(', ')}</span>} />}
       {s.cancel_status && <Row label="Cancel" value={<span title={s.cancel_error ?? undefined}>{CANCEL_LABEL[s.cancel_status] ?? s.cancel_status}{s.cancel_status !== 'FAILED' && s.restocked_in_store === false ? ' · stock handled here' : ''}</span>} />}
       {s.paid_status && <Row label="Paid on Shopify" value={s.paid_status === 'MARKED' ? <span className="inline-flex items-center gap-1"><Check className="size-3.5" /> {s.paid_at ? formatDateTime(s.paid_at) : 'Yes'}</span> : DELIVERED_LABEL[s.paid_status] ?? s.paid_status} />}
       {Object.keys(s.events ?? {}).length > 0 && <Row label="Courier updates" value={Object.keys(s.events).map((k) => SHOPIFY_EVENT_LABEL[k] ?? k).join(', ')} />}

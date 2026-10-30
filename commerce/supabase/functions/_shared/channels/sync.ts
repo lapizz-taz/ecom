@@ -45,7 +45,9 @@ interface FulfillContext {
     /** Courier receive rate from the order's fraud check (0–100), when known. */
     receive_rate?: number | string | null }
   sync?: SyncState | null
-  settings?: { inventory_sync: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; status_sync?: boolean; fulfill_on_ship?: boolean }
+  settings?: { inventory_sync: boolean; mark_paid_on_delivery: boolean; status_tags: boolean; courier_events: boolean; status_sync?: boolean; fulfill_on_ship?: boolean
+    /** The "Fullfilio" tag on every Shopify order imported here (on unless switched off). */
+    import_tag?: boolean }
   /** Items received back as good, per line (totals so far). */
   restock_lines?: RestockLine[]
   status_tag?: string | null
@@ -79,7 +81,11 @@ const worst = (outs: Outcome[]): Outcome => {
 }
 /** Delivery updates Shopify shows on the fulfilment, by our order status. */
 const EVENT_FOR: Record<string, string> = { FAILED_DELIVERY: 'ATTEMPTED_DELIVERY', RETURNING: 'FAILURE', RETURNED: 'FAILURE', RETURN_REQUESTED: 'FAILURE' }
-/** Tags this app writes on Shopify orders ("Fullfilio: …"; older versions wrote "Status: …" / "Merged: …"). */
+/**
+ * Tags this app writes on Shopify orders: "Fullfilio" on every order imported here (it stays, so Shopify's
+ * "Tagged with: Fullfilio" filter shows what came in), and "Fullfilio: …" for our status (older versions
+ * wrote "Status: …" / "Merged: …").
+ */
 export const APP_TAG = 'Fullfilio'
 const ATTENTION_TAG = `${APP_TAG}: needs attention`
 const isTag = (t: string) => t.startsWith(`${APP_TAG}: `) || t.startsWith('Status: ') || t.startsWith('Merged: ')
@@ -88,10 +94,11 @@ const isTag = (t: string) => t.startsWith(`${APP_TAG}: `) || t.startsWith('Statu
  * Keeps one Shopify order in step with ours, step by step: cancel (when it was
  * cancelled here), fulfil when shipped, Delivered when delivered, courier
  * updates (attempted / returned), mark paid when a cash-on-delivery order is
- * delivered, and the "Fullfilio: …" tag. The tag is written only once every other
- * step went through ("Fullfilio: needs attention" if one failed), so a Fullfilio tag
- * on Shopify means the order is fully in step. Every step looks at Shopify first
- * and is recorded, so a retry never does anything twice.
+ * delivered, and the tags: "Fullfilio" (imported here) and "Fullfilio: <status>".
+ * Tags are written only once every other step went through ("Fullfilio: needs
+ * attention" if one failed), so a "Fullfilio: <status>" tag on Shopify means the
+ * order is fully in step. Every step looks at Shopify first and is recorded, so a
+ * retry never does anything twice.
  */
 export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort, opts: ChannelOpts): Promise<Outcome> {
   const ctx = await rpc<FulfillContext>('channel_fulfillment_context', { p_order_id: job.ref_id })
@@ -169,16 +176,19 @@ export async function fulfillJob(job: Job, rpc: Rpc, shopify: () => ShopifyPort,
     })
   }
 
-  // 5. Our status as a tag on the Shopify order — only when everything above went through.
-  //    Still retrying → no tag yet (the next run writes it); a step failed → "needs attention".
+  // 5. Tags on the Shopify order — only when everything above went through.
+  //    Still retrying → no tags yet (the next run writes them). "Fullfilio" marks an imported order and is
+  //    never taken off; "Fullfilio: <status>" follows ours, or "needs attention" when a step failed.
   const retrying = outs.some((o) => o.outcome === 'RETRY')
   const failed = outs.some((o) => o.outcome === 'FAILED')
-  const wanted = failed ? [ATTENTION_TAG] : [ctx.status_tag, ctx.merged_tag].filter((t): t is string => !!t)
+  const statusTags = !set?.status_tags ? [] : failed ? [ATTENTION_TAG] : [ctx.status_tag, ctx.merged_tag].filter((t): t is string => !!t)
+  const wanted = [...(set?.import_tag === false ? [] : [APP_TAG]), ...statusTags]
   const key = wanted.join(' | ')
-  if (!retrying && sync && set?.status_tags && wanted.length && sync.status_tag !== key) {
+  if (!retrying && sync && wanted.length && sync.status_tag !== key) {
     await step('Status tag', 'tag_error', async () => {
       const st = await shopState()
-      const remove = st.tags.filter((t) => isTag(t) && !wanted.includes(t))
+      // With status tags switched off, the ones already on the order stay as they are.
+      const remove = set?.status_tags ? st.tags.filter((t) => isTag(t) && !wanted.includes(t)) : []
       const add = wanted.filter((t) => !st.tags.includes(t))
       if (add.length || remove.length) await shopify().updateTags(ext, add, remove)
       await saveSync({ status_tag: key, tag_error: '' })
