@@ -1,7 +1,7 @@
 // The dashboard's profit counts an order from the day it is approved. A returned order costs the
 // courier's delivery and return charges, less what the customer paid towards them.
 import { afterAll, describe, expect, it } from 'vitest'
-import { asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
+import { asService, asSystem, asUser, closePool, expectError, inTx, num, value, type Db } from '../support/db'
 import { advanceOrder, createOrder, createProduct, createStaff } from '../support/fixtures'
 
 afterAll(closePool)
@@ -100,6 +100,48 @@ describe('Profit on approval', () => {
       expect(t(r, 'courier_cost') - t(before, 'courier_cost')).toBe(280)
       expect(t(r, 'return_charges') - t(before, 'return_charges')).toBe(200)
       expect(t(r, 'profit') - t(before, 'profit')).toBe(200 - 280)
+    }))
+
+  it('what the courier collected at the door pays the return; a whole COD amount on a returned parcel is not cash', () =>
+    inTx(async (db) => {
+      const s = await shop(db)
+      await asSystem(db)
+      const pathao = await value<string>(db, `insert into public.couriers(name, provider, api_enabled) values ('Pathao profit', 'pathao', true) returning id`)
+      const send = async (consignment: string, key: string, status: string, charges: Record<string, number> = {}) => {
+        await asService(db)
+        const r = await value<{ status: string }>(db, `select public.record_courier_webhook($1, 'pathao', $2)`, [pathao, JSON.stringify({
+          event_key: `pathao:${consignment}:${key}`, event_type: key, consignment_id: consignment, status, provider_status: key, charges,
+        })])
+        expect(r.status).toBe('processed')
+      }
+      const booked = async () => {
+        const id = await s.approve()
+        const consignment = `PR${id.slice(0, 8)}`
+        await asSystem(db)
+        await db.query(`select public.assign_courier($1, $2, $3, 80, null, $3)`, [id, pathao, consignment])
+        await send(consignment, 'order.picked', 'PICKED_UP')
+        return consignment
+      }
+      const before = await estimate(db)
+
+      const paidReturn = await booked() // Pathao "paid return": the customer paid 100 at the door → loss 140 − 100
+      await send(paidReturn, 'order.paid-return', 'RETURNED', { collected: 100 })
+      const echoed = await booked() // the whole COD amount on a returned parcel is the booked amount, not cash → loss 140
+      await send(echoed, 'order.returned', 'RETURNED', { collected: 1120 })
+      const partial = await booked() // Steadfast's paid return: a "partial delivery" that collected only the delivery charge
+      await send(partial, 'order.partial-delivery', 'PARTIALLY_DELIVERED', { collected: 100 })
+
+      const r = await estimate(db)
+      const d = (k: string) => t(r, k) - t(before, k)
+      expect(d('sales')).toBe(0)
+      expect(d('product_cost')).toBe(0)
+      expect(d('courier_cost')).toBe(140 * 3)
+      expect(d('return_charges')).toBe(200)
+      expect(d('profit')).toBe(-40 - 140 - 40)
+      const ret = (k: string) => num(r.returns[k]) - num(before.returns[k])
+      expect([ret('orders'), ret('paid'), ret('loss')]).toEqual([3, 200, 220])
+      await asSystem(db)
+      expect(num(await value(db, `select collected_amount from public.shipments where consignment_id = $1`, [paidReturn]))).toBe(100)
     }))
 
   it('the dashboard shows it for the period and today; without finance.view there is none', () =>
