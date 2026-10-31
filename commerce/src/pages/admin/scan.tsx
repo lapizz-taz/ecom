@@ -22,9 +22,12 @@ import { listCouriers } from '@/services/couriers'
 import { recentScans, scanParcel } from '@/services/orders'
 import type { ScanAction, ScanResult } from '@/types/domain'
 
-/** `does` ends the line under the scan box: "Ready — scan a label to …". */
-const MODES: Array<{ value: ScanAction; label: string; icon: typeof Truck; hint: string; does: string }> = [
-  { value: 'READY_TO_SHIP', label: 'Ready to ship', icon: PackageCheck, hint: 'Packed, awaiting pickup', does: 'mark it ready to ship' },
+/**
+ * `does` ends the line under the scan box: "Ready — scan a label to …". `phone` is the name on a
+ * phone, where "Ready to ship" took two lines beside one-line neighbours (RTS, as in the order tabs).
+ */
+const MODES: Array<{ value: ScanAction; label: string; phone?: string; icon: typeof Truck; hint: string; does: string }> = [
+  { value: 'READY_TO_SHIP', label: 'Ready to ship', phone: 'RTS', icon: PackageCheck, hint: 'Packed, awaiting pickup', does: 'mark it ready to ship' },
   { value: 'SHIPPED', label: 'Shipped', icon: Truck, hint: 'Handed to courier', does: 'mark it shipped' },
   { value: 'RETURNED', label: 'Returned', icon: RotateCcw, hint: 'Came back, restock', does: 'mark it returned' },
   { value: 'LOOKUP', label: 'Look up', icon: PackageSearch, hint: 'No changes', does: 'look the order up' },
@@ -154,7 +157,7 @@ export default function ScanPage() {
             {MODES.map((m) => {
               const on = mode === m.value
               return (
-                <button key={m.value} type="button" role="radio" aria-checked={on} title={m.hint}
+                <button key={m.value} type="button" role="radio" aria-checked={on} aria-label={m.label} title={m.hint}
                   onClick={() => { setMode(m.value); sessionStorage.setItem('scan_mode', m.value); setLast(null) }}
                   className={cn('flex min-w-0 flex-col items-center gap-1.5 rounded-xl border bg-card px-1 py-2.5 text-center transition-colors hover:border-foreground/30',
                     'sm:items-start sm:gap-2.5 sm:p-3 sm:text-left',
@@ -163,7 +166,9 @@ export default function ScanPage() {
                     <m.icon className="size-4" />
                   </span>
                   <span className="w-full min-w-0">
-                    <span className="block text-xs leading-tight font-semibold sm:text-sm">{m.label}</span>
+                    <span className="block truncate text-xs leading-tight font-semibold sm:text-sm">
+                      {m.phone ? <><span className="sm:hidden">{m.phone}</span><span className="hidden sm:inline">{m.label}</span></> : m.label}
+                    </span>
                     <span className={cn('mt-0.5 hidden text-xs leading-snug text-muted-foreground sm:line-clamp-2', on && 'text-sidebar-muted')}>{m.hint}</span>
                   </span>
                 </button>
