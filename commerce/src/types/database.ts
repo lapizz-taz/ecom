@@ -5725,6 +5725,7 @@ export type Database = {
           status_changed_at: string | null
           status_changed_by: string | null
           deleted_at: string | null
+          view_only: boolean
         }
         Insert: {
           id?: string
@@ -5750,6 +5751,7 @@ export type Database = {
           status_changed_at?: string | null
           status_changed_by?: string | null
           deleted_at?: string | null
+          view_only?: boolean
         }
         Update: {
           id?: string
@@ -5775,6 +5777,7 @@ export type Database = {
           status_changed_at?: string | null
           status_changed_by?: string | null
           deleted_at?: string | null
+          view_only?: boolean
         }
         Relationships: [
           {
@@ -6592,6 +6595,29 @@ export type Database = {
             columns: ["source_order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_counters: {
+        Row: {
+          merchant_id: string
+          last_number: number
+        }
+        Insert: {
+          merchant_id?: string
+          last_number: number
+        }
+        Update: {
+          merchant_id?: string
+          last_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_counters_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: true
+            referencedRelation: "merchants"
             referencedColumns: ["id"]
           },
         ]
@@ -11502,6 +11528,59 @@ export type Database = {
           },
         ]
       }
+      shipment_booking_claims: {
+        Row: {
+          order_id: string
+          merchant_id: string
+          courier_id: string | null
+          claimed_by: string | null
+          claimed_at: string
+        }
+        Insert: {
+          order_id: string
+          merchant_id?: string
+          courier_id?: string | null
+          claimed_by?: string | null
+          claimed_at?: string
+        }
+        Update: {
+          order_id?: string
+          merchant_id?: string
+          courier_id?: string | null
+          claimed_by?: string | null
+          claimed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_booking_claims_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_booking_claims_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "couriers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_booking_claims_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_booking_claims_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipment_charges: {
         Row: {
           id: string
@@ -11682,6 +11761,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          collected_amount: number | null
         }
         Insert: {
           id?: string
@@ -11705,6 +11785,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          collected_amount?: number | null
         }
         Update: {
           id?: string
@@ -11728,6 +11809,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           merchant_id?: string
+          collected_amount?: number | null
         }
         Relationships: [
           {
@@ -13694,6 +13776,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       admin_create_production_order: {
@@ -13812,6 +13895,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       admin_duplicate_order: {
@@ -13903,6 +13987,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       admin_duplicate_orders: {
@@ -14093,6 +14178,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       admin_online_store_answer: {
@@ -14436,6 +14522,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       admin_set_order_source: {
@@ -14715,6 +14802,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       admin_update_setting: {
@@ -14908,6 +14996,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       apply_shipment_status: {
@@ -14943,6 +15032,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          collected_amount: number | null
         }
       }
       approve_orders: {
@@ -14984,6 +15074,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          collected_amount: number | null
         }
       }
       assign_customer_district: {
@@ -15397,6 +15488,12 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_courier_invoice: {
+        Args: {
+          p_invoice_id: string
+        }
+        Returns: undefined
+      }
       device_approve_recent: {
         Args: {
           p_days?: number
@@ -15692,6 +15789,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       get_my_access: {
@@ -16477,17 +16575,17 @@ export type Database = {
         }
         Returns: Json
       }
-      order_channel_info: {
-        Args: {
-          p_order_id: string
-        }
-        Returns: Json
-      }
       order_catalog: {
         Args: {
           p_search?: string
           p_variant_ids?: string[]
           p_limit?: number
+        }
+        Returns: Json
+      }
+      order_channel_info: {
+        Args: {
+          p_order_id: string
         }
         Returns: Json
       }
@@ -16545,6 +16643,18 @@ export type Database = {
           p_confirmed_at: string
         }
         Returns: string
+      }
+      orders_board: {
+        Args: {
+          p_filters?: Json
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
+      orders_board_options: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       orders_dashboard: {
         Args: {
@@ -17635,17 +17745,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      platform_request_approval: {
-        Args: {
-          p_module: string
-          p_action: string
-          p_merchant: string
-          p_summary: string
-          p_payload: Json
-          p_reason: string
-        }
-        Returns: string
-      }
       platform_restore_test_record: {
         Args: {
           p: Json
@@ -18042,6 +18141,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       production_action: {
@@ -18322,6 +18422,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       record_purchase_payment: {
@@ -18427,6 +18528,13 @@ export type Database = {
           p_from: string
           p_to: string
           p_limit?: number
+        }
+        Returns: Json
+      }
+      report_estimated_profit: {
+        Args: {
+          p_from: string
+          p_to: string
         }
         Returns: Json
       }
@@ -18606,6 +18714,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       retry_courier_webhook: {
@@ -18801,6 +18910,19 @@ export type Database = {
           p_default: number
         }
         Returns: number
+      }
+      shipment_booking_claim: {
+        Args: {
+          p_order_id: string
+          p_courier_id: string
+        }
+        Returns: undefined
+      }
+      shipment_booking_release: {
+        Args: {
+          p_order_id: string
+        }
+        Returns: undefined
       }
       sms_overview: {
         Args: {
@@ -19235,6 +19357,7 @@ export type Database = {
           merchant_id: string
           tax_amount: number
           branch_id: string | null
+          web_number: string | null
         }
       }
       update_my_profile: {
@@ -19284,6 +19407,7 @@ export type Database = {
           created_at: string
           updated_at: string
           merchant_id: string
+          collected_amount: number | null
         }
       }
       verify_manual_payment: {

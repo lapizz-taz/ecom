@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CameraScanner, type TorchState } from '@/features/fulfillment/camera-scanner'
 import { toUserMessage } from '@/lib/errors'
+import { toast } from '@/lib/toast'
 import { scanFeedback } from '@/lib/feedback'
 import { formatDateTime, timeAgo } from '@/lib/format'
 import { ORDER_STATUS } from '@/lib/status'
@@ -61,9 +62,12 @@ export default function ScanPage() {
   const [last, setLast] = useState<ScanResult | null>(null)
   const [session, setSession] = useState({ ok: 0, already: 0, error: 0 })
   const [fullLog, setFullLog] = useState(false)
+  // Reset log: this device shows only scans after the reset point. Scans are never deleted (each order's
+  // history keeps them); the point is the newest scan's own time, so a phone clock that runs fast hides nothing.
+  const [resetAt, setResetAt] = useState<string | null>(readResetPoint)
 
   const couriers = useQuery({ queryKey: ['couriers', 'active'], queryFn: () => listCouriers(true) })
-  const log = useQuery({ queryKey: ['parcel-scans'], queryFn: () => recentScans(60), refetchInterval: 30_000 })
+  const log = useQuery({ queryKey: ['parcel-scans', resetAt], queryFn: () => recentScans(60, resetAt), refetchInterval: 30_000 })
 
   // Lists that depend on scans refresh once a burst of scans is over, not after every scan.
   const refreshTimer = useRef<number | undefined>(undefined)
@@ -137,6 +141,23 @@ export default function ScanPage() {
   const current = MODES.find((m) => m.value === mode)!
   const style = last ? RESULT_STYLE[last.result] : null
   const rows = log.data ?? []
+
+  const resetLog = () => {
+    const newest = rows[0]?.created_at
+    if (!newest) return
+    const before = { at: resetAt, session, last }
+    saveResetPoint(newest)
+    setResetAt(newest)
+    setSession({ ok: 0, already: 0, error: 0 })
+    setLast(null)
+    setFullLog(false)
+    toast.success('Scan log cleared', {
+      description: 'New scans show here from now on. Every order keeps its scans in its history.',
+      action: { label: 'Undo', onClick: () => { saveResetPoint(before.at); setResetAt(before.at); setSession(before.session); setLast(before.last) } },
+    })
+    inputRef.current?.focus()
+  }
+  const showEarlier = () => { saveResetPoint(null); setResetAt(null) }
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -262,10 +283,20 @@ export default function ScanPage() {
         <Card className="min-w-0 gap-0 overflow-hidden py-0">
           <div className="flex items-center justify-between gap-3 border-b px-4 py-3.5 sm:px-5 sm:py-4">
             <div className="min-w-0">
-              <p className="font-semibold">Scan log</p>
-              <p className="text-xs text-muted-foreground">Every scan on every device, newest first</p>
+              <p className="flex items-center gap-2 font-semibold">Scan log {log.isFetching && <Spinner />}</p>
+              <p className="text-xs text-muted-foreground">
+                {resetAt ? (
+                  <>
+                    Since you cleared it, {formatDateTime(resetAt)} ·{' '}
+                    <button type="button" onClick={showEarlier} className="font-medium text-foreground underline-offset-2 hover:underline">Show all</button>
+                  </>
+                ) : 'Every scan on every device, newest first'}
+              </p>
             </div>
-            {log.isFetching && <Spinner />}
+            <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={resetLog} disabled={rows.length === 0}
+              title="Start a fresh log on this device. The scans are kept in each order's history.">
+              <RotateCcw className="size-3.5" /> Reset log
+            </Button>
           </div>
           {/* Beside the scanner (wide screens) the log scrolls on its own; below it, the page scrolls and the list starts short. */}
           <ul className="divide-y xl:max-h-[640px] xl:overflow-y-auto">
@@ -286,7 +317,18 @@ export default function ScanPage() {
                 </span>
               </li>
             ))}
-            {log.data?.length === 0 && <li className="px-5 py-10 text-center text-sm text-muted-foreground">No scans yet.</li>}
+            {log.data?.length === 0 && (
+              <li className="px-5 py-10 text-center text-sm text-muted-foreground">
+                {resetAt ? (
+                  <>
+                    <p>Log cleared. New scans show up here.</p>
+                    <button type="button" onClick={showEarlier} className="mt-2 text-[13px] font-medium text-foreground underline underline-offset-2 hover:opacity-80">
+                      Show earlier scans
+                    </button>
+                  </>
+                ) : 'No scans yet.'}
+              </li>
+            )}
           </ul>
           {rows.length > SHORT_LOG && !fullLog && (
             <button type="button" onClick={() => setFullLog(true)}
@@ -298,6 +340,19 @@ export default function ScanPage() {
       </div>
     </div>
   )
+}
+
+const RESET_KEY = 'scan_log_reset_at'
+
+/** Where this device's scan log starts (the newest scan when the log was last cleared), or null for the full log. */
+function readResetPoint(): string | null {
+  try { return localStorage.getItem(RESET_KEY) || null } catch { return null }
+}
+function saveResetPoint(at: string | null) {
+  try {
+    if (at) localStorage.setItem(RESET_KEY, at)
+    else localStorage.removeItem(RESET_KEY)
+  } catch { /* private window: the reset lasts until the page is reloaded */ }
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
