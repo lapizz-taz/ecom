@@ -74,7 +74,7 @@ export function BoardStatusBar({ board, options, picked, onPick }: {
 function Chip({ on, onClick, label, n, dot, title }: { on: boolean; onClick: () => void; label: string; n: number; dot?: string; title?: string }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={on} title={title}
-      className={cn('press inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors',
+      className={cn('press inline-flex h-8 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] transition-colors',
         on ? 'border-foreground bg-foreground text-background' : 'bg-card hover:border-foreground/30')}>
       {dot && <span className={cn('size-2 rounded-full', dot)} />}
       <span>{label}</span>
