@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-31', tag: 'Improved', area: 'Orders', title: 'Scan parcels fits your phone',
+    body: 'On a phone the four actions sit in one row, the code box gets the whole width with Go, Camera and the flashlight under it, and nothing is cut off. The sound switch sits beside the title, the session counts share one card, and the scan log starts short with "Show all". Tablets no longer scroll sideways.', to: '/admin/scan' },
   { date: '2026-10-31', tag: 'Improved', area: 'Orders', title: 'Open an approved order from the list',
     body: 'Every row of Approved Orders has an Open button, and the invoice number opens the order too: its details with the activity log at the bottom, as for a web order. Events saved at the same moment, such as an order being placed and its risk check, now show in the order they happened, newest first.', to: '/admin/orders/approved' },
   { date: '2026-10-31', tag: 'Fixed', area: 'Orders', title: 'The new-order popup shows the order’s total',
