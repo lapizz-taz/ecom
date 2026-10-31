@@ -45,6 +45,11 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - Order numbers: a web order has none of ours yet. It shows its Shopify or WooCommerce number, or a
   web reference (W10501) for an order made in Fullfilio. On approval it gets the business's own
   number: 1000, 1001, … (since 30 Oct 2026). A prefix is optional ("ATH" gives ATH-1000); none by default.
+- The Orders Dashboard lists every order with its status now (approved stages, and web orders by call status such as
+  "No response"), with counts per status and a filter panel: date (approved, order, shipped or delivered) and time of day,
+  product or SKU, source, courier, taken by, courier payment, order or courier invoice number, status, order tags, district
+  (since 31 Oct 2026). Its charts are under Report.
+- Scan parcels has Reset log: the log on that device starts fresh; scans are never deleted (since 31 Oct 2026).
 - Super Edit, merge, duplicate detection and smart auto-merge.
 - Incomplete orders and abandoned carts.
 - The Auto-pick queue.

@@ -414,12 +414,15 @@ export async function ordersNow(ids: string[]): Promise<Array<{ id: string; orde
   return rows
 }
 
-export async function recentScans(limit = 50) {
-  const { data, error } = await supabase
+/** The newest scans; with `after`, only scans saved after that time (the Scan page's reset point). */
+export async function recentScans(limit = 50, after?: string | null) {
+  let query = supabase
     .from('parcel_scans')
     .select('id, code, action, order_id, order_number, result, message, from_status, to_status, scanned_by_name, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
+  if (after) query = query.gt('created_at', after)
+  const { data, error } = await query
   if (error) throw error
   return data ?? []
 }

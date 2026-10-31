@@ -1,21 +1,90 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { AlarmClock } from 'lucide-react'
-import { useState } from 'react'
-import { Link } from 'react-router'
+import { useCallback, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { DateRangeFilter } from '@/components/common/date-range-filter'
 import { Money } from '@/components/common/money'
 import { PageHeader } from '@/components/common/page-header'
 import { StatCard } from '@/components/common/stat-card'
 import { CardsSkeleton, ErrorState } from '@/components/common/states'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { BoardFilterPanel } from '@/features/orders/board/board-filters'
+import { BoardList, BoardStatusBar, PAGE_SIZES } from '@/features/orders/board/board-list'
+import { activeFilters, boardFilters, boardParams, boardValues, type BoardValues, type DateBy } from '@/features/orders/board/board-state'
 import { BarsChart } from '@/features/reports/charts'
 import { type DateRange, rangeFor } from '@/lib/dates'
 import { formatMoney, formatNumber, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { ordersDashboard } from '@/services/order-tools'
+import { ordersBoard, ordersBoardOptions, ordersDashboard } from '@/services/order-tools'
+
+/** Every order with its status now (with the filter panel), and the approved orders' report. */
+export default function OrdersDashboardPage() {
+  const [params, setParams] = useSearchParams()
+  const view = params.get('view') === 'report' ? 'report' : 'orders'
+  const setView = (v: string) => setParams((p) => {
+    const next = new URLSearchParams(p)
+    if (v === 'report') next.set('view', 'report')
+    else next.delete('view')
+    return next
+  }, { replace: true })
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Orders Dashboard" description="Every order and its status now: approved, shipped, delivered, returned, no response and the rest." />
+      <Tabs value={view} onValueChange={setView}>
+        <TabsList>
+          <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="report">Report</TabsTrigger>
+        </TabsList>
+        <TabsContent value="orders" className="space-y-4"><OrdersBoardView /></TabsContent>
+        <TabsContent value="report" className="space-y-4"><ApprovedReport /></TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+function OrdersBoardView() {
+  const [params, setParams] = useSearchParams()
+  const values = useMemo(() => boardValues(params), [params])
+  const filters = useMemo(() => boardFilters(values), [values])
+  const page = Math.max(1, Math.floor(Number(params.get('page'))) || 1)
+  const size = PAGE_SIZES.includes(Number(params.get('size'))) ? Number(params.get('size')) : 50
+
+  const options = useQuery({ queryKey: ['orders-board-options'], queryFn: ordersBoardOptions, staleTime: 5 * 60_000 })
+  // Under "orders" so the list refreshes by itself when an order changes.
+  const board = useQuery({
+    queryKey: ['orders', 'board', filters, page, size],
+    queryFn: () => ordersBoard(filters, size, (page - 1) * size),
+    placeholderData: keepPreviousData,
+  })
+
+  const apply = useCallback((next: BoardValues) => setParams((p) => boardParams(next, p), { replace: true }), [setParams])
+  const setPage = (n: number) => setParams((p) => {
+    const next = new URLSearchParams(p)
+    if (n > 1) next.set('page', String(n))
+    else next.delete('page')
+    return next
+  })
+  const setSize = (n: number) => setParams((p) => {
+    const next = new URLSearchParams(p)
+    next.set('size', String(n))
+    next.delete('page')
+    return next
+  }, { replace: true })
+
+  return (
+    <>
+      <BoardFilterPanel values={values} onChange={apply} options={options.data} />
+      <BoardStatusBar board={board.data} options={options.data} picked={values.status} onPick={(status) => apply({ ...values, status })} />
+      <BoardList board={board.data} loading={board.isFetching} error={board.error} onRetry={() => board.refetch()} options={options.data}
+        dateBy={values.by as DateBy} page={page} pageSize={size} onPage={setPage} onPageSize={setSize} filtered={activeFilters(values) > 0} />
+    </>
+  )
+}
 
 /** Approved orders: how they flow through fulfilment and couriers. */
-export default function OrdersDashboardPage() {
+function ApprovedReport() {
   const [range, setRange] = useState<DateRange>(() => rangeFor('30d'))
   const q = useQuery({ queryKey: ['orders-dashboard', range], queryFn: () => ordersDashboard(range.from, range.to) })
   const d = q.data
@@ -23,9 +92,11 @@ export default function OrdersDashboardPage() {
   const aging = d?.aging
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Orders Dashboard" description="Approved orders — from approval to the courier, delivery and returns."
-        actions={<DateRangeFilter value={range} onChange={setRange} />} />
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">Approved orders, from approval to the courier, delivery and returns.</p>
+        <DateRangeFilter value={range} onChange={setRange} />
+      </div>
       {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !d || !t || !aging ? <CardsSkeleton count={6} /> : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -107,6 +178,6 @@ export default function OrdersDashboardPage() {
           </div>
         </>
       )}
-    </div>
+    </>
   )
 }

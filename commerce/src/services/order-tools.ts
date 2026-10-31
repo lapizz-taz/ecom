@@ -1,4 +1,4 @@
-import { fromJson } from '@/lib/json'
+import { asJson, fromJson } from '@/lib/json'
 import { supabase } from '@/lib/supabase'
 import type { Enums } from '@/types/database'
 
@@ -137,4 +137,92 @@ export async function ordersDashboard(from: string, to: string) {
   const { data, error } = await supabase.rpc('orders_dashboard', { p_from: from, p_to: to })
   if (error) throw error
   return fromJson<OrdersDashboard>(data)
+}
+
+// --- Orders dashboard list: every order with its status now (supabase/migrations/20261211000100_orders_board.sql) ---
+/** What the Orders Dashboard's filter panel sends; every key is optional. */
+export interface BoardFilters {
+  /** The date the date range and the time range look at. */
+  date_by?: 'approved' | 'order' | 'shipped' | 'delivered'
+  date_from?: string
+  date_to?: string
+  /** Minutes after midnight, in the store's time zone. */
+  time_from?: number
+  time_to?: number
+  /** Product name, variant or SKU. */
+  product?: string
+  source?: string
+  /** A courier's id, or "none" for orders not booked with one. */
+  courier_id?: string
+  taken_by?: string
+  courier_payment?: CourierPayment
+  /** Order number, web reference, store number, tracking or consignment number, or courier statement number. */
+  invoice?: string
+  /** Approved stages (PENDING, RTS, …), WEB:<call status>, or WEB for every web order. */
+  statuses?: string[]
+  tags?: string[]
+  district?: string
+  sort?: 'newest' | 'oldest' | 'amount'
+}
+export type CourierPayment = 'paid' | 'unpaid' | 'none'
+export interface BoardOrder {
+  id: string
+  order_number: string
+  web_number: string | null
+  store_number: string | null
+  channel: string | null
+  /** An approved stage (PENDING, RTS, SHIPPED, …) or WEB:<call status> for a web order. */
+  status_key: string
+  status: Enums<'order_status'>
+  review_status: string | null
+  /** The date the list is filtered by (null when the order has none yet). */
+  date: string | null
+  created_at: string
+  confirmed_at: string | null
+  shipped_at: string | null
+  delivered_at: string | null
+  returned_at: string | null
+  cancelled_at: string | null
+  customer_name: string
+  customer_phone: string
+  district: string | null
+  total_amount: number
+  amount_paid: number
+  cod_amount: number
+  item_count: number
+  items: string | null
+  courier: { name: string; number: string | null; status: Enums<'shipment_status'>; tracking_url: string | null } | null
+  courier_payment: CourierPayment
+  courier_paid: { amount: number; at: string | null; statement: string | null }
+  taken_by: string | null
+  source: string | null
+  tags: string[]
+  contact_attempts: number
+  follow_up_at: string | null
+}
+export interface OrdersBoard {
+  total: number
+  value: number
+  /** Orders in each status for the same filters, the status filter left out. */
+  counts: Array<{ key: string; n: number; value: number }>
+  items: BoardOrder[]
+}
+export interface OrdersBoardOptions {
+  couriers: Array<{ id: string; name: string; active: boolean }>
+  staff: Array<{ id: string; name: string; active: boolean }>
+  sources: string[]
+  districts: string[]
+  tags: Array<{ name: string; color: string }>
+  call_statuses: Array<{ code: string; label: string; color: string }>
+}
+export async function ordersBoard(filters: BoardFilters, limit = 50, offset = 0) {
+  const clean = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0)))
+  const { data, error } = await supabase.rpc('orders_board', { p_filters: asJson(clean), p_limit: limit, p_offset: offset })
+  if (error) throw error
+  return fromJson<OrdersBoard>(data)
+}
+export async function ordersBoardOptions() {
+  const { data, error } = await supabase.rpc('orders_board_options')
+  if (error) throw error
+  return fromJson<OrdersBoardOptions>(data)
 }

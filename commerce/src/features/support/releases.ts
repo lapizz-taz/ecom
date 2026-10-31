@@ -4,6 +4,10 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-31', tag: 'New', area: 'Orders', title: 'Orders Dashboard: every order with its status, and filters',
+    body: 'The Orders Dashboard lists every order with the status it has now: Pending, RTS, Shipped, Delivered, Returned or Cancelled for approved orders, and the call status (Processing, No response and the rest) for web orders. Counts per status sit above the list; tap one to see only those orders. Filter by approved, order, shipped or delivered date and time of day, product or SKU, source, courier, who took the order, courier payment, order or courier invoice number, status, order tags and district. The earlier charts are under Report.', to: '/admin/orders/dashboard' },
+  { date: '2026-10-31', tag: 'Improved', area: 'Orders', title: 'Reset the scan log',
+    body: 'Scan parcels has a Reset log button: the log on that device starts fresh, with Undo, and "Show all" brings back the earlier scans. Nothing is deleted; every order keeps its scans in its history.', to: '/admin/scan' },
   { date: '2026-10-31', tag: 'Improved', area: 'Orders', title: 'Scan parcels fits your phone',
     body: 'On a phone the four actions sit in one row, the code box gets the whole width with Go, Camera and the flashlight under it, and nothing is cut off. The sound switch sits beside the title, the session counts share one card, and the scan log starts short with "Show all". Tablets no longer scroll sideways.', to: '/admin/scan' },
   { date: '2026-10-31', tag: 'Improved', area: 'Orders', title: 'Open an approved order from the list',
