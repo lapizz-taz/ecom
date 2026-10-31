@@ -108,20 +108,38 @@ function useNewOrderAlerts(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return
     type NewOrder = { id: string; order_number: string; customer_name: string; total_amount: number }
-    const arrivals = batcher<NewOrder>((orders) => {
-      setUnseen((n) => n + orders.length)
-      if (orders.length === 1) {
-        const [order] = orders
-        toast.success(`New order ${order.order_number}`, {
-          description: `${order.customer_name} · ${formatMoney(order.total_amount)}`,
-          action: { label: 'Open', onClick: () => navigate(`/admin/orders/${order.id}`) },
-        })
-      } else {
-        toast.success(`${orders.length} new orders`, {
-          description: `${orders.slice(0, 3).map((o) => o.order_number).join(', ')}${orders.length > 3 ? ' and more' : ''} · ${formatMoney(orders.reduce((s, o) => s + Number(o.total_amount || 0), 0))}`,
-          action: { label: 'Open', onClick: () => navigate('/admin/orders') },
-        })
+    // An order is saved first and its items and total right after, in the same save, so the new row
+    // still reads ৳0 (every Shopify order showed ৳0). The popup reads each order as it stands now.
+    const current = async (arrived: NewOrder[]) => {
+      const now = new Map<string, NewOrder>()
+      try {
+        for (let i = 0; i < Math.min(arrived.length, 300); i += 100) {
+          const { data } = await supabase.from('orders').select('id, order_number, customer_name, total_amount')
+            .in('id', arrived.slice(i, i + 100).map((o) => o.id))
+          for (const o of data ?? []) now.set(o.id, o)
+        }
+      } catch {
+        // Offline for a moment: the numbers as they arrived.
       }
+      return { orders: arrived.map((o) => now.get(o.id) ?? o), complete: now.size === arrived.length }
+    }
+    const arrivals = batcher<NewOrder>((arrived) => {
+      setUnseen((n) => n + arrived.length)
+      void current(arrived).then(({ orders, complete }) => {
+        if (orders.length === 1) {
+          const [order] = orders
+          toast.success(`New order ${order.order_number}`, {
+            description: complete ? `${order.customer_name} · ${formatMoney(order.total_amount)}` : order.customer_name,
+            action: { label: 'Open', onClick: () => navigate(`/admin/orders/${order.id}`) },
+          })
+        } else {
+          const total = complete ? ` · ${formatMoney(orders.reduce((s, o) => s + Number(o.total_amount || 0), 0))}` : ''
+          toast.success(`${orders.length} new orders`, {
+            description: `${orders.slice(0, 3).map((o) => o.order_number).join(', ')}${orders.length > 3 ? ' and more' : ''}${total}`,
+            action: { label: 'Open', onClick: () => navigate('/admin/orders') },
+          })
+        }
+      })
       void queryClient.invalidateQueries({ queryKey: ['orders'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     })

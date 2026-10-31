@@ -163,7 +163,9 @@ export default function OrderDetailPage() {
   const canReceive = RECEIVABLE.includes(status) && (status !== 'PENDING_CANCEL' || !!o.shipped_at)
   const canPartial = ['SHIPPED', 'FAILED_DELIVERY'].includes(status) || (status === 'PARTIALLY_DELIVERED' && partialBack === 0)
   const courierHasIt = CANCEL_VIA_COURIER.includes(status) && !!shipment && (status === 'SHIPPED' || !!shipment.tracking_number)
-  const history = [...o.order_status_history].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  // Newest first. Events saved together (an order placed, its stock and risk check) share one time
+  // and come oldest first, so they are turned around before the sort, which keeps ties in place.
+  const history = [...o.order_status_history].reverse().sort((a, b) => b.created_at.localeCompare(a.created_at))
   const notes = [...o.order_notes].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const fc = o.fraud_check
   // Approval lives on the call card for web orders.
