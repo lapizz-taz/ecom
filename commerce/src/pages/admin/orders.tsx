@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
+  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Eye, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
   ShieldAlert, ShieldCheck, ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
@@ -323,6 +323,9 @@ export function OrdersPage({ view }: { view: View }) {
       key: 'actions', header: '', align: 'right',
       cell: (o) => (
         <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" variant="outline" className="mr-1 h-7 gap-1 px-2 text-xs" asChild title="Open order: details and activity log">
+            <Link to={`/admin/orders/${o.id}`} aria-label={`Open ${o.order_number}`}><Eye className="size-3.5" /> Open</Link>
+          </Button>
           {can('orders.update') && (
             <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Edit order">
               <Link to={`/admin/orders/${o.id}/edit`} aria-label={`Edit ${o.order_number}`}><Pencil /></Link>
@@ -1010,7 +1013,9 @@ function StoreBadge({ o }: { o: OrderListItem }) {
 function InvoiceCell({ o }: { o: OrderListItem }) {
   return (
     <div className="flex max-w-40 flex-wrap items-center gap-1">
-      <span className="w-full font-medium">{o.order_number}</span>
+      {/* Opens the order (details and activity log); the row's own click would open it a second time. */}
+      <Link to={`/admin/orders/${o.id}`} onClick={(e) => e.stopPropagation()} title="Open order"
+        className="w-full font-medium underline-offset-2 hover:text-sky-600 hover:underline">{o.order_number}</Link>
       {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
       <StoreBadge o={o} />
       <DuplicateBadge o={o} />
