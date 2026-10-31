@@ -8,7 +8,6 @@ import { PageHeader } from '@/components/common/page-header'
 import { StatCard } from '@/components/common/stat-card'
 import { CardsSkeleton, ErrorState } from '@/components/common/states'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BoardFilterPanel } from '@/features/orders/board/board-filters'
 import { BoardList, BoardStatusBar, PAGE_SIZES } from '@/features/orders/board/board-list'
 import { activeFilters, boardFilters, boardParams, boardValues, type BoardValues, type DateBy } from '@/features/orders/board/board-state'
@@ -18,28 +17,18 @@ import { formatMoney, formatNumber, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { ordersBoard, ordersBoardOptions, ordersDashboard } from '@/services/order-tools'
 
-/** Every order with its status now (with the filter panel), and the approved orders' report. */
+/**
+ * The approved orders' report as before (totals, orders waiting too long, every day, open orders by courier,
+ * approved by) for the dates picked by the title, then every order with its status now and the filter panel.
+ */
 export default function OrdersDashboardPage() {
-  const [params, setParams] = useSearchParams()
-  const view = params.get('view') === 'report' ? 'report' : 'orders'
-  const setView = (v: string) => setParams((p) => {
-    const next = new URLSearchParams(p)
-    if (v === 'report') next.set('view', 'report')
-    else next.delete('view')
-    return next
-  }, { replace: true })
-
+  const [range, setRange] = useState<DateRange>(() => rangeFor('30d'))
   return (
     <div className="space-y-4">
-      <PageHeader title="Orders Dashboard" description="Every order and its status now: approved, shipped, delivered, returned, no response and the rest." />
-      <Tabs value={view} onValueChange={setView}>
-        <TabsList>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="report">Report</TabsTrigger>
-        </TabsList>
-        <TabsContent value="orders" className="space-y-4"><OrdersBoardView /></TabsContent>
-        <TabsContent value="report" className="space-y-4"><ApprovedReport /></TabsContent>
-      </Tabs>
+      <PageHeader title="Orders Dashboard" description="Approved orders — from approval to the courier, delivery and returns."
+        actions={<DateRangeFilter value={range} onChange={setRange} />} />
+      <ApprovedReport range={range} />
+      <OrdersBoardView />
     </div>
   )
 }
@@ -83,9 +72,8 @@ function OrdersBoardView() {
   )
 }
 
-/** Approved orders: how they flow through fulfilment and couriers. */
-function ApprovedReport() {
-  const [range, setRange] = useState<DateRange>(() => rangeFor('30d'))
+/** Approved orders: how they flow through fulfilment and couriers, for the dates picked by the title. */
+function ApprovedReport({ range }: { range: DateRange }) {
   const q = useQuery({ queryKey: ['orders-dashboard', range], queryFn: () => ordersDashboard(range.from, range.to) })
   const d = q.data
   const t = d?.totals
@@ -93,10 +81,6 @@ function ApprovedReport() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">Approved orders, from approval to the courier, delivery and returns.</p>
-        <DateRangeFilter value={range} onChange={setRange} />
-      </div>
       {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !d || !t || !aging ? <CardsSkeleton count={6} /> : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
