@@ -400,6 +400,20 @@ export async function scanParcel(code: string, action: ScanAction, courierId?: s
   return fromJson<ScanResult>(data)
 }
 
+/**
+ * Orders as they stand now, for the new-order popup: a live "new order" event carries the row as it
+ * was first saved, before its items and total (so it reads ৳0). Up to 300 orders, 100 per request.
+ */
+export async function ordersNow(ids: string[]): Promise<Array<{ id: string; order_number: string; customer_name: string; total_amount: number }>> {
+  const rows: Array<{ id: string; order_number: string; customer_name: string; total_amount: number }> = []
+  for (let i = 0; i < Math.min(ids.length, 300); i += 100) {
+    const { data, error } = await supabase.from('orders').select('id, order_number, customer_name, total_amount').in('id', ids.slice(i, i + 100))
+    if (error) throw error
+    rows.push(...(data ?? []))
+  }
+  return rows
+}
+
 export async function recentScans(limit = 50) {
   const { data, error } = await supabase
     .from('parcel_scans')

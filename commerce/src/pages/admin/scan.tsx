@@ -22,12 +22,16 @@ import { listCouriers } from '@/services/couriers'
 import { recentScans, scanParcel } from '@/services/orders'
 import type { ScanAction, ScanResult } from '@/types/domain'
 
-const MODES: Array<{ value: ScanAction; label: string; short: string; icon: typeof Truck; hint: string }> = [
-  { value: 'READY_TO_SHIP', label: 'Ready to ship', short: 'RTS', icon: PackageCheck, hint: 'Packed, awaiting pickup' },
-  { value: 'SHIPPED', label: 'Shipped', short: 'Ship', icon: Truck, hint: 'Handed to courier' },
-  { value: 'RETURNED', label: 'Returned', short: 'Return', icon: RotateCcw, hint: 'Came back, restock' },
-  { value: 'LOOKUP', label: 'Look up', short: 'Find', icon: PackageSearch, hint: 'No changes' },
+/** `does` ends the line under the scan box: "Ready — scan a label to …". */
+const MODES: Array<{ value: ScanAction; label: string; icon: typeof Truck; hint: string; does: string }> = [
+  { value: 'READY_TO_SHIP', label: 'Ready to ship', icon: PackageCheck, hint: 'Packed, awaiting pickup', does: 'mark it ready to ship' },
+  { value: 'SHIPPED', label: 'Shipped', icon: Truck, hint: 'Handed to courier', does: 'mark it shipped' },
+  { value: 'RETURNED', label: 'Returned', icon: RotateCcw, hint: 'Came back, restock', does: 'mark it returned' },
+  { value: 'LOOKUP', label: 'Look up', icon: PackageSearch, hint: 'No changes', does: 'look the order up' },
 ]
+
+/** Scan log rows shown below the scanner before "Show all"; the side column on wide screens scrolls instead. */
+const SHORT_LOG = 10
 
 const RESULT_STYLE: Record<ScanResult['result'], { cls: string; icon: typeof CircleCheck; title: string }> = {
   OK: { cls: 'border-emerald-300 bg-emerald-50 text-emerald-950', icon: CircleCheck, title: 'Done' },
@@ -53,6 +57,7 @@ export default function ScanPage() {
   const [sound, setSound] = useState(() => localStorage.getItem('scan_sound') !== 'off')
   const [last, setLast] = useState<ScanResult | null>(null)
   const [session, setSession] = useState({ ok: 0, already: 0, error: 0 })
+  const [fullLog, setFullLog] = useState(false)
 
   const couriers = useQuery({ queryKey: ['couriers', 'active'], queryFn: () => listCouriers(true) })
   const log = useQuery({ queryKey: ['parcel-scans'], queryFn: () => recentScans(60), refetchInterval: 30_000 })
@@ -128,40 +133,50 @@ export default function ScanPage() {
   useEffect(() => { inputRef.current?.focus() }, [mode])
   const current = MODES.find((m) => m.value === mode)!
   const style = last ? RESULT_STYLE[last.result] : null
+  const rows = log.data ?? []
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="Scan parcels" description="Scan the barcode on each shipping label. Works with USB / Bluetooth scanners and the phone camera." actions={
-        <Button variant="ghost" size="icon" onClick={() => { setSound(!sound); localStorage.setItem('scan_sound', sound ? 'off' : 'on') }} aria-label={sound ? 'Mute scan sounds' : 'Turn on scan sounds'}>
+    <div className="space-y-4 sm:space-y-5">
+      {/* The sound switch sits beside the title; as a page action it took a line of its own on phones. */}
+      <div className="flex items-start gap-3">
+        <PageHeader className="mb-0 min-w-0 flex-1" title="Scan parcels"
+          description="Scan the barcode on each shipping label. Works with USB / Bluetooth scanners and the phone camera." />
+        <Button variant="ghost" size="icon" className="shrink-0 text-muted-foreground" title={sound ? 'Scan sounds on' : 'Scan sounds off'}
+          onClick={() => { setSound(!sound); localStorage.setItem('scan_sound', sound ? 'off' : 'on') }} aria-label={sound ? 'Mute scan sounds' : 'Turn on scan sounds'}>
           {sound ? <Volume2 /> : <VolumeX />}
         </Button>
-      } />
+      </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Scan action">
-            {MODES.map((m) => (
-              <button key={m.value} type="button" role="radio" aria-checked={mode === m.value}
-                onClick={() => { setMode(m.value); sessionStorage.setItem('scan_mode', m.value); setLast(null) }}
-                className={cn('flex items-center gap-3 rounded-xl border bg-card p-3.5 text-left transition-colors hover:border-foreground/30',
-                  mode === m.value && 'border-transparent bg-sidebar text-sidebar-foreground hover:border-transparent')}>
-                <span className={cn('flex size-9 items-center justify-center rounded-xl bg-muted', mode === m.value && 'bg-brand text-brand-foreground')}>
-                  <m.icon className="size-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold">{m.label}</span>
-                  <span className={cn('block truncate text-xs text-muted-foreground', mode === m.value && 'text-sidebar-muted')}>{m.hint}</span>
-                </span>
-              </button>
-            ))}
+      <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="min-w-0 space-y-4">
+          {/* Four in a row at every width: icon over the name. The hint shows where there is room, and under the scan box on phones. */}
+          <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Scan action">
+            {MODES.map((m) => {
+              const on = mode === m.value
+              return (
+                <button key={m.value} type="button" role="radio" aria-checked={on} title={m.hint}
+                  onClick={() => { setMode(m.value); sessionStorage.setItem('scan_mode', m.value); setLast(null) }}
+                  className={cn('flex min-w-0 flex-col items-center gap-1.5 rounded-xl border bg-card px-1 py-2.5 text-center transition-colors hover:border-foreground/30',
+                    'sm:items-start sm:gap-2.5 sm:p-3 sm:text-left',
+                    on && 'border-transparent bg-sidebar text-sidebar-foreground hover:border-transparent')}>
+                  <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted sm:size-9 sm:rounded-xl', on && 'bg-brand text-brand-foreground')}>
+                    <m.icon className="size-4" />
+                  </span>
+                  <span className="w-full min-w-0">
+                    <span className="block text-xs leading-tight font-semibold sm:text-sm">{m.label}</span>
+                    <span className={cn('mt-0.5 hidden text-xs leading-snug text-muted-foreground sm:line-clamp-2', on && 'text-sidebar-muted')}>{m.hint}</span>
+                  </span>
+                </button>
+              )
+            })}
           </div>
 
-          <Card className="gap-4 p-5">
+          <Card className="@container gap-4 p-4 sm:p-5">
             {mode === 'SHIPPED' && (
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="grid gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-x-3">
                 <span className="text-sm text-muted-foreground">Handing over to</span>
                 <Select value={courierId || 'none'} onValueChange={(v) => { const id = v === 'none' ? '' : v; setCourierId(id); sessionStorage.setItem('scan_courier', id) }}>
-                  <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Keep the assigned courier</SelectItem>
                     {(couriers.data ?? []).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -170,26 +185,30 @@ export default function ScanPage() {
                 <span className="text-xs text-muted-foreground">Used for parcels that have no courier yet.</span>
               </div>
             )}
-            <form onSubmit={submit} className="flex gap-2">
-              <div className="relative min-w-0 flex-1">
+            {/* Narrow (a phone, or the desktop column beside the log): the code gets a line of its own and
+                the buttons share the next one. With room, everything sits on one line. */}
+            <form onSubmit={submit} className="flex flex-col gap-2 @xl:flex-row">
+              <div className="relative min-w-0 @xl:flex-1">
                 <ScanBarcode className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground" />
                 <Input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCorrect="off" spellCheck={false}
-                  placeholder="Scan or type order / tracking no."
-                  className="h-14 rounded-[10px] pl-12 font-mono text-lg" aria-label="Barcode" />
+                  enterKeyHint="go" placeholder="Order or tracking number"
+                  className="h-12 rounded-[10px] pl-12 font-mono text-lg placeholder:font-sans placeholder:text-[15px] @xl:h-14" aria-label="Barcode" />
               </div>
-              <Button type="submit" size="lg" className="h-14 px-7" disabled={!code.trim()}>
-                {busy ? <Spinner /> : 'Go'}
-              </Button>
-              <Button type="button" size="lg" variant="outline" className="h-14" onClick={() => { setCamera((c) => !c); setTorch(false); setTorchState(null); setAskedTorch(false) }} aria-pressed={camera}>
-                <Camera /> <span className="hidden sm:inline">Camera</span>
-              </Button>
-              {/* The flashlight: opens the camera with the light on, or switches it while scanning. */}
-              <Button type="button" size="icon" variant="outline" aria-pressed={torch} disabled={camera && torchState?.supported === false}
-                aria-label="Flashlight" title={camera && torchState?.supported === false ? 'This camera has no flashlight' : torch ? 'Turn the flashlight off' : 'Turn the flashlight on'}
-                className={cn('size-14 shrink-0 [&_svg:not([class*=size-])]:size-5', torch && 'border-amber-300 bg-amber-300 text-black hover:bg-amber-200')}
-                onClick={() => { setAskedTorch(true); if (!camera) { setCamera(true); setTorch(true) } else setTorch((t) => !t) }}>
-                {torch ? <FlashlightOff /> : <Flashlight />}
-              </Button>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 @xl:flex">
+                <Button type="submit" size="lg" className="h-12 @xl:h-14 @xl:px-7" disabled={!code.trim()}>
+                  {busy ? <Spinner /> : 'Go'}
+                </Button>
+                <Button type="button" size="lg" variant="outline" className="h-12 has-[>svg]:px-3 @xl:h-14 @xl:has-[>svg]:px-4" onClick={() => { setCamera((c) => !c); setTorch(false); setTorchState(null); setAskedTorch(false) }} aria-pressed={camera}>
+                  <Camera /> Camera
+                </Button>
+                {/* The flashlight: opens the camera with the light on, or switches it while scanning. */}
+                <Button type="button" size="icon" variant="outline" aria-pressed={torch} disabled={camera && torchState?.supported === false}
+                  aria-label="Flashlight" title={camera && torchState?.supported === false ? 'This camera has no flashlight' : torch ? 'Turn the flashlight off' : 'Turn the flashlight on'}
+                  className={cn('size-12 shrink-0 @xl:size-14 [&_svg:not([class*=size-])]:size-5', torch && 'border-amber-300 bg-amber-300 text-black hover:bg-amber-200')}
+                  onClick={() => { setAskedTorch(true); if (!camera) { setCamera(true); setTorch(true) } else setTorch((t) => !t) }}>
+                  {torch ? <FlashlightOff /> : <Flashlight />}
+                </Button>
+              </div>
             </form>
             {camera && <CameraScanner onScan={enqueue} torchOn={torch} onTorchState={(st) => { setTorchState(st); setTorch(st.on) }}
               onClose={() => { setCamera(false); setTorch(false); setTorchState(null); setAskedTorch(false); inputRef.current?.focus() }} />}
@@ -197,65 +216,79 @@ export default function ScanPage() {
             {waiting > 0 && <p className="text-xs text-muted-foreground" role="status">{waiting} more scan{waiting === 1 ? '' : 's'} being saved…</p>}
 
             {last && style ? (
-              <div className={cn('flex gap-4 rounded-xl border-2 p-5', style.cls)} role="status" aria-live="assertive">
-                <style.icon className="mt-0.5 size-8 shrink-0" />
+              <div className={cn('flex gap-3 rounded-xl border-2 p-4 sm:gap-4 sm:p-5', style.cls)} role="status" aria-live="assertive">
+                <style.icon className="mt-0.5 size-6 shrink-0 sm:size-8" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold tracking-wider uppercase opacity-70">{style.title} · {ACTION_LABEL[mode]}</p>
-                  <p className="text-2xl font-semibold tracking-tight">{last.message}</p>
+                  <p className="text-xl font-semibold tracking-tight break-words sm:text-2xl">{last.message}</p>
                   {last.order ? (
-                    <div className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                    <div className="mt-3 grid gap-x-6 gap-y-1 text-sm @md:grid-cols-2">
                       <p><Link to={`/admin/orders/${last.order.id}`} className="font-mono font-semibold underline-offset-2 hover:underline">{last.order.order_number}</Link>{' '}
                         <StatusBadge value={last.order.status} map={ORDER_STATUS} /></p>
                       <p>{last.order.customer_name} · {last.order.shipping_district}</p>
                       <p>{last.order.item_count} item{last.order.item_count === 1 ? '' : 's'} · COD <Money value={last.order.cod_amount} /></p>
                       <p>{last.order.courier_name ? `${last.order.courier_name}${last.order.tracking_number ? ` · ${last.order.tracking_number}` : ''}` : 'No courier assigned'}</p>
-                      {!last.order.label_printed_at && <p className="text-amber-800 sm:col-span-2">Label not printed yet</p>}
+                      {!last.order.label_printed_at && <p className="text-amber-800 @md:col-span-2">Label not printed yet</p>}
                     </div>
-                  ) : <p className="mt-1 font-mono text-sm">{last.code}</p>}
+                  ) : <p className="mt-1 font-mono text-sm break-all">{last.code}</p>}
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3 rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
-                <current.icon className="size-5" /> Ready — scan a label to mark it <strong className="text-foreground">{current.label.toLowerCase()}</strong>.
+              <div className="flex items-start gap-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground sm:p-5">
+                <current.icon className="mt-px size-5 shrink-0" />
+                <p className="min-w-0">
+                  Ready — scan a label to <strong className="font-semibold text-foreground">{current.does}</strong>.
+                  <span className="mt-0.5 block text-xs sm:hidden">{current.hint}</span>
+                </p>
               </div>
             )}
           </Card>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Stat label="Done" value={session.ok} tone="text-emerald-700" />
-            <Stat label="Already done" value={session.already} tone="text-amber-700" />
-            <Stat label="Problems" value={session.error} tone="text-red-700" />
-          </div>
+          <Card className="gap-0 py-0">
+            <p className="px-4 pt-3 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">This session</p>
+            <div className="grid grid-cols-3 divide-x">
+              <Stat label="Done" value={session.ok} tone="text-emerald-700" />
+              <Stat label="Already done" value={session.already} tone="text-amber-700" />
+              <Stat label="Problems" value={session.error} tone="text-red-700" />
+            </div>
+          </Card>
         </div>
 
-        <Card className="gap-0 overflow-hidden py-0">
-          <div className="flex items-center justify-between border-b px-5 py-4">
-            <div>
+        <Card className="min-w-0 gap-0 overflow-hidden py-0">
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-3.5 sm:px-5 sm:py-4">
+            <div className="min-w-0">
               <p className="font-semibold">Scan log</p>
               <p className="text-xs text-muted-foreground">Every scan on every device, newest first</p>
             </div>
             {log.isFetching && <Spinner />}
           </div>
-          <ul className="max-h-[640px] divide-y overflow-y-auto">
-            {(log.data ?? []).map((row) => (
-              <li key={row.id} className="flex items-start gap-3 px-5 py-3 text-sm">
+          {/* Beside the scanner (wide screens) the log scrolls on its own; below it, the page scrolls and the list starts short. */}
+          <ul className="divide-y xl:max-h-[640px] xl:overflow-y-auto">
+            {rows.map((row, i) => (
+              <li key={row.id} className={cn('flex items-start gap-3 px-4 py-3 text-sm sm:px-5', i >= SHORT_LOG && !fullLog && 'max-xl:hidden')}>
                 <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', row.result === 'OK' ? 'bg-emerald-500' : row.result === 'ALREADY' ? 'bg-amber-500' : 'bg-red-500')} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     {row.order_id
-                      ? <Link to={`/admin/orders/${row.order_id}`} className="font-mono font-medium hover:underline">{row.order_number}</Link>
-                      : <span className="font-mono text-muted-foreground">{row.code}</span>}
-                    <Badge variant="outline" className="text-[10px]">{ACTION_LABEL[row.action] ?? row.action}</Badge>
+                      ? <Link to={`/admin/orders/${row.order_id}`} className="truncate font-mono font-medium hover:underline">{row.order_number}</Link>
+                      : <span className="truncate font-mono text-muted-foreground">{row.code}</span>}
+                    <Badge variant="outline" className="shrink-0 text-[10px]">{ACTION_LABEL[row.action] ?? row.action}</Badge>
                   </div>
                   <p className="truncate text-muted-foreground">{row.message}</p>
                 </div>
-                <span className="shrink-0 text-right text-xs text-muted-foreground" title={formatDateTime(row.created_at)}>
-                  {timeAgo(row.created_at)}<br />{row.scanned_by_name}
+                <span className="max-w-28 shrink-0 text-right text-xs text-muted-foreground" title={formatDateTime(row.created_at)}>
+                  {timeAgo(row.created_at)}<span className="block truncate">{row.scanned_by_name}</span>
                 </span>
               </li>
             ))}
             {log.data?.length === 0 && <li className="px-5 py-10 text-center text-sm text-muted-foreground">No scans yet.</li>}
           </ul>
+          {rows.length > SHORT_LOG && !fullLog && (
+            <button type="button" onClick={() => setFullLog(true)}
+              className="w-full px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground xl:hidden">
+              Show all {rows.length} scans
+            </button>
+          )}
         </Card>
       </div>
     </div>
@@ -264,9 +297,9 @@ export default function ScanPage() {
 
 function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <Card className="gap-1 px-4 py-3">
-      <p className="text-xs text-muted-foreground">{label} this session</p>
+    <div className="min-w-0 px-3 pt-1 pb-3 sm:px-4">
+      <p className="truncate text-xs text-muted-foreground">{label}</p>
       <p className={cn('text-2xl font-semibold tabular-nums', tone)}>{value}</p>
-    </Card>
+    </div>
   )
 }

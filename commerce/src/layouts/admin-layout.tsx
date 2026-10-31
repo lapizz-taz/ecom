@@ -36,7 +36,7 @@ import { usePresence } from '@/lib/presence'
 import { formatMoney, initials } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
-import { queueCounts, statusCounts } from '@/services/orders'
+import { ordersNow, queueCounts, statusCounts } from '@/services/orders'
 import { inboxUnread } from '@/services/inbox'
 import { isPlatformStaff } from '@/services/users'
 import { useStoreAddress } from '@/hooks/use-store-address'
@@ -113,13 +113,9 @@ function useNewOrderAlerts(enabled: boolean) {
     const current = async (arrived: NewOrder[]) => {
       const now = new Map<string, NewOrder>()
       try {
-        for (let i = 0; i < Math.min(arrived.length, 300); i += 100) {
-          const { data } = await supabase.from('orders').select('id, order_number, customer_name, total_amount')
-            .in('id', arrived.slice(i, i + 100).map((o) => o.id))
-          for (const o of data ?? []) now.set(o.id, o)
-        }
+        for (const o of await ordersNow(arrived.map((a) => a.id))) now.set(o.id, o)
       } catch {
-        // Offline for a moment: the numbers as they arrived.
+        // Offline for a moment: the order without its money (see `complete`).
       }
       return { orders: arrived.map((o) => now.get(o.id) ?? o), complete: now.size === arrived.length }
     }
@@ -366,7 +362,8 @@ export default function AdminLayout() {
           <Button variant="ghost" size="sm" className="text-muted-foreground lg:hidden" onClick={() => setDialog('search')} aria-label="Quick search (Ctrl K)">
             <Search /> <span className="hidden sm:inline">Search</span>
           </Button>
-          <nav className="hidden items-center gap-0.5 md:flex [&_[data-slot=button]]:text-foreground/75 [&_[data-slot=button]:hover]:text-foreground" aria-label="Shortcuts">
+          {/* From the width of a laptop; on tablets the shortcuts ran past the screen edge (the menu and Search cover them). */}
+          <nav className="hidden items-center gap-0.5 lg:flex [&_[data-slot=button]]:text-foreground/75 [&_[data-slot=button]:hover]:text-foreground" aria-label="Shortcuts">
             {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/search"><Search /> Search</Link></Button>}
             {can('orders.create') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/new"><Plus /> New Order</Link></Button>}
             {can('orders.view') && <Button variant="ghost" size="sm" asChild><Link to="/admin/orders/web"><Globe /> Web Order List</Link></Button>}
@@ -375,7 +372,7 @@ export default function AdminLayout() {
           </nav>
           <div className="ml-auto flex items-center gap-0.5 [&>[data-slot=button][data-size=icon]]:rounded-full">
             {can('orders.create') && (
-              <Button size="icon" variant="ghost" asChild className="md:hidden" aria-label="New order"><Link to="/admin/orders/new"><Plus /></Link></Button>
+              <Button size="icon" variant="ghost" asChild className="lg:hidden" aria-label="New order"><Link to="/admin/orders/new"><Plus /></Link></Button>
             )}
             <AnnouncementsButton />
             <WhatsNew />
