@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-31', tag: 'Improved', area: 'Couriers', title: 'Courier upload skips parcels already sent, at once',
+    body: 'Book courier now checks all the selected orders in one go before it uploads. Orders a courier already has show as Skipped with their tracking ID straight away, instead of being sent and refused one by one. The rest go up three at a time, and the progress line is clean.', to: '/admin/orders/approved' },
   { date: '2026-10-30', tag: 'Improved', area: 'Couriers', title: 'Courier invoices check the money you received',
     body: 'Mark paid now asks what actually reached your bank or bKash and shows at once whether it is short of the statement or of your records; a paid statement’s verdict and the “Courier paid short” card use that money. When a customer paid the delivery charge at the door and the parcel came back, that cash is expected on the statement and is kept as income when the courier pays it out, with no refund prompt. A parcel the courier delivered while your records still show it on the way now counts its COD, so the verdict stays right. A statement uploaded by mistake can be deleted until it is verified, and the columns are read more carefully: “Collected amount” before “Amount to collect”.', to: '/admin/courier-invoices' },
   { date: '2026-10-30', tag: 'Improved', area: 'Finance', title: 'Profit counts an order when it is approved',
