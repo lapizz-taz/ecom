@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-31', tag: 'Fixed', area: 'Orders', title: 'Waiting-too-long counts on the Orders Dashboard',
+    body: '“RTS over 1 day” and “Return open over 7 days” now count from when the order became RTS or its return started. Before, any later change to the order, such as a note, a tag, a courier update or a fresh courier check, started the count again, so a parcel stuck for days could show 0.', to: '/admin/orders/dashboard' },
   { date: '2026-10-31', tag: 'New', area: 'Orders', title: 'Orders Dashboard: every order with its status, and filters',
     body: 'The Orders Dashboard lists every order with the status it has now: Pending, RTS, Shipped, Delivered, Returned or Cancelled for approved orders, and the call status (Processing, No response and the rest) for web orders. Counts per status sit above the list; tap one to see only those orders. Filter by approved, order, shipped or delivered date and time of day, product or SKU, source, courier, who took the order, courier payment, order or courier invoice number, status, order tags and district. The totals, waiting-too-long, daily chart and courier tables stay at the top for the dates you pick by the title.', to: '/admin/orders/dashboard' },
   { date: '2026-10-31', tag: 'Improved', area: 'Orders', title: 'Reset the scan log',

@@ -1,5 +1,5 @@
 {
-  "migrations": 201,
-  "last": "20261211000100_orders_board.sql",
-  "sha256": "a95c806166b444d3d15f4fc1626aeae6b645115901983e1138eb0fb041f0f3f6"
+  "migrations": 202,
+  "last": "20261212000100_orders_dashboard_waiting.sql",
+  "sha256": "2763b9aca75ffd21fda51a373b5895c1d74e861f177573589770fb0177507a00"
 }

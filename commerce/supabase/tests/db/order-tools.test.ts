@@ -182,4 +182,54 @@ describe('orders dashboard', () => {
       expect(d.by_courier.find((c: { courier: string }) => c.courier === 'Not booked')?.pending).toBeGreaterThanOrEqual(1)
       expect(d.aging.unbooked).toBeGreaterThanOrEqual(1)
     }))
+
+  // Migration 20261212000100_orders_dashboard_waiting. The orders here were last changed "now" (this
+  // transaction) unless a case says otherwise, so the old measure, time since the last change, would
+  // have counted none of them.
+  it('counts RTS and open returns from when the order got there, not from its last change', () =>
+    inTx(async (db) => {
+      const staff = await createStaff(db, 'VIEWER')
+      const today = await value<string>(db, `select ((now() at time zone public.store_timezone())::date)::text`)
+      const aging = async () => {
+        await asUser(db, staff)
+        return (await value<{ aging: Record<string, number> }>(db, `select public.orders_dashboard($1::date, $1::date)`, [today])).aging
+      }
+      // Puts an order at a status with the history it would have from earlier days. A status change
+      // always writes its history entry "now", and history entries cannot be changed afterwards, so the
+      // status is set directly (without its side effects) and the past entries are written as they were.
+      let phone = 1799000100
+      const place = async (status: string, steps: Array<[from: string, to: string, daysAgo: number]>, lastChangeDaysAgo = 0) => {
+        const { o } = await order(db, `0${++phone}`)
+        await asSystem(db)
+        await db.query(`set local session_replication_role = replica`)
+        await db.query(`update public.orders set status = $2::public.order_status, confirmed_at = now() - make_interval(days => 10),
+                          updated_at = now() - make_interval(days => $3::int) where id = $1`, [o.id, status, lastChangeDaysAgo])
+        await db.query(`set local session_replication_role = origin`)
+        for (const [from, to, days] of steps)
+          await db.query(`insert into public.order_status_history (order_id, from_status, to_status, message, created_at)
+                          values ($1, $2::public.order_status, $3::public.order_status, 'test', now() - make_interval(days => $4::int))`,
+            [o.id, from, to, days])
+      }
+      const before = await aging()
+
+      // Ready to ship for 2 days: counts.
+      await place('READY_TO_SHIP', [['PROCESSING', 'READY_TO_SHIP', 2]])
+      // Ready to ship since today: does not.
+      await place('READY_TO_SHIP', [['PROCESSING', 'READY_TO_SHIP', 0]])
+      // Ready to ship 5 days ago, a cancel request, back to ready today: counts from today, so not yet.
+      await place('READY_TO_SHIP', [['PROCESSING', 'READY_TO_SHIP', 5], ['READY_TO_SHIP', 'PENDING_CANCEL', 4], ['PENDING_CANCEL', 'READY_TO_SHIP', 0]])
+      // No history entry (a gap in old data): falls back to its last change, 3 days ago, so it counts.
+      await place('READY_TO_SHIP', [], 3)
+
+      // Delivery failed 9 days ago, on its way back since yesterday: the return has been open 9 days, counts.
+      await place('RETURNING', [['SHIPPED', 'FAILED_DELIVERY', 9], ['FAILED_DELIVERY', 'RETURNING', 1]])
+      // Delivery failed 3 days ago: not yet.
+      await place('FAILED_DELIVERY', [['SHIPPED', 'FAILED_DELIVERY', 3]])
+      // Failed 10 days ago, sent out again, failed again 2 days ago: this return started 2 days ago, not yet.
+      await place('FAILED_DELIVERY', [['SHIPPED', 'FAILED_DELIVERY', 10], ['FAILED_DELIVERY', 'SHIPPED', 9], ['SHIPPED', 'FAILED_DELIVERY', 2]])
+
+      const after = await aging()
+      expect(after.rts_over_1d - before.rts_over_1d).toBe(2)
+      expect(after.return_over_7d - before.return_over_7d).toBe(1)
+    }))
 })
