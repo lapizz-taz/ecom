@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-31', tag: 'Fixed', area: 'Orders', title: 'The new-order popup shows the order’s total',
+    body: 'When an order came in from Shopify, WooCommerce or your own store, the popup said ৳0. It now shows the order’s real total, and a burst of new orders shows what they add up to.', to: '/admin/orders' },
   { date: '2026-10-31', tag: 'Improved', area: 'Couriers', title: 'Courier upload skips parcels already sent, at once',
     body: 'Book courier now checks all the selected orders in one go before it uploads. Orders a courier already has show as Skipped with their tracking ID straight away, instead of being sent and refused one by one. The rest go up three at a time, and the progress line is clean.', to: '/admin/orders/approved' },
   { date: '2026-10-30', tag: 'Improved', area: 'Couriers', title: 'Courier invoices check the money you received',

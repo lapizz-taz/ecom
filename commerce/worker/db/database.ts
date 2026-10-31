@@ -11,6 +11,7 @@ import type { SocketState } from './realtime.ts'
 import { authSecret, type TokenEnv, verifyAccessToken } from './tokens.ts'
 import { Context, type Identity } from './context.ts'
 import { type Caller, identityFor, sessionEnded } from './identity.ts'
+import { liveRow } from './live-row.ts'
 import { migrate } from './migrate.ts'
 import { errorResponse, handleRest, type RestRequest, type RestResponse } from './rest/index.ts'
 import { durableSql, type Sql } from './sql.ts'
@@ -204,13 +205,11 @@ export class Database extends DurableObject {
     }
   }
 
-  /** A row as a live-update subscriber may read it (row security applies), or null. */
+  /** A row as a live-update subscriber may read it (row security and column rights apply), or null. */
   private readAs(state: SocketState, table: string, search: string): Record<string, unknown> | null {
     const identity = this.identity(state.uid ? { role: 'authenticated', userId: state.uid, sessionId: state.sid } : { role: 'anon' })
     if (state.uid && !identity.uid) return null
-    const res = handleRest(this.sql, new Context(this.sql, identity), { method: 'GET', path: table, search, headers: {}, body: null })
-    if (res.status !== 200 || !res.body) return null
-    return (JSON.parse(res.body) as Array<Record<string, unknown>>)[0] ?? null
+    return liveRow(this.sql, new Context(this.sql, identity), table, search)
   }
 
   /** Sign-in accounts (the Supabase Auth admin API the server code uses). Service callers only. */
