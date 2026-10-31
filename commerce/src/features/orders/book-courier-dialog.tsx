@@ -8,18 +8,22 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { bookShipments, courierConfig, listCouriers } from '@/services/couriers'
+import { bookedParcels, bookShipments, courierConfig, listCouriers, type ParcelCourier } from '@/services/couriers'
 
-type RowStatus = 'QUEUED' | 'UPLOADING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
-interface Row { id: string; status: RowStatus; tracking: string | null; message: string }
+type RowStatus = 'QUEUED' | 'UPLOADING' | 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'STOPPED'
+interface Row { id: string; status: RowStatus; tracking: string | null; message: string; courier?: Pick<ParcelCourier, 'provider' | 'tracking_url_template'> | null }
 
 const STATUS: Record<RowStatus, { label: string; className: string }> = {
   QUEUED: { label: 'Queued', className: 'bg-muted text-muted-foreground' },
   UPLOADING: { label: 'Uploading', className: 'animate-pulse bg-foreground/15 text-foreground' },
   SUCCESS: { label: 'Success', className: 'bg-foreground text-background' },
   FAILED: { label: 'Failed', className: 'bg-transparent text-foreground ring-1 ring-foreground/60 ring-inset' },
-  SKIPPED: { label: 'Stopped', className: 'bg-muted text-muted-foreground' },
+  SKIPPED: { label: 'Skipped', className: 'bg-foreground/10 text-foreground' },
+  STOPPED: { label: 'Stopped', className: 'bg-muted text-muted-foreground' },
 }
+
+/** Parcels sent at the same time: quick, and still gentle on the courier's API. */
+const PARALLEL = 3
 
 export const trackingUrl = (c: { tracking_url_template: string | null; provider: string | null } | null | undefined, code: string) => {
   const template = c?.tracking_url_template ?? (c?.provider === 'steadfast' ? 'https://steadfast.com.bd/t/{tracking}'
@@ -29,10 +33,9 @@ export const trackingUrl = (c: { tracking_url_template: string | null; provider:
 }
 
 /**
- * Books the selected orders with a courier one parcel at a time, so each row
- * shows live: queued → uploading → its tracking ID or the courier's reason.
- * A van drives along the road as parcels go out. Orders already booked are
- * skipped by the server.
+ * Books the selected orders with a courier. Orders a courier already has are found in one
+ * lookup first and skipped at once; the rest go up a few at a time, each row live: queued →
+ * uploading → its tracking ID or the courier's reason. A van drives along the road as they go.
  */
 export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, onDone }: {
   open: boolean
@@ -52,6 +55,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   const store = stores.find((s) => s.id === storeId)?.id ?? cfg.store_id ?? ''
   const [rows, setRows] = useState<Row[] | null>(null)
   const [running, setRunning] = useState(false)
+  const [checking, setChecking] = useState(false)
   const stop = useRef(false)
   // Order numbers are read once, so they survive the list refreshing underneath.
   const names = useRef(new Map<string, string>())
@@ -60,6 +64,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
     if (!open) return
     setRows(null)
     setRunning(false)
+    setChecking(false)
     stop.current = false
     names.current = new Map(orderIds.map((id) => [id, orderNumber(id)]))
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -68,36 +73,67 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
 
   async function run(ids: string[]) {
     if (!chosen) return
+    const courierId = chosen.id
+    const storeId = stores.length ? store : undefined
     stop.current = false
     setRunning(true)
+    setChecking(true)
     setRows((rs) => {
       const base = rs ?? orderIds.map((id) => ({ id, status: 'QUEUED' as RowStatus, tracking: null, message: 'Waiting…' }))
-      return base.map((r) => (ids.includes(r.id) ? { ...r, status: 'QUEUED', tracking: null, message: 'Waiting…' } : r))
+      return base.map((r) => (ids.includes(r.id) ? { ...r, status: 'QUEUED', tracking: null, courier: null, message: 'Waiting…' } : r))
     })
+
+    // Checked in one go before uploading: a parcel a courier already has is skipped, never sent twice.
+    let booked = new Map<string, { tracking: string; courier: ParcelCourier | null }>()
+    try {
+      booked = await bookedParcels(ids)
+    } catch {
+      // The server refuses a booked parcel anyway; the upload just goes ahead.
+    }
+    setChecking(false)
+    const queue: string[] = []
     for (const id of ids) {
-      if (stop.current) {
-        patch(id, { status: 'SKIPPED', message: 'Stopped before upload' })
-        continue
-      }
-      patch(id, { status: 'UPLOADING', message: 'Processing…' })
-      try {
-        const r = await bookShipments([id], chosen.id, stores.length ? store : undefined)
-        const res = r.results[0]
-        if (res?.ok) patch(id, { status: 'SUCCESS', tracking: res.tracking_number ?? null, message: res.tracking_number ? 'Booked' : 'Booked (no tracking ID yet)' })
-        else patch(id, { status: 'FAILED', message: res?.error ?? 'The courier did not accept this parcel' })
-      } catch (e) {
-        patch(id, { status: 'FAILED', message: (e as Error).message })
+      const b = booked.get(id)
+      if (b) patch(id, { status: 'SKIPPED', tracking: b.tracking, courier: b.courier, message: `Already uploaded to ${b.courier?.name ?? 'a courier'}` })
+      else queue.push(id)
+    }
+
+    const refused = (id: string, message: string | undefined) => {
+      // Booked by someone else since the check: the server names its tracking ID.
+      const already = message?.match(/is already booked \(([^)]+)\)/)
+      if (already) patch(id, { status: 'SKIPPED', tracking: already[1], courier: null, message: 'Already uploaded' })
+      else patch(id, { status: 'FAILED', message: message ?? 'The courier did not accept this parcel' })
+    }
+    let next = 0
+    const worker = async () => {
+      while (next < queue.length) {
+        const id = queue[next++]
+        if (stop.current) {
+          patch(id, { status: 'STOPPED', message: 'Stopped before upload' })
+          continue
+        }
+        patch(id, { status: 'UPLOADING', message: 'Processing…' })
+        try {
+          const res = (await bookShipments([id], courierId, storeId)).results[0]
+          if (res?.ok) patch(id, { status: 'SUCCESS', tracking: res.tracking_number ?? null, courier: chosen, message: res.tracking_number ? 'Upload successful' : 'Booked (no tracking ID yet)' })
+          else refused(id, res?.error)
+        } catch (e) {
+          refused(id, (e as Error).message)
+        }
       }
     }
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, worker))
     setRunning(false)
     onDone()
   }
 
-  const total = rows?.length ?? orderIds.length
-  const done = rows?.filter((r) => r.status === 'SUCCESS' || r.status === 'FAILED' || r.status === 'SKIPPED').length ?? 0
+  // Progress counts the parcels that go up; the ones a courier already has are only skipped.
+  const skipped = rows?.filter((r) => r.status === 'SKIPPED').length ?? 0
+  const total = (rows?.length ?? orderIds.length) - skipped
+  const done = rows?.filter((r) => r.status === 'SUCCESS' || r.status === 'FAILED' || r.status === 'STOPPED').length ?? 0
   const success = rows?.filter((r) => r.status === 'SUCCESS').length ?? 0
   const failed = rows?.filter((r) => r.status === 'FAILED').length ?? 0
-  const pct = total ? (done / total) * 100 : 0
+  const pct = checking ? 0 : total ? (done / total) * 100 : 100
   const finished = rows !== null && !running
 
   return (
@@ -107,7 +143,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
           <>
             <DialogHeader>
               <DialogTitle>Upload {orderIds.length} parcel{orderIds.length === 1 ? '' : 's'} to a courier</DialogTitle>
-              <DialogDescription>Each order is sent to the courier's API one by one; you see every tracking ID as it comes back. Orders already booked are skipped.</DialogDescription>
+              <DialogDescription>Orders a courier already has are skipped at once. The rest go to the courier's API a few at a time, and you see every tracking ID as it comes back.</DialogDescription>
             </DialogHeader>
             {couriers.isLoading ? <Spinner /> : connected.length === 0 ? (
               <p className="text-sm text-muted-foreground">No courier is connected yet. <Link to="/admin/couriers" className="underline">Connect Steadfast, Pathao or RedX</Link> first.</p>
@@ -138,15 +174,22 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
                 <DialogDescription className="sr-only">Live status of each parcel being booked</DialogDescription>
               </div>
               <Badge className={cn('shrink-0', running ? 'bg-muted text-foreground' : failed ? 'bg-transparent text-foreground ring-1 ring-foreground/60 ring-inset' : 'bg-foreground text-background')}>
-                {running ? `Processing (${done}/${total})` : failed ? `Done · ${failed} failed` : 'All booked'}
+                {checking ? 'Checking…' : running ? `Processing (${done}/${total})` : failed ? `Done · ${failed} failed`
+                  : total === 0 ? 'Already uploaded' : 'All booked'}
               </Badge>
             </div>
 
-            <Road pct={pct} running={running} rows={rows} />
+            <Road pct={pct} running={running} />
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm" aria-live="polite">
-              <span className="font-medium tabular-nums">Progress: {done} / {total}</span>
-              <span className="tabular-nums text-muted-foreground">Success <b className="text-foreground">{success}</b><span className="ml-4">Failed <b className="text-foreground">{failed}</b></span></span>
+              <span className="inline-flex items-center gap-2 font-medium tabular-nums">
+                {checking ? <><Spinner className="size-3.5" /> Checking before uploading…</> : `Progress: ${done} / ${total}`}
+              </span>
+              <span className="flex gap-4 tabular-nums text-muted-foreground">
+                <span>Success <b className="text-foreground">{success}</b></span>
+                {skipped > 0 && <span>Skipped <b className="text-foreground">{skipped}</b></span>}
+                <span>Failed <b className="text-foreground">{failed}</b></span>
+              </span>
             </div>
 
             <div className="max-h-72 overflow-auto rounded-xl border">
@@ -161,7 +204,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
                 </thead>
                 <tbody>
                   {rows.map((r) => {
-                    const url = r.tracking ? trackingUrl(chosen, r.tracking) : null
+                    const url = r.tracking ? trackingUrl(r.courier ?? chosen, r.tracking) : null
                     return (
                       <tr key={r.id} className={cn('border-b last:border-0 transition-colors', r.status === 'UPLOADING' && 'bg-muted/60')}>
                         <td className="px-3 py-2 font-medium whitespace-nowrap">{names.current.get(r.id) ?? r.id.slice(0, 8)}</td>
@@ -185,7 +228,7 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
 
             <DialogFooter className="gap-2 sm:justify-between">
               {running ? (
-                <Button variant="outline" onClick={() => { stop.current = true }}><Square /> Stop after this parcel</Button>
+                <Button variant="outline" disabled={checking} onClick={() => { stop.current = true }}><Square /> Stop the rest</Button>
               ) : failed > 0 ? (
                 <Button variant="outline" onClick={() => void run(rows.filter((r) => r.status === 'FAILED').map((r) => r.id))}><RotateCcw /> Retry failed</Button>
               ) : <span />}
@@ -198,21 +241,14 @@ export function BookCourierDialog({ open, onOpenChange, orderIds, orderNumber, o
   )
 }
 
-/** The road: one checkpoint per parcel (filled booked, hollow failed); the van drives to the current progress. */
-function Road({ pct, running, rows }: { pct: number; running: boolean; rows: Row[] }) {
+/** The road: a clean line that fills as parcels go out, with the van driving to the current progress. */
+function Road({ pct, running }: { pct: number; running: boolean }) {
   return (
     <div className="relative h-16 select-none" aria-hidden>
       <div className="absolute inset-x-0 bottom-3 h-1.5 overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-foreground transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
       </div>
       <div className={cn('absolute inset-x-0 bottom-1 h-0.5 opacity-30', running && 'booking-road')} />
-      {rows.length <= 40 && rows.map((r, i) => (
-        <span key={r.id} title={r.status}
-          className={cn('absolute bottom-2.5 size-2.5 -translate-x-1/2 rounded-[3px] border transition-colors',
-            r.status === 'SUCCESS' ? 'border-foreground bg-foreground' : r.status === 'FAILED' ? 'rotate-45 border-2 border-foreground bg-background'
-              : r.status === 'UPLOADING' ? 'animate-pulse border-foreground bg-muted-foreground' : 'border-muted-foreground/50 bg-muted')}
-          style={{ left: `${((i + 1) / rows.length) * 100}%` }} />
-      ))}
       <div className="absolute bottom-4 transition-[left] duration-700 ease-out" style={{ left: `calc(${pct}% - ${pct * 0.56}px)` }}>
         <svg viewBox="0 0 72 44" className={cn('h-9 w-14 text-foreground', running && 'booking-van')}>
           <rect x="2" y="6" width="42" height="26" rx="3" className="fill-current" />

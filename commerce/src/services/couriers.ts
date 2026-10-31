@@ -137,6 +137,24 @@ export function disconnectCourier(courierId: string) {
   return invokeFunction<{ ok: boolean }>('courier', { action: 'disconnect', courier_id: courierId })
 }
 
+export type ParcelCourier = { name: string; provider: string | null; tracking_url_template: string | null }
+
+/**
+ * The orders among these that a courier already has (an active parcel with a tracking ID), looked up
+ * in one go before uploading so they are skipped at once instead of being sent and refused one by one.
+ */
+export async function bookedParcels(orderIds: string[]) {
+  const booked = new Map<string, { tracking: string; courier: ParcelCourier | null }>()
+  for (let i = 0; i < orderIds.length; i += 100) {
+    const { data, error } = await supabase.from('shipments')
+      .select('order_id, tracking_number, couriers(name, provider, tracking_url_template)')
+      .in('order_id', orderIds.slice(i, i + 100)).eq('is_active', true).not('tracking_number', 'is', null)
+    if (error) throw error
+    for (const s of data ?? []) if (s.tracking_number) booked.set(s.order_id, { tracking: s.tracking_number, courier: s.couriers })
+  }
+  return booked
+}
+
 export function bookShipments(orderIds: string[], courierId: string, storeId?: string) {
   return invokeFunction<{ booked: number; results: Array<{ order_id: string; ok: boolean; tracking_number?: string | null; error?: string }> }>(
     'courier', { action: 'create_shipments', order_ids: orderIds, courier_id: courierId, store_id: storeId || undefined })

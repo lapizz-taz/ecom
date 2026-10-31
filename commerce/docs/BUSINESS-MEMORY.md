@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 30 Oct 2026.
+Last updated: 31 Oct 2026.
 
 ## What Fullfilio is
 
@@ -60,6 +60,8 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 
 **Couriers**
 - Steadfast, Pathao, RedX and Carrybee: connect, book in bulk with live progress, status webhooks, retries.
+  Before a bulk upload, orders a courier already has are found in one check and skipped at once (since 31 Oct 2026);
+  the rest go up three at a time.
 - Delivered, RTS and return handling.
 - Courier invoice upload and checking, courier charges, labels and invoices with a label builder, a barcode scanner.
   The check matches each parcel to the order and compares the payout with your records; since 30 Oct 2026 it also
