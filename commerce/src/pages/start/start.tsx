@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { ResendConfirmation } from '@/features/auth/link-problem'
-import { StartShell } from '@/features/auth/auth-shell'
+import { AuthShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { ClerkSignUpForm } from '@/features/auth/clerk-signup'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
@@ -103,7 +103,7 @@ export default function StartPage() {
     return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check) }
   }, [sentTo, session, password, navigate])
 
-  if (loading || (session && accessLoading)) return <StartShell><div className="flex justify-center"><Spinner className="size-5" /></div></StartShell>
+  if (loading || (session && accessLoading)) return <AuthShell panel="signup"><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
   if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
   const errors = businessErrors(business)
@@ -116,7 +116,7 @@ export default function StartPage() {
 
   if (sentTo) {
     return (
-      <StartShell>
+      <AuthShell panel="signup">
         <span className="flex size-12 items-center justify-center rounded-2xl border bg-card shadow-xs"><MailCheck className="size-6 text-brand" /></span>
         <h1 className="mt-5 text-[26px] leading-tight font-semibold tracking-[-0.025em]">Check your inbox</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -127,12 +127,12 @@ export default function StartPage() {
           No e-mail after a few minutes? Check spam, or <button type="button" className="font-medium text-foreground underline-offset-4 hover:underline" onClick={() => { setSentTo(null); setStep(2) }}>use a different address</button>.
         </div>
         <p className="mt-6 text-sm text-muted-foreground">Already confirmed? <Link to="/start/finish" className="font-medium text-brand hover:underline">Continue</Link></p>
-      </StartShell>
+      </AuthShell>
     )
   }
 
   return (
-    <StartShell wide footer={<>Already have an account? <Link to="/admin/login" className="font-medium text-foreground hover:underline">Sign in</Link></>}>
+    <AuthShell panel="signup" wide footer={<>Already have an account? <Link to="/admin/login" className="font-medium text-foreground hover:underline">Sign in</Link></>}>
       {options.error ? <ErrorState error={options.error} onRetry={() => options.refetch()} /> : !options.data ? (
         <div className="flex justify-center"><Spinner className="size-5" /></div>
       ) : !normalOpen && !whatsappOpen ? (
@@ -234,7 +234,7 @@ export default function StartPage() {
           </div>
         </form>
       )}
-    </StartShell>
+    </AuthShell>
   )
 }
 
