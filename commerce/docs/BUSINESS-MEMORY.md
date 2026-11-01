@@ -48,7 +48,7 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - The Orders Dashboard lists every order with its status now (approved stages, and web orders by call status such as
   "No response"), with counts per status and a filter panel: date (approved, order, shipped or delivered) and time of day,
   product or SKU, source, courier, taken by, courier payment, order or courier invoice number, status, order tags, district
-  (since 31 Oct 2026), under the page's earlier totals, daily chart and courier tables.
+  (since 31 Oct 2026). Its charts are under Report.
 - Scan parcels has Reset log: the log on that device starts fresh; scans are never deleted (since 31 Oct 2026).
 - Super Edit, merge, duplicate detection and smart auto-merge.
 - Incomplete orders and abandoned carts.
