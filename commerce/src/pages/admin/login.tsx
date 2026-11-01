@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { AuthShell } from '@/features/auth/auth-shell'
+import { pageSignInAppearance } from '@/features/auth/clerk'
 import { useAuth } from '@/features/auth/auth-context'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { useAdminTheme } from '@/hooks/use-admin-theme'
@@ -45,8 +46,8 @@ export default function AdminLoginPage() {
             )}
             {loading || (session && accessLoading) ? <div className="flex justify-center"><Spinner className="size-5" /></div>
               : noBusiness || (
-                <div className="flex justify-center">
-                  <SignIn routing="hash" signUpUrl="/start" fallbackRedirectUrl={next} />
+                <div className="flex">
+                  <SignIn routing="hash" signUpUrl="/start" fallbackRedirectUrl={next} appearance={pageSignInAppearance} />
                 </div>
               )}
           </>
