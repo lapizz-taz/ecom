@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-01', tag: 'New', area: 'Orders', title: 'Ka-ching for every new order',
+    body: 'While Fullfilio is open, a new order plays a cash-register "ka-ching": once per order, once for a burst, never for an order you made yourself, and only once when several Fullfilio tabs are open. The notification then stays quiet so the phone does not sound twice; with Fullfilio closed or the phone locked, the notification makes the phone\'s own sound. Turn it off or play it in My account → App and notifications. On Android you can download the sound there and pick it as Fullfilio\'s notification sound.', to: '/admin/account' },
   { date: '2026-11-01', tag: 'New', area: 'Orders', title: 'New-order notifications on your phone',
     body: 'Turn on notifications in My account → App and notifications (or when the app asks) and every new order shows up on that phone or computer within seconds, even when Fullfilio is closed: "New order 1051 · Rahim · ৳1,450 · Shopify", or one notification for a burst. Tap it to open the order. You are not told about orders you made yourself. On iPhone, add Fullfilio to the Home Screen first.', to: '/admin/account' },
   { date: '2026-11-01', tag: 'New', area: 'Admin', title: 'Fullfilio as an app on your phone',

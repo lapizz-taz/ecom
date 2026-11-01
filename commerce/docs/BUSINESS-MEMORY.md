@@ -112,6 +112,10 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - New-order push notifications per device (My account → App and notifications): within about 15 seconds, one per order or
   one for a burst, never for an order the person made. Built-in web push, no outside service; its keys sit in Vault and
   were made by the server itself. On iPhone it needs the Home Screen app (iOS 16.4 or later).
+- A "ka-ching" for each new order while the admin is open (one per burst, not for the person's own orders, one across tabs;
+  on by default, per device in My account → App and notifications). Our own synthesized sound, `public/media/new-order.mp3`
+  (`scripts/make-order-sound.mjs`). With the app closed the notification uses the phone's own sound (a website cannot set
+  one); on Android the sound can be downloaded and picked as the app's notification sound.
 
 **Team**
 - Roles and permissions, including the Call role, which sees no costs or profit, and the Moderator

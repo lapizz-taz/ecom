@@ -24,6 +24,8 @@ export interface PushMessage {
   url: string
   /** Replaces an earlier notification with the same tag instead of stacking. */
   tag?: string
+  /** The orders it is about: an open admin that already played its sound for them keeps it quiet. */
+  orders?: string[]
 }
 
 export interface SendOptions {

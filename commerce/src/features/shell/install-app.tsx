@@ -1,9 +1,12 @@
-import { Bell, BellOff, BellRing, Check, Download, EllipsisVertical, Share, Smartphone, SquarePlus } from 'lucide-react'
+import { Bell, BellOff, BellRing, Check, Download, EllipsisVertical, Share, Smartphone, SquarePlus, Volume2 } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { canPromptInstall, isStandalone, onInstallPromptChange, phonePlatform, promptInstall } from '@/lib/app-install'
+import { ORDER_SOUND_URL, orderSoundOn, playOrderSound, setOrderSoundOn, unlockOrderSound } from '@/lib/order-sound'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { disablePush, enablePush, type PushState, pushDevices, pushState, pushSupported, sendTestPush } from '@/services/push'
@@ -111,6 +114,58 @@ export function NotificationsPanel({ compact = false }: { compact?: boolean }) {
             </>
           )}
         </div>
+      )}
+      <OrderSound />
+    </div>
+  )
+}
+
+/** The "ka-ching" for new orders on this device (src/lib/order-sound.ts). */
+function OrderSound() {
+  const [on, setOn] = useState(orderSoundOn)
+  const platform = phonePlatform()
+  const toggle = (next: boolean) => {
+    setOrderSoundOn(next)
+    setOn(next)
+    if (next) unlockOrderSound()
+  }
+  const play = async () => {
+    unlockOrderSound()
+    if (!(await playOrderSound())) {
+      toast.error('The sound did not play', { description: 'Check the volume and that the phone is not on silent, then tap Play again.' })
+    }
+  }
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand/12 text-brand"><Volume2 className="size-4.5" /></span>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="order-sound" className="text-sm font-medium">Ka-ching for new orders</Label>
+            <Switch id="order-sound" checked={on} onCheckedChange={toggle} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Plays on this device while Fullfilio is open: once for each new order, once for a burst. With Fullfilio closed or
+            the phone locked, the notification makes the phone&apos;s own sound.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 pl-12">
+        <Button size="sm" variant="outline" onClick={() => void play()}><Volume2 /> Play</Button>
+        {platform === 'android' && (
+          <Button size="sm" variant="ghost" asChild>
+            <a href={ORDER_SOUND_URL} download="fullfilio-ka-ching.mp3"><Download /> Download the sound</a>
+          </Button>
+        )}
+      </div>
+      {platform === 'android' && (
+        <p className="pl-12 text-xs text-muted-foreground">
+          To hear it with the phone locked too: download it, then open Settings → Apps → Fullfilio (or Chrome, if you use
+          Fullfilio in the browser) → Notifications, and choose the downloaded file as the sound.
+        </p>
+      )}
+      {platform === 'ios' && (
+        <p className="pl-12 text-xs text-muted-foreground">With Fullfilio closed, iPhone uses its own sound for notifications; a website&apos;s app cannot change it.</p>
       )}
     </div>
   )
