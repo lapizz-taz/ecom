@@ -5,8 +5,7 @@ import { Navigate, useNavigate } from 'react-router'
 import { ErrorState, Spinner } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
 import { LinkErrorNotice, ResendConfirmation, useAuthLinkError } from '@/features/auth/link-problem'
-import { AuthShell } from '@/features/auth/auth-shell'
-import { pageSignInAppearance } from '@/features/auth/clerk'
+import { StartShell } from '@/features/auth/auth-shell'
 import { useAuth } from '@/features/auth/auth-context'
 import { ClerkLinkNotice, useClerkLinkPending } from '@/features/auth/clerk-link-notice'
 import { BusinessFields, businessErrors, PlanPicker } from '@/features/onboarding/signup-parts'
@@ -63,11 +62,11 @@ export default function StartFinishPage() {
     setBusiness({ ...business, plan_code: o.plans.find((p) => p.code === o.default_plan)?.code ?? o.plans[0]?.code ?? '' })
   }, [options.data, business])
 
-  if (!linkPending && (loading || (session && accessLoading))) return <AuthShell panel="signup"><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
+  if (!linkPending && (loading || (session && accessLoading))) return <StartShell><div className="flex justify-center"><Spinner className="size-5" /></div></StartShell>
   if (access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
   if (!session) {
     return (
-      <AuthShell panel="signup">
+      <StartShell>
         <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.025em]">{linkError ? 'Confirm your e-mail' : 'Sign in to finish'}</h1>
         <p className="mt-2 text-sm text-muted-foreground">Sign in with the account you created and your business opens right after.</p>
         {linkError && (
@@ -78,27 +77,27 @@ export default function StartFinishPage() {
         )}
         <div className="mt-8 flex justify-center">
           {linkPending ? <ClerkLinkNotice className="w-full" />
-            : usesClerk ? <SignIn routing="hash" signUpUrl="/start" forceRedirectUrl="/start/finish" appearance={pageSignInAppearance} />
+            : usesClerk ? <SignIn routing="hash" signUpUrl="/start" forceRedirectUrl="/start/finish" />
               : <SignInForm onDone={() => undefined} forgotPath="/admin/forgot-password" />}
         </div>
-      </AuthShell>
+      </StartShell>
     )
   }
   if (open.isPending || !business) {
     return (
-      <AuthShell panel="signup">
+      <StartShell>
         <div className="flex flex-col items-center gap-3 text-center">
           <Spinner className="size-6" />
           <p className="font-medium">Opening your business…</p>
           <p className="text-sm text-muted-foreground">Setting up your store, order screens and plan.</p>
         </div>
-      </AuthShell>
+      </StartShell>
     )
   }
 
   const errors = businessErrors(business)
   return (
-    <AuthShell panel="signup" wide>
+    <StartShell wide>
       <h1 className="text-[28px] leading-tight font-semibold tracking-[-0.025em]">Open your business</h1>
       <p className="mt-2 text-sm text-muted-foreground">Signed in as {user?.email}. Check the details and choose a plan.</p>
       {open.error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{toUserMessage(open.error)}</p>}
@@ -113,6 +112,6 @@ export default function StartFinishPage() {
           {!options.data.enabled && <p className="-mt-5 text-sm text-muted-foreground">New sign-ups are paused at the moment; e-mail help@fullfilio.com to open an account.</p>}
         </form>
       )}
-    </AuthShell>
+    </StartShell>
   )
 }
