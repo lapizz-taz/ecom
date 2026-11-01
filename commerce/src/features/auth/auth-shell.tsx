@@ -32,9 +32,7 @@ function BrandPanel({ kind }: { kind: 'signin' | 'signup' }) {
   return (
     <div className="relative isolate hidden overflow-hidden rounded-[22px] bg-[#0c0d11] p-10 text-white ring-1 ring-white/[0.06] lg:sticky lg:top-4 lg:flex lg:h-[calc(100dvh-2rem)] lg:flex-col lg:self-start xl:p-12">
       {/* Fine dots everywhere, and brighter blue dots gathered in a glow behind the headline. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgb(255_255_255/0.07)_1px,transparent_1.2px)] bg-[size:6px_6px]" />
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgb(96_128_255/0.75)_1.1px,transparent_1.4px)] bg-[size:7px_7px] [mask-image:radial-gradient(circle_at_72%_30%,black_0%,rgb(0_0_0/0.6)_14%,transparent_38%)]" />
-      <div aria-hidden className="pointer-events-none absolute top-[-6rem] right-[-4rem] -z-10 size-[30rem] rounded-full bg-[radial-gradient(closest-side,rgb(33_66_231/0.35),transparent)] blur-2xl" />
+      <Dots />
 
       {kind === 'signin' ? (
         <div className="my-auto">
@@ -74,26 +72,63 @@ function BrandPanel({ kind }: { kind: 'signin' | 'signup' }) {
   )
 }
 
+/** The dotted blue light behind the brand panel and the phone header. */
+function Dots() {
+  return (
+    <>
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgb(255_255_255/0.07)_1px,transparent_1.2px)] bg-[size:6px_6px]" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgb(96_128_255/0.75)_1.1px,transparent_1.4px)] bg-[size:7px_7px] [mask-image:radial-gradient(circle_at_72%_30%,black_0%,rgb(0_0_0/0.6)_14%,transparent_38%)]" />
+      <div aria-hidden className="pointer-events-none absolute top-[-6rem] right-[-4rem] -z-10 size-[30rem] rounded-full bg-[radial-gradient(closest-side,rgb(33_66_231/0.35),transparent)] blur-2xl" />
+    </>
+  )
+}
+
+const PHONE_HEADER = {
+  signin: { title: 'Welcome back', text: 'Sign in to manage your orders, couriers and profit.', chips: ['Couriers', 'Fake-order check', 'Inbox', 'Real profit'] },
+  signup: { title: 'Grow your COD business', text: 'Orders, couriers, returns and real profit in one place. Built for sellers in Bangladesh.', chips: ['Steadfast · Pathao · RedX', 'Fake-order check', 'Real profit'] },
+}
+
+/** Phones and tablets: the brand on a dark header with the dotted light, the form below it. */
+function PhoneHeader({ kind }: { kind: 'signin' | 'signup' }) {
+  const h = PHONE_HEADER[kind]
+  return (
+    <header className="relative isolate overflow-hidden rounded-b-[32px] bg-[#0c0d11] px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-9 text-white lg:hidden">
+      <Dots />
+      <a href={`${SITE}/`} className="inline-flex rounded-lg focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none" aria-label="Fullfilio home">
+        <Logo />
+      </a>
+      <h1 className="mt-12 text-[30px] leading-[1.1] font-medium tracking-[-0.025em] text-balance">{h.title}</h1>
+      <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-white/60">{h.text}</p>
+      <div className="mt-5 flex flex-wrap gap-1.5">
+        {h.chips.map((c) => (
+          <span key={c} className="rounded-full bg-white/[0.07] px-2.5 py-1 text-[11.5px] text-white/75 ring-1 ring-white/10">{c}</span>
+        ))}
+      </div>
+    </header>
+  )
+}
+
 /**
- * Sign-in, sign-up and the password screens: the logo and the form straight on the page on the
- * left, and the dark brand panel on the right (the panel only on large screens). Light and dark
- * follow the admin's theme; the brand panel is always dark.
+ * Sign-in, sign-up and the password screens. Large screens: the logo and the form straight on the
+ * page on the left, the dark brand panel on the right. Phones and tablets: a dark brand header with
+ * the dotted light on top, the form below it with large touch targets. Light and dark follow the
+ * admin's theme; the brand header and panel are always dark.
  */
 export function AuthShell({ children, footer, wide, className, panel = 'signin' }: {
   children: ReactNode; footer?: ReactNode; wide?: boolean; className?: string; panel?: 'signin' | 'signup'
 }) {
   return (
-    <div className="flex min-h-dvh flex-col bg-background p-2 max-lg:bg-[#f2f3f6] sm:p-4 dark:max-lg:bg-[#0a0a0b]">
-      {/* Phones and tablets: the form on one rounded card. Large screens: no card, the brand panel beside it. */}
-      <div className="mx-auto grid w-full max-w-[1400px] flex-1 gap-4 max-lg:rounded-[28px] max-lg:bg-white max-lg:ring-1 max-lg:ring-black/[0.05] lg:grid-cols-2 dark:max-lg:bg-[#18181b] dark:max-lg:ring-white/[0.06]">
-        <div className="flex min-h-[calc(100dvh-1rem)] flex-col px-3 py-8 sm:min-h-[calc(100dvh-2rem)] sm:px-10">
-          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-center', wide ? 'max-w-[560px]' : 'max-w-[380px]', className)}>
-            <a href={`${SITE}/`} className="mb-8 w-fit rounded-lg focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none" aria-label="Fullfilio home">
+    <div className="flex min-h-dvh flex-col bg-background lg:p-4">
+      <PhoneHeader kind={panel} />
+      <div className="mx-auto grid w-full max-w-[1400px] flex-1 gap-4 lg:grid-cols-2">
+        <div className="flex flex-col px-6 pt-8 pb-6 sm:px-10 lg:min-h-[calc(100dvh-2rem)] lg:py-8">
+          <div className={cn('mx-auto flex w-full flex-1 flex-col lg:justify-center', wide ? 'max-w-[560px]' : 'max-w-[380px] max-lg:max-w-[440px]', className)}>
+            <a href={`${SITE}/`} className="mb-8 hidden w-fit rounded-lg focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none lg:block" aria-label="Fullfilio home">
               <Logo />
             </a>
             {children}
           </div>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
             {footer ?? (
               <>
                 <span>© {new Date().getFullYear()} Fullfilio</span>
