@@ -88,6 +88,10 @@ export const pageSignInAppearance = {
     formFieldLabel: 'text-[12.5px]! font-normal!',
     formButtonPrimary: 'btn-glow text-[13px]! font-medium!',
     footer: 'border-0! bg-transparent! bg-none!',
+    // Clerk keeps a password field on its first screen but hides it (it only shows when the
+    // browser fills a saved password). Shown always: e-mail and password together, one step.
+    // Continue with a password signs in at once; with it empty, Clerk asks for it next as before.
+    formFieldRow__password: 'static! h-auto! mt-0! opacity-100! pointer-events-auto!',
   },
 }
 
