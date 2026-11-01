@@ -85,8 +85,10 @@ export const pageSignInAppearance = {
     card: 'w-full! max-w-none! border-0! bg-transparent! px-0! pt-0! shadow-none!',
     // The page shows the Fullfilio logo above the box instead of a heading.
     header: 'hidden!',
-    formFieldLabel: 'text-[12.5px]! font-normal!',
-    formButtonPrimary: 'btn-glow text-[13px]! font-medium!',
+    formFieldLabel: 'text-[12.5px]! font-normal! max-lg:text-[14px]!',
+    // Phones: large fields and button, easy to tap.
+    formFieldInput: 'max-lg:h-12! max-lg:rounded-xl! max-lg:px-4! max-lg:text-[16px]!',
+    formButtonPrimary: 'btn-glow text-[13px]! font-medium! max-lg:h-12! max-lg:rounded-xl! max-lg:text-[15px]!',
     footer: 'border-0! bg-transparent! bg-none!',
     // Clerk keeps a password field on its first screen but hides it (it only shows when the
     // browser fills a saved password). Shown always: e-mail and password together, one step.
