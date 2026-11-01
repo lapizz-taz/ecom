@@ -73,18 +73,19 @@ function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
 }
 
 /**
- * Clerk's sign-in box without its own card, so it sits straight on the sign-in page's panel
- * (AuthShell), title on the left. Only for <SignIn> on those pages; Clerk's other boxes keep
- * their card.
+ * Clerk's sign-in box without its own card or heading, so it sits straight on the sign-in page
+ * (AuthShell) under the Fullfilio logo. Only for <SignIn> on those pages; Clerk's other boxes
+ * keep their card.
  */
 export const pageSignInAppearance = {
   elements: {
     rootBox: 'w-full',
     cardBox: 'w-full! max-w-none! rounded-none! border-0! bg-transparent! shadow-none!',
     card: 'border-0! bg-transparent! px-0! pt-0! shadow-none!',
-    header: 'items-start! text-left!',
-    headerTitle: 'text-left! text-[22px]! font-semibold! tracking-[-0.02em]!',
-    headerSubtitle: 'text-left!',
+    // The page shows the Fullfilio logo above the box instead of a heading.
+    header: 'hidden!',
+    formFieldLabel: 'text-[12.5px]! font-normal!',
+    formButtonPrimary: 'btn-glow text-[13px]! font-medium!',
     footer: 'border-0! bg-transparent! bg-none!',
   },
 }

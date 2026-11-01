@@ -30,7 +30,7 @@ const PROMISES = [
  */
 function BrandPanel({ kind }: { kind: 'signin' | 'signup' }) {
   return (
-    <div className="relative isolate hidden overflow-hidden rounded-[22px] bg-[#0c0d11] p-10 text-white ring-1 ring-white/[0.06] lg:sticky lg:top-2 lg:flex lg:h-[calc(100dvh-6.75rem)] lg:flex-col lg:self-start xl:p-12">
+    <div className="relative isolate hidden overflow-hidden rounded-[22px] bg-[#0c0d11] p-10 text-white ring-1 ring-white/[0.06] lg:sticky lg:top-6 lg:flex lg:h-[calc(100dvh-3rem)] lg:flex-col lg:self-start xl:p-12">
       {/* Fine dots everywhere, and brighter blue dots gathered in a glow behind the headline. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgb(255_255_255/0.07)_1px,transparent_1.2px)] bg-[size:6px_6px]" />
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgb(96_128_255/0.75)_1.1px,transparent_1.4px)] bg-[size:7px_7px] [mask-image:radial-gradient(circle_at_72%_30%,black_0%,rgb(0_0_0/0.6)_14%,transparent_38%)]" />
@@ -38,33 +38,32 @@ function BrandPanel({ kind }: { kind: 'signin' | 'signup' }) {
 
       {kind === 'signin' ? (
         <div className="my-auto">
-          <h2 className="max-w-md text-[40px] leading-[1.08] font-semibold tracking-[-0.03em] text-balance xl:text-[46px]">
+          <h2 className="max-w-sm text-[30px] leading-[1.15] font-medium tracking-[-0.025em] text-balance xl:text-[34px]">
             Welcome back. Your orders are where you left them.
           </h2>
-          <div className="mt-10 grid grid-cols-2 gap-3">
+          <div className="mt-9 grid grid-cols-2 gap-2.5">
             {TILES.map((t) => (
               <div key={t.title} className="rounded-2xl bg-white/[0.045] p-4 ring-1 ring-white/[0.08] backdrop-blur-sm">
-                <t.icon className="size-[18px] text-[#8ea2ff]" aria-hidden />
-                <p className="mt-3 text-[14px] leading-snug font-semibold">{t.title}</p>
-                <p className="mt-0.5 text-[12.5px] text-white/55">{t.text}</p>
+                <t.icon className="size-4 text-[#8ea2ff]" aria-hidden />
+                <p className="mt-2.5 text-[13px] leading-snug font-medium">{t.title}</p>
+                <p className="mt-0.5 text-[12px] text-white/50">{t.text}</p>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <h2 className="mt-6 max-w-lg text-[40px] leading-[1.08] font-semibold tracking-[-0.03em] text-balance xl:text-[46px]">
+        <div className="my-auto">
+          <h2 className="max-w-md text-[30px] leading-[1.15] font-medium tracking-[-0.025em] text-balance xl:text-[34px]">
             Ready to grow your cash-on-delivery business?
           </h2>
-          <p className="mt-3 text-sm text-white/55">Built for online sellers in Bangladesh.</p>
-          {/* The cards run off the bottom of the panel and fade out. */}
-          <div className="mt-10 grid min-h-0 flex-1 content-start gap-3 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
+          <p className="mt-3 text-[13px] text-white/50">Built for online sellers in Bangladesh.</p>
+          <div className="mt-9 grid gap-2.5">
             {PROMISES.map((p) => (
-              <div key={p.line} className="rounded-2xl bg-white/[0.045] p-5 ring-1 ring-white/[0.08] backdrop-blur-sm">
-                <p className="text-[15px] leading-snug font-medium">“{p.line}”</p>
-                <div className="mt-4 flex items-center gap-3">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-[#2142e7]/25 ring-1 ring-[#8ea2ff]/30"><p.icon className="size-4 text-[#b7c3ff]" aria-hidden /></span>
-                  <span className="text-[13px] text-white/60">{p.text}</span>
+              <div key={p.line} className="rounded-2xl bg-white/[0.045] p-4 ring-1 ring-white/[0.08] backdrop-blur-sm">
+                <p className="text-[13.5px] leading-snug">“{p.line}”</p>
+                <div className="mt-3 flex items-center gap-2.5">
+                  <span className="flex size-7 items-center justify-center rounded-full bg-[#2142e7]/25 ring-1 ring-[#8ea2ff]/30"><p.icon className="size-3.5 text-[#b7c3ff]" aria-hidden /></span>
+                  <span className="text-[12px] text-white/50">{p.text}</span>
                 </div>
               </div>
             ))}
@@ -76,26 +75,24 @@ function BrandPanel({ kind }: { kind: 'signin' | 'signup' }) {
 }
 
 /**
- * Sign-in, sign-up and the password screens: the logo on top, then one large rounded box with the
- * form on the left and the dark brand panel on the right (the panel only on large screens). Light
- * and dark follow the admin's theme; the brand panel is always dark.
+ * Sign-in, sign-up and the password screens: one large rounded box filling the page, with the logo
+ * and the form on the left and the dark brand panel on the right (the panel only on large screens).
+ * Light and dark follow the admin's theme; the brand panel is always dark.
  */
 export function AuthShell({ children, footer, wide, className, panel = 'signin' }: {
   children: ReactNode; footer?: ReactNode; wide?: boolean; className?: string; panel?: 'signin' | 'signup'
 }) {
   return (
-    <div className="flex min-h-dvh flex-col bg-[#f2f3f6] px-2 pb-2 sm:px-4 sm:pb-4 dark:bg-[#0a0a0b]">
-      <header className="flex justify-center py-4 sm:py-5">
-        <a href={`${SITE}/`} className="rounded-xl focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none" aria-label="Fullfilio home">
-          <Logo size="lg" />
-        </a>
-      </header>
+    <div className="flex min-h-dvh flex-col bg-[#f2f3f6] p-2 sm:p-4 dark:bg-[#0a0a0b]">
       <div className="mx-auto grid w-full max-w-[1400px] flex-1 gap-2 rounded-[28px] bg-white p-2 shadow-sm ring-1 ring-black/[0.05] lg:grid-cols-2 dark:bg-[#18181b] dark:ring-white/[0.06]">
-        <div className="flex min-h-[calc(100dvh-6.75rem)] flex-col px-3 py-8 sm:px-10">
-          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-center', wide ? 'max-w-[560px]' : 'max-w-[400px]', className)}>
+        <div className="flex min-h-[calc(100dvh-2rem)] flex-col px-3 py-8 sm:min-h-[calc(100dvh-3rem)] sm:px-10">
+          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-center', wide ? 'max-w-[560px]' : 'max-w-[380px]', className)}>
+            <a href={`${SITE}/`} className="mb-8 w-fit rounded-lg focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none" aria-label="Fullfilio home">
+              <Logo />
+            </a>
             {children}
           </div>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
             {footer ?? (
               <>
                 <span>© {new Date().getFullYear()} Fullfilio</span>
