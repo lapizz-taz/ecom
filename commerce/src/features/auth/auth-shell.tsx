@@ -83,11 +83,11 @@ export function AuthShell({ children, footer, wide, className, panel = 'signin' 
   children: ReactNode; footer?: ReactNode; wide?: boolean; className?: string; panel?: 'signin' | 'signup'
 }) {
   return (
-    <div className="flex min-h-dvh flex-col bg-background p-2 sm:p-4">
-      <div className="mx-auto grid w-full max-w-[1400px] flex-1 gap-4 lg:grid-cols-2">
+    <div className="flex min-h-dvh flex-col bg-background p-2 max-lg:bg-[#f2f3f6] sm:p-4 dark:max-lg:bg-[#0a0a0b]">
+      {/* Phones and tablets: the form on one rounded card. Large screens: no card, the brand panel beside it. */}
+      <div className="mx-auto grid w-full max-w-[1400px] flex-1 gap-4 max-lg:rounded-[28px] max-lg:bg-white max-lg:ring-1 max-lg:ring-black/[0.05] lg:grid-cols-2 dark:max-lg:bg-[#18181b] dark:max-lg:ring-white/[0.06]">
         <div className="flex min-h-[calc(100dvh-1rem)] flex-col px-3 py-8 sm:min-h-[calc(100dvh-2rem)] sm:px-10">
-          {/* Phones: the form starts near the top instead of the middle of a tall screen. */}
-          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-start pt-[6vh] sm:justify-center sm:pt-0', wide ? 'max-w-[560px]' : 'max-w-[380px]', className)}>
+          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-center', wide ? 'max-w-[560px]' : 'max-w-[380px]', className)}>
             <a href={`${SITE}/`} className="mb-8 w-fit rounded-lg focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none" aria-label="Fullfilio home">
               <Logo />
             </a>
