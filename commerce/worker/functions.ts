@@ -23,6 +23,7 @@ import paymentWebhook from '../supabase/functions/payment-webhook/handler.ts'
 import payments from '../supabase/functions/payments/handler.ts'
 import pbx from '../supabase/functions/pbx/handler.ts'
 import platformAdmin from '../supabase/functions/platform-admin/handler.ts'
+import push from '../supabase/functions/push/handler.ts'
 import siteApi from '../supabase/functions/site-api/handler.ts'
 import sms from '../supabase/functions/sms/handler.ts'
 import voicedrive from '../supabase/functions/voicedrive/handler.ts'
@@ -54,6 +55,7 @@ export const FUNCTIONS: Record<string, Handler> = {
   'payments': payments,
   'pbx': pbx,
   'platform-admin': platformAdmin,
+  'push': push,
   'site-api': siteApi,
   'sms': sms,
   'voicedrive': voicedrive,

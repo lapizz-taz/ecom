@@ -6,6 +6,7 @@ import { registerDevice } from '@/lib/device'
 import { setStaffMerchant } from '@/lib/merchant'
 import { setMonitoringUser } from '@/lib/monitoring'
 import { getMyAccess } from '@/services/users'
+import { disablePush } from '@/services/push'
 import { supabase } from '@/lib/supabase'
 import type { MyAccess } from '@/types/domain'
 
@@ -86,6 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         && (access.access_mode !== 'READ_ONLY' || /\.(view|export)$/.test(permission))
         && (access.role === 'OWNER' || access.permissions.includes(permission))),
       signOut: async () => {
+        // New-order notifications belong to the person signed in on this device.
+        await disablePush().catch(() => undefined)
         if (clerk) await clerk.signOut()
         else await supabase.auth.signOut()
       },
