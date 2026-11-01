@@ -64,12 +64,29 @@ function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
         layout: { logoImageUrl: '/favicon.svg', logoPlacement: 'none', socialButtonsPlacement: 'top', socialButtonsVariant: 'blockButton' },
         variables: { colorPrimary: '#2563eb', borderRadius: '0.75rem', fontFamily: 'inherit' },
         // Clerk's Continue button is the app's blue glow button too (index.css, .btn-glow).
-        elements: { formButtonPrimary: 'btn-glow', cardBox: 'shadow-2xl shadow-black/10 dark:shadow-black/50' },
+        elements: { formButtonPrimary: 'btn-glow' },
       }}
     >
       {children}
     </ClerkProvider>
   )
+}
+
+/**
+ * Clerk's sign-in box without its own card, so it sits straight on the sign-in page's panel
+ * (AuthShell), title on the left. Only for <SignIn> on those pages; Clerk's other boxes keep
+ * their card.
+ */
+export const pageSignInAppearance = {
+  elements: {
+    rootBox: 'w-full',
+    cardBox: 'w-full! max-w-none! rounded-none! border-0! bg-transparent! shadow-none!',
+    card: 'border-0! bg-transparent! px-0! pt-0! shadow-none!',
+    header: 'items-start! text-left!',
+    headerTitle: 'text-left! text-[22px]! font-semibold! tracking-[-0.02em]!',
+    headerSubtitle: 'text-left!',
+    footer: 'border-0! bg-transparent! bg-none!',
+  },
 }
 
 export function ClerkRoot({ children }: { children: ReactNode }) {

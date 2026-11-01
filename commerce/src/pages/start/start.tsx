@@ -103,7 +103,7 @@ export default function StartPage() {
     return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check) }
   }, [sentTo, session, password, navigate])
 
-  if (loading || (session && accessLoading)) return <AuthShell><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
+  if (loading || (session && accessLoading)) return <AuthShell panel="signup"><div className="flex justify-center"><Spinner className="size-5" /></div></AuthShell>
   if (session && access) return <Navigate to={open.isSuccess ? '/admin?welcome=1' : '/admin'} replace />
 
   const errors = businessErrors(business)
@@ -116,7 +116,7 @@ export default function StartPage() {
 
   if (sentTo) {
     return (
-      <AuthShell>
+      <AuthShell panel="signup">
         <span className="flex size-12 items-center justify-center rounded-2xl border bg-card shadow-xs"><MailCheck className="size-6 text-brand" /></span>
         <h1 className="mt-5 text-[26px] leading-tight font-semibold tracking-[-0.025em]">Check your inbox</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -132,7 +132,7 @@ export default function StartPage() {
   }
 
   return (
-    <AuthShell wide footer={<>Already have an account? <Link to="/admin/login" className="font-medium text-foreground hover:underline">Sign in</Link></>}>
+    <AuthShell panel="signup" wide footer={<>Already have an account? <Link to="/admin/login" className="font-medium text-foreground hover:underline">Sign in</Link></>}>
       {options.error ? <ErrorState error={options.error} onRetry={() => options.refetch()} /> : !options.data ? (
         <div className="flex justify-center"><Spinner className="size-5" /></div>
       ) : !normalOpen && !whatsappOpen ? (
