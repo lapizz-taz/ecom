@@ -81,8 +81,10 @@ export const pageSignInAppearance = {
   elements: {
     // Clerk's box shrinks to its content by default; here it takes the form's full width.
     rootBox: 'w-full!',
-    cardBox: 'w-full! max-w-none! rounded-none! border-0! bg-transparent! shadow-none!',
-    card: 'w-full! max-w-none! border-0! bg-transparent! px-0! pt-0! shadow-none!',
+    // Clerk's card clips what reaches past its edges (overflow: hidden); with no side padding that
+    // cut the left edge off the fields' borders and focus rings, which are drawn just outside them.
+    cardBox: 'w-full! max-w-none! overflow-visible! rounded-none! border-0! bg-transparent! shadow-none!',
+    card: 'w-full! max-w-none! overflow-visible! border-0! bg-transparent! px-0.5! pt-0! shadow-none!',
     // The page shows the Fullfilio logo above the box instead of a heading.
     header: 'hidden!',
     formFieldLabel: 'text-[12.5px]! font-normal! max-lg:text-[14px]!',
