@@ -86,7 +86,8 @@ export function AuthShell({ children, footer, wide, className, panel = 'signin' 
     <div className="flex min-h-dvh flex-col bg-background p-2 sm:p-4">
       <div className="mx-auto grid w-full max-w-[1400px] flex-1 gap-4 lg:grid-cols-2">
         <div className="flex min-h-[calc(100dvh-1rem)] flex-col px-3 py-8 sm:min-h-[calc(100dvh-2rem)] sm:px-10">
-          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-center', wide ? 'max-w-[560px]' : 'max-w-[380px]', className)}>
+          {/* Phones: the form starts near the top instead of the middle of a tall screen. */}
+          <div className={cn('mx-auto flex w-full flex-1 flex-col justify-start pt-[6vh] sm:justify-center sm:pt-0', wide ? 'max-w-[560px]' : 'max-w-[380px]', className)}>
             <a href={`${SITE}/`} className="mb-8 w-fit rounded-lg focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none" aria-label="Fullfilio home">
               <Logo />
             </a>
