@@ -56,12 +56,15 @@ function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
       signInFallbackRedirectUrl="/admin"
       signUpFallbackRedirectUrl="/start/finish"
       afterSignOutUrl="/admin/login"
+      // Our name as we write it (Clerk's dashboard spells the application "FullFilio").
+      localization={{ signIn: { start: { title: 'Sign in to Fullfilio', subtitle: 'Welcome back. Sign in to continue.' } } }}
       appearance={{
         baseTheme: isDark ? dark : undefined,
-        layout: { logoImageUrl: '/favicon.svg', socialButtonsPlacement: 'top', socialButtonsVariant: 'blockButton' },
+        // The sign-in pages show the Fullfilio logo above the box, so the box does not repeat it.
+        layout: { logoImageUrl: '/favicon.svg', logoPlacement: 'none', socialButtonsPlacement: 'top', socialButtonsVariant: 'blockButton' },
         variables: { colorPrimary: '#2563eb', borderRadius: '0.75rem', fontFamily: 'inherit' },
         // Clerk's Continue button is the app's blue glow button too (index.css, .btn-glow).
-        elements: { formButtonPrimary: 'btn-glow' },
+        elements: { formButtonPrimary: 'btn-glow', cardBox: 'shadow-2xl shadow-black/10 dark:shadow-black/50' },
       }}
     >
       {children}
