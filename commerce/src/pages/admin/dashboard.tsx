@@ -196,15 +196,16 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <PageHeader title={greeting(access?.full_name)} description={`${config?.store.name ?? 'Your store'} · ${rangeLabel(range)}`}
         actions={(
-          <>
-            <Button size="icon-sm" variant="outline" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh dashboard" title="Refresh">
+          // One row on phones too: the dates take the room the two buttons leave.
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+            <Button size="icon-sm" variant="outline" className="shrink-0" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh dashboard" title="Refresh">
               <RefreshCw className={cn(refreshing && 'animate-spin')} />
             </Button>
-            <DateRangeFilter value={range} onChange={setRange} />
-            <Button size="sm" variant={editing ? 'default' : 'outline'} onClick={() => setEditing((e) => !e)}>
+            <DateRangeFilter value={range} onChange={setRange} className="min-w-0 flex-1 sm:flex-none" />
+            <Button size="sm" variant={editing ? 'default' : 'outline'} className="shrink-0" onClick={() => setEditing((e) => !e)}>
               <LayoutGrid /> {editing ? 'Done' : 'Customize'}
             </Button>
-          </>
+          </div>
         )} />
 
       <OnlineStoreChoice />
