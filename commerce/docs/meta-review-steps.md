@@ -95,3 +95,23 @@ Screencast (captions on every step):
    message from a phone; it appears in Messaging → Inbox; reply; the reply arrives on the phone.
 9. Human Agent: a staff member answers a Messenger chat whose last customer message is older than
    24 hours (an older test chat), and the reply arrives in Messenger.
+
+### Recording plan: six raw clips, four videos
+
+Record six short clips without captions; captions are added afterwards (ffmpeg) and the login
+clip is put in front of each Facebook/Instagram video, so every video shows the whole login.
+
+| Clip | What it shows |
+|---|---|
+| 1 Login | fullfilio.com/login → Messaging → Channels → Continue with Facebook → Facebook login → Page and Instagram chosen → permission list → back in Fullfilio → Connect |
+| 2 Facebook comments | customer comments on a Page post → Messaging → Comments → reply in public, like, hide → checked on Facebook |
+| 3 Instagram comments | customer comments on an Instagram post → Comments → reply in public, hide → checked on Instagram |
+| 4 Instagram DMs | customer DM → Inbox with name and picture → reply → arrives; private reply to a comment arrives as a DM |
+| 5 Messenger | customer message → Inbox with name and picture → reply; then a reply to a chat older than 24 hours (Human Agent) |
+| 6 WhatsApp | Connect WhatsApp → Embedded Signup → number connected → customer message → reply; WhatsApp → Messages → a message → Submit to Meta |
+
+Videos: A = 1+2 (pages_read_engagement, pages_read_user_content, pages_manage_engagement);
+B = 1+3+4 (instagram_basic, instagram_manage_messages, instagram_manage_comments);
+C = 1+5 (Business Asset User Profile Access, Human Agent); D = 6 (whatsapp_business_management,
+whatsapp_business_messaging). The customer test account needs a Tester role on the app until the
+permissions are approved.
