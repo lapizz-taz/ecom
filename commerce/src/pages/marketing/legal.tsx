@@ -8,13 +8,14 @@ import { SUPPORT_EMAIL } from '@/features/site/site-meta'
 
 const UPDATED = '17 October 2026'
 
-type Doc = { title: string; intro: string; sections: Array<{ heading: string; body: Array<string | string[]> }> }
+type Doc = { title: string; intro: string; updated?: string; sections: Array<{ heading: string; body: Array<string | string[]> }> }
 
 const contact = `E-mail ${SUPPORT_EMAIL}, use the contact form at fullfilio.com/contact, or Support inside your Fullfilio admin.`
 
 const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
   privacy: {
     title: 'Privacy policy',
+    updated: '1 November 2026',
     intro: 'Fullfilio is order-management software for online stores in Bangladesh. This policy explains what information Fullfilio handles, why, and the choices stores and their customers have.',
     sections: [
       { heading: 'Who we are', body: ['Fullfilio ("we") provides the Fullfilio platform at fullfilio.com to businesses ("stores"). Each store decides what it does with its own customers’ information; we process that information on the store’s behalf.'] },
@@ -47,7 +48,17 @@ const DOCS: Record<'privacy' | 'terms' | 'data-deletion', Doc> = {
         ],
       ] },
       { heading: 'Sharing', body: [
-        'We share information only to run the service: with the couriers, payment providers, SMS providers and Meta services a store chooses to use, with Meta for our own website’s ads as described above, and with our hosting providers. We do not sell personal information.',
+        'We share information only to run the service: with the couriers, payment providers, SMS providers and Meta services a store chooses to use, with Meta for our own website’s ads as described above, and with the providers that host and run Fullfilio for us: Cloudflare (servers), Supabase (database) and Sentry (error reports). They may use the information only to provide their service to us. We do not sell personal information.',
+      ] },
+      { heading: 'Requests from public authorities', body: [
+        'We give information to the police, courts or other public authorities only when the law requires it. For every request we:',
+        [
+          'check that it is lawful and comes from an authority entitled to make it;',
+          'challenge or refuse a request that is unlawful, unclear or broader than necessary;',
+          'share only the minimum information needed to answer a valid request;',
+          'keep a written record of the request and of what we shared.',
+        ],
+        'Where the law allows, we tell the store concerned before we share its information.',
       ] },
       { heading: 'Keeping and deleting information', body: [
         'We keep a store’s information for as long as its account is open. When a store disconnects a messaging account, we delete that account’s access token immediately. See the data deletion instructions at fullfilio.com/data-deletion for how to have messages and other data removed.',
@@ -104,7 +115,7 @@ export default function LegalPage() {
   return (
     <SitePage title={`${doc.title} | Fullfilio`}>
       <article className="mx-auto max-w-3xl px-5 pt-20 pb-24 md:pt-28">
-        <p className="font-mono text-[12px] text-(--s-muted)">Legal · Last updated {UPDATED}</p>
+        <p className="font-mono text-[12px] text-(--s-muted)">Legal · Last updated {doc.updated ?? UPDATED}</p>
         <h1 className="mt-4 text-[36px] leading-[1.1] font-medium tracking-[-0.03em] text-balance sm:text-[44px]">{doc.title}</h1>
         <p className="mt-5 text-[15px] leading-relaxed text-(--s-fg2)">{doc.intro}</p>
         <div className="mt-10 space-y-9">
