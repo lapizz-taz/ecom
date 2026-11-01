@@ -11055,6 +11055,99 @@ export type Database = {
           },
         ]
       }
+      push_outbox: {
+        Row: {
+          id: number
+          merchant_id: string
+          order_id: string
+          created_at: string
+          sent_at: string | null
+        }
+        Insert: {
+          id?: number
+          merchant_id?: string
+          order_id: string
+          created_at?: string
+          sent_at?: string | null
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          order_id?: string
+          created_at?: string
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_outbox_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_outbox_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          id: string
+          merchant_id: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          device: string | null
+          created_at: string
+          last_sent_at: string | null
+          failures: number
+        }
+        Insert: {
+          id?: string
+          merchant_id?: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          device?: string | null
+          created_at?: string
+          last_sent_at?: string | null
+          failures?: number
+        }
+        Update: {
+          id?: string
+          merchant_id?: string
+          user_id?: string
+          endpoint?: string
+          p256dh?: string
+          auth?: string
+          device?: string | null
+          created_at?: string
+          last_sent_at?: string | null
+          failures?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_permissions: {
         Row: {
           role_id: string
@@ -18234,6 +18327,27 @@ export type Database = {
           updated_at: string
           merchant_id: string
         }
+      }
+      push_my_devices: {
+        Args: {
+          p_endpoint?: string
+        }
+        Returns: Json
+      }
+      push_subscribe: {
+        Args: {
+          p_endpoint: string
+          p_p256dh: string
+          p_auth: string
+          p_device?: string
+        }
+        Returns: Json
+      }
+      push_unsubscribe: {
+        Args: {
+          p_endpoint: string
+        }
+        Returns: Json
       }
       receive_purchase_order: {
         Args: {

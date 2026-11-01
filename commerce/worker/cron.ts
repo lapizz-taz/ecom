@@ -34,6 +34,11 @@ export const JOBS: CronJob[] = [
     run: async (r) => (await r.exists('account_removals', 'status=eq.PENDING')) && r.call('clerk-auth', { action: 'removals' }),
   },
   {
+    // New-order push notifications (on Supabase, pg_cron checks every 15 seconds).
+    name: 'push-dispatch', schedule: '* * * * *',
+    run: async (r) => (await r.exists('push_outbox', 'sent_at=is.null')) && r.call('push', { action: 'dispatch' }),
+  },
+  {
     name: 'channel-sync-jobs', schedule: '* * * * *',
     run: async (r) => (await r.rpc('channel_jobs_due')) === true && r.call('channels', { action: 'process_jobs' }),
   },

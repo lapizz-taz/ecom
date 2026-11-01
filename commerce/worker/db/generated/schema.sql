@@ -65,6 +65,7 @@ INSERT INTO _sequences (name, value) VALUES
   ('platform_notifications_id_seq', 0),
   ('platform_restore_tests_id_seq', 0),
   ('purchase_order_seq', 1000),
+  ('push_outbox_id_seq', 0),
   ('storefront_events_id_seq', 0),
   ('subscription_events_id_seq', 0),
   ('support_ticket_events_id_seq', 0),
@@ -4209,6 +4210,35 @@ CREATE TABLE purchase_orders (
 CREATE TRIGGER purchase_orders_updated_at AFTER UPDATE ON purchase_orders FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE purchase_orders SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
+CREATE TABLE push_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  order_id TEXT NOT NULL CHECK (length(order_id) = 36),
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  sent_at TEXT CHECK (sent_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', sent_at) = sent_at),
+  CONSTRAINT push_outbox_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT push_outbox_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE push_subscriptions (
+  id TEXT DEFAULT ((lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-'||substr('89ab',1+(abs(random())%4),1)||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6))))) NOT NULL CHECK (length(id) = 36),
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  user_id TEXT NOT NULL CHECK (length(user_id) = 36),
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  device TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  last_sent_at TEXT CHECK (last_sent_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', last_sent_at) = last_sent_at),
+  failures INTEGER DEFAULT 0 NOT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT push_subscriptions_device_check CHECK (length(device) <= 120),
+  CONSTRAINT push_subscriptions_endpoint_check CHECK (length(endpoint) <= 1000),
+  CONSTRAINT push_subscriptions_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles (id) ON DELETE CASCADE,
+  CONSTRAINT push_subscriptions_merchant_id_endpoint_key UNIQUE (merchant_id, endpoint)
+) STRICT;
+
 CREATE TABLE role_permissions (
   role_id TEXT NOT NULL CHECK (length(role_id) = 36),
   permission_id TEXT NOT NULL CHECK (length(permission_id) = 36),
@@ -5661,6 +5691,10 @@ CREATE INDEX purchase_orders_merchant_idx ON purchase_orders (merchant_id);
 CREATE INDEX purchase_orders_status_idx ON purchase_orders (status);
 
 CREATE INDEX purchase_orders_supplier_idx ON purchase_orders (supplier_id, order_date desc);
+
+CREATE INDEX push_outbox_pending_idx ON push_outbox (merchant_id, id) WHERE (sent_at is null);
+
+CREATE INDEX push_subscriptions_user_idx ON push_subscriptions (merchant_id, user_id);
 
 CREATE INDEX role_permissions_merchant_idx ON role_permissions (merchant_id);
 

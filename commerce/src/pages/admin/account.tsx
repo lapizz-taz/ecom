@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, LogOut, Mail, Save } from 'lucide-react'
+import { KeyRound, LogOut, Mail, Save, Smartphone } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from '@/lib/toast'
@@ -12,11 +12,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/features/auth/auth-context'
 import { useClerkAccount, useClerkPasswordChange } from '@/features/auth/clerk-forms'
+import { InstallAppDialog, NotificationsPanel } from '@/features/shell/install-app'
+import { isStandalone } from '@/lib/app-install'
 import { changeMyPassword, getMyProfile, updateMyProfile } from '@/services/users'
 
 export default function AccountPage() {
-  const { user, access, signOut } = useAuth()
+  const { user, access, signOut, can } = useAuth()
   const navigate = useNavigate()
+  const [installOpen, setInstallOpen] = useState(false)
   const permissions = access?.role === 'OWNER' ? ['Every permission (owner)'] : access?.permissions ?? []
   return (
     <div className="max-w-3xl space-y-4">
@@ -36,6 +39,19 @@ export default function AccountPage() {
           <ChangePassword />
         </>
       )}
+      <Card id="notifications">
+        <CardHeader>
+          <CardTitle className="text-base">App and notifications</CardTitle>
+          <CardDescription>
+            {isStandalone() ? 'You are using the Fullfilio app on this device.' : 'Put Fullfilio on your phone\'s home screen: it opens straight on your dashboard.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {can('orders.view') && !access?.view_only && <NotificationsPanel />}
+          {!isStandalone() && <Button variant="outline" size="sm" onClick={() => setInstallOpen(true)}><Smartphone /> How to install the app</Button>}
+        </CardContent>
+      </Card>
+      <InstallAppDialog open={installOpen} onOpenChange={setInstallOpen} showNotifications={false} />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Your access</CardTitle>

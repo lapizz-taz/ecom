@@ -9,6 +9,7 @@ import { currentSite } from '@/lib/merchant'
 import { reportError } from '@/lib/monitoring'
 import { supabase } from '@/lib/supabase'
 import { currentClerkLink, endSupabaseSession, exchangeClerkSession } from '@/services/clerk-auth'
+import { disablePush, dropLocalPush } from '@/services/push'
 
 // Clerk handles sign-up, e-mail codes, sign-in (password, e-mail code, Google)
 // and password resets on the Fullfilio site and the staff pages, with Clerk's
@@ -172,7 +173,8 @@ export function ClerkSessionSync({ session, onChange }: { session: Session | nul
         if (clerk.user || clerk.session) return
         const here = clerkSignedInHere(document.cookie)
         if (here || (here === null && document.visibilityState !== 'visible')) return
-        void endSupabaseSession('local')
+        // Its new-order notifications stop on this device too (still signed in here to say so).
+        void disablePush().catch(() => dropLocalPush()).finally(() => void endSupabaseSession('local'))
       }, SIGN_OUT_GRACE_MS)
       return () => window.clearTimeout(t)
     }

@@ -31,7 +31,7 @@ export interface NavItem {
   /** Where the item itself goes; omitted for action-only items. */
   to?: string
   /** Opens a dialog or palette instead of navigating. */
-  action?: 'search' | 'help' | 'contact' | 'report'
+  action?: 'search' | 'help' | 'contact' | 'report' | 'install'
   permission?: string
   shortcut?: string
   badge?: (c: NavCounts) => number | undefined

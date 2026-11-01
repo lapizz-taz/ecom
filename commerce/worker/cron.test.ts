@@ -21,21 +21,21 @@ describe('cron expressions (UTC)', () => {
 })
 
 describe('scheduled jobs', () => {
-  it('are the 18 Supabase pg_cron jobs with their schedules', () => {
+  it('are the 19 Supabase pg_cron jobs with their schedules', () => {
     expect(Object.fromEntries(JOBS.map((j) => [j.name, j.schedule]))).toEqual({
       'account-removals': '* * * * *', 'ad-platforms-sync': '47 */3 * * *', 'billing-run': '7 * * * *',
       'channel-sync-jobs': '* * * * *', 'channels-sync': '37 * * * *', 'courier-status-sync': '*/15 * * * *', 'courier-webhook-retry': '*/5 * * * *',
       'domains-recheck': '*/10 * * * *', 'expire-unpaid-advance-orders': '*/15 * * * *', 'hr-auto-checkout': '*/5 * * * *', 'inbox-automation': '* * * * *', 'messaging-scheduled': '*/5 * * * *', 'meta-ads-sync': '17 */3 * * *', 'notifications-dispatch': '* * * * *',
-      'payments-reconcile': '*/5 * * * *', 'platform-ads-sync': '27 */3 * * *', 'platform-ops': '*/10 * * * *', 'voicedrive-sweep': '* * * * *',
+      'payments-reconcile': '*/5 * * * *', 'platform-ads-sync': '27 */3 * * *', 'platform-ops': '*/10 * * * *', 'push-dispatch': '* * * * *', 'voicedrive-sweep': '* * * * *',
     })
   })
 
   it('picks the jobs due this minute', () => {
     expect(dueJobs(at('2026-10-12T10:07:00Z')).map((j) => j.name).sort()).toEqual(
-      ['account-removals', 'billing-run', 'channel-sync-jobs', 'inbox-automation', 'notifications-dispatch', 'voicedrive-sweep'])
+      ['account-removals', 'billing-run', 'channel-sync-jobs', 'inbox-automation', 'notifications-dispatch', 'push-dispatch', 'voicedrive-sweep'])
     expect(dueJobs(at('2026-10-12T09:30:00Z')).map((j) => j.name).sort()).toEqual(
       ['account-removals', 'channel-sync-jobs', 'courier-status-sync', 'courier-webhook-retry', 'domains-recheck', 'expire-unpaid-advance-orders', 'hr-auto-checkout', 'inbox-automation', 'messaging-scheduled',
-        'notifications-dispatch', 'payments-reconcile', 'platform-ops', 'voicedrive-sweep'])
+        'notifications-dispatch', 'payments-reconcile', 'platform-ops', 'push-dispatch', 'voicedrive-sweep'])
   })
 
   it('calls a function only when there is something to do, and one failure does not stop the rest', async () => {
@@ -55,6 +55,6 @@ describe('scheduled jobs', () => {
     expect(calls.filter((c) => c.startsWith('call')).sort()).toEqual([
       'call channels {"action":"process_jobs"}', 'call clerk-auth {"action":"removals"}', 'call courier {"action":"sync_all"}', 'call inbox {"action":"automation_cron"}',
       'call messaging {"action":"scheduled"}', 'call notifications-dispatch {}',
-      'call payment-webhook {} ?reconcile=1'])
+      'call payment-webhook {} ?reconcile=1', 'call push {"action":"dispatch"}'])
   })
 })

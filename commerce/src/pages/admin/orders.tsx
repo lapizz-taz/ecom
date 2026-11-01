@@ -118,6 +118,19 @@ export function OrdersPage({ view }: { view: View }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkTarget, setBulkTarget] = useState<OrderStatus | null>(null)
   const [approveIds, setApproveIds] = useState<string[] | null>(null)
+  // Orders on Web Orders → All that were approved already: the call-status and approve actions skip them.
+  const [approvedIds, setApprovedIds] = useState<ReadonlySet<string>>(new Set())
+  const noteApproved = (rows: Array<Pick<OrderListItem, 'id' | 'stage'>>) => setApprovedIds((prev) => {
+    const next = new Set(prev)
+    for (const o of rows) { if (o.stage === 'WEB') next.delete(o.id); else next.add(o.id) }
+    return next
+  })
+  const webOnly = (ids: string[]) => {
+    const keep = ids.filter((id) => !approvedIds.has(id))
+    const skipped = ids.length - keep.length
+    if (skipped > 0) toast.info(`${skipped} order${skipped === 1 ? ' is' : 's are'} approved already and ${skipped === 1 ? 'was' : 'were'} left out`)
+    return keep
+  }
   const [callDialog, setCallDialog] = useState<{ ids: string[]; code: string } | null>(null)
   const [bookOpen, setBookOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -140,7 +153,9 @@ export function OrdersPage({ view }: { view: View }) {
         { key: 'incomplete', label: 'Incomplete', count: counts.data?.incomplete ?? 0, hint: 'Typed a phone at checkout but did not order' },
         { key: ADVANCE_TAB, label: 'Advance due', count: counts.data?.advance ?? 0, hint: 'The courier check asked for an advance; the order waits here until it is paid' },
         ...all.filter((s) => s.closes_order).map((s) => ({ key: s.code, label: s.label, count: web[s.code] ?? 0, hint: s.description })),
-        { key: 'all', label: 'All', count: Object.values(web).reduce((a, b) => a + b, (counts.data?.advance ?? 0)), hint: null },
+        // Every order, approved ones too (marked Approved), so a web order can still be found once it moved on.
+        { key: 'all', label: 'All', count: [...Object.values(web), ...Object.values(counts.data?.approved ?? {})].reduce((a, b) => a + (b ?? 0), counts.data?.advance ?? 0),
+          hint: 'Every order, including the ones already approved' },
       ]
     }
     if (view === 'approved') {
@@ -159,7 +174,8 @@ export function OrdersPage({ view }: { view: View }) {
   const dir = followUpTab && state.sort === 'created_at' ? 'asc' : state.dir
   const baseFilters = useMemo((): OrderFilters => ({
     q: state.q || undefined,
-    queue: view === 'all' ? undefined : view,
+    // Web Orders → All lists approved orders too; its Duplicate shortcut stays on web orders.
+    queue: view === 'all' || (view === 'web' && state.tab === 'all' && state.dupes !== '1') ? undefined : view,
     review_status: view === 'web' && !['all', 'incomplete', ADVANCE_TAB].includes(state.tab) ? state.tab : undefined,
     stage: view === 'approved' && state.tab !== 'all' ? state.tab : undefined,
     follow_up_due: state.due === '1' || undefined,
@@ -187,6 +203,7 @@ export function OrdersPage({ view }: { view: View }) {
   })
   // New orders, status changes and finished courier checks show up without a reload.
   useRealtimeInvalidate('orders', [['orders', 'list'], ['orders', 'queue-counts']], !showLeads)
+  useEffect(() => { if (orders.data) noteApproved(orders.data.items) }, [orders.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = () => {
     setSelected(new Set())
@@ -227,6 +244,7 @@ export function OrdersPage({ view }: { view: View }) {
     setSelectingAll(true)
     try {
       const rows = await exportOrders(filters)
+      noteApproved(rows)
       setSelected(new Set(rows.map((o) => o.id)))
       if (rows.length < (orders.data?.total ?? 0)) toast.info(`Selected the first ${rows.length} orders`)
     } catch (e) {
@@ -501,9 +519,9 @@ export function OrdersPage({ view }: { view: View }) {
         <BulkBar count={selected.size} onClear={() => setSelected(new Set())}>
           {view === 'web' ? (
             <>
-              {can('orders.status') && <Button size="sm" onClick={() => setApproveIds([...selected])}><Check /> Approve</Button>}
+              {can('orders.status') && <Button size="sm" onClick={() => { const ids = webOnly([...selected]); if (ids.length) setApproveIds(ids) }}><Check /> Approve</Button>}
               {can('orders.update') && (
-                <Select value="" onValueChange={(code) => setCallDialog({ ids: [...selected], code })}>
+                <Select value="" onValueChange={(code) => { const ids = webOnly([...selected]); if (ids.length) setCallDialog({ ids, code }) }}>
                   <SelectTrigger size="sm" className="w-40" aria-label="Set call status"><SelectValue placeholder="Call status…" /></SelectTrigger>
                   <SelectContent>{(reviewStatuses.data ?? []).map((s) => <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>)}</SelectContent>
                 </Select>
@@ -684,6 +702,7 @@ function SourceCell({ a }: { a: OrderListItem['attribution'] }) {
 }
 
 function CallCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefined }) {
+  if (o.stage !== 'WEB') return <ApprovedCell o={o} />
   const due = o.follow_up_at && new Date(o.follow_up_at).getTime() <= Date.now()
   return (
     <div className="max-w-48 space-y-0.5">
@@ -697,6 +716,22 @@ function CallCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefine
       )}
       {o.review_note && <p className="truncate text-xs text-muted-foreground" title={o.review_note}>{o.review_note}</p>}
       <OrderCallBadge orderId={o.id} />
+    </div>
+  )
+}
+
+/** A web order that was approved already (Web Orders → All): marked Approved, with the stage it is at now. */
+function ApprovedCell({ o }: { o: OrderListItem }) {
+  const stage = STAGE[o.stage as OrderStage]
+  // The finer status adds something only past "Approved" itself (e.g. Pending · Packing).
+  const detail = o.status === 'CONFIRMED' ? null : ORDER_STATUS[o.status].label
+  return (
+    <div className="max-w-48 space-y-0.5">
+      <Badge variant="success" className="gap-1"><Check className="size-3" /> Approved</Badge>
+      <p className="text-xs text-muted-foreground">
+        Now {stage?.label ?? detail}{stage && detail && detail !== stage.label ? ` · ${detail}` : ''}
+        {o.confirmed_at && <span title={formatDateTime(o.confirmed_at)}> · approved {timeAgo(o.confirmed_at)}</span>}
+      </p>
     </div>
   )
 }
@@ -729,12 +764,18 @@ function WebRowActions({ o, statuses, canSet, canApprove, busy, onStatus, onAppr
   onApprove: () => void
 }) {
   const closed = CLOSED.includes(o.status)
+  const approved = o.stage !== 'WEB'
   const wa = waNumber(o.customer_phone)
   return (
     <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
       <Button size="icon-sm" variant="ghost" asChild><OrderCallLink orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind="WEB_ORDER"><Phone /></OrderCallLink></Button>
       {wa && <Button size="icon-sm" variant="ghost" asChild><a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${o.customer_name}`}><MessageCircle /></a></Button>}
-      {canSet && (
+      {approved && (
+        <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" asChild title="Approved already: open it to see where it is now">
+          <Link to={`/admin/orders/${o.id}`} aria-label={`Open ${o.order_number}`}><Eye className="size-3.5" /> Open</Link>
+        </Button>
+      )}
+      {canSet && !approved && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" aria-label="Call status">Status <ChevronDown className="size-3" /></Button>
@@ -748,7 +789,7 @@ function WebRowActions({ o, statuses, canSet, canApprove, busy, onStatus, onAppr
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-      {canApprove && !closed && <Button size="sm" className="h-7" disabled={busy} onClick={onApprove}>Approve</Button>}
+      {canApprove && !closed && !approved && <Button size="sm" className="h-7" disabled={busy} onClick={onApprove}>Approve</Button>}
     </div>
   )
 }
@@ -760,9 +801,11 @@ function WebRowActions({ o, statuses, canSet, canApprove, busy, onStatus, onAppr
 function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: View; meta: ReviewStatus | undefined; actions: ReactNode }) {
   const web = o.stage === 'WEB'
   const stage = web ? null : STAGE[o.stage as OrderStage]
-  const label = web ? meta?.label ?? titleCase(o.review_status) : stage?.label ?? ORDER_STATUS[o.status].label
+  const now = stage?.label ?? ORDER_STATUS[o.status].label
+  const label = web ? meta?.label ?? titleCase(o.review_status) : view === 'web' ? `Approved · ${now}` : now
   const dot = web ? DOT[meta?.color ?? 'neutral'] ?? DOT.neutral : STAGE_DOT[stage?.variant ?? 'neutral'] ?? STAGE_DOT.neutral
-  const detail = !web && stage && ORDER_STATUS[o.status].label !== stage.label ? ORDER_STATUS[o.status].label : null
+  // On Web Orders the label already says Approved, so "Approved" (CONFIRMED) is not repeated after it.
+  const detail = !web && stage && ORDER_STATUS[o.status].label !== stage.label && !(view === 'web' && o.status === 'CONFIRMED') ? ORDER_STATUS[o.status].label : null
   const h = o.courier_history
   const counted = h ? h.total ?? h.completed : 0
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null

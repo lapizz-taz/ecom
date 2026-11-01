@@ -2,8 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from '@/App'
 import { env } from '@/lib/env'
-import { hasRememberedSite, isPreviewFrame, markUnreachable, resolveSite, type SiteInfo } from '@/lib/merchant'
+import { currentSite, hasRememberedSite, isPreviewFrame, markUnreachable, resolveSite, type SiteInfo } from '@/lib/merchant'
 import { initMonitoring, reportError } from '@/lib/monitoring'
+import { captureInstallPrompt, openPlatformAsApp } from '@/lib/app-install'
 import { installCursorGlow } from '@/lib/cursor-glow'
 import { restorePageTitle } from '@/lib/page-title'
 import { supabase } from '@/lib/supabase'
@@ -12,6 +13,7 @@ import './index.css'
 
 restorePageTitle()
 installCursorGlow()
+captureInstallPrompt()
 void initMonitoring()
 
 // What this address shows: the Fullfilio website, a store, or a missing store.
@@ -51,6 +53,8 @@ const site = resolveSite((host, slug, preview) => lookup(host, slug, preview)
 
 async function start() {
   if (!hasRememberedSite()) await site
+  // On fullfilio.com the installed app is the dashboard (src/lib/app-install.ts).
+  if (currentSite().kind === 'platform' && openPlatformAsApp()) return
   const root = document.getElementById('root')!
   const router = env.isConfigured ? createAppRouter() : null
   // A website page the Worker sent as HTML (worker/site.ts) stays on screen until its code has

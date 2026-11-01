@@ -4,6 +4,12 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-01', tag: 'New', area: 'Orders', title: 'New-order notifications on your phone',
+    body: 'Turn on notifications in My account → App and notifications (or when the app asks) and every new order shows up on that phone or computer within seconds, even when Fullfilio is closed: "New order 1051 · Rahim · ৳1,450 · Shopify", or one notification for a burst. Tap it to open the order. You are not told about orders you made yourself. On iPhone, add Fullfilio to the Home Screen first.', to: '/admin/account' },
+  { date: '2026-11-01', tag: 'New', area: 'Admin', title: 'Fullfilio as an app on your phone',
+    body: 'Add Fullfilio to your phone\'s home screen and it opens straight on your dashboard, full screen. A short guide shows how, once, on iPhone (Safari → Share → Add to Home Screen) and Android (Chrome → Install app); open it again any time from your account menu → Install the app. An app added earlier now opens on the dashboard too.' },
+  { date: '2026-11-01', tag: 'Improved', area: 'Orders', title: 'Web Orders → All shows approved orders too',
+    body: 'The All tab on Web Orders now lists every order, the approved ones too, marked Approved with where they are now (Pending, Shipped and so on). Their call status and Approve buttons are gone; Open shows the order. Approving or setting a call status for several orders at once leaves approved ones out.', to: '/admin/orders/web?tab=all' },
   { date: '2026-10-31', tag: 'Fixed', area: 'Orders', title: 'Waiting-too-long counts on the Orders Dashboard',
     body: '“RTS over 1 day” and “Return open over 7 days” now count from when the order became RTS or its return started. Before, any later change to the order, such as a note, a tag, a courier update or a fresh courier check, started the count again, so a parcel stuck for days could show 0.', to: '/admin/orders/dashboard' },
   { date: '2026-10-31', tag: 'New', area: 'Orders', title: 'Orders Dashboard: every order with its status, and filters',

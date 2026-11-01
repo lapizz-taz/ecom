@@ -1,7 +1,7 @@
 import { UserButton } from '@clerk/clerk-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, Sun,
+  BadgePercent, Bell, Boxes, ClipboardCheck, Globe, LogOut, Menu, Monitor, MonitorSmartphone, Moon, Plus, RefreshCw, ScanBarcode, Search, ShieldAlert, Smartphone, Sun,
   UserCog,
 } from 'lucide-react'
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
@@ -26,6 +26,8 @@ import { type ShellAction, SidebarNav } from '@/features/shell/sidebar'
 import { ContactDialog, HelpDialog, ReportIssueDialog } from '@/features/shell/support-dialogs'
 import { AnnouncementBanner, AnnouncementsButton } from '@/features/shell/platform-announcements'
 import { MajorUpdateNotice } from '@/features/shell/major-update-notice'
+import { AppOnboarding, InstallAppDialog } from '@/features/shell/install-app'
+import { isStandalone } from '@/lib/app-install'
 import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -155,12 +157,13 @@ function useNewOrderAlerts(enabled: boolean) {
 }
 
 /** Clerk's account menu (manage account, sign out) with the admin's own shortcuts. */
-function ClerkAccountMenu({ showLowStock }: { showLowStock: boolean }) {
+function ClerkAccountMenu({ showLowStock, onInstall }: { showLowStock: boolean; onInstall: () => void }) {
   const navigate = useNavigate()
   return (
     <UserButton showName appearance={{ elements: { userButtonOuterIdentifier: 'hidden text-[13px] lg:block' } }}>
       <UserButton.MenuItems>
         <UserButton.Action label="My account" labelIcon={<UserCog className="size-4" />} onClick={() => navigate('/admin/account')} />
+        <UserButton.Action label={isStandalone() ? 'App and notifications' : 'Install the app'} labelIcon={<Smartphone className="size-4" />} onClick={onInstall} />
         {showLowStock ? <UserButton.Action label="Low stock" labelIcon={<Boxes className="size-4" />} onClick={() => navigate('/admin/inventory?view=alerts')} /> : null}
       </UserButton.MenuItems>
     </UserButton>
@@ -397,7 +400,7 @@ export default function AdminLayout() {
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            {usesClerk ? <ClerkAccountMenu showLowStock={can('inventory.view')} /> : (
+            {usesClerk ? <ClerkAccountMenu showLowStock={can('inventory.view')} onInstall={() => setDialog('install')} /> : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2 pl-1.5">
@@ -412,6 +415,7 @@ export default function AdminLayout() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link to="/admin/account"><UserCog /> My account</Link></DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDialog('install')}><Smartphone /> {isStandalone() ? 'App and notifications' : 'Install the app'}</DropdownMenuItem>
                 <ViewStoreItem />
                 {can('inventory.view') && <DropdownMenuItem asChild><Link to="/admin/inventory?view=alerts"><Boxes /> Low stock</Link></DropdownMenuItem>}
                 <DropdownMenuSeparator />
@@ -439,6 +443,8 @@ export default function AdminLayout() {
       <HelpDialog open={dialog === 'help'} onOpenChange={(o) => setDialog(o ? 'help' : null)} />
       <ContactDialog open={dialog === 'contact'} onOpenChange={(o) => setDialog(o ? 'contact' : null)} />
       <ReportIssueDialog open={dialog === 'report'} onOpenChange={(o) => setDialog(o ? 'report' : null)} />
+      <InstallAppDialog open={dialog === 'install'} onOpenChange={(o) => setDialog(o ? 'install' : null)} showNotifications={can('orders.view')} />
+      {!access.support_session && !access.view_only && <AppOnboarding canSeeOrders={can('orders.view')} />}
       {can('pbx.call') && <PhoneWidget />}
       <WorkdayLayer />
     </div>
