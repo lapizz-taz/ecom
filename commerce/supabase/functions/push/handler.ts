@@ -35,12 +35,12 @@ export function newOrderMessage(orders: ClaimedOrder[]): PushMessage {
   if (orders.length === 1) {
     const [o] = orders
     const via = o.channel === 'SHOPIFY' ? 'Shopify' : o.channel === 'WOOCOMMERCE' ? 'WooCommerce' : SOURCES[o.source] ?? null
-    return { title: `New order ${o.number}`, body: [o.customer, money(o.total), via].filter(Boolean).join(' · '), url: `/admin/orders/${o.id}`, tag: `order-${o.id}` }
+    return { title: `New order ${o.number}`, body: [o.customer, money(o.total), via].filter(Boolean).join(' · '), url: `/admin/orders/${o.id}`, tag: `order-${o.id}`, orders: [o.id] }
   }
   const total = orders.reduce((sum, o) => sum + Number(o.total || 0), 0)
   const shown = orders.slice(0, 3).map((o) => o.number).join(', ')
   const more = orders.length > 3 ? ` and ${orders.length - 3} more` : ''
-  return { title: `${orders.length} new orders`, body: `${shown}${more} · ${money(total)} in all`, url: '/admin/orders/web', tag: 'new-orders' }
+  return { title: `${orders.length} new orders`, body: `${shown}${more} · ${money(total)} in all`, url: '/admin/orders/web', tag: 'new-orders', orders: orders.slice(0, 50).map((o) => o.id) }
 }
 
 /** Our VAPID key pair from Vault, made and stored the first time (the first one stored wins). */

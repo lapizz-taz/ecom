@@ -28,6 +28,7 @@ import { AnnouncementBanner, AnnouncementsButton } from '@/features/shell/platfo
 import { MajorUpdateNotice } from '@/features/shell/major-update-notice'
 import { AppOnboarding, InstallAppDialog } from '@/features/shell/install-app'
 import { isStandalone } from '@/lib/app-install'
+import { chingForOrders, orderSoundOn, unlockOrderSound } from '@/lib/order-sound'
 import { WhatsNew } from '@/features/shell/whats-new'
 import { type AdminTheme, setAdminTheme, useAdminTheme, useAdminThemePreference } from '@/hooks/use-admin-theme'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -102,14 +103,15 @@ const THEMES: Array<{ value: AdminTheme; label: string; icon: typeof Sun }> = [
 ]
 
 /** New storefront orders appear as they arrive (Supabase Realtime). A burst (a store import, a
- *  bulk approval, a courier sync) becomes one toast and one refetch instead of one per order. */
-function useNewOrderAlerts(enabled: boolean) {
+ *  bulk approval, a courier sync) becomes one toast and one refetch instead of one per order, and
+ *  one "ka-ching" (not for the orders this person made). */
+function useNewOrderAlerts(enabled: boolean, me: string | undefined, sound: boolean) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [unseen, setUnseen] = useState(0)
   useEffect(() => {
     if (!enabled) return
-    type NewOrder = { id: string; order_number: string; customer_name: string; total_amount: number }
+    type NewOrder = { id: string; order_number: string; customer_name: string; total_amount: number; created_by?: string | null }
     // An order is saved first and its items and total right after, in the same save, so the new row
     // still reads ৳0 (every Shopify order showed ৳0). The popup reads each order as it stands now.
     const current = async (arrived: NewOrder[]) => {
@@ -123,6 +125,7 @@ function useNewOrderAlerts(enabled: boolean) {
     }
     const arrivals = batcher<NewOrder>((arrived) => {
       setUnseen((n) => n + arrived.length)
+      if (sound) void chingForOrders(arrived.filter((o) => !me || o.created_by !== me).map((o) => o.id))
       void current(arrived).then(({ orders, complete }) => {
         if (orders.length === 1) {
           const [order] = orders
@@ -152,8 +155,41 @@ function useNewOrderAlerts(enabled: boolean) {
       changes.cancel()
       void supabase.removeChannel(channel)
     }
-  }, [enabled, navigate, queryClient])
+  }, [enabled, me, sound, navigate, queryClient])
   return { unseen, reset: () => setUnseen(0) }
+}
+
+/**
+ * The new-order sound on this page: any tap readies it (browsers allow sound only after one), and
+ * the notification worker asks before it shows a notification, so it stays quiet once this page
+ * has played the sound (public/push-sw.js).
+ */
+function useOrderSound(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return
+    const ready = () => { if (orderSoundOn()) unlockOrderSound() }
+    const taps = ['click', 'touchend', 'pointerup', 'keydown'] as const
+    for (const e of taps) window.addEventListener(e, ready, { passive: true })
+    const sw = 'serviceWorker' in navigator ? navigator.serviceWorker : null
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; orders?: unknown } | null
+      if (data?.type !== 'fullfilio-new-orders' || !Array.isArray(data.orders)) return
+      const reply = event.ports[0]
+      void chingForOrders(data.orders.filter((id): id is string => typeof id === 'string'))
+        .catch(() => false)
+        .then((played) => reply?.postMessage({ played }))
+    }
+    if (sw) {
+      sw.addEventListener('message', onMessage)
+      sw.startMessages()
+      // Devices that turned notifications on earlier pick up the latest worker.
+      void sw.getRegistration('/admin/').then((reg) => reg?.update()).catch(() => undefined)
+    }
+    return () => {
+      for (const e of taps) window.removeEventListener(e, ready)
+      sw?.removeEventListener('message', onMessage)
+    }
+  }, [enabled])
 }
 
 /** Clerk's account menu (manage account, sign out) with the admin's own shortcuts. */
@@ -258,7 +294,9 @@ export default function AdminLayout() {
     staleTime: 5 * 60_000,
     queryFn: isPlatformStaff,
   })
-  const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')))
+  const hearsOrders = Boolean(access && can('orders.view') && !access.support_session)
+  const alerts = useNewOrderAlerts(Boolean(access && can('orders.view')), session?.user.id, hearsOrders)
+  useOrderSound(hearsOrders)
   const counts = useNavCounts(Boolean(access && can('orders.view')), Boolean(access && can('fraud.view')), Boolean(access && can('inbox.view')))
   const theme = useAdminThemePreference()
   useAdminTheme()

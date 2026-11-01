@@ -10,7 +10,7 @@ const order = (n: number, extra: Partial<ClaimedOrder> = {}): ClaimedOrder => ({
 describe('the message', () => {
   it('names one order with its customer, amount and where it came from', () => {
     expect(newOrderMessage([order(1, { customer: 'Test Order', channel: 'SHOPIFY' })])).toEqual({
-      title: 'New order 1051', body: 'Test Order · ৳379.9 · Shopify', url: '/admin/orders/o1', tag: 'order-o1',
+      title: 'New order 1051', body: 'Test Order · ৳379.9 · Shopify', url: '/admin/orders/o1', tag: 'order-o1', orders: ['o1'],
     })
     expect(newOrderMessage([order(2, { total: '1500' })]).body).toBe('Customer 2 · ৳1,500 · Online store')
   })
@@ -18,7 +18,7 @@ describe('the message', () => {
   it('sums up a burst of orders in one notification', () => {
     const five = [1, 2, 3, 4, 5].map((n) => order(n, { total: 1000 }))
     expect(newOrderMessage(five)).toEqual({
-      title: '5 new orders', body: '1051, 1052, 1053 and 2 more · ৳5,000 in all', url: '/admin/orders/web', tag: 'new-orders',
+      title: '5 new orders', body: '1051, 1052, 1053 and 2 more · ৳5,000 in all', url: '/admin/orders/web', tag: 'new-orders', orders: ['o1', 'o2', 'o3', 'o4', 'o5'],
     })
     expect(money(1234.5)).toBe('৳1,234.5')
   })
