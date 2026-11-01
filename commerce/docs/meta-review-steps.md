@@ -49,7 +49,7 @@ pages_manage_metadata, pages_messaging and business_management. pages_read_engag
 refused as "Screencast Not Aligned with Use Case Details": the use case is allowed, but the video
 did not show the whole flow (Facebook login, the permission being allowed, the feature working).
 
-Asked for this time, with one screencast uploaded for each:
+Asked for this time, with a screencast uploaded for each:
 
 | Permission | Used for |
 |---|---|
@@ -59,6 +59,9 @@ Asked for this time, with one screencast uploaded for each:
 | instagram_basic | The Instagram account's name and picture, and the posts comments belong to |
 | instagram_manage_messages | Instagram Direct messages in the Inbox: read, reply, private reply to a comment |
 | instagram_manage_comments | Instagram comments: read, reply in public, hide, delete |
+| whatsapp_business_management | WhatsApp signup: the business's WhatsApp account and number, connect and register it |
+| whatsapp_business_messaging | WhatsApp messages in the Inbox: receive and reply |
+| Human Agent (feature) | A staff member's reply to a Messenger or Instagram chat after 24 hours (HUMAN_AGENT tag) |
 
 Before recording:
 1. Facebook Login for Business → Configurations → the configuration Fullfilio uses: tick all of the
@@ -82,3 +85,8 @@ Screencast (captions on every step):
 7. Instagram Direct: send a DM from the second account; Messaging → Inbox shows it with the
    sender's name and picture; reply; the reply arrives in Instagram. Then send a private reply to
    an Instagram comment and show it arriving as a DM.
+8. WhatsApp: Messaging → Channels → connect WhatsApp; Meta's signup: log in, choose the business,
+   the WhatsApp account and the number, verify it; the number shows as connected. Send a WhatsApp
+   message from a phone; it appears in Messaging → Inbox; reply; the reply arrives on the phone.
+9. Human Agent: a staff member answers a Messenger chat whose last customer message is older than
+   24 hours (an older test chat), and the reply arrives in Messenger.
