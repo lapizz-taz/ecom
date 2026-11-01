@@ -41,3 +41,57 @@ picture. We do not request email, friends, birthday or other profile fields. Tok
 stored encrypted.
 
 Privacy: https://fullfilio.com/privacy · Data deletion: https://fullfilio.com/data-deletion
+
+## Second request (November 2026)
+
+The first review (submitted 18 Oct, answered 1 Nov 2026) approved pages_show_list,
+pages_manage_metadata, pages_messaging and business_management. pages_read_engagement was
+refused as "Screencast Not Aligned with Use Case Details": the use case is allowed, but the video
+did not show the whole flow (Facebook login, the permission being allowed, the feature working).
+
+Asked for this time, with a screencast uploaded for each:
+
+| Permission | Used for |
+|---|---|
+| pages_read_engagement | The Page's own posts under Comments; the Page's linked Instagram account |
+| pages_read_user_content | Customers' comments on the Page's posts |
+| pages_manage_engagement | Reply in public, like, hide and delete Facebook comments |
+| instagram_basic | The Instagram account's name and picture, and the posts comments belong to |
+| instagram_manage_messages | Instagram Direct messages in the Inbox: read, reply, private reply to a comment |
+| instagram_manage_comments | Instagram comments: read, reply in public, hide, delete |
+| whatsapp_business_management | WhatsApp signup: the business's WhatsApp account and number, connect and register it |
+| whatsapp_business_messaging | WhatsApp messages in the Inbox: receive and reply |
+| Human Agent (feature) | A staff member's reply to a Messenger or Instagram chat after 24 hours (HUMAN_AGENT tag) |
+| Business Asset User Profile Access (feature) | The Messenger customer's name and picture next to the chat |
+
+Not needed: ads_read and ads_management (sellers connect Meta Ads with their own app and system user;
+the platform's own ad account is in our business, where standard access is enough), pages_manage_posts,
+catalog_management, leads_retrieval.
+
+Before recording:
+1. Facebook Login for Business → Configurations → the configuration Fullfilio uses: tick all of the
+   permissions above (and the approved ones), or the permission screen will not show them.
+2. On the recording Facebook account: Settings → Business integrations → remove Fullfilio, so
+   the full login and permission screens show again. Disconnect the Page in Messaging → Channels.
+3. The Instagram account is a professional account linked to the Page, with Settings → Messages
+   and story replies → Message controls → Connected tools → "Allow access to messages" on.
+4. Facebook and Instagram in English. A second Facebook account and a second Instagram account
+   to send the comments and messages.
+
+Screencast (captions on every step):
+1. fullfilio.com/login → sign in.
+2. Messaging → Channels → Continue with Facebook.
+3. Facebook: log in, choose the Page and the Instagram account, show the permission list, Allow.
+4. Fullfilio: tick the Page and the Instagram account → Connect; both show as connected.
+5. Facebook comments: comment from the second account; Messaging → Comments shows the post and
+   comment; Reply in public, Like, Hide, each checked on Facebook.
+6. Instagram comments: comment from the second Instagram account; Messaging → Comments shows it
+   under the post; Reply in public and Hide, each checked in Instagram.
+7. Instagram Direct: send a DM from the second account; Messaging → Inbox shows it with the
+   sender's name and picture; reply; the reply arrives in Instagram. Then send a private reply to
+   an Instagram comment and show it arriving as a DM.
+8. WhatsApp: Messaging → Channels → connect WhatsApp; Meta's signup: log in, choose the business,
+   the WhatsApp account and the number, verify it; the number shows as connected. Send a WhatsApp
+   message from a phone; it appears in Messaging → Inbox; reply; the reply arrives on the phone.
+9. Human Agent: a staff member answers a Messenger chat whose last customer message is older than
+   24 hours (an older test chat), and the reply arrives in Messenger.

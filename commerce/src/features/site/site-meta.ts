@@ -82,7 +82,7 @@ export const SITE_PAGES: SitePageMeta[] = [
     description: 'What information Fullfilio handles for online stores in Bangladesh and their customers, why, how Facebook, Instagram and WhatsApp data is used, and your choices.',
     name: 'Privacy policy',
     kind: 'legal',
-    modified: LEGAL_UPDATED,
+    modified: '2026-11-01',
   },
   {
     path: '/terms',
