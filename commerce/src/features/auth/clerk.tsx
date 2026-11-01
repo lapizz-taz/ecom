@@ -79,9 +79,10 @@ function ClerkProviderWithTheme({ children }: { children: ReactNode }) {
  */
 export const pageSignInAppearance = {
   elements: {
-    rootBox: 'w-full',
+    // Clerk's box shrinks to its content by default; here it takes the form's full width.
+    rootBox: 'w-full!',
     cardBox: 'w-full! max-w-none! rounded-none! border-0! bg-transparent! shadow-none!',
-    card: 'border-0! bg-transparent! px-0! pt-0! shadow-none!',
+    card: 'w-full! max-w-none! border-0! bg-transparent! px-0! pt-0! shadow-none!',
     // The page shows the Fullfilio logo above the box instead of a heading.
     header: 'hidden!',
     formFieldLabel: 'text-[12.5px]! font-normal!',

@@ -46,7 +46,7 @@ export default function AdminLoginPage() {
             )}
             {loading || (session && accessLoading) ? <div className="flex justify-center"><Spinner className="size-5" /></div>
               : noBusiness || (
-                <div className="flex">
+                <div className="w-full">
                   <SignIn routing="hash" signUpUrl="/start" fallbackRedirectUrl={next} appearance={pageSignInAppearance} />
                 </div>
               )}
