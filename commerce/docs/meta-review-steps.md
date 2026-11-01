@@ -62,6 +62,11 @@ Asked for this time, with a screencast uploaded for each:
 | whatsapp_business_management | WhatsApp signup: the business's WhatsApp account and number, connect and register it |
 | whatsapp_business_messaging | WhatsApp messages in the Inbox: receive and reply |
 | Human Agent (feature) | A staff member's reply to a Messenger or Instagram chat after 24 hours (HUMAN_AGENT tag) |
+| Business Asset User Profile Access (feature) | The Messenger customer's name and picture next to the chat |
+
+Not needed: ads_read and ads_management (sellers connect Meta Ads with their own app and system user;
+the platform's own ad account is in our business, where standard access is enough), pages_manage_posts,
+catalog_management, leads_retrieval.
 
 Before recording:
 1. Facebook Login for Business → Configurations → the configuration Fullfilio uses: tick all of the
