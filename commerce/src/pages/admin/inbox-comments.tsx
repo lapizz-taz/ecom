@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
-import { CommentReply, type ReplyMode } from '@/features/inbox/comment-reply'
+import { CommentReply, ONE_PRIVATE_MESSAGE, type ReplyMode } from '@/features/inbox/comment-reply'
 import { MessagingTabs } from '@/features/inbox/messaging-tabs'
 import { ChatAvatar, PlatformIcon, shortAgo, Waiting } from '@/features/inbox/ui'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -429,7 +429,9 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
             <span>{shortAgo(i.comment.created_at)}</span>
             <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('public'))}>Reply</button>
-            <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}><span className="sm:hidden">Private</span><span className="hidden sm:inline">Private message</span></button>
+            {i.private_sent
+              ? <span className="inline-flex items-center gap-1 font-medium text-emerald-600" title={ONE_PRIVATE_MESSAGE}><Check className="size-3" /> <span className="sm:hidden">Private sent</span><span className="hidden sm:inline">Private message sent</span></span>
+              : <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}><span className="sm:hidden">Private</span><span className="hidden sm:inline">Private message</span></button>}
             {i.platform === 'FACEBOOK' && (
               <button type="button" className={cn('hidden font-medium hover:text-foreground disabled:opacity-50 sm:inline', i.comment.liked && 'text-primary')} disabled={!!busy} onClick={stop(() => onAction(i.comment.liked ? 'unlike' : 'like'))}>
                 {i.comment.liked ? 'Liked' : 'Like'}
@@ -445,7 +447,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
                 <DropdownMenuItem className="sm:hidden" onClick={() => onNoReply(!i.no_reply_needed)}><CircleSlash /> {i.no_reply_needed ? 'Needs a reply' : 'No reply needed'}</DropdownMenuItem>
                 {i.comment.hidden ? <DropdownMenuItem disabled={!!busy} onClick={() => onAction('unhide')}><Eye /> Show again</DropdownMenuItem>
                   : <DropdownMenuItem disabled={!!busy} onClick={() => onAction('hide')}><EyeOff /> Hide on {i.platform === 'FACEBOOK' ? 'Facebook' : 'Instagram'}</DropdownMenuItem>}
-                <DropdownMenuItem onClick={() => onReply('both')}><Lock /> Reply in public + private</DropdownMenuItem>
+                <DropdownMenuItem disabled={!!i.private_sent} onClick={() => onReply('both')}><Lock /> Reply in public + private</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive" disabled={!!i.comment.removed_at || !!busy} onClick={() => onAction('delete')}><Trash2 /> Delete comment</DropdownMenuItem>
               </DropdownMenuContent>
@@ -459,7 +461,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
               {i.replies > 1 && <span> · {i.replies} replies</span>}
             </p>
           )}
-          {replying && <div className="mt-2"><CommentReply conversationId={i.id} name={name} mode={replying} onSent={onSent} onCancel={onCloseReply} /></div>}
+          {replying && <div className="mt-2"><CommentReply conversationId={i.id} name={name} mode={replying} privateSent={!!i.private_sent} onSent={onSent} onCancel={onCloseReply} /></div>}
         </div>
       </div>
     </li>
@@ -542,7 +544,7 @@ function CommentDetail({ item, onClose, onNext, onChanged, onAction, busy, onRep
             {icon(item.comment.liked ? 'Remove like' : 'Like', busy === 'like' || busy === 'unlike' ? <Spinner /> : <Heart className={cn(item.comment.liked && 'fill-current')} />, () => onAction(item.comment.liked ? 'unlike' : 'like'), !!item.comment.liked, item.platform !== 'FACEBOOK' || !!busy)}
             {icon(item.comment.hidden ? 'Show again' : 'Hide', busy === 'hide' || busy === 'unhide' ? <Spinner /> : item.comment.hidden ? <Eye /> : <EyeOff />, () => onAction(item.comment.hidden ? 'unhide' : 'hide'), !!item.comment.hidden, !!busy)}
             {icon('Reply in public', <MessageCircle />, () => onReply('public'))}
-            {icon('Private message', <Lock />, () => onReply('private'))}
+            {icon(item.private_sent ? ONE_PRIVATE_MESSAGE : 'Private message', <Lock />, () => onReply('private'), !!item.private_sent, !!item.private_sent)}
             {icon('Delete on Meta', busy === 'delete' ? <Spinner /> : <Trash2 />, () => onAction('delete'), false, !!item.comment.removed_at || !!busy)}
             {icon('Mark as spam', <Ban />, () => update.mutate({ labels: [...new Set([...labels, 'Spam'])] }), labels.includes('Spam'))}
           </div>

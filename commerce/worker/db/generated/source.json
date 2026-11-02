@@ -1,5 +1,5 @@
 {
-  "migrations": 204,
-  "last": "20261213000200_health_cron_history.sql",
-  "sha256": "df89aa0fd9fee74427af314d67e89636d01831abc97e65b7da37590c4d8d7655"
+  "migrations": 205,
+  "last": "20261213000300_inbox_private_sent.sql",
+  "sha256": "6e7f3c87acdcd63c887b105f0ace7109185c2f67fbd7faca13b16ec691d9b1b0"
 }

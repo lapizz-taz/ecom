@@ -116,6 +116,8 @@ export interface CommentItem {
   comment: { id: string | null; external_id: string | null; body: string | null; attachments: Attachment[]; sender_name: string | null; created_at: string | null
     hidden: boolean | null; liked: boolean | null; removed_at: string | null; filtered: string | null }
   replies: number; replied: boolean
+  /** The one private message Meta allows per comment was sent. */
+  private_sent?: boolean
   last_reply: { body: string; direction: 'IN' | 'OUT'; sender_name: string | null; created_at: string; auto_kind: string | null; private_reply: boolean; status: string } | null
 }
 const clean = (p: object) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== '' && v !== undefined && v !== false))
