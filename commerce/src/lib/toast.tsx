@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Info, X } from 'lucide-react'
+import { AlertTriangle, Check, Info, Loader2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { toast as sonner } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -7,9 +7,14 @@ import { cn } from '@/lib/utils'
  * App-wide notifications (Sonner): a tinted card with the tone's icon in a solid square,
  * the message, and a close button. Errors stay on screen longer; nothing is shown as
  * success unless the call succeeded.
+ *
+ * The same error shows once: a failed action is often reported by its own page and by the
+ * app-wide handler (lib/query-client.ts) with the same words, so an error replaces one
+ * already on screen with the same text instead of stacking a copy. `loading` stays until
+ * it is replaced: pass the same `id` to success or error to turn it into the outcome.
  */
 type Options = { description?: ReactNode; id?: string | number; duration?: number; action?: { label: string; onClick: () => void } }
-type Tone = 'success' | 'error' | 'warning' | 'info'
+type Tone = 'success' | 'error' | 'warning' | 'info' | 'loading'
 
 const TONES: Record<Tone, { icon: ReactNode; card: string; box: string; text: string; rule: string }> = {
   success: {
@@ -31,6 +36,11 @@ const TONES: Record<Tone, { icon: ReactNode; card: string; box: string; text: st
     icon: <Info className="size-4" strokeWidth={2.5} />,
     card: 'border-blue-300/70 bg-blue-50 dark:border-blue-800/70 dark:bg-blue-950/80',
     box: 'bg-blue-600', text: 'text-blue-800 dark:text-blue-200', rule: 'bg-blue-300 dark:bg-blue-800',
+  },
+  loading: {
+    icon: <Loader2 className="size-4 animate-spin" strokeWidth={2.5} />,
+    card: 'border-border bg-background',
+    box: 'bg-primary', text: 'text-foreground', rule: 'bg-border',
   },
 }
 
@@ -68,8 +78,13 @@ function show(tone: Tone, title: string, o: Options | undefined, duration: numbe
 
 export const toast = {
   success: (title: string, o?: Options) => show('success', title, o, 4000),
-  error: (title: unknown, o?: Options) => show('error', text(title) || 'Something went wrong', o, 7000),
+  error: (title: unknown, o?: Options) => {
+    const message = text(title) || 'Something went wrong'
+    return show('error', message, { ...o, id: o?.id ?? `error:${message}` }, 7000)
+  },
   warning: (title: string, o?: Options) => show('warning', title, o, 6000),
   info: (title: string, o?: Options) => show('info', title, o, 4500),
+  /** "Deleting…" until the same id is shown as success or error. */
+  loading: (title: string, o?: Options) => show('loading', title, o, Infinity),
   dismiss: (id?: string | number) => sonner.dismiss(id),
 }
