@@ -16,7 +16,8 @@
 --     store deleted from Fullfilio keeps its text as the store's moderation record, under Deleted.
 --
 -- New: inbox_messages.erased_at, inbox_channel_disconnect(), inbox_message_erase(); inbox_comments()
--- returns erased_at with each comment. Safe to re-run.
+-- returns erased_at with each comment, and private_sent: Meta allows one private message per comment.
+-- Safe to re-run.
 -- =============================================================================
 
 alter table public.inbox_messages
@@ -126,5 +127,10 @@ end $$;
 select pg_temp.patch_fn('public.inbox_comments(jsonb)',
   $a$'removed_at', (w.r).removed_at, 'filtered', (w.r).filtered)$a$,
   $b$'removed_at', (w.r).removed_at, 'erased_at', (w.r).erased_at, 'filtered', (w.r).filtered)$b$);
+
+-- Comments: whether the one private message Meta allows per comment was already sent.
+select pg_temp.patch_fn('public.inbox_comments(jsonb)',
+  $a$'replied', exists (select 1 from public.inbox_messages o where o.conversation_id = (w.c).id and o.direction = 'OUT' and o.status <> 'FAILED'),$a$,
+  $b$'replied', exists (select 1 from public.inbox_messages o where o.conversation_id = (w.c).id and o.direction = 'OUT' and o.status <> 'FAILED'), 'private_sent', exists (select 1 from public.inbox_messages o where o.conversation_id = (w.c).id and o.direction = 'OUT' and o.private_reply and o.status <> 'FAILED'),$b$);
 
 select public._tenancy_own_functions();

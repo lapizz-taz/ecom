@@ -120,6 +120,8 @@ export interface CommentItem {
     /** Removed on Facebook by the person who wrote it (or by Facebook): its text is gone here too. */
     erased_at?: string | null }
   replies: number; replied: boolean
+  /** The one private message Meta allows per comment was sent. */
+  private_sent?: boolean
   last_reply: { body: string; direction: 'IN' | 'OUT'; sender_name: string | null; created_at: string; auto_kind: string | null; private_reply: boolean; status: string } | null
 }
 const clean = (p: object) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== '' && v !== undefined && v !== false))

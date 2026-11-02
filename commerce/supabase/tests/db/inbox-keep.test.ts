@@ -142,3 +142,24 @@ describe('inbox: what the customer deletes is erased', () => {
       expect(m.comment.removed_at).toBeTruthy()
     }))
 })
+
+describe('inbox: one private message per comment', () => {
+  it('says when the private message Meta allows was already sent (a failed one does not count)', () =>
+    inTx(async (db) => {
+      const ig = await channel(db, 'INSTAGRAM', '5550006')
+      const c = await ingest(db, { channel_id: ig, kind: 'COMMENT', thread_key: 'c-p', post: { id: 'post_p' }, message: { external_id: 'c-p', body: 'price?' } })
+      const staff = await createStaff(db, 'ADMIN')
+      const sent = async () => {
+        await asUser(db, staff)
+        const l = await value<{ items: Array<{ id: string; private_sent: boolean }> }>(db, `select public.inbox_comments('{}'::jsonb)`)
+        return l.items.find((i) => i.id === c.conversation_id)!.private_sent
+      }
+      expect(await sent()).toBe(false)
+      await asService(db)
+      await db.query(`select public.inbox_record_outgoing($1::jsonb, $2)`, [JSON.stringify({ conversation_id: c.conversation_id, body: 'try', private_reply: true, error: 'Meta: failed' }), staff])
+      expect(await sent()).toBe(false)
+      await asService(db)
+      await db.query(`select public.inbox_record_outgoing($1::jsonb, $2)`, [JSON.stringify({ conversation_id: c.conversation_id, external_id: 'pm1', body: 'Check your inbox', private_reply: true }), staff])
+      expect(await sent()).toBe(true)
+    }))
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { commentAction, fetchPost, InboxGraph, sendMessage } from './meta.ts'
+import { commentAction, fetchPost, InboxGraph, privateReplyError, sendMessage } from './meta.ts'
 import { insideReplyWindow, parseWebhook, toIso, validSignature } from './parse.ts'
 
 describe('inbox webhooks: Messenger and Instagram', () => {
@@ -199,5 +199,16 @@ describe('inbox: comment actions and posts', () => {
     expect(call(fb.fetchFn).url).toContain('reactions.summary')
     const ig = graph({ caption: 'Gothic drop', media_type: 'VIDEO', thumbnail_url: 'https://x/t.jpg', media_url: 'https://x/v.mp4', media_product_type: 'REELS', like_count: 12 })
     expect(await fetchPost(ig.g, 'INSTAGRAM', '1790')).toMatchObject({ image_url: 'https://x/t.jpg', media_type: 'REELS', likes: 12 })
+  })
+})
+
+describe('inbox: private messages to a comment', () => {
+  it('explains Meta\'s one-private-message rule instead of its own wording', () => {
+    const once = privateReplyError(new Error('Meta: (#-1) The comment you are trying to reply to, already has a reply.'))
+    expect((once as Error).message).toMatch(/one private message per comment/)
+    const old = privateReplyError(new Error('Meta: (#10) This message is sent outside of allowed window.'))
+    expect((old as Error).message).toMatch(/within 7 days/)
+    const other = new Error('Meta: (#100) something else')
+    expect(privateReplyError(other)).toBe(other)
   })
 })
