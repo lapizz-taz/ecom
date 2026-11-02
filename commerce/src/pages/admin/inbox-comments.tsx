@@ -40,6 +40,15 @@ const STATES: Array<{ value: CommentState; label: string }> = [
 const QUICK_LABELS = ['Complaint', 'Order', 'Price ask', 'Return-exchange', 'Spam', 'Where is my order']
 const postKey = (p: { channel_id: string; post_id: string | null }) => `${p.channel_id}|${p.post_id ?? ''}`
 
+const ACTION_TEXT: Record<CommentOp, { doing: string; done: string }> = {
+  like: { doing: 'Liking', done: 'Liked' },
+  unlike: { doing: 'Removing the like', done: 'Like removed' },
+  hide: { doing: 'Hiding', done: 'Hidden' },
+  unhide: { doing: 'Showing it again', done: 'Shown again' },
+  delete: { doing: 'Deleting', done: 'Deleted' },
+}
+const actionToast = (id: string) => `comment-action:${id}`
+
 export default function InboxCommentsPage() {
   const qc = useQueryClient()
   const { can } = useAuth()
@@ -99,11 +108,16 @@ export default function InboxCommentsPage() {
     setPicked(new Set())
     refresh()
   }
+  // Meta can take a few seconds: one popup says what is happening and then turns into the outcome.
   const one = useMutation({
     mutationFn: ({ item, op }: { item: CommentItem; op: CommentOp }) => commentAction(item.comment.id!, op),
-    onSuccess: (_r, v) => { toast.success({ like: 'Liked', unlike: 'Like removed', hide: 'Hidden', unhide: 'Shown again', delete: 'Deleted' }[v.op]); refresh() },
-    onError: (e) => { toast.error(toUserMessage(e)); refresh() },
+    meta: { silent: true },
+    onMutate: (v) => { toast.loading(`${ACTION_TEXT[v.op].doing}…`, { id: actionToast(v.item.id) }) },
+    onSuccess: (_r, v) => toast.success(ACTION_TEXT[v.op].done, { id: actionToast(v.item.id) }),
+    onError: (e, v) => toast.error(toUserMessage(e), { id: actionToast(v.item.id) }),
+    onSettled: () => refresh(),
   })
+  const busyWith = (id: string): CommentOp | null => (one.isPending && one.variables?.item.id === id ? one.variables.op : null)
 
   const open = (id: string) => {
     update({ c: id }, { resetPage: false })
@@ -242,7 +256,7 @@ export default function InboxCommentsPage() {
                         onOpen={() => open(i.id)} replying={replying?.id === i.id ? replying.mode : null}
                         onReply={(mode) => { setReplying({ id: i.id, mode }); update({ c: i.id }, { resetPage: false }) }}
                         onCloseReply={() => setReplying(null)} onSent={() => { setReplying(null); refresh() }}
-                        onAction={(op) => one.mutate({ item: i, op })}
+                        onAction={(op) => one.mutate({ item: i, op })} busy={busyWith(i.id)}
                         onNoReply={(v) => bulk.mutate({ ids: [i.id], patch: { no_reply_needed: v, read: true } })} />
                     ))}
                   </ul>
@@ -254,7 +268,7 @@ export default function InboxCommentsPage() {
         {/* Detail */}
         <aside className="hidden min-h-0 rounded-xl border bg-card xl:block">
           {current ? <CommentDetail item={current} onClose={() => update({ c: '' }, { resetPage: false })} onNext={next} onChanged={refresh}
-            onAction={(op) => one.mutate({ item: current, op })} onReply={(mode) => setReplying({ id: current.id, mode })}
+            onAction={(op) => one.mutate({ item: current, op })} busy={busyWith(current.id)} onReply={(mode) => setReplying({ id: current.id, mode })}
             onNoReply={(v) => bulk.mutate({ ids: [current.id], patch: { no_reply_needed: v, read: true } })} />
             : <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">Click a comment to open it here.</div>}
         </aside>
@@ -264,7 +278,7 @@ export default function InboxCommentsPage() {
         <SheetContent side="right" className="w-full p-0 sm:max-w-sm">
           <SheetTitle className="sr-only">Comment</SheetTitle>
           {current && <CommentDetail item={current} onClose={() => setMobileDetail(false)} onNext={next} onChanged={refresh}
-            onAction={(op) => one.mutate({ item: current, op })} onReply={(mode) => { setReplying({ id: current.id, mode }); setMobileDetail(false) }}
+            onAction={(op) => one.mutate({ item: current, op })} busy={busyWith(current.id)} onReply={(mode) => { setReplying({ id: current.id, mode }); setMobileDetail(false) }}
             onNoReply={(v) => bulk.mutate({ ids: [current.id], patch: { no_reply_needed: v, read: true } })} />}
         </SheetContent>
       </Sheet>
@@ -379,6 +393,11 @@ function PostHeader({ p, canManage }: { p: CommentPost; canManage: boolean }) {
   )
 }
 
+/** "Deleting…" with a spinner while Meta is still doing it. */
+function BusyLabel({ op }: { op: CommentOp }) {
+  return <span role="status" className="inline-flex items-center gap-1 font-medium text-foreground"><Spinner className="size-3" /> {ACTION_TEXT[op].doing}…</span>
+}
+
 function StatusChip({ i }: { i: CommentItem }) {
   if (i.comment.removed_at) return <Badge variant="danger" className="px-1.5 py-0 text-[10px]">Deleted</Badge>
   if (i.comment.filtered) return <Badge variant="warning" className="px-1.5 py-0 text-[10px]" title={i.comment.filtered}>Filtered</Badge>
@@ -386,10 +405,13 @@ function StatusChip({ i }: { i: CommentItem }) {
   return <Badge variant="success" className="gap-1 px-1.5 py-0 text-[10px]"><Check className="size-2.5" /> Published</Badge>
 }
 
-function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onReply, onCloseReply, onSent, onAction, onNoReply }: {
+function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onReply, onCloseReply, onSent, onAction, busy, onNoReply }: {
   i: CommentItem; on: boolean; selecting: boolean; picked: boolean; onPick: (v: boolean) => void; onOpen: () => void
   replying: ReplyMode | null; onReply: (mode: ReplyMode) => void; onCloseReply: () => void; onSent: () => void
-  onAction: (op: CommentOp) => void; onNoReply: (v: boolean) => void
+  onAction: (op: CommentOp) => void
+  /** The action Meta is still doing on this comment. */
+  busy: CommentOp | null
+  onNoReply: (v: boolean) => void
 }) {
   const name = i.customer_name ?? 'Customer'
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
@@ -400,7 +422,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
         {selecting && <Checkbox checked={picked} onCheckedChange={(v) => onPick(!!v)} onClick={(e) => e.stopPropagation()} className="mt-2" aria-label={`Select ${name}`} />}
         <ChatAvatar name={name} src={i.customer_avatar} platform={i.platform} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="inline-block max-w-full rounded-2xl bg-muted px-3 py-2">
+          <div className={cn('inline-block max-w-full rounded-2xl bg-muted px-3 py-2 transition-opacity', busy && 'opacity-60')} aria-busy={!!busy}>
             <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">{name} <StatusChip i={i} /></p>
             <p className={cn('text-sm break-words whitespace-pre-wrap', i.comment.removed_at && 'text-muted-foreground line-through')}>{i.comment.body || (i.comment.attachments?.length ? '📷 Photo' : '…')}</p>
           </div>
@@ -409,7 +431,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
             <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('public'))}>Reply</button>
             <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}><span className="sm:hidden">Private</span><span className="hidden sm:inline">Private message</span></button>
             {i.platform === 'FACEBOOK' && (
-              <button type="button" className={cn('hidden font-medium hover:text-foreground sm:inline', i.comment.liked && 'text-primary')} onClick={stop(() => onAction(i.comment.liked ? 'unlike' : 'like'))}>
+              <button type="button" className={cn('hidden font-medium hover:text-foreground disabled:opacity-50 sm:inline', i.comment.liked && 'text-primary')} disabled={!!busy} onClick={stop(() => onAction(i.comment.liked ? 'unlike' : 'like'))}>
                 {i.comment.liked ? 'Liked' : 'Like'}
               </button>
             )}
@@ -419,16 +441,17 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
             <DropdownMenu>
               <DropdownMenuTrigger asChild><button type="button" onClick={(e) => e.stopPropagation()} aria-label="More"><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
               <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
-                {i.platform === 'FACEBOOK' && <DropdownMenuItem className="sm:hidden" onClick={() => onAction(i.comment.liked ? 'unlike' : 'like')}><Heart /> {i.comment.liked ? 'Remove like' : 'Like'}</DropdownMenuItem>}
+                {i.platform === 'FACEBOOK' && <DropdownMenuItem className="sm:hidden" disabled={!!busy} onClick={() => onAction(i.comment.liked ? 'unlike' : 'like')}><Heart /> {i.comment.liked ? 'Remove like' : 'Like'}</DropdownMenuItem>}
                 <DropdownMenuItem className="sm:hidden" onClick={() => onNoReply(!i.no_reply_needed)}><CircleSlash /> {i.no_reply_needed ? 'Needs a reply' : 'No reply needed'}</DropdownMenuItem>
-                {i.comment.hidden ? <DropdownMenuItem onClick={() => onAction('unhide')}><Eye /> Show again</DropdownMenuItem>
-                  : <DropdownMenuItem onClick={() => onAction('hide')}><EyeOff /> Hide on {i.platform === 'FACEBOOK' ? 'Facebook' : 'Instagram'}</DropdownMenuItem>}
+                {i.comment.hidden ? <DropdownMenuItem disabled={!!busy} onClick={() => onAction('unhide')}><Eye /> Show again</DropdownMenuItem>
+                  : <DropdownMenuItem disabled={!!busy} onClick={() => onAction('hide')}><EyeOff /> Hide on {i.platform === 'FACEBOOK' ? 'Facebook' : 'Instagram'}</DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => onReply('both')}><Lock /> Reply in public + private</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" disabled={!!i.comment.removed_at} onClick={() => onAction('delete')}><Trash2 /> Delete comment</DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive" disabled={!!i.comment.removed_at || !!busy} onClick={() => onAction('delete')}><Trash2 /> Delete comment</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <span className="ml-auto">{waiting ? <Waiting since={i.awaiting_since} /> : i.replied ? <span className="text-emerald-600">Replied</span> : null}</span>
+            <span className="ml-auto">{busy ? <BusyLabel op={busy} />
+              : waiting ? <Waiting since={i.awaiting_since} /> : i.replied ? <span className="text-emerald-600">Replied</span> : null}</span>
           </div>
           {i.last_reply && i.replies > 0 && !replying && (
             <p className="mt-1.5 ml-1 line-clamp-1 border-l-2 pl-2 text-xs text-muted-foreground">
@@ -443,9 +466,9 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
   )
 }
 
-function CommentDetail({ item, onClose, onNext, onChanged, onAction, onReply, onNoReply }: {
+function CommentDetail({ item, onClose, onNext, onChanged, onAction, busy, onReply, onNoReply }: {
   item: CommentItem; onClose: () => void; onNext: () => void; onChanged: () => void
-  onAction: (op: CommentOp) => void; onReply: (mode: ReplyMode) => void; onNoReply: (v: boolean) => void
+  onAction: (op: CommentOp) => void; busy: CommentOp | null; onReply: (mode: ReplyMode) => void; onNoReply: (v: boolean) => void
 }) {
   const { user } = useAuth()
   const thread = useQuery({ queryKey: ['inbox-thread', item.id], queryFn: () => inboxThread(item.id), refetchInterval: 10_000 })
@@ -493,7 +516,10 @@ function CommentDetail({ item, onClose, onNext, onChanged, onAction, onReply, on
         </div>
 
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Actions</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Actions</h3>
+            {busy && <span className="text-xs"><BusyLabel op={busy} /></span>}
+          </div>
           <div className="flex gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -513,11 +539,11 @@ function CommentDetail({ item, onClose, onNext, onChanged, onAction, onReply, on
           </div>
           <div className="flex flex-wrap gap-1.5">
             {icon(item.no_reply_needed ? 'Needs a reply' : 'No reply needed', <CircleSlash />, () => onNoReply(!item.no_reply_needed), item.no_reply_needed)}
-            {icon(item.comment.liked ? 'Remove like' : 'Like', <Heart className={cn(item.comment.liked && 'fill-current')} />, () => onAction(item.comment.liked ? 'unlike' : 'like'), !!item.comment.liked, item.platform !== 'FACEBOOK')}
-            {icon(item.comment.hidden ? 'Show again' : 'Hide', item.comment.hidden ? <Eye /> : <EyeOff />, () => onAction(item.comment.hidden ? 'unhide' : 'hide'), !!item.comment.hidden)}
+            {icon(item.comment.liked ? 'Remove like' : 'Like', busy === 'like' || busy === 'unlike' ? <Spinner /> : <Heart className={cn(item.comment.liked && 'fill-current')} />, () => onAction(item.comment.liked ? 'unlike' : 'like'), !!item.comment.liked, item.platform !== 'FACEBOOK' || !!busy)}
+            {icon(item.comment.hidden ? 'Show again' : 'Hide', busy === 'hide' || busy === 'unhide' ? <Spinner /> : item.comment.hidden ? <Eye /> : <EyeOff />, () => onAction(item.comment.hidden ? 'unhide' : 'hide'), !!item.comment.hidden, !!busy)}
             {icon('Reply in public', <MessageCircle />, () => onReply('public'))}
             {icon('Private message', <Lock />, () => onReply('private'))}
-            {icon('Delete on Meta', <Trash2 />, () => onAction('delete'), false, !!item.comment.removed_at)}
+            {icon('Delete on Meta', busy === 'delete' ? <Spinner /> : <Trash2 />, () => onAction('delete'), false, !!item.comment.removed_at || !!busy)}
             {icon('Mark as spam', <Ban />, () => update.mutate({ labels: [...new Set([...labels, 'Spam'])] }), labels.includes('Spam'))}
           </div>
         </section>
