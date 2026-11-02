@@ -7,7 +7,7 @@
 --   * Disconnect (Messaging → Channels) ends the connection, not the store's records: the access
 --     token is deleted and Meta stops sending events, while the Page's chats and comments stay in the
 --     inbox (as the Disconnect dialog and the privacy policy say). Connecting the same Page again
---     carries on in the same chats. "Delete its messages" on a disconnected account removes them
+--     carries on in the same chats. "Delete messages" on a disconnected account removes them
 --     for good (inbox_channel_remove, unchanged): the store asking for deletion.
 --   * A customer who deletes (unsends) a Messenger or Instagram message, or whose Facebook comment
 --     is removed on Facebook, asked for it to go: its words and files are erased here too, and a
