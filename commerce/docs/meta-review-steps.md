@@ -63,10 +63,16 @@ Asked for this time, with a screencast uploaded for each:
 | whatsapp_business_messaging | WhatsApp messages in the Inbox: receive and reply |
 | Human Agent (feature) | A staff member's reply to a Messenger or Instagram chat after 24 hours (HUMAN_AGENT tag) |
 | Business Asset User Profile Access (feature) | The Messenger customer's name and picture next to the chat |
+| ads_read | Replying to, hiding and deleting Instagram comments when the seller manages the Page through a business portfolio (Meta requires ads_read or ads_management for this, on top of instagram_manage_comments) |
 
-Not needed: ads_read and ads_management (sellers connect Meta Ads with their own app and system user;
-the platform's own ad account is in our business, where standard access is enough), pages_manage_posts,
-catalog_management, leads_retrieval.
+ads_read was added on 2 Nov 2026. Without it Meta refused every Instagram comment reply, hide and delete
+for a Page managed through a business portfolio ("Object with ID ... does not exist, cannot be loaded due to
+missing permissions"), while reading posts worked. After adding ads_read to the "Fullfilio inbox" login
+configuration and connecting again, the reply went through. Its screencast is Video B (Instagram comments).
+Fullfilio reads no ad data with it.
+
+Not needed: ads_management (ads_read is enough for comment moderation; sellers connect Meta Ads with their
+own app and system user), pages_manage_posts, catalog_management, leads_retrieval.
 
 Before recording:
 1. Facebook Login for Business → Configurations → the configuration Fullfilio uses: tick all of the
@@ -111,7 +117,7 @@ clip is put in front of each Facebook/Instagram video, so every video shows the 
 | 6 WhatsApp | Connect WhatsApp → Embedded Signup → number connected → customer message → reply; WhatsApp → Messages → a message → Submit to Meta |
 
 Videos: A = 1+2 (pages_read_engagement, pages_read_user_content, pages_manage_engagement);
-B = 1+3+4 (instagram_basic, instagram_manage_messages, instagram_manage_comments);
+B = 1+3+4 (instagram_basic, instagram_manage_messages, instagram_manage_comments, ads_read);
 C = 1+5 (Business Asset User Profile Access, Human Agent); D = 6 (whatsapp_business_management,
 whatsapp_business_messaging). The customer test account needs a Tester role on the app until the
 permissions are approved.
