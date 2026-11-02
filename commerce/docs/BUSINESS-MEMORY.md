@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 2 Nov 2026.
+Last updated: 1 Nov 2026.
 
 ## What Fullfilio is
 
@@ -99,12 +99,6 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 **Messaging**
 - One inbox for Facebook, Instagram and WhatsApp, with comments, auto-replies, moderation and follow-ups.
 - Orders can be created from a chat.
-- Disconnecting a Page, Instagram account or number keeps its chats and comments (only the token goes); Reconnect logs in
-  again in the same chats; Delete messages on a disconnected account removes them for good. A message the customer
-  unsends, or a comment removed on Facebook, is erased here too (Meta Platform Terms 3.d). A comment the store deletes stays
-  under Deleted on Comments (since 2 Nov 2026).
-- Instagram comment replies, hides and deletes need the ads_read permission when the Page is managed through a business
-  portfolio (added to the "Fullfilio inbox" login on 2 Nov 2026; part of the second App Review request).
 
 **Operations**
 - Inventory: low-stock alerts, dead stock, ABC analysis, a forecast, purchases.

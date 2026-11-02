@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useAuth } from '@/features/auth/auth-context'
-import { CommentReply, ONE_PRIVATE_MESSAGE, type ReplyMode } from '@/features/inbox/comment-reply'
+import { CommentReply, type ReplyMode } from '@/features/inbox/comment-reply'
 import { MessagingTabs } from '@/features/inbox/messaging-tabs'
 import { ChatAvatar, PlatformIcon, shortAgo, Waiting } from '@/features/inbox/ui'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -48,8 +48,6 @@ const ACTION_TEXT: Record<CommentOp, { doing: string; done: string }> = {
   delete: { doing: 'Deleting', done: 'Deleted' },
 }
 const actionToast = (id: string) => `comment-action:${id}`
-/** Still needs an answer: not marked "no reply needed", and not deleted (by the store or on Meta). */
-const isWaiting = (i: CommentItem) => !!i.awaiting_since && !i.no_reply_needed && !i.comment.removed_at
 
 export default function InboxCommentsPage() {
   const qc = useQueryClient()
@@ -115,10 +113,7 @@ export default function InboxCommentsPage() {
     mutationFn: ({ item, op }: { item: CommentItem; op: CommentOp }) => commentAction(item.comment.id!, op),
     meta: { silent: true },
     onMutate: (v) => { toast.loading(`${ACTION_TEXT[v.op].doing}…`, { id: actionToast(v.item.id) }) },
-    onSuccess: (_r, v) => toast.success(ACTION_TEXT[v.op].done, v.op === 'delete'
-      ? { id: actionToast(v.item.id), description: 'It stays here under Deleted.',
-          action: { label: 'Show deleted comments', onClick: () => update({ state: 'deleted', post: '', c: '' }, { resetPage: false }) } }
-      : { id: actionToast(v.item.id) }),
+    onSuccess: (_r, v) => toast.success(ACTION_TEXT[v.op].done, { id: actionToast(v.item.id) }),
     onError: (e, v) => toast.error(toUserMessage(e), { id: actionToast(v.item.id) }),
     onSettled: () => refresh(),
   })
@@ -129,7 +124,7 @@ export default function InboxCommentsPage() {
     if (!window.matchMedia('(min-width: 1280px)').matches) setMobileDetail(true)
   }
   const next = () => {
-    const waiting = items.filter((i) => isWaiting(i) && i.id !== s.c)
+    const waiting = items.filter((i) => i.awaiting_since && !i.no_reply_needed && i.id !== s.c)
     const after = waiting.find((i) => items.indexOf(i) > items.findIndex((x) => x.id === s.c)) ?? waiting[0]
     if (after) open(after.id)
     else toast.success('Nothing else is waiting here')
@@ -241,7 +236,7 @@ export default function InboxCommentsPage() {
             </>
           )}
           <div className="flex items-center gap-2 border-b px-3 py-2">
-            <Badge variant="warning" className="tabular-nums">{formatNumber(items.filter(isWaiting).length)} awaiting in these results</Badge>
+            <Badge variant="warning" className="tabular-nums">{formatNumber(items.filter((i) => i.awaiting_since && !i.no_reply_needed).length)} awaiting in these results</Badge>
             {s.view === 'comments' && <span className="text-[11px] text-muted-foreground">Customer comments across all posts</span>}
             <Button size="sm" variant={selecting ? 'secondary' : 'ghost'} className="ml-auto h-7 text-xs" onClick={() => { setSelecting((v) => !v); setPicked(new Set()) }}>
               {selecting ? 'Done selecting' : 'Select comments'}
@@ -398,11 +393,6 @@ function PostHeader({ p, canManage }: { p: CommentPost; canManage: boolean }) {
   )
 }
 
-/** A comment removed on Facebook or Instagram outside Fullfilio: its words are deleted here too (Meta Platform Terms). */
-function ErasedText({ platform }: { platform: CommentItem['platform'] }) {
-  return <p className="text-sm text-muted-foreground italic">Deleted on {platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}. Its text is deleted here too.</p>
-}
-
 /** "Deleting…" with a spinner while Meta is still doing it. */
 function BusyLabel({ op }: { op: CommentOp }) {
   return <span role="status" className="inline-flex items-center gap-1 font-medium text-foreground"><Spinner className="size-3" /> {ACTION_TEXT[op].doing}…</span>
@@ -425,7 +415,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
 }) {
   const name = i.customer_name ?? 'Customer'
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
-  const waiting = isWaiting(i)
+  const waiting = i.awaiting_since && !i.no_reply_needed && !i.comment.removed_at
   return (
     <li className={cn('cursor-pointer px-3 py-3 transition-colors hover:bg-muted/30', on && 'bg-muted/50', i.unread_count > 0 && 'border-l-2 border-l-primary')} onClick={onOpen}>
       <div className="flex gap-2.5">
@@ -434,15 +424,12 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
         <div className="min-w-0 flex-1">
           <div className={cn('inline-block max-w-full rounded-2xl bg-muted px-3 py-2 transition-opacity', busy && 'opacity-60')} aria-busy={!!busy}>
             <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">{name} <StatusChip i={i} /></p>
-            {i.comment.erased_at ? <ErasedText platform={i.platform} />
-              : <p className={cn('text-sm break-words whitespace-pre-wrap', i.comment.removed_at && 'text-muted-foreground line-through')}>{i.comment.body || (i.comment.attachments?.length ? '📷 Photo' : '…')}</p>}
+            <p className={cn('text-sm break-words whitespace-pre-wrap', i.comment.removed_at && 'text-muted-foreground line-through')}>{i.comment.body || (i.comment.attachments?.length ? '📷 Photo' : '…')}</p>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
             <span>{shortAgo(i.comment.created_at)}</span>
             <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('public'))}>Reply</button>
-            {i.private_sent
-              ? <span className="inline-flex items-center gap-1 font-medium text-emerald-600" title={ONE_PRIVATE_MESSAGE}><Check className="size-3" /> <span className="sm:hidden">Private sent</span><span className="hidden sm:inline">Private message sent</span></span>
-              : <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}><span className="sm:hidden">Private</span><span className="hidden sm:inline">Private message</span></button>}
+            <button type="button" className="font-medium hover:text-foreground" onClick={stop(() => onReply('private'))}><span className="sm:hidden">Private</span><span className="hidden sm:inline">Private message</span></button>
             {i.platform === 'FACEBOOK' && (
               <button type="button" className={cn('hidden font-medium hover:text-foreground disabled:opacity-50 sm:inline', i.comment.liked && 'text-primary')} disabled={!!busy} onClick={stop(() => onAction(i.comment.liked ? 'unlike' : 'like'))}>
                 {i.comment.liked ? 'Liked' : 'Like'}
@@ -458,7 +445,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
                 <DropdownMenuItem className="sm:hidden" onClick={() => onNoReply(!i.no_reply_needed)}><CircleSlash /> {i.no_reply_needed ? 'Needs a reply' : 'No reply needed'}</DropdownMenuItem>
                 {i.comment.hidden ? <DropdownMenuItem disabled={!!busy} onClick={() => onAction('unhide')}><Eye /> Show again</DropdownMenuItem>
                   : <DropdownMenuItem disabled={!!busy} onClick={() => onAction('hide')}><EyeOff /> Hide on {i.platform === 'FACEBOOK' ? 'Facebook' : 'Instagram'}</DropdownMenuItem>}
-                <DropdownMenuItem disabled={!!i.private_sent} onClick={() => onReply('both')}><Lock /> Reply in public + private</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onReply('both')}><Lock /> Reply in public + private</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive" disabled={!!i.comment.removed_at || !!busy} onClick={() => onAction('delete')}><Trash2 /> Delete comment</DropdownMenuItem>
               </DropdownMenuContent>
@@ -472,7 +459,7 @@ function CommentRow({ i, on, selecting, picked, onPick, onOpen, replying, onRepl
               {i.replies > 1 && <span> · {i.replies} replies</span>}
             </p>
           )}
-          {replying && <div className="mt-2"><CommentReply conversationId={i.id} name={name} mode={replying} privateSent={!!i.private_sent} onSent={onSent} onCancel={onCloseReply} /></div>}
+          {replying && <div className="mt-2"><CommentReply conversationId={i.id} name={name} mode={replying} onSent={onSent} onCancel={onCloseReply} /></div>}
         </div>
       </div>
     </li>
@@ -517,8 +504,7 @@ function CommentDetail({ item, onClose, onNext, onChanged, onAction, busy, onRep
             <Waiting since={item.awaiting_since} className="text-inherit" /> · waiting since {new Date(item.awaiting_since).toLocaleString()}
           </p>
         )}
-        {item.comment.erased_at ? <div className="rounded-lg border border-dashed px-3 py-2"><ErasedText platform={item.platform} /></div>
-          : <p className="rounded-lg border px-3 py-2 text-sm whitespace-pre-wrap">{item.comment.body || '…'}</p>}
+        <p className="rounded-lg border px-3 py-2 text-sm whitespace-pre-wrap">{item.comment.body || '…'}</p>
         {item.comment.filtered && <p className="text-xs text-amber-600">Hidden by moderation: {item.comment.filtered}</p>}
 
         <div className="space-y-1.5">
@@ -556,7 +542,7 @@ function CommentDetail({ item, onClose, onNext, onChanged, onAction, busy, onRep
             {icon(item.comment.liked ? 'Remove like' : 'Like', busy === 'like' || busy === 'unlike' ? <Spinner /> : <Heart className={cn(item.comment.liked && 'fill-current')} />, () => onAction(item.comment.liked ? 'unlike' : 'like'), !!item.comment.liked, item.platform !== 'FACEBOOK' || !!busy)}
             {icon(item.comment.hidden ? 'Show again' : 'Hide', busy === 'hide' || busy === 'unhide' ? <Spinner /> : item.comment.hidden ? <Eye /> : <EyeOff />, () => onAction(item.comment.hidden ? 'unhide' : 'hide'), !!item.comment.hidden, !!busy)}
             {icon('Reply in public', <MessageCircle />, () => onReply('public'))}
-            {icon(item.private_sent ? ONE_PRIVATE_MESSAGE : 'Private message', <Lock />, () => onReply('private'), !!item.private_sent, !!item.private_sent)}
+            {icon('Private message', <Lock />, () => onReply('private'))}
             {icon('Delete on Meta', busy === 'delete' ? <Spinner /> : <Trash2 />, () => onAction('delete'), false, !!item.comment.removed_at || !!busy)}
             {icon('Mark as spam', <Ban />, () => update.mutate({ labels: [...new Set([...labels, 'Spam'])] }), labels.includes('Spam'))}
           </div>

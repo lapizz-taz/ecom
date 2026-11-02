@@ -4844,7 +4844,6 @@ export type Database = {
           filtered: string | null
           auto_kind: string | null
           private_reply: boolean
-          erased_at: string | null
         }
         Insert: {
           id?: string
@@ -4866,7 +4865,6 @@ export type Database = {
           filtered?: string | null
           auto_kind?: string | null
           private_reply?: boolean
-          erased_at?: string | null
         }
         Update: {
           id?: string
@@ -4888,7 +4886,6 @@ export type Database = {
           filtered?: string | null
           auto_kind?: string | null
           private_reply?: boolean
-          erased_at?: string | null
         }
         Relationships: [
           {

@@ -1,5 +1,5 @@
 {
-  "migrations": 205,
-  "last": "20261213000300_inbox_keep_on_disconnect.sql",
-  "sha256": "51c3467567ec44cfeb3afbc453ba1bc30f70f935f8d70a296e9b757f8828027f"
+  "migrations": 204,
+  "last": "20261213000200_health_cron_history.sql",
+  "sha256": "df89aa0fd9fee74427af314d67e89636d01831abc97e65b7da37590c4d8d7655"
 }

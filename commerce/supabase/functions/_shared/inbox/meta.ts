@@ -188,29 +188,12 @@ export async function sendMessage(g: InboxGraph, t: SendTarget, input: SendInput
   } else {
     message = { text: text ?? '' }
   }
-  const r = await g.post<{ message_id?: string }>(`${sender}/messages`, { recipient, ...window, message }).catch((e: unknown) => {
-    throw t.kind === 'COMMENT' ? privateReplyError(e) : e
-  })
+  const r = await g.post<{ message_id?: string }>(`${sender}/messages`, { recipient, ...window, message })
   // A file goes as its own message; a caption follows as text.
   if ((input.file || input.image_url) && text) {
     await g.post(`${sender}/messages`, { recipient, ...window, message: { text } })
   }
   return { external_id: r.message_id ?? null, attachments }
-}
-
-/**
- * Meta allows one private message per comment, within 7 days of it. Its own wording ("(#-1) The comment
- * you are trying to reply to, already has a reply") does not say what to do; this does.
- */
-export function privateReplyError(e: unknown): unknown {
-  const text = e instanceof Error ? e.message : String(e)
-  if (/already has a reply|already been replied|already replied/i.test(text)) {
-    return new MetaApiError('Meta allows one private message per comment, and this comment already has one. When the customer answers it, the chat carries on in Inbox.')
-  }
-  if (/outside of (the )?allowed window|7 days|too old/i.test(text)) {
-    return new MetaApiError('Meta allows a private message only within 7 days of the comment. Reply in public instead.')
-  }
-  return e
 }
 
 export type CommentOp = 'like' | 'unlike' | 'hide' | 'unhide' | 'delete'

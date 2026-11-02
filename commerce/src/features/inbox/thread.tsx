@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle, ArrowLeft, Check, CheckCheck, CircleCheck, Clock, Copy, ExternalLink, FileText, MapPin, MoreVertical, PanelRight, Pin, PinOff, Reply,
-  Star, Trash2, UserRound,
+  Star, UserRound,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Spinner } from '@/components/common/states'
@@ -196,16 +196,9 @@ function Bubble({ m, channelId, pinned, customerName, onReply, onPin }: {
           </div>
         )}
         <div className={cn('rounded-2xl px-3.5 py-2 text-sm', out ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted',
-          m.status === 'FAILED' && 'bg-destructive/10 text-foreground ring-1 ring-destructive/40', pinned && 'ring-2 ring-amber-400/60',
-          m.erased_at && 'border border-dashed bg-transparent text-muted-foreground')}>
-          {m.erased_at ? (
-            <p className="flex items-center gap-1.5 italic"><Trash2 className="size-3.5 shrink-0" /> {out ? 'This message was deleted' : 'The customer deleted this message'}</p>
-          ) : (
-            <>
-              {m.attachments.length > 0 && <div className={cn('space-y-1.5', m.body && 'mb-1.5')}>{m.attachments.map((a, i) => <AttachmentView key={i} a={a} channelId={channelId} out={out} />)}</div>}
-              {m.body && <p className="break-words whitespace-pre-wrap">{m.body}</p>}
-            </>
-          )}
+          m.status === 'FAILED' && 'bg-destructive/10 text-foreground ring-1 ring-destructive/40', pinned && 'ring-2 ring-amber-400/60')}>
+          {m.attachments.length > 0 && <div className={cn('space-y-1.5', m.body && 'mb-1.5')}>{m.attachments.map((a, i) => <AttachmentView key={i} a={a} channelId={channelId} out={out} />)}</div>}
+          {m.body && <p className="break-words whitespace-pre-wrap">{m.body}</p>}
         </div>
         <div className={cn('flex items-center gap-1 px-1 text-[10px] text-muted-foreground', out && 'justify-end')}>
           {out && m.sender_name && <span>{m.sender_name} ·</span>}

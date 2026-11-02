@@ -11,9 +11,6 @@ import { SavedReplies } from './composer'
 
 export type ReplyMode = 'public' | 'private' | 'both'
 
-/** Meta's rule, shown wherever a second private message would be refused. */
-export const ONE_PRIVATE_MESSAGE = 'Meta allows one private message per comment, and it was already sent. When the customer answers it, the chat carries on in Inbox.'
-
 const MODES: Array<{ value: ReplyMode; label: string; icon: React.ReactNode }> = [
   { value: 'public', label: 'Public reply', icon: <Globe className="size-3.5" /> },
   { value: 'private', label: 'Private message', icon: <Lock className="size-3.5" /> },
@@ -21,17 +18,14 @@ const MODES: Array<{ value: ReplyMode; label: string; icon: React.ReactNode }> =
 ]
 
 /** Answers a comment under the post, in the commenter's inbox, or both at once. */
-export function CommentReply({ conversationId, name, mode: asked = 'public', privateSent = false, onSent, onCancel, autoFocus = true }: {
+export function CommentReply({ conversationId, name, mode: initial = 'public', onSent, onCancel, autoFocus = true }: {
   conversationId: string
   name: string
   mode?: ReplyMode
-  /** The comment already got its one private message: only a public reply is left. */
-  privateSent?: boolean
   onSent: () => void
   onCancel?: () => void
   autoFocus?: boolean
 }) {
-  const initial: ReplyMode = privateSent ? 'public' : asked
   const [mode, setMode] = useState<ReplyMode>(initial)
   const [text, setText] = useState('')
   const [privateText, setPrivateText] = useState('')
@@ -62,19 +56,14 @@ export function CommentReply({ conversationId, name, mode: asked = 'public', pri
   return (
     <div className="rounded-xl border bg-background shadow-xs" onClick={(e) => e.stopPropagation()}>
       <div className="flex gap-1 border-b p-1" role="tablist">
-        {MODES.map((m) => {
-          const off = privateSent && m.value !== 'public'
-          return (
-            <button key={m.value} type="button" role="tab" aria-selected={mode === m.value} disabled={off} title={off ? ONE_PRIVATE_MESSAGE : undefined}
-              onClick={() => setMode(m.value)}
-              className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-muted-foreground',
-                mode === m.value && 'bg-muted text-foreground')}>
-              {m.icon} {m.label}
-            </button>
-          )
-        })}
+        {MODES.map((m) => (
+          <button key={m.value} type="button" role="tab" aria-selected={mode === m.value} onClick={() => setMode(m.value)}
+            className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+              mode === m.value && 'bg-muted text-foreground')}>
+            {m.icon} {m.label}
+          </button>
+        ))}
       </div>
-      {privateSent && <p className="flex items-start gap-1.5 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground"><Lock className="mt-0.5 size-3 shrink-0" /> {ONE_PRIVATE_MESSAGE}</p>}
       {mode !== 'private' && (
         <div className="px-3 pt-2">
           {mode === 'both' && <p className="mb-1 flex items-center gap-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase"><Globe className="size-3" /> Public reply</p>}
