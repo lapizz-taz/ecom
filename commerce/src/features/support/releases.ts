@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-02', tag: 'Improved', area: 'Messaging', title: 'Chats stay when you disconnect; Reconnect keeps everything',
+    body: 'Disconnecting a Facebook Page, Instagram account or WhatsApp number now only ends the connection: its chats and comments stay in the inbox, and Reconnect (on every account) logs in again in the same chats. Deleting them is a separate step, Delete messages, on a disconnected account. When a customer deletes a message they sent, or a comment is removed on Facebook, its text is deleted here too and the chat shows that it was deleted. A comment you delete stays under Deleted on Comments.', to: '/admin/inbox/channels' },
   { date: '2026-11-02', tag: 'Fixed', area: 'Messaging', title: 'One popup per error, and "Deleting…" while Meta works',
     body: 'An error now shows once instead of two identical popups stacked. On Comments, Like, Hide and Delete show what is happening while Meta does it: "Deleting…" on the comment, in Actions and in one popup that then says "Deleted" or why it failed. The other actions on that comment wait until it is done.', to: '/admin/inbox/comments' },
   { date: '2026-11-01', tag: 'New', area: 'Orders', title: 'Ka-ching for every new order',

@@ -143,16 +143,19 @@ export default function InboxChannelsPage() {
                     <Switch checked={c.receive_comments} disabled={!manage} onCheckedChange={(on) => comments.mutate({ id: c.id, on })} /> Comments
                   </label>
                 )}
-                {manage && ready && c.status !== 'OK' && (
+                {/* Logging in again (a new permission, a new token) keeps every chat: same account, same history. */}
+                {manage && ready && (
                   <Button size="sm" variant="outline" className="gap-1.5" disabled={start.isPending || (c.platform === 'WHATSAPP' && !whatsapp)}
+                    title="Log in with Facebook again. Chats and comments stay."
                     onClick={() => begin(c.platform === 'WHATSAPP' ? 'WHATSAPP' : 'PAGES')}><RefreshCw /> Reconnect</Button>
                 )}
                 {manage && c.status !== 'DISCONNECTED' && (
                   <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setRemoving(c)}><Unplug /> Disconnect</Button>
                 )}
-                {manage && (
-                  <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" title="Remove from Fullfilio"
-                    aria-label={`Remove ${c.name}`} onClick={() => setDeleting(c)}><Trash2 /></Button>
+                {/* Deleting the messages is a separate, later step: only once the account is disconnected. */}
+                {manage && c.status === 'DISCONNECTED' && (
+                  <Button size="sm" variant="ghost" className="ml-auto gap-1.5 text-muted-foreground hover:text-destructive"
+                    aria-label={`Delete the messages of ${c.name}`} onClick={() => setDeleting(c)}><Trash2 /> Delete messages</Button>
                 )}
               </div>
             </CardContent>
@@ -207,24 +210,24 @@ export default function InboxChannelsPage() {
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">Your Facebook password never comes to Fullfilio. To take access away later, disconnect or remove the channel here, or in Facebook → Settings → Business integrations.</p>
+      <p className="text-xs text-muted-foreground">Your Facebook password never comes to Fullfilio. To take access away, disconnect the account here, or remove Fullfilio in Facebook → Settings → Business integrations. Disconnecting keeps its chats and comments in the inbox; delete them with Delete messages on the disconnected account.</p>
       <SavedRepliesCard manage={manage} />
 
       <ConnectGuide kind={guide} onClose={() => setGuide(null)} onConnect={connect} />
       <WhatsAppTokenDialog open={manualWa} onOpenChange={setManualWa} onDone={refresh} />
       <WhatsAppConnectDialog open={waOpen} onOpenChange={setWaOpen} busy={busy('WHATSAPP')} onContinue={(coexist) => connect('WHATSAPP', coexist)} />
       <ConfirmDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} destructive title={`Disconnect ${removing?.name}?`}
-        description="Its access is deleted and new messages stop arriving. Conversations already in the inbox stay." confirmLabel="Disconnect"
+        description="Its access is deleted and Meta stops sending its messages. Its chats and comments stay in the inbox. To log in again instead, use Reconnect." confirmLabel="Disconnect"
         onConfirm={async () => {
           try { await disconnectChannel(removing!.id); toast.success('Disconnected'); refresh() } catch (e) { onError(e); throw e }
         }} />
-      <ConfirmDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} destructive title={`Remove ${deleting?.name}?`}
-        description="It is taken off this store and its conversations and messages in the inbox are deleted. Nothing changes on Facebook or Instagram; you can connect it again later."
-        confirmLabel="Remove"
+      <ConfirmDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} destructive title={`Delete the messages of ${deleting?.name}?`}
+        description="Every chat and comment from this account is deleted from Fullfilio for good, and the account is taken off this store. Nothing changes on Facebook or Instagram. To keep them, close this and leave the account disconnected."
+        confirmLabel="Delete messages"
         onConfirm={async () => {
           try {
             await removeChannel(deleting!.id)
-            toast.success('Removed')
+            toast.success('Messages deleted')
             refresh()
             void qc.invalidateQueries({ queryKey: ['inbox-list'] })
           } catch (e) { onError(e); throw e }

@@ -39,10 +39,23 @@ describe('inbox webhooks: Messenger and Instagram', () => {
     const feed = (value: Record<string, unknown>) => ({ object: 'page', entry: [{ id: 'PAGE', changes: [{ field: 'feed', value }] }] })
     const [top] = parseWebhook(feed({ item: 'comment', verb: 'add', comment_id: 'P_1_c1', post_id: 'P_1', parent_id: 'P_1', message: 'price?', from: { id: 'U1', name: 'Rina' }, created_time: 1760000000 }))
     const [reply] = parseWebhook(feed({ item: 'comment', verb: 'add', comment_id: 'P_1_c2', post_id: 'P_1', parent_id: 'P_1_c1', message: '৳580', from: { id: 'PAGE', name: 'Shop' } }))
-    const [ignored] = parseWebhook(feed({ item: 'comment', verb: 'remove', comment_id: 'x', post_id: 'P_1' }))
+    const [ignored] = parseWebhook(feed({ item: 'post', verb: 'add', post_id: 'P_2' }))
     expect(top).toMatchObject({ kind: 'COMMENT', thread_key: 'P_1_c1', customer: { external_id: 'U1', name: 'Rina' }, message: { direction: 'IN' } })
     expect(reply).toMatchObject({ thread_key: 'P_1_c1', customer: undefined, message: { direction: 'OUT', reply_to_external_id: 'P_1_c1' } })
     expect(ignored).toBeUndefined()
+  })
+
+  it('a comment removed on Facebook and a message the customer unsent become "deleted" (the inbox erases them)', () => {
+    const feed = (value: Record<string, unknown>) => ({ object: 'page', entry: [{ id: 'PAGE', changes: [{ field: 'feed', value }] }] })
+    expect(parseWebhook(feed({ item: 'comment', verb: 'remove', comment_id: 'P_1_c1', post_id: 'P_1', from: { id: 'U1' } })))
+      .toEqual([{ platform: 'FACEBOOK', account_id: 'PAGE', type: 'deleted', deleted: { external_id: 'P_1_c1' } }])
+    expect(parseWebhook(feed({ item: 'comment', verb: 'remove', post_id: 'P_1' }))).toEqual([])
+    const unsent = parseWebhook({ object: 'instagram', entry: [{ id: 'IG1', messaging: [{
+      sender: { id: 'IGSID9' }, recipient: { id: 'IG1' }, timestamp: 1760000000, message: { mid: 'm.9', is_deleted: true },
+    }] }] })
+    expect(unsent).toEqual([{ platform: 'INSTAGRAM', account_id: 'IG1', type: 'deleted', deleted: { external_id: 'm.9' } }])
+    const messenger = parseWebhook({ object: 'page', entry: [{ id: 'P', messaging: [{ sender: { id: 'U' }, recipient: { id: 'P' }, message: { mid: 'm.3', is_deleted: true } }] }] })
+    expect(messenger[0]).toMatchObject({ platform: 'FACEBOOK', type: 'deleted', deleted: { external_id: 'm.3' } })
   })
 
   it('Instagram comments on a Reel', () => {

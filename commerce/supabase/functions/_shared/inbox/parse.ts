@@ -20,7 +20,8 @@ export interface InboxEvent {
   platform: InboxPlatform
   /** Page id, Instagram account id or WhatsApp phone number id the event is for. */
   account_id: string
-  type: 'message' | 'status' | 'read'
+  /** deleted: the customer deleted (unsent) a message, or a Facebook comment was removed. */
+  type: 'message' | 'status' | 'read' | 'deleted'
   kind?: 'MESSAGE' | 'COMMENT'
   thread_key?: string
   customer?: { external_id?: string; name?: string; phone?: string; avatar?: string }
@@ -39,6 +40,8 @@ export interface InboxEvent {
   status?: { external_id: string; status: 'DELIVERED' | 'READ' | 'FAILED' | 'SENT'; error?: string }
   /** Messenger/Instagram read receipt: every message sent before this time was seen. */
   read_until?: string
+  /** The message or comment that was deleted on Facebook or Instagram. */
+  deleted?: { external_id: string }
 }
 
 type Json = Record<string, unknown>
@@ -82,7 +85,12 @@ function fromMessaging(platform: 'FACEBOOK' | 'INSTAGRAM', entryId: string, m: J
     if (read.watermark) return [{ platform, account_id: entryId, type: 'read', thread_key: sender, read_until: toIso(read.watermark) }]
     return arr(delivery.mids).map((mid) => ({ platform, account_id: entryId, type: 'status' as const, status: { external_id: String(mid), status: 'DELIVERED' as const } }))
   }
-  if (!m.message || message.is_deleted) return []
+  if (message.is_deleted) {
+    // The customer deleted (unsent) it: the inbox erases its copy too.
+    const mid = str(message.mid)
+    return mid ? [{ platform, account_id: entryId, type: 'deleted', deleted: { external_id: mid } }] : []
+  }
+  if (!m.message) return []
   // An echo is a message the business sent (from here, Meta Business Suite or the phone app).
   const echo = message.is_echo === true
   const customer = echo ? recipient : sender
@@ -101,6 +109,11 @@ function fromMessaging(platform: 'FACEBOOK' | 'INSTAGRAM', entryId: string, m: J
 
 /** Facebook Page feed: comments on the Page's posts and ads. */
 function fromFeed(pageId: string, value: Json): InboxEvent[] {
+  if (value.item === 'comment' && value.verb === 'remove') {
+    // Removed on Facebook (by the person who wrote it, or on Facebook itself): the inbox erases its copy.
+    const id = str(value.comment_id)
+    return id ? [{ platform: 'FACEBOOK', account_id: pageId, type: 'deleted', deleted: { external_id: id } }] : []
+  }
   if (value.item !== 'comment' || value.verb !== 'add') return []
   const commentId = str(value.comment_id)
   const postId = str(value.post_id)

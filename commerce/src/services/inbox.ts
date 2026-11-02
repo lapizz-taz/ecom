@@ -35,6 +35,8 @@ export interface InboxMessage {
   reply_to: { id: string; body: string; direction: 'IN' | 'OUT' } | null
   sender_name: string | null; status: 'RECEIVED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'; error: string | null; created_at: string
   hidden: boolean; liked: boolean; removed_at: string | null; filtered: string | null
+  /** The customer deleted it on Facebook or Instagram: its words and files are gone here too. */
+  erased_at?: string | null
   auto_kind: 'AUTO_REPLY' | 'FOLLOW_UP' | null; private_reply: boolean
 }
 export interface PostDetail {
@@ -114,7 +116,9 @@ export interface CommentItem {
   customer_name: string | null; customer_avatar: string | null; customer_external_id: string | null; status: ConversationStatus; no_reply_needed: boolean
   unread_count: number; awaiting_since: string | null; labels: string[]; assigned_to: string | null; assigned_name: string | null; last_message_at: string | null
   comment: { id: string | null; external_id: string | null; body: string | null; attachments: Attachment[]; sender_name: string | null; created_at: string | null
-    hidden: boolean | null; liked: boolean | null; removed_at: string | null; filtered: string | null }
+    hidden: boolean | null; liked: boolean | null; removed_at: string | null; filtered: string | null
+    /** Removed on Facebook by the person who wrote it (or by Facebook): its text is gone here too. */
+    erased_at?: string | null }
   replies: number; replied: boolean
   last_reply: { body: string; direction: 'IN' | 'OUT'; sender_name: string | null; created_at: string; auto_kind: string | null; private_reply: boolean; status: string } | null
 }

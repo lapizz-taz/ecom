@@ -331,6 +331,10 @@ async function webhook(req: Request): Promise<Response> {
         await rpc(admin, 'inbox_message_status', { p_channel: channel.id, p_external_id: e.status.external_id, p_status: e.status.status, p_error: e.status.error ?? null })
         continue
       }
+      if (e.type === 'deleted' && e.deleted) {
+        await rpc(admin, 'inbox_message_erase', { p_channel: channel.id, p_external_id: e.deleted.external_id })
+        continue
+      }
       if (e.type === 'read' && e.thread_key && e.read_until) {
         await rpc(admin, 'inbox_mark_seen_until', { p_channel: channel.id, p_thread_key: e.thread_key, p_until: e.read_until })
         continue
@@ -475,6 +479,17 @@ export default (
     const admin = staff.admin
     const app = await metaApp()
     const appSecret = app.app_secret ?? ''
+    // Stop Meta sending a Page's events, unless the store's other connected channel (its Facebook
+    // Page or Instagram account) still uses the same Page. Best effort: the token may be gone.
+    const unsubscribe = async (db: SupabaseClient, c: Channel) => {
+      const pageOf = (x: Channel) => (x.platform === 'FACEBOOK' ? x.external_id : x.platform === 'INSTAGRAM' ? x.page_id : null)
+      const page = pageOf(c)
+      if (!page) return
+      const others = await rpc<Channel[]>(db, 'inbox_channels_for', {})
+      const shared = others.some((o) => o.id !== c.id && o.status !== 'DISCONNECTED' && pageOf(o) === page)
+      const t = shared ? '' : (await secret<{ access_token?: string }>(db, channelKey(c.id))).access_token ?? ''
+      if (t) await new InboxGraph(t, appSecret).delete(`${page}/subscribed_apps`).catch(() => null)
+    }
 
     switch (input.action) {
       case 'config':
@@ -568,26 +583,20 @@ export default (
       }
 
       case 'disconnect': {
+        // The connection ends; the chats stay for the store until it deletes them (Meta Platform Terms 3.d).
         const [c] = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: input.id })
         if (!c) throw new HttpError(404, 'Channel not found', 'NOT_FOUND')
+        await unsubscribe(admin, c)
         await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
-        await rpc(admin, 'inbox_channel_status', { p_id: c.id, p_status: 'DISCONNECTED', p_error: null })
-        return json(req, { ok: true })
+        const out = await rpc<{ disconnected: boolean; conversations: number }>(admin, 'inbox_channel_disconnect', { p_id: c.id, p_actor: staff.user.id })
+        return json(req, { ok: true, ...out })
       }
 
       case 'remove': {
+        // The store asking for deletion: the account and all its conversations go.
         const [c] = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: input.id })
         if (!c) throw new HttpError(404, 'Channel not found', 'NOT_FOUND')
-        // Stop Meta sending this Page's events, unless the store's other channel (its Facebook
-        // Page or Instagram account) still uses the same Page. Best effort: the token may be gone.
-        const pageOf = (x: Channel) => (x.platform === 'FACEBOOK' ? x.external_id : x.platform === 'INSTAGRAM' ? x.page_id : null)
-        const page = pageOf(c)
-        if (page) {
-          const others = await rpc<Channel[]>(admin, 'inbox_channels_for', {})
-          const shared = others.some((o) => o.id !== c.id && o.status !== 'DISCONNECTED' && pageOf(o) === page)
-          const t = shared ? '' : (await secret<{ access_token?: string }>(admin, channelKey(c.id))).access_token ?? ''
-          if (t) await new InboxGraph(t, appSecret).delete(`${page}/subscribed_apps`).catch(() => null)
-        }
+        await unsubscribe(admin, c)
         await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
         const out = await rpc<{ removed: boolean; conversations: number }>(admin, 'inbox_channel_remove', { p_id: c.id, p_actor: staff.user.id })
         return json(req, out)

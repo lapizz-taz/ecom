@@ -1825,6 +1825,7 @@ CREATE TABLE inbox_messages (
   filtered TEXT,
   auto_kind TEXT,
   private_reply INTEGER DEFAULT 0 NOT NULL CHECK (private_reply IN (0, 1)),
+  erased_at TEXT CHECK (erased_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', erased_at) = erased_at),
   PRIMARY KEY (id),
   CONSTRAINT inbox_messages_attachments_check CHECK (json_type(attachments) = 'array'),
   CONSTRAINT inbox_messages_auto_kind_check CHECK (auto_kind IN ('AUTO_REPLY', 'FOLLOW_UP')),
