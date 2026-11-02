@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-02', tag: 'Fixed', area: 'Messaging', title: 'One private message per comment, said plainly',
+    body: 'Facebook and Instagram allow one private message per comment, within 7 days of it. Once it is sent, the comment says Private message sent, and Private message and Both are switched off with the reason, instead of failing with Meta\'s "already has a reply". When the customer answers, the chat carries on in Inbox.', to: '/admin/inbox/comments' },
   { date: '2026-11-02', tag: 'Fixed', area: 'Messaging', title: 'One popup per error, and "Deleting…" while Meta works',
     body: 'An error now shows once instead of two identical popups stacked. On Comments, Like, Hide and Delete show what is happening while Meta does it: "Deleting…" on the comment, in Actions and in one popup that then says "Deleted" or why it failed. The other actions on that comment wait until it is done.', to: '/admin/inbox/comments' },
   { date: '2026-11-01', tag: 'New', area: 'Orders', title: 'Ka-ching for every new order',
