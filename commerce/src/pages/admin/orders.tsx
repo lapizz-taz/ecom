@@ -702,15 +702,18 @@ function SourceCell({ a }: { a: OrderListItem['attribution'] }) {
 }
 
 function CallCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefined }) {
+  const { can } = useAuth()
   if (o.stage !== 'WEB') return <ApprovedCell o={o} />
   const due = o.follow_up_at && new Date(o.follow_up_at).getTime() <= Date.now()
+  // How often the customer was called is for the Owner and Admins only (calls.view).
+  const calls = can('calls.view') ? o.contact_attempts : 0
   return (
     <div className="max-w-48 space-y-0.5">
       <Badge variant={(meta?.color ?? 'neutral') as BadgeVariant}>{meta?.label ?? titleCase(o.review_status)}</Badge>
-      {(o.contact_attempts > 0 || o.follow_up_at) && (
+      {(calls > 0 || o.follow_up_at) && (
         <p className="text-xs text-muted-foreground">
-          {o.contact_attempts > 0 && `${o.contact_attempts} call${o.contact_attempts === 1 ? '' : 's'}`}
-          {o.contact_attempts > 0 && o.follow_up_at && ' · '}
+          {calls > 0 && `${calls} call${calls === 1 ? '' : 's'}`}
+          {calls > 0 && o.follow_up_at && ' · '}
           {o.follow_up_at && <span className={cn(due && 'font-medium text-red-600')}>call {formatDateTime(o.follow_up_at)}</span>}
         </p>
       )}

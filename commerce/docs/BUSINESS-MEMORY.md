@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 1 Nov 2026.
+Last updated: 3 Nov 2026.
 
 ## What Fullfilio is
 
@@ -55,6 +55,12 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - Incomplete orders and abandoned carts.
 - The Auto-pick queue.
 - Order Financials (profit and loss per order).
+- Call Tracking (since 3 Nov 2026), for the Owner and Admins only (permission calls.view): every tap on Call for an
+  order, every call status set and every approval, with who and when. Web Orders → Call Tracking shows per staff
+  member taps, call statuses, not reached, approved, cancelled and "closed without a call", the orders approved or
+  cancelled without a tap, and web orders waiting over an hour that nobody tapped Call on. Each order has a Call
+  history card. Employees see no call counts anywhere, and no "What's new" note was written so they are not told.
+  A tap proves the button was used, not that the customer answered; Cloud Calling will record real calls.
 - The dashboard's profit counts an order from the day it is approved (since 30 Oct 2026): its sale less product cost
   and courier charge. A returned order costs the courier's delivery and return charges, less what the customer paid
   (an advance, or cash at the door that the courier's webhook reports): a paid return charge is no loss, an unpaid one is. Finance → Profit & loss still counts a sale on delivery.

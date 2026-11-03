@@ -6599,6 +6599,61 @@ export type Database = {
           },
         ]
       }
+      order_call_events: {
+        Row: {
+          id: number
+          merchant_id: string
+          order_id: string
+          actor_id: string | null
+          kind: string
+          status: string | null
+          source: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          merchant_id?: string
+          order_id: string
+          actor_id?: string | null
+          kind: string
+          status?: string | null
+          source?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          merchant_id?: string
+          order_id?: string
+          actor_id?: string | null
+          kind?: string
+          status?: string | null
+          source?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_call_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_call_events_merchant_id_fkey"
+            columns: ["merchant_id"]
+            isOneToOne: false
+            referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_call_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_counters: {
         Row: {
           merchant_id: string
@@ -15336,6 +15391,12 @@ export type Database = {
         }
         Returns: Json
       }
+      calls_report: {
+        Args: {
+          p?: Json
+        }
+        Returns: Json
+      }
       channel_catalog_adopt: {
         Args: {
           p_channel_id: string
@@ -16667,6 +16728,19 @@ export type Database = {
           p_order_id?: string
         }
         Returns: Json
+      }
+      order_call_history: {
+        Args: {
+          p_order: string
+        }
+        Returns: Json
+      }
+      order_call_tap: {
+        Args: {
+          p_order: string
+          p_source?: string
+        }
+        Returns: undefined
       }
       order_catalog: {
         Args: {

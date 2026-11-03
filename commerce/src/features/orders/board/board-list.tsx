@@ -6,6 +6,7 @@ import { Pagination } from '@/components/common/pagination'
 import { EmptyState } from '@/components/common/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/features/auth/auth-context'
 import { formatDateTime, formatMoney, formatNumber } from '@/lib/format'
 import { ORDER_STATUS, SHIPMENT_STATUS } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -164,12 +165,13 @@ function ProductsCell({ o }: { o: BoardOrder }) {
 }
 
 /** The status now, and what is under it: the finer order status, the parcel's status at the courier, or the calls made. */
-function statusLines(o: BoardOrder, calls: OrdersBoardOptions['call_statuses'] | undefined) {
+function statusLines(o: BoardOrder, calls: OrdersBoardOptions['call_statuses'] | undefined, showCalls: boolean) {
   const info = statusInfo(o.status_key, calls)
   const notes: string[] = []
   if (info.group === 'web') {
     if (o.status === 'ADVANCE_REQUIRED') notes.push('Advance due')
-    if (o.contact_attempts > 0) notes.push(`${o.contact_attempts} call${o.contact_attempts === 1 ? '' : 's'}`)
+    // How often the customer was called is for the Owner and Admins only (calls.view).
+    if (showCalls && o.contact_attempts > 0) notes.push(`${o.contact_attempts} call${o.contact_attempts === 1 ? '' : 's'}`)
     if (o.follow_up_at) notes.push(`call ${formatDateTime(o.follow_up_at)}`)
   } else {
     const detail = ORDER_STATUS[o.status]?.label
@@ -181,7 +183,8 @@ function statusLines(o: BoardOrder, calls: OrdersBoardOptions['call_statuses'] |
 }
 
 function StatusCell({ o, calls }: { o: BoardOrder; calls: OrdersBoardOptions['call_statuses'] | undefined }) {
-  const { info, notes } = statusLines(o, calls)
+  const { can } = useAuth()
+  const { info, notes } = statusLines(o, calls, can('calls.view'))
   return (
     <div className="max-w-44 space-y-0.5">
       <Badge variant={info.variant}>{info.group === 'web' ? `Web · ${info.label}` : info.label}</Badge>
@@ -223,7 +226,8 @@ function AmountCell({ o }: { o: BoardOrder }) {
 }
 
 function MobileRow({ o, dateBy, calls }: { o: BoardOrder; dateBy: DateBy; calls: OrdersBoardOptions['call_statuses'] | undefined }) {
-  const { info, notes } = statusLines(o, calls)
+  const { can } = useAuth()
+  const { info, notes } = statusLines(o, calls, can('calls.view'))
   return (
     <div className="space-y-1.5">
       <div className="flex items-start justify-between gap-3">

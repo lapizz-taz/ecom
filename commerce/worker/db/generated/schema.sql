@@ -48,6 +48,7 @@ INSERT INTO _sequences (name, value) VALUES
   ('finance_txn_seq', 100000),
   ('merchant_deletion_requests_number_seq', 0),
   ('merchants_number_seq', 0),
+  ('order_call_events_id_seq', 0),
   ('order_fee_charges_id_seq', 0),
   ('order_number_seq', 10000),
   ('pbx_business_code_seq', 0),
@@ -2456,6 +2457,23 @@ CREATE TABLE order_blocks (
   CONSTRAINT order_blocks_lifted_by_fkey FOREIGN KEY (lifted_by) REFERENCES profiles (id),
   CONSTRAINT order_blocks_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
   CONSTRAINT order_blocks_source_order_id_fkey FOREIGN KEY (source_order_id) REFERENCES orders (id)
+) STRICT;
+
+CREATE TABLE order_call_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  order_id TEXT NOT NULL CHECK (length(order_id) = 36),
+  actor_id TEXT CHECK (actor_id IS NULL OR length(actor_id) = 36),
+  kind TEXT NOT NULL,
+  status TEXT,
+  source TEXT,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
+  CONSTRAINT order_call_events_kind_check CHECK (kind IN ('TAP', 'STATUS', 'APPROVED')),
+  CONSTRAINT order_call_events_source_check CHECK (length(source) <= 40),
+  CONSTRAINT order_call_events_status_check CHECK (length(status) <= 60),
+  CONSTRAINT order_call_events_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES profiles (id) ON DELETE SET NULL,
+  CONSTRAINT order_call_events_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT order_call_events_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE TABLE order_counters (
@@ -5423,6 +5441,10 @@ CREATE INDEX order_blocks_created_idx ON order_blocks (created_at desc);
 CREATE INDEX order_blocks_merchant_idx ON order_blocks (merchant_id);
 
 CREATE INDEX order_blocks_source_order_idx ON order_blocks (source_order_id) WHERE (source_order_id is not null);
+
+CREATE INDEX order_call_events_order_idx ON order_call_events (order_id, created_at);
+
+CREATE INDEX order_call_events_time_idx ON order_call_events (merchant_id, created_at desc);
 
 CREATE INDEX order_fee_charges_merchant_idx ON order_fee_charges (merchant_id, created_at desc);
 

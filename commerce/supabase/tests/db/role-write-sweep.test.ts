@@ -23,6 +23,8 @@ const ROLES = ['VIEWER', 'CALL', 'MODERATOR', 'PRODUCTION_MANAGER', 'INVENTORY_M
 const OWN: Record<string, string[]> = {
   hr_check_in: ['hr_attendance'],
   log_client_error: ['system_logs'],
+  // A tap on Call is the staff member's own action, recorded for the Owner and Admins (call tracking).
+  order_call_tap: ['order_call_events'],
   report_issue: ['support_tickets', 'support_ticket_events', 'system_logs'],
   submit_contact_message: ['contact_messages'],
   update_my_profile: ['profiles', 'audit_logs'],
