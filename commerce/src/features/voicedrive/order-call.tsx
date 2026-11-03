@@ -3,6 +3,8 @@ import { Phone, PhoneCall } from 'lucide-react'
 import { createContext, useContext, type ReactNode } from 'react'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/features/auth/auth-context'
+import { recordCallTap } from '@/services/calls'
 import { CALL_STATUS, OUTCOMES, pbxCallState, type OrderCallState } from '@/services/voicedrive'
 import { usePhone } from './phone-context'
 
@@ -27,7 +29,9 @@ const outcomeLabel = Object.fromEntries(OUTCOMES.map((o) => [o.value, o.label]))
 /** "Called 2× · No answer" under the phone number. */
 export function OrderCallBadge({ orderId }: { orderId: string }) {
   const s = useContext(StatesContext)[orderId]
-  if (!s) return null
+  const { can } = useAuth()
+  // Who called and how often is for the Owner and Admins only.
+  if (!s || !can('calls.view')) return null
   const text = s.live ? 'On a call now' : `Called ${s.attempts}× · ${s.lastOutcome ? outcomeLabel[s.lastOutcome] : CALL_STATUS[s.lastStatus]?.label ?? s.lastStatus}`
   return (
     <span className={cn('flex w-fit items-center gap-1 rounded px-1 text-[11px] whitespace-nowrap', s.live ? 'bg-emerald-50 text-emerald-700' : s.answered ? 'text-emerald-700' : 'text-amber-700')}
@@ -49,10 +53,11 @@ export function OrderCallLink({ orderId, phone, name, kind, className, children 
   const { canCall, dial } = usePhone()
   const call = useMutation({ mutationFn: () => dial({ phone, orderId, kind }), onError: (e) => toast.error((e as Error).message) })
   const content = children ?? <Phone className="size-3.5" />
-  if (!canCall) return <a href={`tel:${phone}`} className={className} aria-label={`Call ${name}`}>{content}</a>
+  const source = kind === 'WEB_ORDER' ? 'web orders' : 'approved orders'
+  if (!canCall) return <a href={`tel:${phone}`} className={className} aria-label={`Call ${name}`} onClick={() => recordCallTap(orderId, source)}>{content}</a>
   return (
     <button type="button" className={cn(className, call.isPending && 'animate-pulse')} disabled={call.isPending} aria-label={`Call ${name} with Cloud Calling`}
-      onClick={(e) => { e.stopPropagation(); call.mutate() }}>
+      onClick={(e) => { e.stopPropagation(); recordCallTap(orderId, source); call.mutate() }}>
       {content}
     </button>
   )

@@ -33,6 +33,7 @@ import {
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
 import { OrderBranch } from '@/features/orders/order-branch'
 import { OrderClientInfo } from '@/features/orders/order-client-info'
+import { CallHistoryCard } from '@/features/orders/call-history-card'
 import { OrderSourceCard } from '@/features/orders/order-source-card'
 import { eventLabel } from '@/features/sms/sms-text'
 import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, toNumber } from '@/lib/format'
@@ -524,6 +525,8 @@ export default function OrderDetailPage() {
 
           <NotesCard orderId={o.id} notes={notes} onAdded={refresh} canAdd={can('orders.update')} phone={o.customer_phone} />
 
+          {can('calls.view') && <CallHistoryCard orderId={o.id} />}
+
           <Card>
             <CardHeader><CardTitle className="text-sm">Activity</CardTitle></CardHeader>
             <CardContent>
@@ -754,11 +757,14 @@ function CallOutcomeCard({ order, onChanged, onApprove, approving, onSaved }: {
                 <p className="font-medium">Call the customer, then approve</p>
                 <Badge variant={(current?.color ?? 'neutral') as BadgeVariant}>{current?.label ?? titleCase(order.review_status)}</Badge>
               </div>
-              <p className="text-muted-foreground">
-                {order.contact_attempts > 0 ? `${order.contact_attempts} call attempt${order.contact_attempts === 1 ? '' : 's'}` : 'Not called yet'}
-                {order.last_contact_at && ` · last ${formatDateTime(order.last_contact_at)}`}
-                {order.follow_up_at && ` · call back ${formatDateTime(order.follow_up_at)}`}
-              </p>
+              {/* Whether and how often the customer was called is for the Owner and Admins only. */}
+              {can('calls.view') ? (
+                <p className="text-muted-foreground">
+                  {order.contact_attempts > 0 ? `${order.contact_attempts} call attempt${order.contact_attempts === 1 ? '' : 's'}` : 'Not called yet'}
+                  {order.last_contact_at && ` · last ${formatDateTime(order.last_contact_at)}`}
+                  {order.follow_up_at && ` · call back ${formatDateTime(order.follow_up_at)}`}
+                </p>
+              ) : order.follow_up_at && <p className="text-muted-foreground">Call back {formatDateTime(order.follow_up_at)}</p>}
               {order.review_note && <p className="text-muted-foreground">“{order.review_note}”</p>}
             </div>
           </div>
@@ -817,7 +823,7 @@ function NotesCard({ orderId, notes, onAdded, canAdd, phone }: {
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Notes</CardTitle>
-        <CardAction><CallButton size="sm" variant="ghost" phone={phone}><Phone /> Call customer</CallButton></CardAction>
+        <CardAction><CallButton size="sm" variant="ghost" phone={phone} orderId={orderId} source="order notes"><Phone /> Call customer</CallButton></CardAction>
       </CardHeader>
       <CardContent className="space-y-3">
         {canAdd && (
