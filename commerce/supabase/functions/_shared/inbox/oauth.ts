@@ -85,9 +85,14 @@ export function loginUrl(app: MetaInboxApp, kind: OAuthKind, redirectUri: string
   u.searchParams.set('config_id', configId ?? '')
   u.searchParams.set('response_type', 'code')
   u.searchParams.set('override_default_response_type', 'true')
-  // Coexistence keeps the number working in the WhatsApp Business app while Fullfilio uses the API.
+  // Embedded Signup v5 (Meta retired v2 and v3 on 15 Oct 2026, and an old-style request for the
+  // WhatsApp Business app flow falls back to the plain flow, which marks app numbers "Ineligible").
+  // On v5 connecting a WhatsApp Business app number (coexistence: it keeps working in the app) is on
+  // by default; an API-only connection turns it off.
   if (kind === 'WHATSAPP') {
-    u.searchParams.set('extras', JSON.stringify({ setup: {}, featureType: coexist ? 'whatsapp_business_app_onboarding' : '', sessionInfoVersion: '3' }))
+    u.searchParams.set('extras', JSON.stringify(coexist
+      ? { version: 'v5', setup: {} }
+      : { version: 'v5', setup: {}, features: [{ name: 'whatsapp_business_app_onboarding', enabled: false }] }))
   }
   return u.toString()
 }

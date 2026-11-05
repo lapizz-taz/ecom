@@ -121,3 +121,13 @@ B = 1+3+4 (instagram_basic, instagram_manage_messages, instagram_manage_comments
 C = 1+5 (Business Asset User Profile Access, Human Agent); D = 6 (whatsapp_business_management,
 whatsapp_business_messaging). The customer test account needs a Tester role on the app until the
 permissions are approved.
+
+### WhatsApp signup (5 Nov 2026)
+
+- "Fullfilio can't onboard customers right now" in Meta's WhatsApp window went away once Tech Provider onboarding was
+  started (WhatsApp → Tools → Become a Tech Provider → Independent Tech Provider → Start onboarding). App Mode made no difference.
+- Meta retired Embedded Signup v2 and v3 on 15 Oct 2026. Fullfilio now asks for v5: a WhatsApp Business app number
+  (coexistence) is offered by default, and "API-only or new number" turns it off. With the old request the app number
+  showed as "Ineligible".
+- Video for the two WhatsApp permissions (Meta's rule): a message sent from Fullfilio and received in WhatsApp, and
+  Fullfilio creating a message template. Meta's signup itself does not have to be in it.

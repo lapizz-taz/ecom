@@ -434,8 +434,12 @@ async function connectNumber(
   // Coexistence: ask Meta to share the app's contacts and chat history (allowed once, soon after sign-up).
   if (coexist) {
     for (const sync_type of ['smb_app_state_sync', 'history']) {
-      await g.post(`${number.id}/smb_app_data`, { messaging_product: 'whatsapp', sync_type })
-        .catch((e) => out.warnings.push(`${label}: chat history could not be requested (${(e as Error).message}). New messages still arrive.`))
+      const failed = await g.post(`${number.id}/smb_app_data`, { messaging_product: 'whatsapp', sync_type }).then(() => null, (e: Error) => e)
+      if (!failed) continue
+      // A number that is not on the WhatsApp Business app (a new or API number picked in the same flow)
+      // has no app history to share: nothing to warn about.
+      if (/only available to WhatsApp Business App/i.test(failed.message)) break
+      out.warnings.push(`${label}: chat history could not be requested (${failed.message}). New messages still arrive.`)
     }
   }
 }
