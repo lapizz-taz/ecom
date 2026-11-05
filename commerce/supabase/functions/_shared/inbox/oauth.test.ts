@@ -43,10 +43,12 @@ describe('Continue with Facebook: Meta calls', () => {
     expect(biz.searchParams.get('config_id')).toBe('777000222')
     const wa = new URL(loginUrl(app, 'WHATSAPP', 'https://x/cb', 'st'))
     expect(wa.searchParams.get('config_id')).toBe(app.whatsapp_config_id)
-    expect(JSON.parse(wa.searchParams.get('extras')!)).toMatchObject({ sessionInfoVersion: '3', featureType: '' })
+    // v5: an API-only number turns the WhatsApp Business app flow off.
+    expect(JSON.parse(wa.searchParams.get('extras')!)).toEqual({ version: 'v5', setup: {}, features: [{ name: 'whatsapp_business_app_onboarding', enabled: false }] })
     // Keeping the number on the WhatsApp Business app asks Meta for the coexistence sign-up.
     const coexist = new URL(loginUrl(app, 'WHATSAPP', 'https://x/cb', 'st', true))
-    expect(JSON.parse(coexist.searchParams.get('extras')!)).toMatchObject({ featureType: 'whatsapp_business_app_onboarding' })
+    // v5 offers the WhatsApp Business app number by default (no old featureType, which Meta now ignores).
+    expect(JSON.parse(coexist.searchParams.get('extras')!)).toEqual({ version: 'v5', setup: {} })
   })
 
   it('swaps the code for a token, then for a long-lived one (Pages only)', async () => {
