@@ -13,7 +13,7 @@ import {
 } from '../_shared/courier/registry.ts'
 import { withBookingClaim } from '../_shared/courier/booking.ts'
 import { PathaoProvider, type PathaoStore, RedxProvider } from '../_shared/courier/providers.ts'
-import { CourierNotSupportedError } from '../_shared/courier/types.ts'
+import { CourierNotSupportedError, type TrackingInfo, type TrackingStep } from '../_shared/courier/types.ts'
 import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson } from '../_shared/http.ts'
 import { parse } from '../_shared/schemas.ts'
@@ -59,7 +59,8 @@ const schema = z.discriminatedUnion('action', [
     action: z.literal('force_check'), courier_id: z.uuid().optional(), scope: z.enum(['all', 'shipped']).default('all'),
     run_id: z.uuid().optional(), after: z.uuid().optional(), batch: z.number().int().min(1).max(25).default(10),
   }),
-  z.object({ action: z.literal('tracking'), shipment_id: z.uuid() }),
+  // The parcel's journey: by shipment, or by order (its active parcel), as the order lists know only the order.
+  z.object({ action: z.literal('tracking'), shipment_id: z.uuid().optional(), order_id: z.uuid().optional() }),
   z.object({
     action: z.literal('delivery_cost'),
     courier_id: z.uuid(),
@@ -78,6 +79,8 @@ const BOOKABLE = ['CONFIRMED', 'PROCESSING', 'PACKING', 'READY_TO_SHIP']
 const PERMISSION: Record<string, string> = {
   connect: 'couriers.manage', disconnect: 'couriers.manage', test_connection: 'couriers.manage', set_webhook_secret: 'couriers.manage',
   save_options: 'couriers.manage', courier_stores: 'couriers.manage',
+  // Anyone who can see the order can follow its parcel (the journey shows no costs).
+  tracking: 'orders.view',
 }
 
 /** Merges booking options (and the store list) into couriers.config; keys never go there. */
@@ -120,6 +123,67 @@ async function loadShipment(client: SupabaseClient, id: string) {
     courier: data.couriers as unknown as CourierRow,
     orderNumber: (data.orders as unknown as { order_number: string }).order_number,
   }
+}
+
+/** The order's current parcel (the active one, else the latest). */
+async function activeShipmentId(client: SupabaseClient, orderId: string): Promise<string | null> {
+  const { data, error } = await client.from('shipments').select('id, is_active').eq('order_id', orderId)
+    .order('is_active', { ascending: false }).order('created_at', { ascending: false }).limit(1)
+  if (error) throw new Error(error.message)
+  return data?.[0]?.id ?? null
+}
+
+/**
+ * Every step of a parcel's journey, newest first: from the courier's own tracking when it has one
+ * (live), else the courier updates Fullfilio stored (webhooks, status checks, staff changes).
+ */
+async function journeyOf(client: SupabaseClient, admin: SupabaseClient, shipment: Awaited<ReturnType<typeof loadShipment>>) {
+  let live: TrackingInfo | null = null
+  let problem: string | null = null
+  try {
+    live = await (await courierProviderFor(admin, shipment.courier)).getTracking({
+      consignmentId: shipment.consignment_id,
+      trackingNumber: shipment.tracking_number,
+      orderNumber: shipment.orderNumber,
+    })
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error)
+  }
+  const fromCourier = live?.journey?.length ? live.journey : null
+  let steps: TrackingStep[] = fromCourier ?? []
+  if (!fromCourier) {
+    const { data, error } = await client.from('shipment_events').select('status, description, location, occurred_at')
+      .eq('shipment_id', shipment.id).order('occurred_at', { ascending: false }).limit(100)
+    if (error) throw new Error(error.message)
+    steps = (data ?? []).map((e) => ({
+      at: e.occurred_at as string,
+      text: (e.description as string | null)?.trim() || STATUS_TEXT[e.status as string] || String(e.status),
+      note: (e.location as string | null) ?? null,
+      stage: STATUS_TEXT[e.status as string] ?? null,
+    }))
+  }
+  const code = shipment.tracking_number ?? shipment.consignment_id
+  const template = shipment.courier.tracking_url_template
+  return {
+    courier: shipment.courier.name,
+    provider: shipment.courier.provider,
+    tracking_number: code,
+    status: shipment.status,
+    // The courier's own page, also when its tracking did not answer.
+    url: live?.url ?? (template && code ? template.replace('{tracking}', encodeURIComponent(code)) : null),
+    live: !!fromCourier,
+    stage: (fromCourier ? live?.stage : null) ?? steps[0]?.stage ?? null,
+    steps,
+    // Said only when nothing came from the courier, so staff know why the journey is short.
+    problem: fromCourier ? null : problem,
+  }
+}
+
+/** Fullfilio's own parcel statuses, for steps that have no courier wording. */
+const STATUS_TEXT: Record<string, string> = {
+  PENDING: 'Waiting to be booked', BOOKED: 'Booked with the courier', PICKED_UP: 'Picked up', IN_TRANSIT: 'In transit',
+  OUT_FOR_DELIVERY: 'Out for delivery', DELIVERED: 'Delivered', PARTIALLY_DELIVERED: 'Partly delivered', FAILED: 'Delivery failed',
+  RETURNING: 'Returning', RETURNED: 'Returned', CANCELLED: 'Cancelled', ON_HOLD: 'On hold',
 }
 
 async function syncOne(client: SupabaseClient, admin: SupabaseClient, shipmentId: string) {
@@ -434,13 +498,10 @@ export default (
           return json(req, { ...r, run: { ...r.run, total: r.run.total || run.total } })
         }
         case 'tracking': {
-          const shipment = await loadShipment(client, input.shipment_id)
-          const tracking = await (await courierProviderFor(admin, shipment.courier)).getTracking({
-            consignmentId: shipment.consignment_id,
-            trackingNumber: shipment.tracking_number,
-            orderNumber: shipment.orderNumber,
-          })
-          return json(req, { tracking })
+          const shipmentId = input.shipment_id ?? (input.order_id ? await activeShipmentId(client, input.order_id) : null)
+          if (!shipmentId) throw new HttpError(404, 'This order has no parcel with a courier yet', 'NOT_FOUND')
+          const shipment = await loadShipment(client, shipmentId)
+          return json(req, { tracking: await journeyOf(client, admin, shipment) })
         }
         case 'delivery_cost': {
           const courier = await loadCourier(client, input.courier_id)
