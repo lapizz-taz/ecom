@@ -54,6 +54,11 @@ jobs point at Supabase now and can point at the Worker later (step 12).
   (store sync, courier booking, ad sync, notification sending): the free plan
   allows only 10 ms of CPU and 50 outgoing requests per call. On Workers Paid
   set it to empty and everything runs on Cloudflare.
+  Publishing (a push to the live branch) does not update these functions. When a change touches one
+  of them (`channels`, `courier`, `meta-ads`, `ad-platforms`, `notifications-dispatch`, `courier-relay`)
+  or the `_shared` files it imports, deploy it on Supabase too: its `index.ts` is one line,
+  `import 'https://raw.githubusercontent.com/lapizz-taz/ecom/<live commit>/commerce/supabase/functions/<name>/index.ts'`,
+  with the same `import_map.json` (zod, supabase-js), so a deploy only moves it to the live commit.
 
 ## What it costs
 
