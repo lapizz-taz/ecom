@@ -612,6 +612,10 @@ export default (
         try {
           numbers = (await g.get<{ data?: typeof numbers }>(`${input.waba_id}/phone_numbers`, { fields: 'id,display_phone_number,verified_name' })).data ?? []
         } catch (e) {
+          // #200 / #10: the token cannot see this WhatsApp account (the usual mistake with a system user token).
+          if (e instanceof MetaApiError && (e.code === 200 || e.code === 10)) {
+            throw new HttpError(422, 'This token cannot see that WhatsApp account. In Business Settings → System users, give the system user Full control of the WhatsApp account, then make a new token with whatsapp_business_management and whatsapp_business_messaging, and paste that one.', 'META_REJECTED')
+          }
           throw metaError(e)
         }
         const n = numbers.find((x) => x.id === input.phone_number_id)

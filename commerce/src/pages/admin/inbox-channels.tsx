@@ -334,7 +334,7 @@ function WhatsAppTokenDialog({ open, onOpenChange, onDone }: { open: boolean; on
             <Input id="wa-phone" inputMode="numeric" value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: digits(e.target.value) })} placeholder="Phone number ID" />
           </Field>
           <Field label="Access token" htmlFor="wa-token" hint="A token from API Setup lasts 24 hours; a system user's token keeps working. It is stored encrypted.">
-            <Input id="wa-token" type="password" autoComplete="off" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value.trim() })} placeholder="EAA…" />
+            <Input id="wa-token" type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" name="wa-access-token" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value.trim() })} placeholder="EAA…" />
           </Field>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
