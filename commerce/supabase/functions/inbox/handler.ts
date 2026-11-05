@@ -428,6 +428,14 @@ async function connectNumber(
     await g.post(`${number.id}/register`, { messaging_product: 'whatsapp', pin })
       .catch((e) => out.warnings.push(`${label}: the number could not be registered for the Cloud API (${(e as Error).message}). If it already has a two-step PIN, connect again with that PIN.`))
   }
+  // Meta delivers messages only to a number that is CONNECTED on the Cloud API. One picked without a PIN
+  // (the WhatsApp Business app flow, or a token) and never registered stays DISCONNECTED: say so.
+  if (!(pin && !coexist)) {
+    const state = await g.get<{ status?: string }>(number.id, { fields: 'status' }).catch(() => null)
+    if (state?.status && state.status !== 'CONNECTED') {
+      out.warnings.push(`${label}: Meta says this number is ${state.status.toLowerCase()}, so no messages arrive yet. Connect it again with "Connect an API-only or new number" and enter its two-step PIN (or choose one), so Fullfilio can switch it on.`)
+    }
+  }
   await saveChannel(admin, actor, {
     platform: 'WHATSAPP', external_id: number.id, waba_id: number.waba_id, name: label, display_phone: number.display_phone,
   }, token, out)
