@@ -397,3 +397,34 @@ export async function returnAnalysis(from: string, to: string): Promise<ReturnAn
   if (error) throw error
   return data as unknown as ReturnAnalysis
 }
+
+/** One step of a parcel's journey, in the courier's words ("Reached at Malibagh."). */
+export interface JourneyStep {
+  at: string | null
+  text: string
+  note: string | null
+  /** The courier's stage ("In-Transit", "Ready For Delivery"). */
+  stage: string | null
+}
+
+export interface ParcelJourney {
+  courier: string
+  provider: string
+  tracking_number: string | null
+  status: string
+  url: string | null
+  /** True when the steps came from the courier's own tracking; false: the updates Fullfilio received. */
+  live: boolean
+  stage: string | null
+  /** Newest first. */
+  steps: JourneyStep[]
+  problem: string | null
+}
+
+/** Every step of an order's parcel, from the courier's tracking when it has one. */
+export async function parcelJourney(ref: { orderId?: string; shipmentId?: string }): Promise<ParcelJourney> {
+  const r = await invokeFunction<{ tracking: ParcelJourney }>('courier', {
+    action: 'tracking', ...(ref.shipmentId ? { shipment_id: ref.shipmentId } : { order_id: ref.orderId }),
+  })
+  return r.tracking
+}

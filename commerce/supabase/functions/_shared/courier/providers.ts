@@ -8,6 +8,7 @@ import {
   type ShipmentStatusResult,
   type TrackingInfo,
 } from './types.ts'
+import { fetchPathaoJourney, parseRedxJourney } from './journey.ts'
 
 type FetchFn = typeof fetch
 
@@ -314,11 +315,13 @@ export class PathaoProvider implements CourierProvider {
   }
 
   async getTracking(ref: ShipmentRef): Promise<TrackingInfo> {
+    const url = trackingUrl(this.config.trackingTemplate ?? 'https://merchant.pathao.com/tracking?consignment_id={tracking}', ref.trackingNumber ?? ref.consignmentId)
+    // The whole journey (hubs, the rider) is on Pathao's public tracking page; its API has only the status.
+    const id = ref.consignmentId ?? ref.trackingNumber
+    const journey = id && !this.config.sandbox ? await fetchPathaoJourney(id, this.fetchFn).catch(() => null) : null
+    if (journey?.steps.length) return { url, events: [], journey: journey.steps, stage: journey.stage }
     const status = await this.getShipmentStatus(ref)
-    return {
-      url: trackingUrl(this.config.trackingTemplate ?? 'https://merchant.pathao.com/tracking?consignment_id={tracking}', ref.trackingNumber ?? ref.consignmentId),
-      events: [{ status: status.providerStatus }],
-    }
+    return { url, events: [{ status: status.providerStatus }] }
   }
 
   getDeliveryCost(): Promise<number | null> {
@@ -452,11 +455,12 @@ export class RedxProvider implements CourierProvider {
   }
 
   async getTracking(ref: ShipmentRef): Promise<TrackingInfo> {
+    const url = trackingUrl(this.config.trackingTemplate ?? 'https://redx.com.bd/track-parcel/?trackingId={tracking}', ref.trackingNumber)
+    const id = ref.trackingNumber ?? ref.consignmentId
+    const journey = id ? parseRedxJourney(await this.call<unknown>(`/parcel/track/${encodeURIComponent(id)}`).catch(() => null)) : null
+    if (journey?.steps.length) return { url, events: [], journey: journey.steps, stage: journey.stage }
     const status = await this.getShipmentStatus(ref)
-    return {
-      url: trackingUrl(this.config.trackingTemplate ?? 'https://redx.com.bd/track-parcel/?trackingId={tracking}', ref.trackingNumber),
-      events: [{ status: status.providerStatus }],
-    }
+    return { url, events: [{ status: status.providerStatus }] }
   }
 
   getDeliveryCost(): Promise<number | null> {

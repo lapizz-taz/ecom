@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, ArrowRight, Ban, Check, Copy, CreditCard, ExternalLink, Factory, FileText, Layers, MoreHorizontal, Package, PackageMinus,
-  PackageX, Pencil, Phone, PhoneCall, Printer, RefreshCw, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
+  PackageX, Pencil, Phone, PhoneCall, Printer, RefreshCw, Route, ShieldAlert, ShieldCheck, Tag, Truck, Undo2, Wallet, X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -30,6 +30,7 @@ import {
   AssignCourierDialog, EditItemsDialog, EditOrderDialog, FraudDecisionDialog, PartialDeliveryDialog, RecordPaymentDialog, RefundDialog,
   RetainAdvanceDialog, ReturnDialog, ShipmentStatusDialog,
 } from '@/features/orders/order-dialogs'
+import { CourierJourney } from '@/features/orders/courier-journey'
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
 import { OrderBranch } from '@/features/orders/order-branch'
 import { OrderClientInfo } from '@/features/orders/order-client-info'
@@ -495,12 +496,11 @@ export default function OrderDetailPage() {
                     <div><dt className="text-xs text-muted-foreground">Delivered</dt><dd>{formatDateTime(shipment.delivered_at)}</dd></div>
                   </dl>
                   <CourierCharges charges={shipment.shipment_charges} />
-                  {shipment.shipment_events.length > 0 && (
-                    <ul className="space-y-1 border-l pl-3 text-xs">
-                      {[...shipment.shipment_events].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).map((e) => (
-                        <li key={e.id}><span className="font-medium">{SHIPMENT_STATUS[e.status].label}</span> · {e.description ?? ''} <span className="text-muted-foreground">{formatDateTime(e.occurred_at)} · {titleCase(e.source)}</span></li>
-                      ))}
-                    </ul>
+                  {(shipment.tracking_number || shipment.consignment_id || shipment.shipment_events.length > 0) && (
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="flex items-center gap-1.5 text-sm font-medium"><Route className="size-4 text-muted-foreground" /> {shipment.couriers?.name ?? 'Courier'}'s journey</p>
+                      <CourierJourney shipmentId={shipment.id} />
+                    </div>
                   )}
                 </div>
               )}

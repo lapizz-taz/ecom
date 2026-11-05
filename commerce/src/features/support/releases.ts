@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-05', tag: 'New', area: 'Couriers', title: 'Follow every parcel without leaving Fullfilio',
+    body: 'Approved Orders has a Journey button next to each booked parcel. It opens the parcel\'s journey from the courier, newest first, grouped by stage: hubs it reached and left, the rider it was given to (with their phone) and the delivery or return, with the time of each step. Refresh reads it again, and Open on Pathao opens the courier\'s own page. The order page shows the same journey under Courier. Pathao and RedX show every step; for other couriers you see the updates Fullfilio received from them.', to: '/admin/orders/approved' },
   { date: '2026-11-02', tag: 'Fixed', area: 'Messaging', title: 'One private message per comment, said plainly',
     body: 'Facebook and Instagram allow one private message per comment, within 7 days of it. Once it is sent, the comment says Private message sent, and Private message and Both are switched off with the reason, instead of failing with Meta\'s "already has a reply". When the customer answers, the chat carries on in Inbox.', to: '/admin/inbox/comments' },
   { date: '2026-11-02', tag: 'Fixed', area: 'Messaging', title: 'One popup per error, and "Deleting…" while Meta works',

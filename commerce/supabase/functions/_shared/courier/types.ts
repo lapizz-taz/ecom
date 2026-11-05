@@ -53,9 +53,23 @@ export interface ShipmentStatusResult {
   raw: unknown
 }
 
+/** One step of a parcel's journey, in the courier's words ("Reached at Malibagh."). */
+export interface TrackingStep {
+  at: string | null
+  text: string
+  /** Extra detail the courier adds ("Amount Collected: 1450"). */
+  note: string | null
+  /** The courier's stage the step belongs to ("In-Transit", "Ready For Delivery"). */
+  stage: string | null
+}
+
 export interface TrackingInfo {
   url: string | null
   events: Array<{ status: string; description?: string; at?: string }>
+  /** Every step the courier shows on its own tracking page, newest first (when it has one). */
+  journey?: TrackingStep[]
+  /** Where the parcel is now, in the courier's words. */
+  stage?: string | null
 }
 
 export interface CourierProvider {

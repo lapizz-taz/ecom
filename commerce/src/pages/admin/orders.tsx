@@ -30,6 +30,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { SuccessRateButton } from '@/features/orders/success-panel'
 import { ApprovedActionsMenu, BulkTagDialog, DuplicateCheckDialog, DuplicatesPanel } from '@/features/orders/approved-actions'
 import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
+import { CourierJourneyButton } from '@/features/orders/courier-journey'
 import { EMPTY_FILTERS, type FilterValues, filtersFromValues, OrderFilterButton } from '@/features/orders/order-filter-panel'
 import { paidBadge } from '@/features/orders/order-source-card'
 import { waNumber } from '@/features/storefront/whatsapp-confirm'
@@ -837,6 +838,7 @@ function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: Vi
           <span className="tabular-nums text-muted-foreground">Success <span className={cn('font-medium', tone.text)}>{Math.round(rate)}%</span> · {h.delivered}/{counted}</span>
         ) : view === 'web' && <span className="text-muted-foreground">{awaitingCheck(o) ? 'Checking…' : h ? 'New customer' : 'Not checked'}</span>}
         {code && <span className="truncate font-mono text-muted-foreground">{o.shipment?.courier} {code}</span>}
+        {code && o.shipment && <span onClick={(e) => e.stopPropagation()}><CourierJourneyButton orderId={o.id} orderNumber={o.order_number} courier={o.shipment.courier} /></span>}
         {web && o.follow_up_at && <span className={cn('text-muted-foreground', new Date(o.follow_up_at).getTime() <= Date.now() && 'font-medium text-red-600')}>Call {formatDateTime(o.follow_up_at)}</span>}
         {flag && <span className="font-medium text-amber-600 dark:text-amber-400">{flag.trim()}</span>}
       </div>
@@ -1154,7 +1156,10 @@ function UploadCell({ o }: { o: OrderListItem }) {
           ? <a href={s.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 truncate font-mono text-sky-600 underline-offset-2 hover:underline" title={`Track on ${s.courier}`}>{code}<ExternalLink className="size-3 shrink-0" /></a>
           : <span className="truncate font-mono">{code ?? 'Not booked'}</span>}
       </p>
-      <p className="text-muted-foreground">{s.courier}</p>
+      <div className="mt-0.5 flex items-center gap-1.5">
+        <span className="truncate text-muted-foreground">{s.courier}</span>
+        {code && <CourierJourneyButton orderId={o.id} orderNumber={o.order_number} courier={s.courier} />}
+      </div>
     </div>
   )
 }
