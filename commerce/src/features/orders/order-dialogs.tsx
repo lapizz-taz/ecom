@@ -353,7 +353,10 @@ export function ReturnDialog({ order, open, onOpenChange, onDone }: DialogProps)
           const max = i.quantity - i.returned_quantity - i.damaged_quantity
           return (
             <li key={i.id} className="flex flex-wrap items-center gap-3 p-2">
-              <div className="min-w-40 flex-1"><p className="font-medium">{i.product_name}</p><p className="text-xs text-muted-foreground">{i.sku} · shipped {i.quantity}</p></div>
+              <div className="min-w-40 flex-1">
+                <p className="font-medium">{i.product_name}{i.variant_title && <span className="text-primary"> · {i.variant_title}</span>}</p>
+                <p className="text-xs text-muted-foreground">{i.sku} · shipped {i.quantity}</p>
+              </div>
               <label className="flex items-center gap-1 text-xs">Restock
                 <Input type="number" min="0" max={max} className="h-8 w-16" value={r.restock}
                   onChange={(e) => setRows((s) => ({ ...s, [i.id]: { ...r, restock: Math.min(max - r.damaged, Math.max(0, Number(e.target.value))) } }))} />
@@ -445,7 +448,10 @@ export function PartialDeliveryDialog({ order, open, onOpenChange, onDone }: Dia
       <ul className="divide-y rounded-md border text-sm">
         {order.order_items.map((i) => (
           <li key={i.id} className="flex flex-wrap items-center gap-3 p-2">
-            <div className="min-w-40 flex-1"><p className="font-medium">{i.product_name}</p><p className="text-xs text-muted-foreground">{i.variant_title ? `${i.variant_title} · ` : ''}ordered {i.quantity} · {formatMoney(i.line_total)}</p></div>
+            <div className="min-w-40 flex-1">
+              <p className="font-medium">{i.product_name}{i.variant_title && <span className="text-primary"> · {i.variant_title}</span>}</p>
+              <p className="text-xs text-muted-foreground">{i.sku ? `${i.sku} · ` : ''}ordered {i.quantity} · {formatMoney(i.line_total)}</p>
+            </div>
             <label className="flex items-center gap-1.5 text-xs">Sent back
               <Input type="number" min="0" max={i.quantity} className="h-8 w-16" value={back[i.id] ?? 0}
                 onChange={(e) => setBack((b) => ({ ...b, [i.id]: Math.min(i.quantity, Math.max(0, Math.floor(Number(e.target.value) || 0))) }))} />
