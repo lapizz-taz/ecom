@@ -55,7 +55,8 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   size; staff tick what came back (Restock or Damaged) and only that goes back to stock. "Partial delivery…" on the order fills it in,
   and Pathao's return label finds the order too. A fully delivered parcel is still final.
 - Super Edit, merge, duplicate detection and smart auto-merge.
-- Incomplete orders and abandoned carts.
+- Incomplete orders and abandoned carts. A Shopify or WooCommerce abandoned checkout has an Order button (since 8 Nov 2026): New order opens
+  with the customer, address, district and products (matched by the store's variant link, then SKU); once created, the checkout counts as recovered.
 - The Auto-pick queue.
 - Order Financials (profit and loss per order).
 - Call Tracking (since 3 Nov 2026), for the Owner and Admins only (permission calls.view): every tap on Call for an

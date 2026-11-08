@@ -26,7 +26,7 @@ import { normalizePhone } from '@/lib/phone'
 import { PAYMENT_METHOD } from '@/lib/status'
 import { variantsByIds } from '@/services/catalog'
 import { useOrderSources } from '@/hooks/use-order-sources'
-import { getStoreCart, linkStoreCart } from '@/services/abandoned'
+import { abandonedCheckoutDraft, getStoreCart, linkAbandonedCheckout, linkStoreCart } from '@/services/abandoned'
 import { findCustomerByPhone } from '@/services/customers'
 import { adminQuote, createManualOrder, getCheckoutLead, linkCheckoutLead, setOrderSource } from '@/services/orders'
 import { inboxUpdate } from '@/services/inbox'
@@ -71,6 +71,9 @@ export default function NewOrderPage({ draft, onCreated }: { draft?: ChatOrderDr
   // Or from an abandoned cart (Web Orders → Abandoned Carts).
   const cartId = params.get('cart')
   const cart = useQuery({ queryKey: ['store-cart', cartId], enabled: !!cartId && !leadId, queryFn: () => getStoreCart(cartId!) })
+  // Or from a Shopify or WooCommerce abandoned checkout.
+  const checkoutId = !leadId && !cartId ? params.get('checkout') : null
+  const checkout = useQuery({ queryKey: ['abandoned-checkout-draft', checkoutId], enabled: !!checkoutId, queryFn: () => abandonedCheckoutDraft(checkoutId!) })
   const prefilled = useRef(false)
   useEffect(() => {
     const l = lead.data
@@ -98,10 +101,11 @@ export default function NewOrderPage({ draft, onCreated }: { draft?: ChatOrderDr
   const chatName = draft ? draft.name ?? null : params.get('name')
   const chatAddress = draft ? draft.address ?? null : params.get('address')
   useEffect(() => {
+    if (checkoutId) return
     if (callerPhone && !leadId && !cartId) setCustomer((v) => (v.phone ? v : { ...v, phone: callerPhone }))
     if (chatName && !leadId && !cartId) setCustomer((v) => (v.full_name ? v : { ...v, full_name: chatName }))
     if (chatAddress && !leadId && !cartId) setShipping((s) => (s.address ? s : { ...s, address: chatAddress }))
-  }, [callerPhone, chatName, chatAddress, leadId, cartId])
+  }, [callerPhone, chatName, chatAddress, leadId, cartId, checkoutId])
 
   const cartFilled = useRef(false)
   useEffect(() => {
@@ -120,6 +124,32 @@ export default function NewOrderPage({ draft, onCreated }: { draft?: ChatOrderDr
       })))
     }).catch(() => toast.warning('Could not load the cart — add the products by hand'))
   }, [cart.data])
+
+  const checkoutFilled = useRef(false)
+  useEffect(() => {
+    const c = checkout.data
+    if (!c || checkoutFilled.current) return
+    checkoutFilled.current = true
+    if (c.order_id) toast.warning('This checkout already became an order. Creating another one makes a second order.')
+    setCustomer((v) => ({ ...v, full_name: c.customer_name ?? '', phone: c.phone ?? '', email: c.email ?? '' }))
+    setShipping((s) => ({ ...s, address: c.address ?? '', city: c.city ?? '', district: c.district ?? '' }))
+    const matched = c.items.filter((i) => i.variant_id)
+    const missing = c.items.filter((i) => !i.variant_id)
+    if (missing.length) {
+      toast.warning(`Not found in your products, add by hand: ${missing.map((i) => `${i.title}${i.variant ? ` · ${i.variant}` : ''} ×${i.quantity}`).join(', ')}`)
+    }
+    if (!matched.length) return
+    void variantsByIds([...new Set(matched.map((i) => i.variant_id!))]).then((variants) => {
+      setLines(variants.map((v) => ({
+        variant_id: v.variant_id!,
+        label: `${v.product_name}${v.variant_title && v.variant_title !== 'Default' ? ` · ${v.variant_title}` : ''}`,
+        sku: v.sku ?? '',
+        quantity: Math.max(1, matched.filter((i) => i.variant_id === v.variant_id).reduce((a, i) => a + i.quantity, 0)),
+        unit_price: toNumber(v.unit_price),
+        available: v.track_inventory ? v.available : null,
+      })))
+    }).catch(() => toast.warning('Could not load the checkout\'s products — add them by hand'))
+  }, [checkout.data])
 
   // Pre-fill from an existing customer when the phone matches.
   const phone = useDebounce(normalizePhone(customer.phone), 400)
@@ -156,6 +186,9 @@ export default function NewOrderPage({ draft, onCreated }: { draft?: ChatOrderDr
         await linkCheckoutLead(leadId, order.id).catch(() => toast.warning('Order created, but it could not be linked to the checkout'))
       } else if (order?.id && cartId && cart.data) {
         await linkStoreCart(cartId, order.id).catch(() => toast.warning('Order created, but it could not be linked to the cart'))
+      } else if (order?.id && checkoutId && checkout.data) {
+        await linkAbandonedCheckout(checkoutId, order.id).catch(() => toast.warning('Order created, but the abandoned checkout could not be marked recovered'))
+        if (orderSource) await setOrderSource(order.id, orderSource).catch(() => toast.warning('Order created, but its source could not be saved'))
       } else if (order?.id && orderSource) {
         await setOrderSource(order.id, orderSource).catch(() => toast.warning('Order created, but its source could not be saved'))
       }

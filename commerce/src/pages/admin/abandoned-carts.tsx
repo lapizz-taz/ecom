@@ -39,8 +39,9 @@ import { isoDate } from '@/lib/dates'
 const PAGE_SIZE = 25
 
 const copy = (text: string) => navigator.clipboard.writeText(text).then(() => toast.success('Link copied'), () => toast.error('Could not copy — select and copy by hand'))
-const itemsText = (items: Array<{ name?: string; title?: string; quantity: number }>) =>
-  items.slice(0, 3).map((i) => `${i.name ?? i.title} ×${i.quantity}`).join(', ') + (items.length > 3 ? ` +${items.length - 3} more` : '')
+const itemName = (i: { name?: string; title?: string; variant?: string | null }) => `${i.name ?? i.title}${i.variant ? ` · ${i.variant}` : ''}`
+const itemsText = (items: Array<{ name?: string; title?: string; variant?: string | null; quantity: number }>) =>
+  items.slice(0, 3).map((i) => `${itemName(i)} ×${i.quantity}`).join(', ') + (items.length > 3 ? ` +${items.length - 3} more` : '')
 function waLink(phone: string | null, message: string) {
   const n = phone ? waNumber(phone) : null
   return n ? `https://wa.me/${n}?text=${encodeURIComponent(message)}` : null
@@ -371,7 +372,7 @@ function ShopifySection() {
           {a.legacy_id
             ? <a href={`https://${a.shop_domain}/admin/checkouts/${a.legacy_id}`} target="_blank" rel="noreferrer" className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{a.name ?? `#${a.legacy_id}`}</a>
             : <span className="font-medium">{a.name ?? '—'}</span>}
-          <p className="truncate text-xs text-muted-foreground" title={a.items.map((i) => `${i.title} ×${i.quantity}`).join(', ')}>{itemsText(a.items) || '—'}</p>
+          <p className="truncate text-xs text-muted-foreground" title={a.items.map((i) => `${itemName(i)} ×${i.quantity}`).join(', ')}>{itemsText(a.items) || '—'}</p>
         </div>
       ),
     },
@@ -391,6 +392,7 @@ function ShopifySection() {
       cell: (a) => (
         <div className="flex flex-col items-start gap-1">
           {a.status === 'RECOVERED' ? <Badge variant="success">Recovered</Badge> : <Badge className="border-transparent bg-orange-100 text-orange-800">Not recovered</Badge>}
+          {a.order_id && <span className="text-[11px] text-muted-foreground">Order made in Fullfilio</span>}
           {a.status === 'OPEN' && a.follow_up !== 'NONE' && (
             <span className="text-[11px] text-muted-foreground" title={a.notes ?? undefined}>{a.follow_up === 'DISMISSED' ? 'Dismissed' : `Called ${a.contact_count}×`}</span>
           )}
@@ -406,6 +408,11 @@ function ShopifySection() {
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             {a.phone && <Button size="icon-sm" variant="ghost" asChild><a href={`tel:${a.phone}`} aria-label="Call"><Phone /></a></Button>}
             {wa && a.status === 'OPEN' && <Button size="icon-sm" variant="ghost" asChild><a href={wa} target="_blank" rel="noreferrer" aria-label="Send the checkout link on WhatsApp"><MessageCircle /></a></Button>}
+            {a.order_id
+              ? <Button size="sm" variant="outline" className="h-7" asChild><Link to={`/admin/orders/${a.order_id}`}><ExternalLink /> Open order</Link></Button>
+              : a.status === 'OPEN' && (a.phone || a.customer_name) && can('orders.create') && (
+                <Button size="sm" className="h-7" asChild><Link to={`/admin/orders/new?checkout=${a.id}`} title="Create the order for them: their details and items come with it"><ShoppingCart /> Order</Link></Button>
+              )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="More"><MoreHorizontal /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -435,8 +442,9 @@ function ShopifySection() {
         <StatCard label="Abandoned (30 days)" value={formatNumber(s?.all_30d ?? 0)} />
       </div>
 
-      <Card className="flex-row flex-wrap items-center gap-3 px-4 py-3">
-        <div className="min-w-0 flex-1 space-y-1">
+      {/* On a phone the text gets the full width and the buttons go under it; with room they sit beside it. */}
+      <Card className="flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="min-w-0 space-y-1 sm:flex-1 sm:basis-72">
           {channels.slice(0, 3).map((c) => <SyncLine key={c.id} name={c.name || c.shop_domain} error={c.error} at={c.synced_at} />)}
           {channels.length > 3 && <p className="text-xs text-muted-foreground">and {channels.length - 3} more store{channels.length > 4 ? 's' : ''}{channels.slice(3).some((c) => c.error) ? ' — some with errors' : ''}</p>}
           <p className="text-xs text-muted-foreground">
@@ -457,11 +465,11 @@ function ShopifySection() {
       <Card className="gap-0 py-0">
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <Select value={view} onValueChange={(v) => { setPage(1); setSelected(new Set()); update({ sview: v }) }}>
-            <SelectTrigger className="h-9 w-40" aria-label="Recovery status"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-36 shrink-0" aria-label="Recovery status"><SelectValue /></SelectTrigger>
             <SelectContent>{VIEWS.map((v) => <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>)}</SelectContent>
           </Select>
-          <SearchInput value={state.sq} onChange={(v) => { setPage(1); update({ sq: v }) }} placeholder="Search checkout, customer, phone, email or product" className="min-w-0 flex-1" />
-          <span className="text-sm text-muted-foreground tabular-nums">{formatNumber(q.data?.total ?? 0)} checkouts</span>
+          <SearchInput value={state.sq} onChange={(v) => { setPage(1); update({ sq: v }) }} placeholder="Search checkout, customer, phone, email or product" className="min-w-0 flex-1 basis-44" />
+          <span className="text-sm whitespace-nowrap text-muted-foreground tabular-nums">{formatNumber(q.data?.total ?? 0)} checkouts</span>
         </div>
         {selected.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2 text-sm">
