@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { FormDialog } from '@/components/common/form-dialog'
 import { CameraScanner, type TorchState } from '@/features/fulfillment/camera-scanner'
 import { toUserMessage } from '@/lib/errors'
 import { toast } from '@/lib/toast'
@@ -61,6 +62,8 @@ export default function ScanPage() {
   const [askedTorch, setAskedTorch] = useState(false)
   const [sound, setSound] = useState(() => localStorage.getItem('scan_sound') !== 'off')
   const [last, setLast] = useState<ScanResult | null>(null)
+  // A partly delivered parcel: the popup where staff choose what came back.
+  const [choosing, setChoosing] = useState<ScanResult | null>(null)
   const [session, setSession] = useState({ ok: 0, already: 0, error: 0 })
   const [fullLog, setFullLog] = useState(false)
   // Reset log: this device shows only scans after the reset point. Scans are never deleted (each order's
@@ -109,6 +112,7 @@ export default function ScanPage() {
       try {
         const r = await scanParcel(value, m, m === 'SHIPPED' ? c || null : null)
         setLast(r)
+        setChoosing(r.result === 'CHOOSE' && r.order?.items?.length ? r : null)
         const kind = r.result === 'OK' ? 'ok' : r.result === 'ALREADY' || r.result === 'CHOOSE' ? 'warn' : 'error'
         scanFeedback(kind, s)
         // A partly delivered parcel counts once its items are received, not when it is scanned.
@@ -260,14 +264,7 @@ export default function ScanPage() {
                     </div>
                   ) : <p className="mt-1 font-mono text-sm break-all">{last.code}</p>}
                   {last.result === 'CHOOSE' && last.order?.items && (
-                    <PartialReturnPicker key={last.order.id + last.code} orderId={last.order.id} items={last.order.items}
-                      onDone={(names) => {
-                        scanFeedback('ok', settings.current.sound)
-                        setSession((x) => ({ ...x, ok: x.ok + 1 }))
-                        setLast((l) => l && { ...l, result: 'OK', message: `Back in stock: ${names}`, order: l.order && { ...l.order, items: undefined } })
-                        refreshSoon()
-                        inputRef.current?.focus()
-                      }} />
+                    <Button className="mt-3" variant="outline" onClick={() => setChoosing(last)}><PackageMinus /> Choose what came back</Button>
                   )}
                 </div>
               </div>
@@ -350,6 +347,19 @@ export default function ScanPage() {
           )}
         </Card>
       </div>
+
+      {choosing?.order?.items && (
+        <PartialReturnDialog key={choosing.order.id + choosing.code} result={choosing}
+          onClose={() => { setChoosing(null); window.setTimeout(() => inputRef.current?.focus(), 50) }}
+          onDone={(names) => {
+            scanFeedback('ok', settings.current.sound)
+            setSession((x) => ({ ...x, ok: x.ok + 1 }))
+            setLast((l) => l && { ...l, result: 'OK', message: `Back in stock: ${names}`, order: l.order && { ...l.order, items: undefined } })
+            setChoosing(null)
+            refreshSoon()
+            window.setTimeout(() => inputRef.current?.focus(), 50)
+          }} />
+      )}
     </div>
   )
 }
@@ -380,10 +390,11 @@ const itemName = (i: ScanItem) => `${i.product_name}${i.variant_title ? ` · ${i
 
 /**
  * A partly delivered parcel came back: the customer kept some items, so stock changes only for what is in
- * the parcel. Staff tick it here at the scanner; units recorded earlier with "Partial delivery…" are filled in.
+ * the parcel. It opens by itself after the scan; units recorded earlier with "Partial delivery…" are filled in.
  */
-function PartialReturnPicker({ orderId, items, onDone }: { orderId: string; items: ScanItem[]; onDone: (names: string) => void }) {
-  const open = items.filter((i) => i.quantity - i.returned_quantity - i.damaged_quantity > 0)
+function PartialReturnDialog({ result, onClose, onDone }: { result: ScanResult; onClose: () => void; onDone: (names: string) => void }) {
+  const order = result.order!
+  const open = (order.items ?? []).filter((i) => i.quantity - i.returned_quantity - i.damaged_quantity > 0)
   const [rows, setRows] = useState<Record<string, { restock: number; damaged: number }>>(() =>
     Object.fromEntries(open.map((i) => [i.id, { restock: Math.min(i.expected_back, i.quantity - i.returned_quantity - i.damaged_quantity), damaged: 0 }])))
   const [saving, setSaving] = useState(false)
@@ -398,7 +409,7 @@ function PartialReturnPicker({ orderId, items, onDone }: { orderId: string; item
   const save = async () => {
     setSaving(true)
     try {
-      await processReturn(orderId, open.flatMap((i) => {
+      await processReturn(order.id, open.flatMap((i) => {
         const r = rows[i.id]
         return [
           ...(r.restock > 0 ? [{ order_item_id: i.id, quantity: r.restock, condition: 'RESTOCK' as const }] : []),
@@ -413,19 +424,28 @@ function PartialReturnPicker({ orderId, items, onDone }: { orderId: string; item
     }
   }
   return (
-    <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-background p-3 text-foreground">
-      <p className="text-sm font-medium">What is in the parcel?</p>
-      <ul className="divide-y rounded-md border">
+    <FormDialog open onOpenChange={(o) => { if (!o) onClose() }} wide busy={saving} disabled={units === 0} onSubmit={save}
+      title="Partly delivered: what came back?"
+      submitLabel={units > 0 ? `Receive ${units} item${units === 1 ? '' : 's'}` : 'Receive items'}
+      description={<>Order <span className="font-mono font-medium text-foreground">{order.order_number}</span>
+        {order.courier_name ? ` · ${order.courier_name}${order.tracking_number ? ` ${order.tracking_number}` : ''}` : ''}.
+        {' '}Tap the item that is in the parcel. What the customer kept stays sold.</>}>
+      <ul className="divide-y rounded-md border text-sm">
         {open.map((i) => {
           const r = rows[i.id]
           const max = i.quantity - i.returned_quantity - i.damaged_quantity
           const on = r.restock + r.damaged > 0
           return (
-            <li key={i.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 p-2.5', on && 'bg-emerald-50/60')}>
-              <button type="button" className="min-w-40 flex-1 text-left" onClick={() => set(i, on ? { restock: 0, damaged: 0 } : { restock: max, damaged: 0 })}
-                title={on ? 'Not in the parcel' : 'In the parcel, back to stock'}>
-                <p className="font-semibold">{i.product_name}{i.variant_title && <span className="text-primary"> · {i.variant_title}</span>}</p>
-                <p className="text-xs text-muted-foreground">{i.sku ? `${i.sku} · ` : ''}shipped {i.quantity}{i.expected_back > 0 ? ` · recorded as sent back ${i.expected_back}` : ''}</p>
+            <li key={i.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 p-3 transition-colors', on && 'bg-emerald-50 dark:bg-emerald-950/40')}>
+              <button type="button" className="flex min-w-44 flex-1 items-center gap-3 text-left" onClick={() => set(i, on ? { restock: 0, damaged: 0 } : { restock: max, damaged: 0 })}
+                aria-pressed={on} title={on ? 'Not in the parcel' : 'In the parcel, back to stock'}>
+                <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-full border-2', on ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/40')}>
+                  {on && <CircleCheck className="size-4" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-base font-semibold">{i.product_name}{i.variant_title && <span className="text-primary"> · {i.variant_title}</span>}</span>
+                  <span className="block text-xs text-muted-foreground">{i.sku ? `${i.sku} · ` : ''}shipped {i.quantity}{i.expected_back > 0 ? ` · recorded as sent back ${i.expected_back}` : ''}</span>
+                </span>
               </button>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <label className="flex items-center gap-1.5 text-xs">Restock
@@ -439,10 +459,6 @@ function PartialReturnPicker({ orderId, items, onDone }: { orderId: string; item
           )
         })}
       </ul>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">Tap an item to mark it in the parcel. The items the customer kept stay sold.</p>
-        <Button onClick={save} disabled={units === 0 || saving}>{saving ? <Spinner /> : <PackageCheck />} Receive {units > 0 ? `${units} item${units === 1 ? '' : 's'}` : 'items'}</Button>
-      </div>
-    </div>
+    </FormDialog>
   )
 }
