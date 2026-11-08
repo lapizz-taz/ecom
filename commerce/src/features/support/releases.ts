@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-08', tag: 'Improved', area: 'Orders', title: 'Partly delivered parcels: choose what came back',
+    body: 'When the courier delivers only part of an order, scan the parcel that comes back in Scan parcels → Returned. A popup lists the order\'s items with their size (Sunset I · M, Sunset I · L): tap the one in the parcel, choose Restock or Damaged, and Receive. Only those items go back to stock; what the customer kept stays sold. If Partial delivery… was recorded on the order first, the popup is filled in. Pathao\'s return label finds the order too. The order page\'s return and partial delivery windows now show each item\'s size as well.', to: '/admin/scan' },
   { date: '2026-11-05', tag: 'New', area: 'Couriers', title: 'Follow every parcel without leaving Fullfilio',
     body: 'Approved Orders has a Journey button next to each booked parcel. It opens the parcel\'s journey from the courier, newest first, grouped by stage: hubs it reached and left, the rider it was given to (with their phone) and the delivery or return, with the time of each step. Refresh reads it again, and Open on Pathao opens the courier\'s own page. The order page shows the same journey under Courier. Pathao and RedX show every step; for other couriers you see the updates Fullfilio received from them.', to: '/admin/orders/approved' },
   { date: '2026-11-02', tag: 'Fixed', area: 'Messaging', title: 'One private message per comment, said plainly',

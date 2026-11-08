@@ -1,5 +1,5 @@
 {
-  "migrations": 206,
-  "last": "20261213000400_call_tracking.sql",
-  "sha256": "7172539ea1c5e45ca8a0781f53ab3e2ee1ad01a4c62d3e0a107e77dd502bf4e9"
+  "migrations": 207,
+  "last": "20261214000100_scan_partial_return.sql",
+  "sha256": "82c317159635f0e284f02635e707b3ba351b050f187c4bb9a095417983469e42"
 }
