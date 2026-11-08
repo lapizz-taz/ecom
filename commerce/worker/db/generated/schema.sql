@@ -2888,7 +2888,7 @@ CREATE TABLE parcel_scans (
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
   PRIMARY KEY (id),
   CONSTRAINT parcel_scans_action_check CHECK ("action" IN ('READY_TO_SHIP', 'SHIPPED', 'RETURNED', 'LOOKUP')),
-  CONSTRAINT parcel_scans_result_check CHECK (result IN ('OK', 'ALREADY', 'ERROR', 'NOT_FOUND')),
+  CONSTRAINT parcel_scans_result_check CHECK (result IN ('OK', 'ALREADY', 'ERROR', 'NOT_FOUND', 'CHOOSE')),
   CONSTRAINT parcel_scans_courier_id_fkey FOREIGN KEY (courier_id) REFERENCES couriers (id) ON DELETE SET NULL,
   CONSTRAINT parcel_scans_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
   CONSTRAINT parcel_scans_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE SET NULL
