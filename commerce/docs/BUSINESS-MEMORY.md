@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 5 Nov 2026.
+Last updated: 8 Nov 2026.
 
 ## What Fullfilio is
 
@@ -51,6 +51,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   product or SKU, source, courier, taken by, courier payment, order or courier invoice number, status, order tags, district
   (since 31 Oct 2026). Its charts are under Report.
 - Scan parcels has Reset log: the log on that device starts fresh; scans are never deleted (since 31 Oct 2026).
+- Partly delivered parcels (since 8 Nov 2026): scanning one in Scan parcels → Returned opens a popup listing the items with their
+  size; staff tick what came back (Restock or Damaged) and only that goes back to stock. "Partial delivery…" on the order fills it in,
+  and Pathao's return label finds the order too. A fully delivered parcel is still final.
 - Super Edit, merge, duplicate detection and smart auto-merge.
 - Incomplete orders and abandoned carts.
 - The Auto-pick queue.
