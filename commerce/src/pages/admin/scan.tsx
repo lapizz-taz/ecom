@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, CircleAlert, CircleCheck, CircleX, Flashlight, FlashlightOff, PackageCheck, PackageSearch, RotateCcw, ScanBarcode, Truck, Volume2, VolumeX } from 'lucide-react'
+import { Camera, CircleAlert, CircleCheck, CircleX, Flashlight, FlashlightOff, PackageCheck, PackageMinus, PackageSearch, RotateCcw, ScanBarcode, Truck, Volume2, VolumeX } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Money } from '@/components/common/money'
@@ -20,8 +20,8 @@ import { ORDER_STATUS } from '@/lib/status'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { listCouriers } from '@/services/couriers'
-import { recentScans, scanParcel } from '@/services/orders'
-import type { ScanAction, ScanResult } from '@/types/domain'
+import { processReturn, recentScans, scanParcel } from '@/services/orders'
+import type { ScanAction, ScanItem, ScanResult } from '@/types/domain'
 
 /**
  * `does` ends the line under the scan box: "Ready — scan a label to …". `phone` is the name on a
@@ -42,6 +42,7 @@ const RESULT_STYLE: Record<ScanResult['result'], { cls: string; icon: typeof Cir
   ALREADY: { cls: 'border-amber-300 bg-amber-50 text-amber-950', icon: CircleAlert, title: 'Already done' },
   ERROR: { cls: 'border-red-300 bg-red-50 text-red-950', icon: CircleX, title: 'Not changed' },
   NOT_FOUND: { cls: 'border-red-300 bg-red-50 text-red-950', icon: CircleX, title: 'Unknown barcode' },
+  CHOOSE: { cls: 'border-amber-300 bg-amber-50 text-amber-950', icon: PackageMinus, title: 'Partly delivered' },
 }
 
 const ACTION_LABEL: Record<string, string> = { READY_TO_SHIP: 'RTS', SHIPPED: 'Shipped', RETURNED: 'Returned', LOOKUP: 'Look up' }
@@ -108,9 +109,10 @@ export default function ScanPage() {
       try {
         const r = await scanParcel(value, m, m === 'SHIPPED' ? c || null : null)
         setLast(r)
-        const kind = r.result === 'OK' ? 'ok' : r.result === 'ALREADY' ? 'warn' : 'error'
+        const kind = r.result === 'OK' ? 'ok' : r.result === 'ALREADY' || r.result === 'CHOOSE' ? 'warn' : 'error'
         scanFeedback(kind, s)
-        setSession((x) => ({ ok: x.ok + (kind === 'ok' ? 1 : 0), already: x.already + (kind === 'warn' ? 1 : 0), error: x.error + (kind === 'error' ? 1 : 0) }))
+        // A partly delivered parcel counts once its items are received, not when it is scanned.
+        if (r.result !== 'CHOOSE') setSession((x) => ({ ok: x.ok + (kind === 'ok' ? 1 : 0), already: x.already + (kind === 'warn' ? 1 : 0), error: x.error + (kind === 'error' ? 1 : 0) }))
       } catch (e) {
         scanFeedback('error', s)
         setLast({ result: 'ERROR', message: toUserMessage(e), code: value, order: null })
@@ -254,9 +256,19 @@ export default function ScanPage() {
                       <p>{last.order.customer_name} · {last.order.shipping_district}</p>
                       <p>{last.order.item_count} item{last.order.item_count === 1 ? '' : 's'} · COD <Money value={last.order.cod_amount} /></p>
                       <p>{last.order.courier_name ? `${last.order.courier_name}${last.order.tracking_number ? ` · ${last.order.tracking_number}` : ''}` : 'No courier assigned'}</p>
-                      {!last.order.label_printed_at && <p className="text-amber-800 @md:col-span-2">Label not printed yet</p>}
+                      {!last.order.label_printed_at && last.result !== 'CHOOSE' && <p className="text-amber-800 @md:col-span-2">Label not printed yet</p>}
                     </div>
                   ) : <p className="mt-1 font-mono text-sm break-all">{last.code}</p>}
+                  {last.result === 'CHOOSE' && last.order?.items && (
+                    <PartialReturnPicker key={last.order.id + last.code} orderId={last.order.id} items={last.order.items}
+                      onDone={(names) => {
+                        scanFeedback('ok', settings.current.sound)
+                        setSession((x) => ({ ...x, ok: x.ok + 1 }))
+                        setLast((l) => l && { ...l, result: 'OK', message: `Back in stock: ${names}`, order: l.order && { ...l.order, items: undefined } })
+                        refreshSoon()
+                        inputRef.current?.focus()
+                      }} />
+                  )}
                 </div>
               </div>
             ) : (
@@ -302,7 +314,7 @@ export default function ScanPage() {
           <ul className="divide-y xl:max-h-[640px] xl:overflow-y-auto">
             {rows.map((row, i) => (
               <li key={row.id} className={cn('flex items-start gap-3 px-4 py-3 text-sm sm:px-5', i >= SHORT_LOG && !fullLog && 'max-xl:hidden')}>
-                <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', row.result === 'OK' ? 'bg-emerald-500' : row.result === 'ALREADY' ? 'bg-amber-500' : 'bg-red-500')} />
+                <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', row.result === 'OK' ? 'bg-emerald-500' : row.result === 'ALREADY' || row.result === 'CHOOSE' ? 'bg-amber-500' : 'bg-red-500')} />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
                     {row.order_id
@@ -360,6 +372,77 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: stri
     <div className="min-w-0 px-3 pt-1 pb-3 sm:px-4">
       <p className="truncate text-xs text-muted-foreground">{label}</p>
       <p className={cn('text-2xl font-semibold tabular-nums', tone)}>{value}</p>
+    </div>
+  )
+}
+
+const itemName = (i: ScanItem) => `${i.product_name}${i.variant_title ? ` · ${i.variant_title}` : ''}`
+
+/**
+ * A partly delivered parcel came back: the customer kept some items, so stock changes only for what is in
+ * the parcel. Staff tick it here at the scanner; units recorded earlier with "Partial delivery…" are filled in.
+ */
+function PartialReturnPicker({ orderId, items, onDone }: { orderId: string; items: ScanItem[]; onDone: (names: string) => void }) {
+  const open = items.filter((i) => i.quantity - i.returned_quantity - i.damaged_quantity > 0)
+  const [rows, setRows] = useState<Record<string, { restock: number; damaged: number }>>(() =>
+    Object.fromEntries(open.map((i) => [i.id, { restock: Math.min(i.expected_back, i.quantity - i.returned_quantity - i.damaged_quantity), damaged: 0 }])))
+  const [saving, setSaving] = useState(false)
+  const units = Object.values(rows).reduce((a, r) => a + r.restock + r.damaged, 0)
+  const set = (i: ScanItem, patch: Partial<{ restock: number; damaged: number }>) => setRows((all) => {
+    const max = i.quantity - i.returned_quantity - i.damaged_quantity
+    const next = { ...all[i.id], ...patch }
+    next.restock = Math.max(0, Math.min(next.restock, max - next.damaged))
+    next.damaged = Math.max(0, Math.min(next.damaged, max - next.restock))
+    return { ...all, [i.id]: next }
+  })
+  const save = async () => {
+    setSaving(true)
+    try {
+      await processReturn(orderId, open.flatMap((i) => {
+        const r = rows[i.id]
+        return [
+          ...(r.restock > 0 ? [{ order_item_id: i.id, quantity: r.restock, condition: 'RESTOCK' as const }] : []),
+          ...(r.damaged > 0 ? [{ order_item_id: i.id, quantity: r.damaged, condition: 'DAMAGED' as const }] : []),
+        ]
+      }), 'Received at the scanner')
+      onDone(open.filter((i) => rows[i.id].restock + rows[i.id].damaged > 0).map(itemName).join(', '))
+    } catch (e) {
+      toast.error(toUserMessage(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-background p-3 text-foreground">
+      <p className="text-sm font-medium">What is in the parcel?</p>
+      <ul className="divide-y rounded-md border">
+        {open.map((i) => {
+          const r = rows[i.id]
+          const max = i.quantity - i.returned_quantity - i.damaged_quantity
+          const on = r.restock + r.damaged > 0
+          return (
+            <li key={i.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 p-2.5', on && 'bg-emerald-50/60')}>
+              <button type="button" className="min-w-40 flex-1 text-left" onClick={() => set(i, on ? { restock: 0, damaged: 0 } : { restock: max, damaged: 0 })}
+                title={on ? 'Not in the parcel' : 'In the parcel, back to stock'}>
+                <p className="font-semibold">{i.product_name}{i.variant_title && <span className="text-primary"> · {i.variant_title}</span>}</p>
+                <p className="text-xs text-muted-foreground">{i.sku ? `${i.sku} · ` : ''}shipped {i.quantity}{i.expected_back > 0 ? ` · recorded as sent back ${i.expected_back}` : ''}</p>
+              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <label className="flex items-center gap-1.5 text-xs">Restock
+                  <Input type="number" min="0" max={max} className="h-9 w-16" value={r.restock} onChange={(e) => set(i, { restock: Math.floor(Number(e.target.value) || 0) })} />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs">Damaged
+                  <Input type="number" min="0" max={max} className="h-9 w-16" value={r.damaged} onChange={(e) => set(i, { damaged: Math.floor(Number(e.target.value) || 0) })} />
+                </label>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">Tap an item to mark it in the parcel. The items the customer kept stay sold.</p>
+        <Button onClick={save} disabled={units === 0 || saving}>{saving ? <Spinner /> : <PackageCheck />} Receive {units > 0 ? `${units} item${units === 1 ? '' : 's'}` : 'items'}</Button>
+      </div>
     </div>
   )
 }

@@ -296,8 +296,22 @@ export interface QueueCounts {
 
 export type ScanAction = 'READY_TO_SHIP' | 'SHIPPED' | 'RETURNED' | 'LOOKUP'
 
+/** One line of a partly delivered order, for choosing what came back at the scanner. */
+export interface ScanItem {
+  id: string
+  product_name: string
+  variant_title: string | null
+  sku: string | null
+  quantity: number
+  returned_quantity: number
+  damaged_quantity: number
+  /** Units recorded as sent back with "Partial delivery…", when staff recorded it first. */
+  expected_back: number
+}
+
 export interface ScanResult {
-  result: 'OK' | 'ALREADY' | 'ERROR' | 'NOT_FOUND'
+  /** CHOOSE: a partly delivered parcel came back; staff pick which items before stock changes. */
+  result: 'OK' | 'ALREADY' | 'ERROR' | 'NOT_FOUND' | 'CHOOSE'
   message: string
   code: string
   from_status?: OrderStatus
@@ -314,6 +328,7 @@ export interface ScanResult {
     label_printed_at: string | null
     courier_name: string | null
     tracking_number: string | null
+    items?: ScanItem[]
   } | null
 }
 
