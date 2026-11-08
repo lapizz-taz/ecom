@@ -4577,11 +4577,13 @@ CREATE TABLE shopify_abandoned_checkouts (
   synced_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', synced_at) = synced_at),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   merchant_id TEXT NOT NULL CHECK (length(merchant_id) = 36),
+  order_id TEXT CHECK (order_id IS NULL OR length(order_id) = 36),
   PRIMARY KEY (id),
   CONSTRAINT shopify_abandoned_checkouts_follow_up_check CHECK (follow_up IN ('NONE', 'CONTACTED', 'DISMISSED')),
   CONSTRAINT shopify_abandoned_checkouts_status_check CHECK (status IN ('OPEN', 'RECOVERED')),
   CONSTRAINT shopify_abandoned_checkouts_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES sales_channels (id),
   CONSTRAINT shopify_abandoned_checkouts_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+  CONSTRAINT shopify_abandoned_checkouts_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE SET NULL,
   CONSTRAINT shopify_abandoned_checkouts_channel_id_external_id_key UNIQUE (channel_id, external_id)
 ) STRICT;
 

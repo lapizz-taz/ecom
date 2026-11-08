@@ -44,6 +44,8 @@ export interface ShopifyAbandoned {
   item_count: number; subtotal: number | null; total: number; currency: string | null
   shop_created_at: string | null; completed_at: string | null; status: 'OPEN' | 'RECOVERED'; follow_up: 'NONE' | 'CONTACTED' | 'DISMISSED'
   contact_count: number; last_contacted_at: string | null; notes: string | null; store_name: string; shop_domain: string
+  /** The Fullfilio order made from this checkout (Create order). */
+  order_id?: string | null
 }
 export interface ShopifyAbandonedPage {
   total: number; items: ShopifyAbandoned[]
@@ -60,6 +62,15 @@ export interface AbandonedSyncResult { ok: boolean; channels: Array<{ id: string
 /** One batch: the last `days` days, or the whole history (days null). Pass the store and cursor to continue. */
 export const fetchShopifyAbandoned = (days: number | null, channelId?: string, cursor?: string | null) =>
   invokeFunction<AbandonedSyncResult>('channels', { action: 'abandoned_sync', days, channel_id: channelId, cursor: cursor ?? undefined })
+/** What New order needs from an abandoned checkout: the customer, the address and district, and the items matched to our products. */
+export interface CheckoutDraft {
+  id: string; name: string | null; status: 'OPEN' | 'RECOVERED'; order_id: string | null
+  customer_name: string | null; phone: string | null; email: string | null; address: string | null; city: string | null; province: string | null; country: string | null
+  district: string | null
+  items: Array<{ title: string; variant: string | null; sku: string | null; quantity: number; price: number | null; variant_id: string | null }>
+}
+export const abandonedCheckoutDraft = (id: string) => rpc<CheckoutDraft>('admin_abandoned_checkout_draft', { p_id: id })
+export const linkAbandonedCheckout = (id: string, orderId: string) => rpc('admin_link_abandoned_checkout', { p_id: id, p_order_id: orderId })
 export const bulkShopifyAbandoned = (ids: string[], status: 'CONTACTED' | 'DISMISSED' | 'OPEN') => rpc<number>('admin_bulk_shopify_abandoned', { p_ids: ids, p_status: status })
 
 /** CSV of abandoned checkouts (opens in Excel / Google Sheets). The shopper typed most of these fields, so they go
