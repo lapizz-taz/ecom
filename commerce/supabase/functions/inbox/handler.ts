@@ -33,6 +33,7 @@ import {
   type MetaInboxApp, type OAuthKind, pageFields, readState, signState,
 } from '../_shared/inbox/oauth.ts'
 import { type InboxEvent, insideReplyWindow, parseWebhook, validSignature } from '../_shared/inbox/parse.ts'
+import { HISTORY_CHATS_PER_CALL, historyFields, parseHistory } from '../_shared/inbox/history.ts'
 import { MetaApiError } from '../_shared/meta/graph.ts'
 import { logEvent } from '../_shared/monitoring.ts'
 import { REPLY_TEXTS, WHATSAPP_BUTTONS } from '../_shared/notifications/defaults.ts'
@@ -84,6 +85,8 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('channel'), id: z.string().uuid(), receive_comments: z.boolean() }),
   z.object({ action: z.literal('disconnect'), id: z.string().uuid() }),
   z.object({ action: z.literal('remove'), id: z.string().uuid() }),
+  // Old chats from Meta, a few at a time (the screen calls again with `after` until it is done).
+  z.object({ action: z.literal('history_import'), id: z.string().uuid(), days: z.number().int().min(1).max(3650).optional(), after: z.string().max(1000).optional() }),
   // A WhatsApp number connected with its IDs and a token from Meta (API Setup or a system user),
   // for numbers that cannot go through Embedded Signup yet, such as Meta's test number.
   z.object({ action: z.literal('whatsapp_manual'), waba_id: digits, phone_number_id: digits, token: z.string().trim().min(20).max(2000) }),
@@ -603,6 +606,43 @@ export default (
         await rpc(admin, 'integration_secret_clear', { p_key: channelKey(c.id), p_actor: staff.user.id })
         const out = await rpc<{ removed: boolean; conversations: number }>(admin, 'inbox_channel_remove', { p_id: c.id, p_actor: staff.user.id })
         return json(req, out)
+      }
+
+      case 'history_import': {
+        const [c] = await rpc<Channel[]>(admin, 'inbox_channels_for', { p_id: input.id })
+        if (!c) throw new HttpError(404, 'Channel not found', 'NOT_FOUND')
+        if (c.platform === 'WHATSAPP') throw new HttpError(422, 'WhatsApp does not let apps read old chats. New messages arrive as usual.', 'NOT_SUPPORTED')
+        if (c.status === 'DISCONNECTED') throw new HttpError(422, 'Connect this channel again first, then bring its old chats.', 'DISCONNECTED')
+        const token = (await secret<{ access_token?: string }>(admin, channelKey(c.id))).access_token
+        const pageId = c.platform === 'FACEBOOK' ? c.external_id : c.page_id
+        if (!token || !pageId) throw new HttpError(422, 'Connect this channel again first, then bring its old chats.', 'DISCONNECTED')
+        const since = input.days ? new Date(Date.now() - input.days * 86_400_000).toISOString() : null
+        let page: ReturnType<typeof parseHistory>
+        try {
+          const body = await new InboxGraph(token, appSecret).get(`${pageId}/conversations`, {
+            platform: c.platform === 'INSTAGRAM' ? 'instagram' : 'messenger', fields: historyFields(),
+            limit: String(HISTORY_CHATS_PER_CALL), ...(input.after ? { after: input.after } : {}),
+          })
+          page = parseHistory(body, [c.external_id, pageId], since)
+        } catch (e) {
+          throw metaError(e)
+        }
+        let messages = 0
+        for (const chat of page.chats) {
+          // Oldest first; a chat whose newest message came only now is history, so it is not left unread.
+          let conversation: string | null = null
+          let newestIsNew = false
+          for (const [i, m] of chat.messages.entries()) {
+            const r = await rpc<{ conversation_id: string; duplicate: boolean }>(admin, 'inbox_ingest', {
+              p: { channel_id: c.id, kind: 'MESSAGE', thread_key: chat.thread_key, customer: chat.customer, post: null, message: m },
+            })
+            conversation = r.conversation_id
+            if (!r.duplicate) messages++
+            if (i === chat.messages.length - 1) newestIsNew = !r.duplicate
+          }
+          if (conversation && newestIsNew) await rpc(admin, 'inbox_mark_read', { p_id: conversation }).catch(() => undefined)
+        }
+        return json(req, { chats: page.chats.length, messages, after: page.done ? null : page.after })
       }
 
       case 'whatsapp_manual': {

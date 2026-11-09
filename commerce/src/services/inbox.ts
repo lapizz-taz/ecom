@@ -200,6 +200,9 @@ export const connectWhatsAppManually = (input: { waba_id: string; phone_number_i
   invokeFunction<{ ok: boolean; channels: InboxChannel[]; warnings: string[] }>('inbox', { action: 'whatsapp_manual', ...input })
 /** Takes the channel off the store for good, with its conversations. */
 export const removeChannel = (id: string) => invokeFunction<{ removed: boolean; conversations: number }>('inbox', { action: 'remove', id })
+/** One batch of a Page's old Messenger or Instagram chats from Meta; call again with `after` until it is null. */
+export const importOldChats = (id: string, days: number, after?: string) =>
+  invokeFunction<{ chats: number; messages: number; after: string | null }>('inbox', { action: 'history_import', id, days, after })
 export const whatsappMedia = (channel_id: string, media_id: string) => invokeFunction<{ mime: string; data: string }>('inbox', { action: 'media', channel_id, media_id })
 
 /** A file as base64 for the inbox function (10 MB at most). */
