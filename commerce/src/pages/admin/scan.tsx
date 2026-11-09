@@ -62,8 +62,10 @@ export default function ScanPage() {
   const [askedTorch, setAskedTorch] = useState(false)
   const [sound, setSound] = useState(() => localStorage.getItem('scan_sound') !== 'off')
   const [last, setLast] = useState<ScanResult | null>(null)
-  // A partly delivered parcel: the popup where staff choose what came back.
-  const [choosing, setChoosing] = useState<ScanResult | null>(null)
+  // A partly delivered parcel: the popup where staff choose what came back. The ref lets the scan queue see it.
+  const [choosing, setChoosingState] = useState<ScanResult | null>(null)
+  const choosingRef = useRef<ScanResult | null>(null)
+  const setChoosing = (r: ScanResult | null) => { choosingRef.current = r; setChoosingState(r) }
   const [session, setSession] = useState({ ok: 0, already: 0, error: 0 })
   const [fullLog, setFullLog] = useState(false)
   // Reset log: this device shows only scans after the reset point. Scans are never deleted (each order's
@@ -101,18 +103,22 @@ export default function ScanPage() {
   settings.current = { mode, courierId, sound }
   const [waiting, setWaiting] = useState(0)
   const [busy, setBusy] = useState(false)
+  // The camera reads a label again every few seconds while it is in view, and a scanner can send one twice:
+  // the same code soon after is dropped, and a label whose popup just closed stays quiet for a while.
+  const quiet = useRef<{ code: string; until: number }>({ code: '', until: 0 })
   const drain = useCallback(async () => {
     if (working.current) return
     working.current = true
     setBusy(true)
-    while (queue.current.length) {
+    // While the popup is open nothing else is scanned: the next parcels wait in the queue.
+    while (queue.current.length && !choosingRef.current) {
       const value = queue.current.shift()!
       setWaiting(queue.current.length)
       const { mode: m, courierId: c, sound: s } = settings.current
       try {
         const r = await scanParcel(value, m, m === 'SHIPPED' ? c || null : null)
         setLast(r)
-        setChoosing(r.result === 'CHOOSE' && r.order?.items?.length ? r : null)
+        if (r.result === 'CHOOSE' && r.order?.items?.length) setChoosing(r)
         const kind = r.result === 'OK' ? 'ok' : r.result === 'ALREADY' || r.result === 'CHOOSE' ? 'warn' : 'error'
         scanFeedback(kind, s)
         // A partly delivered parcel counts once its items are received, not when it is scanned.
@@ -125,15 +131,30 @@ export default function ScanPage() {
     }
     working.current = false
     setBusy(false)
-    setWaiting(0)
+    setWaiting(queue.current.length)
     refreshSoon()
-    inputRef.current?.focus()
+    // Moving focus out of an open popup closes it, so the scan box waits until the popup is done.
+    if (!choosingRef.current) inputRef.current?.focus()
   }, [refreshSoon])
   const enqueue = useCallback((value: string) => {
+    const key = value.toUpperCase().replace(/\s/g, '')
+    const now = Date.now()
+    const open = choosingRef.current
+    // The parcel whose popup is open, read again (the camera still sees its label): nothing to do.
+    if (open && open.code === key) return
+    if (quiet.current.code === key && now < quiet.current.until) return
+    quiet.current = { code: key, until: now + 3000 }
     queue.current.push(value)
     setWaiting(queue.current.length)
     void drain()
   }, [drain])
+  /** The popup closed (received or cancelled): its label stays quiet a little longer, then the waiting scans go on. */
+  const closeChoosing = () => {
+    const code = choosingRef.current?.code
+    if (code) quiet.current = { code, until: Date.now() + 8000 }
+    setChoosing(null)
+    window.setTimeout(() => { inputRef.current?.focus(); void drain() }, 50)
+  }
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
@@ -350,14 +371,13 @@ export default function ScanPage() {
 
       {choosing?.order?.items && (
         <PartialReturnDialog key={choosing.order.id + choosing.code} result={choosing}
-          onClose={() => { setChoosing(null); window.setTimeout(() => inputRef.current?.focus(), 50) }}
+          onClose={closeChoosing}
           onDone={(names) => {
             scanFeedback('ok', settings.current.sound)
             setSession((x) => ({ ...x, ok: x.ok + 1 }))
             setLast((l) => l && { ...l, result: 'OK', message: `Back in stock: ${names}`, order: l.order && { ...l.order, items: undefined } })
-            setChoosing(null)
             refreshSoon()
-            window.setTimeout(() => inputRef.current?.focus(), 50)
+            closeChoosing()
           }} />
       )}
     </div>
