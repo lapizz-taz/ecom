@@ -237,4 +237,16 @@ describe('validation and error mapping', () => {
     expect(hidden.status).toBe(500)
     expect(hidden.message).not.toContain('secret_table')
   })
+
+  it('shows the reason a Page cannot be connected, and other messages written for people', () => {
+    expect(fromDbError({ message: 'CONFLICT: Atheron is already connected to another Fullfilio store. Disconnect it there first.' }))
+      .toMatchObject({ status: 409, code: 'CONFLICT', message: 'Atheron is already connected to another Fullfilio store. Disconnect it there first.' })
+    expect(fromDbError({ message: 'CHECK_IN_REQUIRED: check in under HRM → Attendance to start work' }).status).toBe(403)
+    expect(fromDbError({ message: 'RATE_LIMITED: too many plan changes in an hour; try again later' }).status).toBe(429)
+    // Not 401: that would make the app renew the sign-in and resend.
+    expect(fromDbError({ message: 'SESSION_EXPIRED: your Super Admin session has ended — sign in again' }).status).toBe(403)
+    // Internal ones stay hidden.
+    expect(fromDbError({ message: 'CONFIG: finance category X is missing' })).toMatchObject({ status: 500, code: 'INTERNAL' })
+    expect(fromDbError({ message: 'INVALID_MERCHANT_CONTEXT: app.merchant_id is not a merchant id' }).status).toBe(500)
+  })
 })
