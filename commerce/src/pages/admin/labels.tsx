@@ -9,7 +9,8 @@ import { EmptyState, ErrorState, LoadingState, Spinner } from '@/components/comm
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { measuredHeight, normalizeTemplate, pageCss, PAPERS, type PaperId, paperOf } from '@/features/fulfillment/label-template'
+import { measuredHeight, pageCss, PAPERS, type PaperId, paperOf } from '@/features/fulfillment/label-template'
+import { printTemplate, rememberPaper, storedPaper } from '@/features/fulfillment/direct-print'
 import { printInFrame } from '@/features/fulfillment/print-frame'
 import { LabelPages, type LabelStore } from '@/features/fulfillment/shipping-label'
 import { useStoreConfig } from '@/hooks/use-store-config'
@@ -17,16 +18,6 @@ import { formatDateTime } from '@/lib/format'
 import { labelOrders, markLabelsPrinted } from '@/services/orders'
 import { getSettings } from '@/services/settings'
 
-const PAPER_KEY = 'label_paper'
-
-function storedPaper(): PaperId | null {
-  try {
-    const v = localStorage.getItem(PAPER_KEY)
-    return PAPERS.some((p) => p.id === v) ? (v as PaperId) : null
-  } catch {
-    return null
-  }
-}
 
 /** Print shipping labels (or invoices) for one or many orders with the builder's design; every label print is recorded. */
 export default function LabelsPage() {
@@ -37,11 +28,9 @@ export default function LabelsPage() {
   const queryClient = useQueryClient()
   const settings = useQuery({ queryKey: ['settings'], queryFn: getSettings, staleTime: 60_000 })
   const fulfillment = (settings.data?.fulfillment ?? {}) as Record<string, unknown>
-  const saved = useMemo(() => kind === 'invoice' ? normalizeTemplate(fulfillment.invoice_template, {}, 'invoice')
-    : normalizeTemplate(fulfillment.label_template, fulfillment), [fulfillment, kind])
-  // A different paper can be picked for this label run (remembered on this computer).
+  // A different paper can be picked for this label run (remembered on this computer, and used by direct printing too).
   const [paperId, setPaperId] = useState<PaperId | null>(storedPaper)
-  const template = kind === 'label' && paperId && paperId !== saved.paper && PAPERS.some((p) => p.id === paperId && p.id !== 'A4' && p.id !== 'A5') ? { ...saved, paper: paperId } : saved
+  const template = useMemo(() => printTemplate(fulfillment, kind, paperId), [fulfillment, kind, paperId])
   const paper = paperOf(template)
   const [confirmReprint, setConfirmReprint] = useState(false)
   const pagesRef = useRef<HTMLDivElement>(null)
@@ -103,7 +92,7 @@ export default function LabelsPage() {
         </div>
         {kind === 'label' && <Select value={template.paper} onValueChange={(v) => {
           setPaperId(v as PaperId)
-          try { localStorage.setItem(PAPER_KEY, v) } catch { /* private mode: not remembered */ }
+          rememberPaper(v as PaperId)
         }}>
           <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
           <SelectContent>

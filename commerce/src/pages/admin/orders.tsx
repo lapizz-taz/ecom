@@ -53,6 +53,7 @@ import { syncAllShipments } from '@/services/couriers'
 import type { DuplicateGroup } from '@/services/orders'
 import type { CheckoutLead, OrderListItem, OrderStatus, ReviewStatus } from '@/types/domain'
 import { isoDate } from '@/lib/dates'
+import { useDirectPrint } from '@/features/fulfillment/direct-print'
 
 type View = 'all' | 'web' | 'approved'
 const PAGE_SIZE = 25
@@ -104,6 +105,8 @@ export function OrdersPage({ view }: { view: View }) {
   const { can } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  // Labels and invoices go straight to the browser's print window.
+  const directPrint = useDirectPrint()
   const [state, update] = useUrlState({
     ...EMPTY_FILTERS,
     tab: view === 'web' ? 'PROCESSING' : view === 'approved' ? 'PENDING' : 'all', q: '', sort: 'created_at', dir: 'desc', page: '1', print: '', due: '', dupes: '', advance: '',
@@ -256,10 +259,9 @@ export function OrdersPage({ view }: { view: View }) {
   }
   const printSelected = (kind: 'invoice' | 'label' | 'picking' | 'sheet') => {
     const ids = [...selected]
+    if (kind === 'label' || kind === 'invoice') { void directPrint.print(ids, kind); return }
     if (ids.length > 200) toast.info('Only the first 200 orders are printed at once')
-    const list = ids.slice(0, 200).join(',')
-    if (kind === 'picking' || kind === 'sheet') navigate(`/admin/orders/sheets?kind=${kind}&ids=${list}`)
-    else navigate(`/admin/labels?ids=${list}${kind === 'invoice' ? '&kind=invoice' : ''}`)
+    navigate(`/admin/orders/sheets?kind=${kind}&ids=${ids.slice(0, 200).join(',')}`)
   }
 
   const chooseStatus = (ids: string[], code: string) => {
@@ -435,6 +437,7 @@ export function OrdersPage({ view }: { view: View }) {
 
   return (
     <div className="space-y-4">
+      {directPrint.dialog}
       <PageHeader
         title={VIEW_META[view].title}
         description={VIEW_META[view].description}
@@ -532,8 +535,8 @@ export function OrdersPage({ view }: { view: View }) {
             <>
               {can('orders.fulfill') && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>
-                  <Button size="sm" variant="outline" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}&kind=invoice`)}><Printer /> Print invoices</Button>
+                  <Button size="sm" variant="outline" disabled={directPrint.busy} onClick={() => void directPrint.print([...selected], 'label')}><Printer /> Print labels</Button>
+                  <Button size="sm" variant="outline" disabled={directPrint.busy} onClick={() => void directPrint.print([...selected], 'invoice')}><Printer /> Print invoices</Button>
                 </>
               )}
               {can('shipments.manage') && (

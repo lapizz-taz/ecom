@@ -17,6 +17,7 @@ import { PAYMENT_METHOD, PAYMENT_STATUS, SHIPMENT_STATUS, STAGE, stageOf } from 
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { type OrderHit, type SearchField, searchOrders } from '@/services/order-search'
+import { useDirectPrint } from '@/features/fulfillment/direct-print'
 
 const FIELDS: Array<{ key: SearchField; label: string; placeholder: string }> = [
   { key: 'all', label: 'Everything', placeholder: 'Invoice, mobile, name, tracking ID or transaction ID' },
@@ -220,9 +221,11 @@ function OrderList({ title, description, icon, rows, web = false, onChanged, emp
 
 function OrderRow({ o, web, onChanged }: { o: OrderHit; web: boolean; onChanged: () => void }) {
   const stage = stageOf(o.status, o.confirmed_at)
+  const directPrint = useDirectPrint()
   const copy = (text: string, what: string) => { void navigator.clipboard.writeText(text).then(() => toast.success(`${what} copied`), () => undefined) }
   return (
     <li className="grid gap-x-4 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,10rem)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+      {directPrint.dialog}
       <div className="flex items-start justify-between gap-2 md:block">
         <div className="flex items-baseline gap-2 md:block">
           <Link to={`/admin/orders/${o.id}`} className="font-semibold hover:underline">{o.order_number}</Link>
@@ -272,9 +275,8 @@ function OrderRow({ o, web, onChanged }: { o: OrderHit; web: boolean; onChanged:
       <div className="-mt-1 flex items-center justify-end gap-1 md:mt-0">
         <p className="mr-2 hidden font-semibold tabular-nums md:block"><Money value={o.total_amount} /></p>
         {!web && (
-          <Button asChild size="icon-sm" variant="ghost" aria-label={`Print label for ${o.order_number}`}>
-            <Link to={`/admin/labels?ids=${o.id}`}><Printer /></Link>
-          </Button>
+          <Button size="icon-sm" variant="ghost" aria-label={`Print label for ${o.order_number}`} disabled={directPrint.busy}
+            onClick={() => void directPrint.print([o.id], 'label')}><Printer /></Button>
         )}
         <Button asChild size="sm" variant="outline">
           <Link to={`/admin/orders/${o.id}`}>Open</Link>
