@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { ExternalLink, History, Package, Phone, Printer, Settings2, Tag, Truck, UserPlus, X } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { DateRangePicker } from '@/components/ui/date-picker'
 import { toast } from '@/lib/toast'
 import { PageHeader } from '@/components/common/page-header'
@@ -28,6 +28,7 @@ import {
 import { assignOrders, autoPickOverview } from '@/services/order-tools'
 import { setOrderTags } from '@/services/orders'
 import { isoDate } from '@/lib/dates'
+import { useDirectPrint } from '@/features/fulfillment/direct-print'
 
 const TABS: Array<{ value: ParcelTab; label: string; total: string }> = [
   { value: 'in_transit', label: 'In transit', total: 'Total in-transit parcels' },
@@ -95,7 +96,7 @@ function ParcelsView({ state, update, returnsOnly }: {
   state: State; update: (p: Partial<State>, o?: { resetPage?: boolean }) => void; returnsOnly: boolean
 }) {
   const { can } = useAuth()
-  const navigate = useNavigate()
+  const directPrint = useDirectPrint()
   const tabs = returnsOnly ? TABS.filter((t) => RETURN_TABS.includes(t.value)) : TABS
   const tab = (tabs.some((t) => t.value === state.tab) ? state.tab : tabs[0].value) as ParcelTab
   const page = Number(state.page) || 1
@@ -130,6 +131,7 @@ function ParcelsView({ state, update, returnsOnly }: {
 
   return (
     <>
+      {directPrint.dialog}
       <div className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
         {tabs.map((t) => (
           <button key={t.value} type="button" onClick={() => { setSelected(new Set()); update({ tab: t.value }) }}
@@ -170,7 +172,7 @@ function ParcelsView({ state, update, returnsOnly }: {
           {selected.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto animate-in fade-in-0 slide-in-from-right-2">
               <span className="text-sm text-muted-foreground">{selected.size} selected</span>
-              {can('orders.fulfill') && <Button size="sm" variant="outline" onClick={() => navigate(`/admin/labels?ids=${[...selected].join(',')}`)}><Printer /> Print labels</Button>}
+              {can('orders.fulfill') && <Button size="sm" variant="outline" disabled={directPrint.busy} onClick={() => void directPrint.print([...selected], 'label')}><Printer /> Print labels</Button>}
               {can('orders.fulfill') && pendingSelected.length > 0 && <Button size="sm" onClick={() => setBooking(true)}><Truck /> Book {pendingSelected.length} with courier</Button>}
             </div>
           )}

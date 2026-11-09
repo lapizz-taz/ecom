@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-09', tag: 'Improved', area: 'Orders', title: 'Print opens the print window straight away',
+    body: 'Print label, Reprint label and Print invoice (on the order page, in Approved Orders → Actions → Sticker or Invoice, in Courier management and in Search) now open your browser\'s print window at once, with the label design from the Label builder. No Shipping labels page in between. Labels already printed still ask once before printing again, and every print is recorded on the order.', to: '/admin/orders/approved' },
   { date: '2026-11-08', tag: 'New', area: 'Orders', title: 'Order from a Shopify or WooCommerce abandoned checkout',
     body: 'Abandoned Carts → Shopify & WooCommerce has an Order button on every checkout with a name or phone. It opens New order with the customer, phone, email and address filled in, the district worked out from the address, and the products matched to yours (each size too); anything not found is named so you can add it. Once the order is created the checkout counts as recovered and shows Open order. On a phone the store card and the search box no longer squeeze their text.', to: '/admin/orders/abandoned?src=shopify' },
   { date: '2026-11-08', tag: 'Improved', area: 'Orders', title: 'Partly delivered parcels: choose what came back',

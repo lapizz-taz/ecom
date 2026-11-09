@@ -53,6 +53,7 @@ import {
   orderCostSummary,
 } from '@/services/orders'
 import type { OrderStatus } from '@/types/domain'
+import { useDirectPrint } from '@/features/fulfillment/direct-print'
 
 type DialogName = 'payment' | 'refund' | 'retain' | 'courier' | 'shipment' | 'edit' | 'items' | 'return' | 'partial' | null
 
@@ -81,6 +82,7 @@ export default function OrderDetailPage() {
   const { id = '' } = useParams()
   const { can } = useAuth()
   const navigate = useNavigate()
+  const directPrint = useDirectPrint()
   const queryClient = useQueryClient()
   const auto = useAutoOrder(id)
   const order = useQuery({ queryKey: ['order', id], queryFn: () => getOrder(id) })
@@ -175,6 +177,7 @@ export default function OrderDetailPage() {
 
   return (
     <div className="space-y-4">
+      {directPrint.dialog}
       <div className="no-print">
         <Link to={isWeb ? '/admin/orders/web' : '/admin/orders/approved'} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> {isWeb ? 'Web orders' : 'Approved orders'}
@@ -204,7 +207,7 @@ export default function OrderDetailPage() {
         </div>
         <div className="no-print flex flex-wrap items-center gap-2">
           {can('orders.fulfill') && !['CANCELLED', 'REJECTED_FRAUD'].includes(status) && (
-            <Button size="sm" variant="outline" asChild><Link to={`/admin/labels?ids=${o.id}`}><Printer /> {o.label_printed_at ? 'Reprint label' : 'Print label'}</Link></Button>
+            <Button size="sm" variant="outline" disabled={directPrint.busy} onClick={() => void directPrint.print([o.id], 'label')}><Printer /> {o.label_printed_at ? 'Reprint label' : 'Print label'}</Button>
           )}
           {can('orders.status') && next.map((a) => (
             <Button key={a.to} size="sm" variant={a === next[0] ? 'default' : 'outline'} disabled={transition.isPending}
@@ -230,7 +233,7 @@ export default function OrderDetailPage() {
                   <DropdownMenuItem onClick={() => setDialog('items')}><Package /> Edit items</DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuItem asChild><Link to={`/admin/labels?ids=${o.id}&kind=invoice`}><FileText /> Print invoice</Link></DropdownMenuItem>
+              <DropdownMenuItem disabled={directPrint.busy} onClick={() => void directPrint.print([o.id], 'invoice')}><FileText /> Print invoice</DropdownMenuItem>
               <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}/packing-slip`}><Printer /> Packing slip</Link></DropdownMenuItem>
               {can('orders.create') && <DropdownMenuItem onClick={() => duplicate.mutate()}><Copy /> Duplicate order</DropdownMenuItem>}
               {can('fraud.review') && inReview && <DropdownMenuItem onClick={() => fraudCheck.mutate()}><RefreshCw /> Re-run fraud check</DropdownMenuItem>}
