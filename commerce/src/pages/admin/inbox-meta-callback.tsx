@@ -93,7 +93,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function report(r: { channels: Array<{ name: string }>; warnings: string[] }) {
   if (r.channels.length) toast.success(`Connected ${r.channels.map((c) => c.name).join(', ')}`)
-  r.warnings.forEach((w) => toast.warning(w))
+  // A warning says what to do (e.g. a Page connected to another business): it stays until it is closed.
+  r.warnings.forEach((w) => toast.warning(w, { duration: Infinity }))
 }
 
 function PagePicker({ data, onDone }: { data: Exclude<MetaFinish, { kind: 'WHATSAPP' }>; onDone: () => void }) {

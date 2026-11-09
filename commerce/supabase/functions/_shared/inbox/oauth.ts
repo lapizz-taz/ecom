@@ -185,3 +185,16 @@ export async function grantedNumbers(app: MetaInboxApp, businessToken: string, f
 /** Page events this app needs: messages, echoes, receipts, postbacks and (optionally) comments. */
 export const pageFields = (comments: boolean) =>
   ['messages', 'message_echoes', 'message_reads', 'message_deliveries', 'messaging_postbacks', ...(comments ? ['feed'] : [])].join(',')
+
+/**
+ * What a store owner reads when the Page, Instagram account or WhatsApp number they picked is already
+ * connected to another Fullfilio business (one business at a time), and what to do about it.
+ */
+export function alreadyConnectedElsewhere(row: { platform?: unknown; name?: unknown; display_phone?: unknown }): string {
+  const name = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : null
+  const what = row.platform === 'INSTAGRAM' ? `The Instagram account ${name ?? ''}`.trim()
+    : row.platform === 'WHATSAPP' ? `The WhatsApp number ${typeof row.display_phone === 'string' && row.display_phone ? row.display_phone : name ?? ''}`.trim()
+      : `The Facebook Page ${name ? `"${name}"` : ''}`.trim()
+  return `${what} is already connected to another Fullfilio business, and it can only be in one at a time. `
+    + 'Open that business, go to Messaging → Channels and press Disconnect on it (its chats are kept), then connect it here again.'
+}

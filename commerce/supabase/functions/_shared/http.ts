@@ -98,6 +98,17 @@ const DB_CODES: Record<string, number> = {
   DOMAIN_REJECTED: 422,
   ALREADY_BOOKED: 409,
   BOOKING_IN_PROGRESS: 409,
+  // Written for people too; before these were listed they reached the screen as "Something went wrong"
+  // (a Page already connected to another store, a theme draft saved by someone else, a check-in needed…).
+  CONFLICT: 409,
+  RATE_LIMITED: 429,
+  DISTRICT_UNKNOWN: 422,
+  INSUFFICIENT_CREDITS: 402,
+  CHECK_IN_REQUIRED: 403,
+  ON_BREAK: 403,
+  // 403, not 401: a 401 makes the app renew the sign-in and send the same request again.
+  REAUTH_REQUIRED: 403,
+  SESSION_EXPIRED: 403,
 }
 
 export function fromDbError(error: { message?: string; code?: string; details?: string } | null | undefined): HttpError {
