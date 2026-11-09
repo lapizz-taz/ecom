@@ -131,3 +131,11 @@ permissions are approved.
   showed as "Ineligible".
 - Video for the two WhatsApp permissions (Meta's rule): a message sent from Fullfilio and received in WhatsApp, and
   Fullfilio creating a message template. Meta's signup itself does not have to be in it.
+
+### Submitted (9 Nov 2026)
+
+App Review submission 1746658713063236 sent on 9 Nov 2026, 18:47 UTC, status PENDING: pages_read_engagement,
+pages_read_user_content, pages_manage_engagement, instagram_basic, instagram_manage_comments, instagram_manage_messages,
+ads_read, Business Asset User Profile Access, Human Agent, whatsapp_business_messaging, whatsapp_business_management.
+While it is in review: keep the reviewer's login and the test Page, Instagram account and WhatsApp number connected, and
+change nothing in Facebook Login for Business → Configurations or the app's permissions.
