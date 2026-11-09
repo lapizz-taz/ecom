@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-09', tag: 'New', area: 'Messaging', title: 'Bring old chats from Facebook and Instagram',
+    body: 'Messaging → Channels has a Bring old chats button on each connected Facebook Page and Instagram account. Choose how far back (30 days, 90 days or a year) and Fullfilio copies those chats from Meta into the inbox, with the last 25 messages of each: handy after connecting a Page, or if one was removed by mistake. It only runs when you press it, nobody is messaged, chats already in the inbox are not doubled, and they come in as read. WhatsApp does not let apps read old chats.', to: '/admin/inbox/channels' },
   { date: '2026-11-09', tag: 'Improved', area: 'Orders', title: 'Print opens the print window straight away',
     body: 'Print label, Reprint label and Print invoice (on the order page, in Approved Orders → Actions → Sticker or Invoice, in Courier management and in Search) now open your browser\'s print window at once, with the label design from the Label builder. No Shipping labels page in between. Labels already printed still ask once before printing again, and every print is recorded on the order.', to: '/admin/orders/approved' },
   { date: '2026-11-08', tag: 'New', area: 'Orders', title: 'Order from a Shopify or WooCommerce abandoned checkout',

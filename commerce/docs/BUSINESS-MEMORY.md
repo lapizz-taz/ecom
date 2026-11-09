@@ -113,6 +113,8 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 **Messaging**
 - One inbox for Facebook, Instagram and WhatsApp, with comments, auto-replies, moderation and follow-ups.
 - Orders can be created from a chat.
+- Bring old chats (since 9 Nov 2026): a button on each connected Facebook Page / Instagram account copies its chats from Meta
+  (30 days, 90 days or a year; the last 25 messages of each) into the inbox. Only when pressed; no duplicates; nobody is messaged. Not for WhatsApp.
 
 **Operations**
 - Inventory: low-stock alerts, dead stock, ABC analysis, a forecast, purchases.

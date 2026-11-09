@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, ExternalLink, KeyRound, Link2, Pencil, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react'
+import { Building2, ExternalLink, History, KeyRound, Link2, Pencil, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -25,7 +26,7 @@ import { timeAgo } from '@/lib/format'
 import { toast } from '@/lib/toast'
 import {
   deleteSavedReply, disconnectChannel, type InboxChannel, type InboxPlatform, inboxConfig, inboxOverview, type MetaConnectKind, metaConnectStart, savedReplies,
-  connectWhatsAppManually, removeChannel, saveSavedReply, setChannelComments,
+  connectWhatsAppManually, importOldChats, removeChannel, saveSavedReply, setChannelComments,
 } from '@/services/inbox'
 
 type Filter = 'ALL' | InboxPlatform
@@ -47,6 +48,8 @@ export default function InboxChannelsPage() {
   const config = useQuery({ queryKey: ['inbox-config'], queryFn: inboxConfig })
   const [removing, setRemoving] = useState<InboxChannel | null>(null)
   const [deleting, setDeleting] = useState<InboxChannel | null>(null)
+  // Old chats from Meta: only when staff ask for them.
+  const [history, setHistory] = useState<InboxChannel | null>(null)
   const [guide, setGuide] = useState<MetaConnectKind | null>(null)
   const [manualWa, setManualWa] = useState(false)
   const [waOpen, setWaOpen] = useState(false)
@@ -147,6 +150,9 @@ export default function InboxChannelsPage() {
                   <Button size="sm" variant="outline" className="gap-1.5" disabled={start.isPending || (c.platform === 'WHATSAPP' && !whatsapp)}
                     onClick={() => begin(c.platform === 'WHATSAPP' ? 'WHATSAPP' : 'PAGES')}><RefreshCw /> Reconnect</Button>
                 )}
+                {manage && c.platform !== 'WHATSAPP' && c.status === 'OK' && (
+                  <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setHistory(c)} title="Copy this account's chats from Meta into the inbox"><History /> Bring old chats</Button>
+                )}
                 {manage && c.status !== 'DISCONNECTED' && (
                   <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setRemoving(c)}><Unplug /> Disconnect</Button>
                 )}
@@ -212,6 +218,7 @@ export default function InboxChannelsPage() {
 
       <ConnectGuide kind={guide} onClose={() => setGuide(null)} onConnect={connect} />
       <WhatsAppTokenDialog open={manualWa} onOpenChange={setManualWa} onDone={refresh} />
+      {history && <OldChatsDialog channel={history} onClose={() => setHistory(null)} onDone={() => { refresh(); void qc.invalidateQueries({ queryKey: ['inbox-list'] }); void qc.invalidateQueries({ queryKey: ['inbox-unread'] }) }} />}
       <WhatsAppConnectDialog open={waOpen} onOpenChange={setWaOpen} busy={busy('WHATSAPP')} onContinue={(coexist) => connect('WHATSAPP', coexist)} />
       <ConfirmDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} destructive title={`Disconnect ${removing?.name}?`}
         description="Its access is deleted and new messages stop arriving. Conversations already in the inbox stay." confirmLabel="Disconnect"
@@ -396,5 +403,77 @@ function SavedRepliesCard({ manage }: { manage: boolean }) {
         </DialogContent>
       </Dialog>
     </Card>
+  )
+}
+
+const PERIODS = [{ days: 30, label: 'the last 30 days' }, { days: 90, label: 'the last 90 days' }, { days: 365, label: 'the last year' }] as const
+
+/**
+ * Brings a Page's (or Instagram account's) old chats from Meta into the inbox, a few chats per call, with a
+ * running count and Stop. Nothing is sent to customers, chats already here are not doubled, and the chats
+ * come in as read.
+ */
+function OldChatsDialog({ channel, onClose, onDone }: { channel: InboxChannel; onClose: () => void; onDone: () => void }) {
+  const [days, setDays] = useState('90')
+  const [running, setRunning] = useState(false)
+  const [count, setCount] = useState({ chats: 0, messages: 0 })
+  const stop = useRef(false)
+  const where = channel.platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook'
+  const run = async () => {
+    stop.current = false
+    setRunning(true)
+    const total = { chats: 0, messages: 0 }
+    try {
+      let after: string | undefined
+      for (let i = 0; i < 100; i++) {
+        const r = await importOldChats(channel.id, Number(days), after)
+        total.chats += r.chats
+        total.messages += r.messages
+        setCount({ ...total })
+        after = r.after ?? undefined
+        if (!after || stop.current) break
+      }
+      if (total.messages) toast.success(`${total.messages} message${total.messages === 1 ? '' : 's'} brought back from ${total.chats} chat${total.chats === 1 ? '' : 's'}`)
+      else toast.info(total.chats ? 'Those chats are already in the inbox.' : `${where} shared no chats from that period.`)
+      onDone()
+      onClose()
+    } catch (e) {
+      toast.error(toUserMessage(e), { duration: Infinity })
+      if (total.messages) onDone()
+    } finally {
+      setRunning(false)
+    }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && !running) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bring old chats from {where}</DialogTitle>
+          <DialogDescription>
+            Copies {channel.name}'s chats from {where} into the inbox, with the last 25 messages of each.
+            Chats already here are not doubled, nobody gets a message, and they come in as read.
+          </DialogDescription>
+        </DialogHeader>
+        <Field label="Chats active in" htmlFor="old-chats-period">
+          <Select value={days} onValueChange={setDays} disabled={running}>
+            <SelectTrigger id="old-chats-period"><SelectValue /></SelectTrigger>
+            <SelectContent>{PERIODS.map((p) => <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        {running ? (
+          <p className="flex items-center gap-2 rounded-[10px] bg-muted/60 px-3 py-2.5 text-sm" role="status">
+            <Spinner /> Bringing chats… <span className="font-medium tabular-nums">{count.chats} chats, {count.messages} messages</span> so far
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Until Meta approves Fullfilio's app review, {where} may share only some chats.</p>
+        )}
+        <DialogFooter>
+          {running
+            ? <Button variant="outline" onClick={() => { stop.current = true }}>Stop</Button>
+            : <Button variant="outline" onClick={onClose}>Cancel</Button>}
+          <Button onClick={() => void run()} disabled={running}>{running ? <Spinner /> : <History />} Bring old chats</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
