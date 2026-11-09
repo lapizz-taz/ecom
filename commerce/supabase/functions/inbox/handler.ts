@@ -29,7 +29,7 @@ import { isCronRequest } from '../_shared/cron.ts'
 import { handle, HttpError, json, readJson, readText } from '../_shared/http.ts'
 import { attachmentType, commentAction, type CommentOp, fetchPost, hint, InboxGraph, inboxChannelKey, type OutgoingFile, type PostDetails, sendMessage } from '../_shared/inbox/meta.ts'
 import {
-  exchangeCode, type GrantedNumber, type GrantedPage, grantedNumbers, grantedPages, loginUrl, META_INBOX_APP_KEY,
+  alreadyConnectedElsewhere, exchangeCode, type GrantedNumber, type GrantedPage, grantedNumbers, grantedPages, loginUrl, META_INBOX_APP_KEY,
   type MetaInboxApp, type OAuthKind, pageFields, readState, signState,
 } from '../_shared/inbox/oauth.ts'
 import { type InboxEvent, insideReplyWindow, parseWebhook, validSignature } from '../_shared/inbox/parse.ts'
@@ -384,7 +384,7 @@ async function saveChannel(admin: SupabaseClient, actor: string, row: Record<str
     await rpc(admin, 'integration_secret_store', { p_key: channelKey(saved.id), p_value: { access_token: token }, p_hint: hint(token), p_actor: actor })
     out.channels.push(saved)
   } catch (e) {
-    out.warnings.push((e as Error).message.replace(/^[A-Z_]+: /, ''))
+    out.warnings.push(e instanceof HttpError && e.code === 'CONFLICT' ? alreadyConnectedElsewhere(row) : (e as Error).message.replace(/^[A-Z_]+: /, ''))
   }
 }
 

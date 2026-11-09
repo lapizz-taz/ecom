@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { exchangeCode, grantedNumbers, grantedPages, loginUrl, pageFields, readState, signState } from './oauth.ts'
+import { alreadyConnectedElsewhere, exchangeCode, grantedNumbers, grantedPages, loginUrl, pageFields, readState, signState } from './oauth.ts'
 
 const app = { app_id: '1653473169830242', app_secret: 'appsecretappsecret123456', login_config_id: '911022668675556', whatsapp_config_id: '555000111' }
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -109,5 +109,16 @@ describe('Continue with Facebook: Meta calls', () => {
     expect(pageFields(true).split(',')).toContain('feed')
     expect(pageFields(false).split(',')).not.toContain('feed')
     expect(pageFields(false).split(',')).toContain('messages')
+  })
+})
+
+describe('a channel already connected to another Fullfilio business', () => {
+  it('says which one, why, and what to do, in plain words', () => {
+    expect(alreadyConnectedElsewhere({ platform: 'FACEBOOK', name: 'Atheron' })).toBe(
+      'The Facebook Page "Atheron" is already connected to another Fullfilio business, and it can only be in one at a time. '
+      + 'Open that business, go to Messaging → Channels and press Disconnect on it (its chats are kept), then connect it here again.')
+    expect(alreadyConnectedElsewhere({ platform: 'INSTAGRAM', name: '@wear.atheron' })).toMatch(/^The Instagram account @wear\.atheron is already connected/)
+    expect(alreadyConnectedElsewhere({ platform: 'WHATSAPP', name: 'Shop', display_phone: '+1 711-220-9087' })).toMatch(/^The WhatsApp number \+1 711-220-9087 is already/)
+    expect(alreadyConnectedElsewhere({ platform: 'FACEBOOK' })).toMatch(/^The Facebook Page is already connected/)
   })
 })
