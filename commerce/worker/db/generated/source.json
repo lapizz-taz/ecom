@@ -1,5 +1,5 @@
 {
-  "migrations": 209,
-  "last": "20261215000100_error_tracker.sql",
-  "sha256": "5ff546b34b3f507287c672d44271197f3d0aaf5bea68235f050d18b251b979ea"
+  "migrations": 210,
+  "last": "20261216000100_list_item_returns.sql",
+  "sha256": "202658fdd6cbbe447100ca5e878f1656a67ad68b7ef21120c964f1ac8f757b89"
 }

@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { SuccessRateButton } from '@/features/orders/success-panel'
 import { copyText, PhoneMenu } from '@/features/orders/phone-menu'
+import { itemOutcome, OutcomeTags, partialRecorded } from '@/features/orders/item-outcome'
 import { ApprovedActionsMenu, BulkTagDialog, DuplicateCheckDialog, DuplicatesPanel } from '@/features/orders/approved-actions'
 import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
 import { CourierJourneyButton } from '@/features/orders/courier-journey'
@@ -826,6 +827,12 @@ function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: Vi
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
   const tone = rate !== null && h && counted > 0 ? rateTone(rate, h.tier) : null
   const code = o.shipment ? o.shipment.tracking_number ?? o.shipment.consignment_id : null
+  // Partly delivered, or items already back: each item with what happened to it.
+  const partialOrder = o.status === 'PARTIALLY_DELIVERED'
+  const known = partialOrder && partialRecorded(o.lines ?? [])
+  const outcomes = (o.lines ?? []).length && (partialOrder || (o.lines ?? []).some((l) => (l.returned ?? 0) + (l.damaged ?? 0) > 0))
+    ? (o.lines ?? []).map((l) => ({ l, outcome: partialOrder && !known ? null : itemOutcome(l.quantity, l.returned, l.damaged, l.expected_back, partialOrder) }))
+    : null
   const flag = o.duplicate_status === 'SUSPECTED' ? (o.duplicate_reason === 'APPROVED' ? `Already approved ${o.duplicate_of_number ?? ''}` : `Maybe duplicate ${o.duplicate_of_number ?? ''}`)
     : o.status === 'ADVANCE_REQUIRED' ? 'Advance due' : o.status === 'FRAUD_REVIEW' ? 'Fraud review' : o.status === 'PENDING_CANCEL' ? 'Cancelling' : null
   return (
@@ -844,9 +851,21 @@ function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: Vi
         <PhoneMenu orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind={view === 'web' ? 'WEB_ORDER' : 'APPROVED_ORDER'} className="py-1 text-sm" />
         <span className="text-muted-foreground">{o.shipping_district || <span className="text-amber-600 dark:text-amber-400">District needed</span>}</span>
       </div>
-      <p className="truncate text-xs text-muted-foreground">
-        {o.items_preview ? o.items_preview : `${o.item_count} item${o.item_count === 1 ? '' : 's'}`}
-      </p>
+      {outcomes ? (
+        <ul className="space-y-0.5 text-xs">
+          {outcomes.map(({ l, outcome }, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span className="min-w-0 truncate text-muted-foreground">{l.name}{l.variant ? ` · ${l.variant}` : ''}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
+              {outcome && <OutcomeTags outcome={outcome} quantity={l.quantity} />}
+            </li>
+          ))}
+          {o.status === 'PARTIALLY_DELIVERED' && !partialRecorded(o.lines ?? []) && <li className="text-[11px] text-amber-700">Not recorded yet which item came back</li>}
+        </ul>
+      ) : (
+        <p className="truncate text-xs text-muted-foreground">
+          {o.items_preview ? o.items_preview : `${o.item_count} item${o.item_count === 1 ? '' : 's'}`}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs">
         <span className="inline-flex items-center gap-1.5 font-medium"><span className={cn('size-2 rounded-full', dot)} />{label}{detail && <span className="font-normal text-muted-foreground">· {detail}</span>}</span>
         {tone && rate !== null && h ? (
@@ -1134,6 +1153,8 @@ function ProductThumb({ src }: { src: string | null | undefined }) {
 function ProductsCell({ o, showStage }: { o: OrderListItem; showStage: boolean }) {
   const stage = o.stage !== 'WEB' ? STAGE[o.stage as OrderStage] : null
   const lines = o.lines ?? []
+  const partial = o.status === 'PARTIALLY_DELIVERED'
+  const recorded = partialRecorded(lines)
   // On a stage tab the stage is already known; only the finer status (e.g. "In transit") is worth a line.
   const detail = stage && o.stage !== 'PENDING' ? statusBeyondStage(o.stage as OrderStage, o.status) : null
   return (
@@ -1145,15 +1166,23 @@ function ProductsCell({ o, showStage }: { o: OrderListItem; showStage: boolean }
         </p>
       )}
       {!showStage && detail && <p className="text-[11px] text-muted-foreground">{detail}</p>}
-      {lines.length === 0 ? <p className="text-xs text-muted-foreground">{o.items_preview ?? `${o.item_count} item(s)`}</p> : lines.map((l, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <ProductThumb src={l.image_url} />
-          <div className="min-w-0 text-xs leading-tight">
-            <p className="truncate font-medium" title={l.name}>{l.name}{l.variant ? ` · ${l.variant}` : ''}</p>
-            <p className="truncate text-muted-foreground">{l.sku ? `${l.sku} · ` : ''}Qty: {l.quantity}</p>
+      {lines.length === 0 ? <p className="text-xs text-muted-foreground">{o.items_preview ?? `${o.item_count} item(s)`}</p> : lines.map((l, i) => {
+        // Partly delivered or returned: what the customer kept and what came back, item by item.
+        const outcome = partial && !recorded ? null : itemOutcome(l.quantity, l.returned, l.damaged, l.expected_back, partial)
+        return (
+          <div key={i} className="flex items-center gap-2">
+            <ProductThumb src={l.image_url} />
+            <div className="min-w-0 text-xs leading-tight">
+              <p className="truncate font-medium" title={l.name}>{l.name}{l.variant ? ` · ${l.variant}` : ''}</p>
+              <p className="truncate text-muted-foreground">{l.sku ? `${l.sku} · ` : ''}Qty: {l.quantity}</p>
+              {outcome && <OutcomeTags outcome={outcome} quantity={l.quantity} className="mt-0.5" />}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
+      {partial && !recorded && lines.length > 0 && (
+        <p className="text-[11px] text-amber-700">Not recorded yet which item came back: use Partial delivery… on the order, or scan the parcel.</p>
+      )}
       {o.item_count > lines.reduce((a, l) => a + l.quantity, 0) && <p className="text-xs text-muted-foreground">+ more items</p>}
     </div>
   )
