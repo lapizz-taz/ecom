@@ -8,6 +8,9 @@
 
 const read = (value: unknown) => String(value ?? '').trim()
 
+/** This build's version: build time and commit (vite.config.ts); "dev" when not built. */
+export const APP_RELEASE: string = typeof __APP_RELEASE__ === 'string' && __APP_RELEASE__ ? __APP_RELEASE__ : 'dev'
+
 // "cloudflare" after the switch-over: the database (rest, auth, realtime) answers on the
 // site's own address, the Worker; otherwise Supabase's (VITE_SUPABASE_URL).
 const databaseBackend = read(import.meta.env.VITE_DATABASE_BACKEND)
@@ -37,7 +40,7 @@ export const env = {
   sentry: {
     dsn: read(import.meta.env.VITE_SENTRY_DSN) || null,
     environment: read(import.meta.env.VITE_SENTRY_ENVIRONMENT) || import.meta.env.MODE,
-    release: read(import.meta.env.VITE_RELEASE) || undefined,
+    release: read(import.meta.env.VITE_RELEASE) || (APP_RELEASE === 'dev' ? undefined : APP_RELEASE),
   },
   isDev: import.meta.env.DEV,
   /** Where the backend functions answer: the Worker's /functions/v1 on Cloudflare, else Supabase. */

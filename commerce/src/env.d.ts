@@ -19,3 +19,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** This build's version (vite.config.ts), e.g. "2026-11-10T06:30Z+abc1234". Undefined in unit tests. */
+declare const __APP_RELEASE__: string | undefined

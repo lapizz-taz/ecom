@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { createContext, type ReactNode, useContext, useMemo } from 'react'
+import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
 import { useAuth } from '@/features/auth/auth-context'
+import { setMonitoringPlatform } from '@/lib/monitoring'
 import { type PlatformMe, platformMe } from '@/services/platform'
 
 interface PlatformState {
@@ -23,6 +24,9 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     refetchInterval: 120_000,
     queryFn: platformMe,
   })
+  const signedIn = Boolean(user && query.data)
+  // Errors in the panel go to the error tracker too.
+  useEffect(() => { setMonitoringPlatform(signedIn) }, [signedIn])
   const value = useMemo<PlatformState>(() => {
     const me = user ? (query.data ?? null) : null
     return {

@@ -125,28 +125,59 @@ export function fromDbError(error: { message?: string; code?: string; details?: 
   return failure
 }
 
+/** The signed-in person a request names (unverified: for the error log only, never for access). */
+function callerOf(req: Request): string | undefined {
+  try {
+    const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
+    const part = token?.split('.')[1]
+    if (!part) return undefined
+    const claims = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')))
+    return claims?.role === 'authenticated' && typeof claims.sub === 'string' ? claims.sub.slice(0, 64) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * What the error log keeps about a failed request: an id that is also sent to the browser (so its
+ * "Something went wrong" report links to this server error in the Super Admin error tracker), the
+ * path, the person and the business the browser named. The last two are as the request states them.
+ */
+export function requestContext(req: Request, requestId: string): Record<string, unknown> {
+  let path: string | undefined
+  try { path = new URL(req.url).pathname.slice(0, 200) } catch { path = undefined }
+  const merchant = req.headers.get('x-merchant-id') ?? ''
+  return {
+    request_id: requestId, method: req.method, path, user_id: callerOf(req),
+    merchant_hint: /^[0-9a-f-]{36}$/i.test(merchant) ? merchant : undefined,
+  }
+}
+
+export const newRequestId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+
 export function handle(handler: (req: Request) => Promise<Response>): (req: Request) => Promise<Response> {
   return async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) })
     try {
       return await handler(req)
     } catch (error) {
+      const requestId = newRequestId()
       if (error instanceof HttpError) {
         if (error.status >= 500) {
           const cause = error.internal as { message?: string } | undefined
           void logEvent({
             level: 'ERROR', category: 'FUNCTION', source: functionName(req),
             message: cause?.message ?? `${error.code}: ${error.message}`, error: error.internal ?? error,
-            context: { status: error.status, code: error.code, method: req.method },
+            context: { ...requestContext(req, requestId), status: error.status, code: error.code },
           })
         }
-        return json(req, { error: { code: error.code, message: error.message, details: error.details } }, error.status)
+        return json(req, { error: { code: error.code, message: error.message, details: error.details, ...(error.status >= 500 ? { request_id: requestId } : {}) } }, error.status)
       }
       void logEvent({
         level: 'ERROR', category: 'FUNCTION', source: functionName(req),
-        message: error instanceof Error ? error.message : 'Unhandled error', error, context: { method: req.method },
+        message: error instanceof Error ? error.message : 'Unhandled error', error, context: { ...requestContext(req, requestId), status: 500 },
       })
-      return json(req, { error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' } }, 500)
+      return json(req, { error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.', request_id: requestId } }, 500)
     }
   }
 }

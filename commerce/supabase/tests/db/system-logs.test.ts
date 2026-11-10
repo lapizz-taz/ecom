@@ -22,10 +22,13 @@ describe('system log', () => {
       expect(await value(db, `select count(*)::int from public.system_logs where category = 'FRONTEND'`)).toBe(1)
       expect(await value(db, `select public.admin_resolve_system_logs(array[$1::bigint])`, [a])).toBe(1)
 
-      // Resolved problems start a new row when they happen again.
+      // A resolved (fixed) problem that happens again is reopened on the same row as "came back".
       await asService(db)
       const c = await value<number>(db, `select public.log_system_event('ERROR', 'COURIER', 'courier', 'Pathao answered HTTP 502 for order 789')`)
-      expect(c).not.toBe(a)
+      expect(c).toBe(a)
+      await asSystem(db)
+      expect(await value(db, `select jsonb_build_object('status', status, 'regressions', regressions, 'open', resolved_at is null) from public.system_logs where id = $1`, [a]))
+        .toEqual({ status: 'NEW', regressions: 1, open: true })
     }))
 
   it('only staff with audit access can read it', () =>

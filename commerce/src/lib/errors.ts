@@ -11,6 +11,10 @@ const FRIENDLY: Record<string, string> = {
 }
 
 export class AppError extends Error {
+  /** The backend function (and action) that answered, e.g. "inbox/history_import". */
+  source?: string
+  /** The id the server's error log gave this request (Super Admin error tracker). */
+  requestId?: string
   constructor(message: string, public readonly code = 'ERROR', public readonly details?: unknown) {
     super(message)
   }

@@ -108,7 +108,7 @@ async function writeSystemLog(event: LogEvent, fetchFn: typeof fetch): Promise<v
       p_category: event.category,
       p_source: event.source,
       p_message: scrubText(event.message).slice(0, 2000),
-      p_context: scrub({ ...(event.context ?? {}), ...(err ? { error: err.message, stack: err.stack?.split('\n').slice(0, 6).join('\n') } : {}) }),
+      p_context: scrub({ ...(event.context ?? {}), ...(err ? { error: err.message, stack: err.stack?.split('\n').slice(0, 12).join('\n') } : {}) }),
     }),
   })
 }

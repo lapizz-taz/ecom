@@ -6,6 +6,8 @@
 // (a merchant's own domain, or the platform's default store) and sent with
 // every request as x-merchant-id, which the database uses to scope the store.
 
+import { trackedFetch } from '@/lib/breadcrumbs'
+
 /**
  * What this web address shows (from storefront_resolve):
  * - store: a business's store (its own domain, <name>.<root domain>, or
@@ -192,10 +194,10 @@ export function merchantFolder(): string {
 /** fetch() that names the merchant on every request to the API. */
 export const merchantFetch: typeof fetch = (input, init) => {
   const id = currentMerchantId()
-  if (!id) return fetch(input, init)
+  if (!id) return trackedFetch(fetch, input, init)
   const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
   if (!headers.has('x-merchant-id')) headers.set('x-merchant-id', id)
-  return fetch(input, { ...init, headers })
+  return trackedFetch(fetch, input, { ...init, headers })
 }
 
 let resolving: Promise<SiteInfo> | null = null
