@@ -33,6 +33,7 @@ import {
 import { CourierJourney } from '@/features/orders/courier-journey'
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
 import { PhoneMenu } from '@/features/orders/phone-menu'
+import { itemOutcome, OutcomeTags, recordedBack } from '@/features/orders/item-outcome'
 import { OrderBranch } from '@/features/orders/order-branch'
 import { OrderClientInfo } from '@/features/orders/order-client-info'
 import { CallHistoryCard } from '@/features/orders/call-history-card'
@@ -173,6 +174,9 @@ export default function OrderDetailPage() {
   const history = [...o.order_status_history].reverse().sort((a, b) => b.created_at.localeCompare(a.created_at))
   const notes = [...o.order_notes].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const fc = o.fraud_check
+  // What "Partial delivery…" recorded as sent back, per item, and whether anything is known at all.
+  const sentBack = recordedBack(o.order_status_history as Array<{ created_at: string; metadata?: unknown }>)
+  const partialKnown = sentBack.size > 0 || o.order_items.some((i) => i.returned_quantity + i.damaged_quantity > 0)
   // Approval lives on the call card for web orders.
   const next = (NEXT_ACTIONS[status] ?? []).filter((a) => a.to !== 'CONFIRMED')
 
@@ -361,6 +365,11 @@ export default function OrderDetailPage() {
               {can('orders.update') && EDITABLE.includes(status) && <CardAction><Button size="sm" variant="ghost" onClick={() => setDialog('items')}><Pencil /> Edit</Button></CardAction>}
             </CardHeader>
             <CardContent>
+              {status === 'PARTIALLY_DELIVERED' && !partialKnown && (
+                <p className="mb-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                  Not recorded yet which item came back. Use Partial delivery… (⋯ menu), or scan the parcel when it arrives.
+                </p>
+              )}
               <ul className="divide-y">
                 {o.order_items.map((i) => (
                   <li key={i.id} className="flex gap-3 py-2.5 first:pt-0">
@@ -368,9 +377,12 @@ export default function OrderDetailPage() {
                     <div className="min-w-0 flex-1 text-sm">
                       <Link to={`/admin/products/${i.product_id}`} className="font-medium hover:underline">{i.product_name}</Link>
                       <p className="text-muted-foreground">{i.variant_title ? `${i.variant_title} · ` : ''}{i.sku}{i.requires_production && ' · made to order'}</p>
-                      {(i.returned_quantity > 0 || i.damaged_quantity > 0) && (
-                        <p className="text-xs text-amber-700">Returned {i.returned_quantity}{i.damaged_quantity ? ` · damaged ${i.damaged_quantity}` : ''}</p>
-                      )}
+                      {(() => {
+                        // Partly delivered: what the customer kept and what came back; otherwise what came back.
+                        const outcome = status === 'PARTIALLY_DELIVERED' && !partialKnown ? null
+                          : itemOutcome(i.quantity, i.returned_quantity, i.damaged_quantity, sentBack.get(i.id) ?? 0, status === 'PARTIALLY_DELIVERED')
+                        return outcome && <OutcomeTags outcome={outcome} quantity={i.quantity} className="mt-1" />
+                      })()}
                     </div>
                     <div className="text-right text-sm tabular-nums">
                       <p>{formatMoney(i.unit_price)} × {i.quantity}</p>

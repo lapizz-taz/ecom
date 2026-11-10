@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-10', tag: 'Improved', area: 'Orders', title: 'Partly delivered: see which item the customer kept and which came back',
+    body: 'On a partly delivered order, every item now says what happened to it: Delivered (the customer kept it), Coming back (recorded with Partial delivery… but not received yet), Returned (back in stock) or Damaged. You see it in Approved Orders → Partial, on a computer and on a phone, and on the order page. When nothing was recorded yet, it says so: use Partial delivery… on the order, or scan the parcel when it arrives. Returned orders show Returned and Damaged next to each item too.', to: '/admin/orders/approved?tab=PARTIAL' },
   { date: '2026-11-10', tag: 'Improved', area: 'Orders', title: 'The order page fits your phone',
     body: 'On a phone the order page starts with what you need: the main button (Mark shipped, Receive return…) across the full width with Print label, Cancel and ⋯ under it, and the customer\'s number next to their name (tap it for Call, WhatsApp or Copy number). The Delivery record is one short line per courier, with the couriers that have no parcels together on one line. Then come the products, the delivery address and the customer, with the long activity log at the end. "RTS" is no longer shown twice as "RTS" and "Ready to ship". On a computer the page looks as before, with the number next to the name.' },
   { date: '2026-11-10', tag: 'Improved', area: 'Orders', title: 'Approved Orders on a phone: the number always in full, tap it to call, WhatsApp or copy',

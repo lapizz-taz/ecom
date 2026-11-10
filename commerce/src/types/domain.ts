@@ -264,7 +264,9 @@ export interface OrderListItem {
   tags?: string[]
   customer_total_orders?: number | null
   handled_by?: string | null
-  lines?: Array<{ name: string; variant: string | null; sku: string | null; quantity: number; image_url: string | null }> | null
+  /** The first items; returned / damaged / expected_back say what happened to each on a partly delivered or returned order. */
+  lines?: Array<{ name: string; variant: string | null; sku: string | null; quantity: number; image_url: string | null
+    returned?: number; damaged?: number; expected_back?: number }> | null
   shipment?: {
     courier: string; provider: string; tracking_number: string | null; consignment_id: string | null; status: string
     booked_at: string; uploaded: boolean; tracking_url: string | null
