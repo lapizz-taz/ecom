@@ -18,7 +18,7 @@ export async function copyText(text: string, what: string) {
 }
 
 /**
- * The customer's phone number, always shown in full. Tapping it opens one small menu: call (Cloud
+ * The customer's phone number as plain text, always shown in full. Tapping it opens one small menu: call (Cloud
  * Calling when it is on, else the phone's dialer), WhatsApp, and copy the number. Every call tap
  * is recorded for call tracking, as before. Clicks never open the order behind it.
  */
@@ -39,12 +39,11 @@ export function PhoneMenu({ orderId, phone, name, kind, className }: {
     <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button type="button" aria-label={`Phone ${phone}: call, WhatsApp or copy`}
-            className={cn('inline-flex shrink-0 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 font-medium whitespace-nowrap text-sky-800 tabular-nums',
-              'hover:border-sky-300 hover:bg-sky-100 data-[state=open]:border-sky-400', call.isPending && 'animate-pulse', className)}>
-            <Phone className="size-3.5 shrink-0" />
+          <button type="button" aria-label={`Phone ${phone}: call, WhatsApp or copy`} title="Call, WhatsApp or copy"
+            className={cn('inline-flex shrink-0 items-center gap-0.5 font-medium whitespace-nowrap text-foreground tabular-nums underline-offset-4',
+              'hover:text-sky-700 hover:underline data-[state=open]:text-sky-700 data-[state=open]:underline', call.isPending && 'animate-pulse', className)}>
             {phone}
-            <ChevronDown className="size-3 shrink-0 opacity-60" />
+            <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-52" onClick={(e) => e.stopPropagation()}>

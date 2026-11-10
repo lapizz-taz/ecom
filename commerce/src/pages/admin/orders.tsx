@@ -428,17 +428,23 @@ export function OrdersPage({ view }: { view: View }) {
     ] : []
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {directPrint.dialog}
+      {/* On a phone: the title and its two buttons on one line, without the description, so the orders start higher. */}
       <PageHeader
+        className="mb-1 flex-row items-center justify-between gap-2 sm:mb-5 sm:items-end"
         title={VIEW_META[view].title}
-        description={VIEW_META[view].description}
+        description={<span className="hidden sm:inline">{VIEW_META[view].description}</span>}
         actions={
           <>
             <Can permission="orders.export">
-              <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting || showLeads}><Download /> {selected.size ? `Export ${selected.size}` : 'Export'}</Button>
+              <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting || showLeads} aria-label={selected.size ? `Export ${selected.size}` : 'Export'}>
+                <Download /> <span className="hidden sm:inline">{selected.size ? `Export ${selected.size}` : 'Export'}</span>
+              </Button>
             </Can>
-            <Can permission="orders.create"><Button size="sm" asChild><Link to="/admin/orders/new"><Plus /> New order</Link></Button></Can>
+            <Can permission="orders.create">
+              <Button size="sm" asChild><Link to="/admin/orders/new"><Plus /> <span className="sm:hidden">New</span><span className="hidden sm:inline">New order</span></Link></Button>
+            </Can>
           </>
         }
       />
@@ -450,7 +456,7 @@ export function OrdersPage({ view }: { view: View }) {
             const highlight = c.alert && (c.value ?? 0) > 0
             return (
               <button key={c.key} type="button" onClick={c.onClick} aria-pressed={c.active}
-                className={cn('press flex shrink-0 items-center gap-2 rounded-[10px] border bg-card px-3.5 py-1.5 text-sm transition-colors hover:border-foreground/25',
+                className={cn('press flex shrink-0 items-center gap-1.5 rounded-[10px] border bg-card px-2.5 py-1 text-[13px] transition-colors hover:border-foreground/25 sm:gap-2 sm:px-3.5 sm:py-1.5 sm:text-sm',
                   c.active && 'border-foreground/40', highlight && 'border-amber-300 text-amber-800')}>
                 <c.icon className={cn('size-3.5 text-muted-foreground', highlight && 'text-amber-700')} />
                 <span className="text-muted-foreground">{c.label}</span>
@@ -475,16 +481,17 @@ export function OrdersPage({ view }: { view: View }) {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchInput value={state.q} onChange={(q) => update({ q })} placeholder={showLeads ? 'Phone or name' : 'Order #, phone, name, tracking, SKU, address'} className="sm:w-96" />
+        <SearchInput value={state.q} onChange={(q) => update({ q })} placeholder={showLeads ? 'Phone or name' : 'Order #, phone, name, tracking, SKU, address'} className="w-full sm:w-96" />
         {!showLeads && (
-          <>
+          // On a phone: Filters, sort and Actions share one row under the search.
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
             <OrderFilterButton view={view} values={filterValues}
               onApply={(v) => update(v)}
               incomplete={showLeads}
               onIncomplete={view === 'web' ? (on) => selectTab(on ? 'incomplete' : 'PROCESSING') : undefined}
               countFor={async (v) => (await searchOrders(withValues(v), 'created_at', 'desc', 1, 0)).total} />
             <Select value={`${state.sort}:${state.dir}`} onValueChange={(v) => { const [s, d] = v.split(':'); update({ sort: s, dir: d }) }}>
-              <SelectTrigger size="sm" className="w-44" aria-label="Sort"><SelectValue /></SelectTrigger>
+              <SelectTrigger size="sm" className="min-w-0 flex-1 sm:w-44 sm:flex-none" aria-label="Sort"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="created_at:desc">Newest first</SelectItem>
                 <SelectItem value="created_at:asc">Oldest first</SelectItem>
@@ -501,7 +508,7 @@ export function OrdersPage({ view }: { view: View }) {
                 onBook={() => setBookOpen(true)} onRefreshCourier={() => refreshCourier.mutate()} refreshing={refreshCourier.isPending}
                 onTag={() => setTagOpen(true)} onExport={() => void exportCsv()} exporting={exporting} onDuplicates={() => setDupOpen(true)} />
             )}
-          </>
+          </div>
         )}
         {selected.size > 0 && view === 'approved' && (
           <span className="enter flex items-center gap-1 rounded-[10px] border bg-card py-1 pr-1 pl-3 text-sm">
