@@ -22,10 +22,11 @@ const ROLES = ['VIEWER', 'CALL', 'MODERATOR', 'PRODUCTION_MANAGER', 'INVENTORY_M
 /** What any staff member may write for themselves, and where. */
 const OWN: Record<string, string[]> = {
   hr_check_in: ['hr_attendance'],
-  log_client_error: ['system_logs'],
+  // A browser error, with its details and today's count (Super Admin error tracker).
+  log_client_error: ['system_logs', 'system_log_samples', 'system_log_daily'],
   // A tap on Call is the staff member's own action, recorded for the Owner and Admins (call tracking).
   order_call_tap: ['order_call_events'],
-  report_issue: ['support_tickets', 'support_ticket_events', 'system_logs'],
+  report_issue: ['support_tickets', 'support_ticket_events', 'system_logs', 'system_log_samples', 'system_log_daily'],
   submit_contact_message: ['contact_messages'],
   update_my_profile: ['profiles', 'audit_logs'],
 }
@@ -153,6 +154,7 @@ describe('role write sweep', () => {
           wrote.add(`${role} ${c.fn}`)
           const allowed = (named.get(c.fn) ?? []).some(allowedBy)
             || (c.fn === 'platform_me' && tables.every((t) => t === 'platform_staff')) // the caller's own "last seen"
+            || (c.fn === 'log_client_error' && tables.every((t) => OWN.log_client_error.includes(t))) // an error in their own browser
             || tables.every((t) => t === 'platform_audit_logs' || t === 'audit_logs')
           if (!allowed) problems.push(`${role} ${c.fn}(${c.filled ? 'filled' : 'ids'}) wrote ${tables.join(', ')} without a platform permission it names (${(named.get(c.fn) ?? []).join(', ') || 'none'})`)
         }, async () => { before = await value<Record<string, number>>(db, WRITES) })

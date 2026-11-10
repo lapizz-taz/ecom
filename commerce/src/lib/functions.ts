@@ -1,3 +1,4 @@
+import { noteRequestId } from '@/lib/breadcrumbs'
 import { AppError } from '@/lib/errors'
 import { env, functionsUrl } from '@/lib/env'
 import { merchantFetch } from '@/lib/merchant'
@@ -9,13 +10,15 @@ export async function functionHeaders(): Promise<Record<string, string>> {
   return { apikey: env.supabaseAnonKey, Authorization: `Bearer ${data.session?.access_token ?? env.supabaseAnonKey}` }
 }
 
-type ErrorBody = { error?: { code?: string; message?: string; details?: unknown } } | null
+type ErrorBody = { error?: { code?: string; message?: string; details?: unknown; request_id?: string } } | null
 
 /** A function's answer: JSON (or text) when it worked, its `{ error: { code, message } }` as an AppError when not. */
 export async function functionResult<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as ErrorBody
-    throw new AppError(payload?.error?.message ?? 'Request failed', payload?.error?.code ?? 'ERROR', payload?.error?.details)
+    const failure = new AppError(payload?.error?.message ?? 'Request failed', payload?.error?.code ?? 'ERROR', payload?.error?.details)
+    if (typeof payload?.error?.request_id === 'string') failure.requestId = payload.error.request_id.slice(0, 40)
+    throw failure
   }
   const type = res.headers.get('Content-Type') ?? ''
   return (type.includes('application/json') ? await res.json() : await res.text()) as T
@@ -52,5 +55,13 @@ export async function invokeFunction<T>(name: string, body: Record<string, unkno
   } catch {
     throw new AppError('Network problem — please try again', 'NETWORK')
   }
-  return functionResult<T>(res)
+  try {
+    return await functionResult<T>(res)
+  } catch (e) {
+    if (e instanceof AppError) {
+      e.source = `${name}${typeof body.action === 'string' ? `/${body.action}` : ''}`
+      if (e.requestId) noteRequestId(`fn ${name}`, e.requestId)
+    }
+    throw e
+  }
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { captureTouch, currentAttribution, externalReferrer, sessionId, touchParams } from './attribution'
 
 function memoryStorage() {
@@ -18,6 +18,7 @@ describe('attribution capture', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage())
   })
+  afterEach(() => vi.useRealTimers())
 
   it('reads marketing parameters and ignores everything else', () => {
     expect(touchParams('?utm_source=facebook&utm_medium=paid&utm_campaign=Belt&fbclid=IwAR1&color=red&ad_id=123'))
@@ -32,6 +33,9 @@ describe('attribution capture', () => {
   })
 
   it('keeps the first touch and the last non-direct touch through the journey', () => {
+    // The journey's own days (the 30- and 90-day windows are measured from the real clock).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00Z'))
     // Ad click lands on a product.
     expect(captureTouch({ pathname: '/product/belt', search: '?utm_source=facebook&utm_medium=paid&utm_campaign=Korean%20Belt&ad_id=9' },
       'https://m.facebook.com/', HOST, at('2026-10-01T10:00:00Z'))).toBe(true)

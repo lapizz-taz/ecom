@@ -1,5 +1,5 @@
 import {
-  Activity, Banknote, BarChart3, CreditCard, Database, Globe2, Landmark, LayoutDashboard, LifeBuoy, type LucideIcon, Megaphone, MessageSquare, PhoneCall, Plug, ScrollText,
+  Activity, Banknote, BarChart3, Bug, CreditCard, Database, Globe2, Landmark, LayoutDashboard, LifeBuoy, type LucideIcon, Megaphone, MessageSquare, PhoneCall, Plug, ScrollText,
   Radio, Receipt, Settings2, ShieldCheck, Siren, Store, ToggleRight, Truck, UsersRound, Wallet, Workflow,
 } from 'lucide-react'
 
@@ -31,6 +31,7 @@ export const PLATFORM_NAV: PlatformNavItem[] = [
   { module: 'usage', label: 'Usage & Analytics', to: '/super-admin/usage', icon: BarChart3 },
   { module: 'automation', label: 'Automation Rules', to: '/super-admin/automation', icon: Workflow },
   { module: 'health', label: 'System Health', to: '/super-admin/health', icon: Activity },
+  { module: 'health', label: 'Error Tracker', to: '/super-admin/errors', icon: Bug },
   { module: 'incidents', label: 'Incident Management', to: '/super-admin/incidents', icon: Siren },
   { module: 'notifications', label: 'Notifications', to: '/super-admin/notifications', icon: Megaphone },
   { module: 'audit', label: 'Audit Logs', to: '/super-admin/audit', icon: ScrollText },

@@ -152,6 +152,10 @@ function LogBrowser({ canManage }: { canManage: boolean }) {
           <Button size="sm" className="ml-auto" disabled={resolve.isPending} onClick={() => resolve.mutate(selected)}><CheckCheck /> Mark {selected.length} resolved</Button>
         )}
       </div>
+      <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        Each entry with its likely cause, the steps before it, whether it came back after a fix, and a report for Claude:{' '}
+        <Link to="/super-admin/errors" className="font-medium text-foreground underline underline-offset-2">open the Error tracker</Link>.
+      </p>
       {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : !q.data ? <TableSkeleton rows={6} cols={5} /> : rows.length === 0 ? (
         <EmptyState title="Nothing logged" description={f.unresolved === 'true' ? 'No unresolved entries match.' : 'No entries match.'} />
       ) : (

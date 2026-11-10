@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, Info, Loader2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { toast as sonner } from 'sonner'
+import { noteErrorShown } from '@/lib/monitoring'
 import { cn } from '@/lib/utils'
 
 /**
@@ -80,6 +81,8 @@ export const toast = {
   success: (title: string, o?: Options) => show('success', title, o, 4000),
   error: (title: unknown, o?: Options) => {
     const message = text(title) || 'Something went wrong'
+    // Goes to the Super Admin error tracker (an error object, or a "Something went wrong").
+    try { noteErrorShown(title, message) } catch { /* showing the message matters more */ }
     return show('error', message, { ...o, id: o?.id ?? `error:${message}` }, 7000)
   },
   warning: (title: string, o?: Options) => show('warning', title, o, 6000),
