@@ -58,6 +58,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
   Calling or the phone, recorded for call tracking), WhatsApp and Copy number. Six columns on a computer: Order (date, who
   handled it, Printed, flags, tags), Customer (note under the address), Products, Total, Courier, and Open with a ⋯ menu.
   On a phone the page top is compact (title and buttons on one line; Filters, sort and Actions in one row).
+- The order page on a phone (since 10 Nov 2026): the main action full width, the number next to the name (Call / WhatsApp /
+  Copy), the Delivery record as one line per courier (no-parcel couriers on one line), then products, address and customer,
+  and the activity log last. The computer layout is unchanged.
 - Super Edit, merge, duplicate detection and smart auto-merge.
 - Incomplete orders and abandoned carts. A Shopify or WooCommerce abandoned checkout has an Order button (since 8 Nov 2026): New order opens
   with the customer, address, district and products (matched by the store's variant link, then SKU); once created, the checkout counts as recovered.

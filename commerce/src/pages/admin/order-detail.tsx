@@ -32,6 +32,7 @@ import {
 } from '@/features/orders/order-dialogs'
 import { CourierJourney } from '@/features/orders/courier-journey'
 import { CourierRecordCards } from '@/features/orders/courier-record-cards'
+import { PhoneMenu } from '@/features/orders/phone-menu'
 import { OrderBranch } from '@/features/orders/order-branch'
 import { OrderClientInfo } from '@/features/orders/order-client-info'
 import { CallHistoryCard } from '@/features/orders/call-history-card'
@@ -191,7 +192,8 @@ export default function OrderDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold">{o.order_number}</h1>
             {isWeb ? <Badge variant="outline">Web order</Badge> : <StatusBadge value={stage} map={STAGE} />}
-            {(isWeb || STAGE[stage].label !== ORDER_STATUS[status].label) && <StatusBadge value={status} map={ORDER_STATUS} />}
+            {/* The status only when it says more than the stage ("RTS" already means Ready to ship). */}
+            {(isWeb || (STAGE[stage].label !== ORDER_STATUS[status].label && SAME_AS_STAGE[stage] !== status)) && <StatusBadge value={status} map={ORDER_STATUS} />}
             <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} />
             <StatusBadge value={o.fraud_status} map={FRAUD_STATUS} />
             {o.source === 'ADMIN' && <Badge variant="outline">Manual order</Badge>}
@@ -201,25 +203,27 @@ export default function OrderDetailPage() {
             {o.merged_count > 0 && <Badge variant="info" className="gap-1"><Layers className="size-3" /> {o.merged_count} checkout{o.merged_count === 1 ? '' : 's'} merged in</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
-            {formatDateTime(o.created_at)} · {o.customer_name} · {PAYMENT_METHOD[o.payment_method]}
+            {formatDateTime(o.created_at)} · {o.customer_name} · <PhoneMenu orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind={isWeb ? 'WEB_ORDER' : 'APPROVED_ORDER'} /> · {PAYMENT_METHOD[o.payment_method]}
             {o.attribution && o.attribution.channel !== 'unknown' && <> · from <span className="font-medium text-foreground">{o.attribution.source}</span>{o.attribution.campaign && <> · {o.attribution.campaign}</>}</>}
           </p>
         </div>
-        <div className="no-print flex flex-wrap items-center gap-2">
+        {/* On a phone: the next step across the full width first, the other buttons sharing the row under it. */}
+        <div className="no-print flex flex-wrap items-center gap-2 max-sm:[&>button:not([aria-label='More actions'])]:flex-1">
           {can('orders.fulfill') && !['CANCELLED', 'REJECTED_FRAUD'].includes(status) && (
             <Button size="sm" variant="outline" disabled={directPrint.busy} onClick={() => void directPrint.print([o.id], 'label')}><Printer /> {o.label_printed_at ? 'Reprint label' : 'Print label'}</Button>
           )}
           {can('orders.status') && next.map((a) => (
             <Button key={a.to} size="sm" variant={a === next[0] ? 'default' : 'outline'} disabled={transition.isPending}
+              className={a === next[0] ? 'max-sm:order-first max-sm:basis-full' : undefined}
               onClick={() => (NEEDS_REASON.includes(a.to) ? setTransitionTo(a.to) : transition.mutate({ to: a.to, note: '' }))}>
               {transition.isPending && transition.variables?.to === a.to ? <Spinner /> : <Check />} {a.label}
             </Button>
           ))}
           {can('orders.status') && canReceive && (
-            <Button size="sm" onClick={() => setDialog('return')}><Undo2 /> {status === 'PARTIALLY_DELIVERED' ? 'Receive items sent back' : 'Receive return'}</Button>
+            <Button size="sm" className="max-sm:order-first max-sm:basis-full" onClick={() => setDialog('return')}><Undo2 /> {status === 'PARTIALLY_DELIVERED' ? 'Receive items sent back' : 'Receive return'}</Button>
           )}
           {can('orders.cancel') && courierHasIt ? (
-            <Button size="sm" variant="outline" onClick={() => setTransitionTo('PENDING_CANCEL')}><Ban /> Ask courier to cancel</Button>
+            <Button size="sm" variant="outline" onClick={() => setTransitionTo('PENDING_CANCEL')} aria-label="Ask courier to cancel"><Ban /> <span className="sm:hidden">Cancel</span><span className="hidden sm:inline">Ask courier to cancel</span></Button>
           ) : can('orders.cancel') && CANCELLABLE.includes(status) && (
             <Button size="sm" variant="outline" onClick={() => setTransitionTo('CANCELLED')}><Ban /> Cancel</Button>
           )}
@@ -347,9 +351,11 @@ export default function OrderDetailPage() {
 
       <CourierRecordCards orderId={o.id} phone={o.customer_phone} createdAt={o.created_at} />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-        <div className="min-w-0 space-y-4">
-          <Card>
+      {/* On a phone the two columns become one list in this order: products, address, customer, money,
+          courier, payments, the rest, and the long activity log last. On a computer: as before. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="contents lg:block lg:min-w-0 lg:space-y-4">
+          <Card className="max-lg:order-1">
             <CardHeader>
               <CardTitle className="text-sm">Products</CardTitle>
               {can('orders.update') && EDITABLE.includes(status) && <CardAction><Button size="sm" variant="ghost" onClick={() => setDialog('items')}><Pencil /> Edit</Button></CardAction>}
@@ -377,7 +383,7 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 max-lg:order-4 md:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-sm">Pricing</CardTitle></CardHeader>
               <CardContent>
@@ -417,7 +423,7 @@ export default function OrderDetailPage() {
             </Card>
           </div>
 
-          <Card>
+          <Card className="max-lg:order-6">
             <CardHeader>
               <CardTitle className="text-sm">Payments</CardTitle>
               <CardAction className="flex gap-1">
@@ -469,7 +475,7 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="max-lg:order-5">
             <CardHeader>
               <CardTitle className="text-sm">Courier</CardTitle>
               {can('shipments.manage') && !['CANCELLED', 'REJECTED_FRAUD', 'DELIVERED', 'RETURNED'].includes(status) && (
@@ -511,7 +517,7 @@ export default function OrderDetailPage() {
           </Card>
 
           {production && (
-            <Card>
+            <Card className="max-lg:order-7">
               <CardHeader>
                 <CardTitle className="text-sm">Production</CardTitle>
                 <CardAction><Button size="sm" variant="ghost" asChild><Link to={`/admin/production/${production.id}`}><Factory /> Open</Link></Button></CardAction>
@@ -524,13 +530,13 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          <CustomerMessages orderId={o.id} />
+          <div className="empty:hidden max-lg:order-8"><CustomerMessages orderId={o.id} /></div>
 
-          <NotesCard orderId={o.id} notes={notes} onAdded={refresh} canAdd={can('orders.update')} phone={o.customer_phone} />
+          <div className="max-lg:order-9"><NotesCard orderId={o.id} notes={notes} onAdded={refresh} canAdd={can('orders.update')} phone={o.customer_phone} /></div>
 
-          {can('calls.view') && <CallHistoryCard orderId={o.id} />}
+          {can('calls.view') && <div className="empty:hidden max-lg:order-10"><CallHistoryCard orderId={o.id} /></div>}
 
-          <Card>
+          <Card className="max-lg:order-last">
             <CardHeader><CardTitle className="text-sm">Activity</CardTitle></CardHeader>
             <CardContent>
               <ActivityTimeline searchable items={history.map((h) => {
@@ -549,8 +555,8 @@ export default function OrderDetailPage() {
           </Card>
         </div>
 
-        <div className="space-y-4">
-          <Card>
+        <div className="contents lg:block lg:space-y-4">
+          <Card className="max-lg:order-3">
             <CardHeader>
               <CardTitle className="text-sm">Customer</CardTitle>
               <CardAction><Button size="sm" variant="ghost" asChild><Link to={`/admin/customers/${o.customer_id}`}>View</Link></Button></CardAction>
@@ -558,7 +564,7 @@ export default function OrderDetailPage() {
             <CardContent className="space-y-3 text-sm">
               <div>
                 <p className="font-medium">{o.customer_name}</p>
-                <a href={`tel:${o.customer_phone}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><Phone className="size-3" /> {o.customer_phone}</a>
+                <PhoneMenu orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind={isWeb ? 'WEB_ORDER' : 'APPROVED_ORDER'} />
                 {o.customer_email && <p className="text-muted-foreground">{o.customer_email}</p>}
               </div>
               {o.customer && (
@@ -582,7 +588,7 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="max-lg:order-2">
             <CardHeader>
               <CardTitle className="text-sm">Shipping</CardTitle>
               {can('orders.update') && EDITABLE.includes(status) && <CardAction><Button size="sm" variant="ghost" onClick={() => setDialog('edit')}><Pencil /> Edit</Button></CardAction>}
@@ -597,11 +603,11 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          <OrderSourceCard orderId={o.id} attribution={o.attribution} orderStatus={status} />
-          {o.sales_channel_id && <ChannelOrderCard orderId={o.id} status={o.status} />}
+          <div className="empty:hidden max-lg:order-11"><OrderSourceCard orderId={o.id} attribution={o.attribution} orderStatus={status} /></div>
+          {o.sales_channel_id && <div className="empty:hidden max-lg:order-12"><ChannelOrderCard orderId={o.id} status={o.status} /></div>}
 
           <Can permission="fraud.view">
-            <Card>
+            <Card className="max-lg:order-13">
               <CardHeader>
                 <CardTitle className="text-sm">Fraud analysis</CardTitle>
                 {can('fraud.review') && (
@@ -715,6 +721,9 @@ function localInput(d: Date) {
 }
 
 /** Web orders: what happened on the call, and approval. */
+/** A stage whose name already says its status: the status badge is not repeated next to it. */
+const SAME_AS_STAGE: Partial<Record<string, OrderStatus>> = { RTS: 'READY_TO_SHIP', PARTIAL: 'PARTIALLY_DELIVERED' }
+
 const CANCEL_REASONS = ['Customer request', 'Out of stock', 'Duplicate order', 'Wrong number', 'Phone off', 'No answer', 'Fraudulent order', 'Price issue', 'Advance payment issue', 'Other']
 
 function CallOutcomeCard({ order, onChanged, onApprove, approving, onSaved }: {

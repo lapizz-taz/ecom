@@ -93,6 +93,14 @@ function Tile({ icon, name, fill, color, value, detail, warn, tag, title, index 
   )
 }
 
+/** One source of the record (our orders, the overall rate, a courier), for the tiles and the phone list. */
+interface Row {
+  key: string; icon: ReactNode; name: string; fill: number | null | undefined; color: string; value: ReactNode; detail?: ReactNode
+  /** A shorter value and detail for the phone list. */ short?: string; shortValue?: string
+  warn?: boolean; tag?: string; title?: string
+  /** A courier with no parcels for this number (shown together on a phone). */ empty?: boolean
+}
+
 /** A new order's courier check runs in the background; how long the panel keeps looking for it. */
 const CHECK_WAIT_MS = 3 * 60_000
 /** A check this much older than the order is a reused one from the same visit (the 30-minute cache). */
@@ -226,6 +234,38 @@ function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = fa
   const sources = groups.length ? `Sources: ${groups.join(' · ')}` : ''
   const ourRate = earlier > 0 ? ((ours?.delivered ?? 0) / earlier) * 100 : null
   const busy = waiting || !!rechecking
+  const rows: Row[] = [
+    { key: 'ours', icon: <Store className="size-4 text-violet-400" />, name: 'Our record', fill: ourRate, color: '#a78bfa',
+      value: earlier === 0 ? 'New' : `${earlier} order${earlier === 1 ? '' : 's'}`, shortValue: earlier === 0 ? 'New' : String(earlier),
+      detail: earlier === 0 ? 'first order' : `${ours?.delivered ?? 0} delivered`,
+      short: earlier === 0 ? 'first order' : `${ours?.delivered ?? 0}/${earlier} delivered` },
+    { key: 'overall', icon: <Gauge className="size-4 text-indigo-400" />, name: 'Overall', fill: check?.rate, color: rateColor(check?.rate, policy), value: pct(check?.rate),
+      title: 'Delivered ÷ (delivered + cancelled or returned at the door), over the couriers that report parcel counts',
+      detail: check && check.total > 0 ? `${check.total} parcels${check.cancelled ? ` · ${check.cancelled} back` : ''}` : 'no parcels',
+      short: check && check.total > 0 ? `${check.delivered}/${check.total}${check.cancelled ? ` · ${check.cancelled} back` : ''}` : 'no parcels' },
+    ...[...ALWAYS, ...extra].map((k): Row => {
+      const c = byKey.get(k)
+      const brand = COURIERS[k]
+      const name = brand?.name ?? c?.name ?? k
+      const color = brand?.color ?? '#71717a'
+      const icon = MARKS[k] ?? <span className="size-4 rounded-full" style={{ background: color }} />
+      const tag = c?.source ? SOURCE[c.source] : undefined
+      const reports = c?.fraud_reports ? ` · ${c.fraud_reports} report${c.fraud_reports === 1 ? '' : 's'}` : ''
+      if (c?.rate_only) {
+        return { key: k, icon, name, fill: c.success_ratio, color, value: pct(c.success_ratio), tag,
+          title: `${name} reports only its own rate${c.parcel_range ? ` and a volume band (${c.parcel_range})` : ''}, not parcel counts`,
+          detail: `${c.parcel_range ? `${c.parcel_range} parcels` : 'rate only'}${reports}`, warn: !!c.fraud_reports }
+      }
+      const rate = c ? lineRate(c) : null
+      const has = (c?.orders ?? 0) > 0
+      return {
+        key: k, icon, name, fill: rate, color, value: pct(rate), tag: c?.notice ? undefined : tag, title: c?.notice ?? undefined,
+        detail: c?.notice ? 'couldn’t check' : has ? <>{c!.delivered}/{c!.orders}<span className="hidden sm:inline"> delivered</span>{reports}</> : 'no parcels',
+        short: c?.notice ? 'couldn’t check' : has ? `${c!.delivered}/${c!.orders}${reports}` : undefined,
+        warn: !!c?.notice || !!c?.fraud_reports, empty: !c?.notice && !has,
+      }
+    }),
+  ]
 
   return (
     <section className={cn('rounded-2xl border bg-card px-4 pt-4 pb-4 sm:px-5', className)}>
@@ -259,35 +299,34 @@ function DeliveryRecordPanel({ data, waiting, className, countsCurrentOrder = fa
         </div>
       </Reveal>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Tile index={0} busy={busy} icon={<Store className="size-4 text-violet-400" />} name="Our record" fill={ourRate} color="#a78bfa"
-          value={earlier === 0 ? 'New' : `${earlier} order${earlier === 1 ? '' : 's'}`}
-          detail={earlier === 0 ? 'first order' : `${ours?.delivered ?? 0} delivered`} />
-        <Tile index={1} busy={busy} icon={<Gauge className="size-4 text-indigo-400" />} name="Overall" fill={check?.rate} color={rateColor(check?.rate, policy)}
-          value={pct(check?.rate)}
-          title="Delivered ÷ (delivered + cancelled or returned at the door), over the couriers that report parcel counts"
-          detail={check && check.total > 0 ? `${check.total} parcels${check.cancelled ? ` · ${check.cancelled} back` : ''}` : 'no parcels'} />
-        {[...ALWAYS, ...extra].map((k, i) => {
-          const c = byKey.get(k)
-          const brand = COURIERS[k]
-          const name = brand?.name ?? c?.name ?? k
-          const color = brand?.color ?? '#71717a'
-          const icon = MARKS[k] ?? <span className="size-4 rounded-full" style={{ background: color }} />
-          const tag = c?.source ? SOURCE[c.source] : undefined
-          const reports = c?.fraud_reports ? ` · ${c.fraud_reports} report${c.fraud_reports === 1 ? '' : 's'}` : ''
-          if (c?.rate_only) {
-            return <Tile key={k} index={i + 2} busy={busy} icon={icon} name={name} fill={c.success_ratio} color={color} value={pct(c.success_ratio)} tag={tag}
-              title={`${name} reports only its own rate${c.parcel_range ? ` and a volume band (${c.parcel_range})` : ''}, not parcel counts`}
-              detail={`${c.parcel_range ? `${c.parcel_range} parcels` : 'rate only'}${reports}`} warn={!!c.fraud_reports} />
-          }
-          const rate = c ? lineRate(c) : null
-          return (
-            <Tile key={k} index={i + 2} busy={busy} icon={icon} name={name} fill={rate} color={color} value={pct(rate)} tag={c?.notice ? undefined : tag}
-              title={c?.notice ?? undefined}
-              detail={c?.notice ? 'couldn’t check' : (c?.orders ?? 0) > 0 ? <>{c!.delivered}/{c!.orders}<span className="hidden sm:inline"> delivered</span>{reports}</> : 'no parcels'}
-              warn={!!c?.notice || !!c?.fraud_reports} />
-          )
-        })}
+      {/* Phone: one line per source; couriers with no parcels share one line. */}
+      <ul className="mt-3 divide-y md:hidden">
+        {rows.filter((r) => !r.empty).map((r) => (
+          <li key={r.key} className="flex items-center gap-2.5 py-2" title={r.title}>
+            <span className="grid size-5 shrink-0 place-items-center">{r.icon}</span>
+            <span className="w-20 shrink-0 truncate text-sm">{r.name}</span>
+            <span className="relative h-1.5 min-w-6 flex-1 overflow-hidden rounded-full bg-muted">
+              <span className="record-bar block h-full rounded-full" style={{ width: `${Math.min(Math.max(r.fill ?? 0, 0), 100)}%`, background: r.color }} />
+              {busy && <span className="record-shimmer absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-foreground/35 to-transparent" />}
+            </span>
+            <span className="w-11 shrink-0 text-right text-sm font-medium tabular-nums">{r.shortValue ?? r.value}</span>
+            <span className={cn('w-24 shrink-0 truncate text-right text-[11px] tabular-nums', r.warn ? 'text-amber-500' : 'text-muted-foreground')}>{r.short ?? r.detail}</span>
+          </li>
+        ))}
+        {rows.some((r) => r.empty) && (
+          <li className="flex items-center gap-2.5 py-2 text-xs text-muted-foreground">
+            <span className="flex shrink-0 -space-x-1">{rows.filter((r) => r.empty).map((r) => <span key={r.key} className="grid size-5 place-items-center rounded-full ring-2 ring-card">{r.icon}</span>)}</span>
+            <span className="min-w-0">No parcels with {rows.filter((r) => r.empty).map((r) => r.name).join(', ')}</span>
+          </li>
+        )}
+      </ul>
+
+      {/* Larger screens: a card per source. */}
+      <div className="mt-4 hidden grid-cols-2 gap-3 md:grid md:grid-cols-3">
+        {rows.map((r, i) => (
+          <Tile key={r.key} index={i} busy={busy} icon={r.icon} name={r.name} fill={r.fill} color={r.color} value={r.value} detail={r.detail}
+            warn={r.warn} tag={r.tag} title={r.title} />
+        ))}
       </div>
       {sources && <p className="mt-3 text-[11px] text-muted-foreground">{sources}</p>}
     </section>
