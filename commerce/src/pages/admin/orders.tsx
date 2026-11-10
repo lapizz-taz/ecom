@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, ExternalLink, Eye, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
+  AlarmClock, Check, CheckCheck, ChevronDown, Copy, Download, Ellipsis, ExternalLink, Eye, Hash, Layers, LoaderCircle, MessageCircle, PackageCheck, Pencil, Phone, Plus, Printer,
   ShieldAlert, ShieldCheck, ShoppingBag, Tag, Truck, Wallet,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/features/auth/auth-context'
 import { SuccessRateButton } from '@/features/orders/success-panel'
+import { copyText, PhoneMenu } from '@/features/orders/phone-menu'
 import { ApprovedActionsMenu, BulkTagDialog, DuplicateCheckDialog, DuplicatesPanel } from '@/features/orders/approved-actions'
 import { BookCourierDialog } from '@/features/orders/book-courier-dialog'
 import { CourierJourneyButton } from '@/features/orders/courier-journey'
@@ -40,7 +41,7 @@ import { useUrlState } from '@/hooks/use-url-state'
 import { downloadCsv } from '@/lib/csv'
 import { formatDateTime, timeAgo, titleCase } from '@/lib/format'
 import {
-  NEEDS_REASON, ORDER_STAGES, ORDER_STATUS, type OrderStage, PAYMENT_METHOD, PAYMENT_STATUS, RISK_LEVEL, STAGE,
+  NEEDS_REASON, ORDER_STAGES, ORDER_STATUS, type OrderStage, PAYMENT_METHOD, PAYMENT_STATUS, RISK_LEVEL, STAGE, statusBeyondStage,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import {
@@ -308,55 +309,46 @@ export function OrdersPage({ view }: { view: View }) {
     : ALL_MOVES
 
   const columns: Column<OrderListItem>[] = view === 'approved' ? [
-    {
-      key: 'date', header: 'Date',
-      cell: (o) => (
-        <div className="whitespace-nowrap text-xs">
-          <p className="font-medium text-foreground" title={formatDateTime(o.created_at)}>{formatDateTime(o.created_at)}</p>
-          {o.updated_at && <p className="text-muted-foreground">Updated {timeAgo(o.updated_at)}</p>}
-        </div>
-      ),
-    },
-    { key: 'order', header: 'Invoice', primary: true, cell: (o) => <InvoiceCell o={o} /> },
+    // Six columns that fit a laptop: the order (its date, who handled it, label printed, flags and tags),
+    // the customer (the phone opens Call / WhatsApp / Copy; the note under the address), products,
+    // total, courier, and Open with the rest in one menu.
+    { key: 'order', header: 'Order', primary: true, cell: (o) => <InvoiceCell o={o} tags={tagCell(o)} /> },
     { key: 'customer', header: 'Customer', cell: (o) => <CustomerCell o={o} /> },
-    { key: 'note', header: 'Note', hideOnMobile: true, cell: (o) => <NoteCell o={o} /> },
     { key: 'products', header: 'Products', cell: (o) => <ProductsCell o={o} showStage={state.tab === 'all'} /> },
-    { key: 'tags', header: 'Tags', hideOnMobile: true, cell: tagCell },
-    {
-      key: 'print', header: 'Print', align: 'center',
-      cell: (o) => o.label_printed_at
-        ? <span title={`Printed ${o.label_print_count}× · last ${formatDateTime(o.label_printed_at)}`} className="inline-flex text-emerald-600"><Check className="size-5" aria-label="Printed" /></span>
-        : <span className="text-muted-foreground" aria-label="Not printed">—</span>,
-    },
     {
       key: 'total', header: 'Total', align: 'right',
       cell: (o) => (
-        <div>
+        <div className="whitespace-nowrap">
           <Money value={o.total_amount} className="font-medium" />
           {Number(o.cod_amount) > 0 && Number(o.cod_amount) !== Number(o.total_amount) && <p className="text-xs text-muted-foreground">COD <Money value={o.cod_amount} /></p>}
           {o.payment_status === 'PAID' && <p className="text-xs font-medium text-emerald-600">Paid</p>}
         </div>
       ),
     },
-    { key: 'upload', header: 'Upload', cell: (o) => <UploadCell o={o} /> },
-    { key: 'user', header: 'User', hideOnMobile: true, cell: (o) => <span className="text-xs">{o.handled_by ?? '—'}</span> },
+    { key: 'upload', header: 'Courier', cell: (o) => <UploadCell o={o} /> },
     {
       key: 'actions', header: '', align: 'right',
       cell: (o) => (
-        <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
-          <Button size="sm" variant="outline" className="mr-1 h-7 gap-1 px-2 text-xs" asChild title="Open order: details and activity log">
-            <Link to={`/admin/orders/${o.id}`} aria-label={`Open ${o.order_number}`}><Eye className="size-3.5" /> Open</Link>
+        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button size="icon" variant="outline" className="size-7" asChild title="Open order: details and activity log">
+            <Link to={`/admin/orders/${o.id}`} aria-label={`Open ${o.order_number}`}><Eye className="size-3.5" /></Link>
           </Button>
-          {can('orders.update') && (
-            <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Edit order">
-              <Link to={`/admin/orders/${o.id}/edit`} aria-label={`Edit ${o.order_number}`}><Pencil /></Link>
-            </Button>
-          )}
-          {can('orders.override') && (
-            <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" asChild title="Super Edit — override status or courier details">
-              <Link to={`/admin/orders/super-edit?order=${o.id}`} aria-label={`Super Edit ${o.order_number}`}><ShieldAlert /></Link>
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" aria-label={`More for ${o.order_number}`}><Ellipsis /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}`}><Eye /> Open order</Link></DropdownMenuItem>
+              {can('orders.update') && (
+                <DropdownMenuItem asChild><Link to={`/admin/orders/${o.id}/edit`}><Pencil /> Edit order</Link></DropdownMenuItem>
+              )}
+              {can('orders.override') && (
+                <DropdownMenuItem asChild><Link to={`/admin/orders/super-edit?order=${o.id}`}><ShieldAlert /> Super Edit</Link></DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => void copyText(o.order_number, 'Order number')}><Hash /> Copy order number</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void copyText(o.customer_phone, 'Number')}><Copy /> Copy phone number</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ),
     },
@@ -436,17 +428,23 @@ export function OrdersPage({ view }: { view: View }) {
     ] : []
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {directPrint.dialog}
+      {/* On a phone: the title and its two buttons on one line, without the description, so the orders start higher. */}
       <PageHeader
+        className="mb-1 flex-row items-center justify-between gap-2 sm:mb-5 sm:items-end"
         title={VIEW_META[view].title}
-        description={VIEW_META[view].description}
+        description={<span className="hidden sm:inline">{VIEW_META[view].description}</span>}
         actions={
           <>
             <Can permission="orders.export">
-              <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting || showLeads}><Download /> {selected.size ? `Export ${selected.size}` : 'Export'}</Button>
+              <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting || showLeads} aria-label={selected.size ? `Export ${selected.size}` : 'Export'}>
+                <Download /> <span className="hidden sm:inline">{selected.size ? `Export ${selected.size}` : 'Export'}</span>
+              </Button>
             </Can>
-            <Can permission="orders.create"><Button size="sm" asChild><Link to="/admin/orders/new"><Plus /> New order</Link></Button></Can>
+            <Can permission="orders.create">
+              <Button size="sm" asChild><Link to="/admin/orders/new"><Plus /> <span className="sm:hidden">New</span><span className="hidden sm:inline">New order</span></Link></Button>
+            </Can>
           </>
         }
       />
@@ -458,7 +456,7 @@ export function OrdersPage({ view }: { view: View }) {
             const highlight = c.alert && (c.value ?? 0) > 0
             return (
               <button key={c.key} type="button" onClick={c.onClick} aria-pressed={c.active}
-                className={cn('press flex shrink-0 items-center gap-2 rounded-[10px] border bg-card px-3.5 py-1.5 text-sm transition-colors hover:border-foreground/25',
+                className={cn('press flex shrink-0 items-center gap-1.5 rounded-[10px] border bg-card px-2.5 py-1 text-[13px] transition-colors hover:border-foreground/25 sm:gap-2 sm:px-3.5 sm:py-1.5 sm:text-sm',
                   c.active && 'border-foreground/40', highlight && 'border-amber-300 text-amber-800')}>
                 <c.icon className={cn('size-3.5 text-muted-foreground', highlight && 'text-amber-700')} />
                 <span className="text-muted-foreground">{c.label}</span>
@@ -483,16 +481,17 @@ export function OrdersPage({ view }: { view: View }) {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchInput value={state.q} onChange={(q) => update({ q })} placeholder={showLeads ? 'Phone or name' : 'Order #, phone, name, tracking, SKU, address'} className="sm:w-96" />
+        <SearchInput value={state.q} onChange={(q) => update({ q })} placeholder={showLeads ? 'Phone or name' : 'Order #, phone, name, tracking, SKU, address'} className="w-full sm:w-96" />
         {!showLeads && (
-          <>
+          // On a phone: Filters, sort and Actions share one row under the search.
+          <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
             <OrderFilterButton view={view} values={filterValues}
               onApply={(v) => update(v)}
               incomplete={showLeads}
               onIncomplete={view === 'web' ? (on) => selectTab(on ? 'incomplete' : 'PROCESSING') : undefined}
               countFor={async (v) => (await searchOrders(withValues(v), 'created_at', 'desc', 1, 0)).total} />
             <Select value={`${state.sort}:${state.dir}`} onValueChange={(v) => { const [s, d] = v.split(':'); update({ sort: s, dir: d }) }}>
-              <SelectTrigger size="sm" className="w-44" aria-label="Sort"><SelectValue /></SelectTrigger>
+              <SelectTrigger size="sm" className="min-w-0 flex-1 sm:w-44 sm:flex-none" aria-label="Sort"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="created_at:desc">Newest first</SelectItem>
                 <SelectItem value="created_at:asc">Oldest first</SelectItem>
@@ -509,7 +508,7 @@ export function OrdersPage({ view }: { view: View }) {
                 onBook={() => setBookOpen(true)} onRefreshCourier={() => refreshCourier.mutate()} refreshing={refreshCourier.isPending}
                 onTag={() => setTagOpen(true)} onExport={() => void exportCsv()} exporting={exporting} onDuplicates={() => setDupOpen(true)} />
             )}
-          </>
+          </div>
         )}
         {selected.size > 0 && view === 'approved' && (
           <span className="enter flex items-center gap-1 rounded-[10px] border bg-card py-1 pr-1 pl-3 text-sm">
@@ -731,7 +730,7 @@ function CallCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefine
 function ApprovedCell({ o }: { o: OrderListItem }) {
   const stage = STAGE[o.stage as OrderStage]
   // The finer status adds something only past "Approved" itself (e.g. Pending · Packing).
-  const detail = o.status === 'CONFIRMED' ? null : ORDER_STATUS[o.status].label
+  const detail = o.status === 'CONFIRMED' ? null : stage ? statusBeyondStage(o.stage as OrderStage, o.status) : ORDER_STATUS[o.status].label
   return (
     <div className="max-w-48 space-y-0.5">
       <Badge variant="success" className="gap-1"><Check className="size-3" /> Approved</Badge>
@@ -752,11 +751,11 @@ function StageCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefin
     )
   }
   const stage = STAGE[o.stage as OrderStage]
-  const detail = ORDER_STATUS[o.status].label
+  const detail = statusBeyondStage(o.stage as OrderStage, o.status)
   return (
     <div className="space-y-0.5">
       <Badge variant={stage.variant}>{stage.label}</Badge>
-      {detail !== stage.label && <p className="text-xs text-muted-foreground">{detail}</p>}
+      {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
     </div>
   )
 }
@@ -812,7 +811,7 @@ function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: Vi
   const label = web ? meta?.label ?? titleCase(o.review_status) : view === 'web' ? `Approved · ${now}` : now
   const dot = web ? DOT[meta?.color ?? 'neutral'] ?? DOT.neutral : STAGE_DOT[stage?.variant ?? 'neutral'] ?? STAGE_DOT.neutral
   // On Web Orders the label already says Approved, so "Approved" (CONFIRMED) is not repeated after it.
-  const detail = !web && stage && ORDER_STATUS[o.status].label !== stage.label && !(view === 'web' && o.status === 'CONFIRMED') ? ORDER_STATUS[o.status].label : null
+  const detail = !web && stage && !(view === 'web' && o.status === 'CONFIRMED') ? statusBeyondStage(o.stage as OrderStage, o.status) : null
   const h = o.courier_history
   const counted = h ? h.total ?? h.completed : 0
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
@@ -830,10 +829,14 @@ function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: Vi
         </p>
         <Money value={o.total_amount} className="shrink-0 font-semibold tabular-nums" />
       </div>
-      <p className="truncate text-sm">{o.customer_name} <span className="text-muted-foreground tabular-nums">· {o.customer_phone}</span></p>
+      <p className="truncate text-sm font-medium">{o.customer_name}</p>
+      {/* The full number, never cut off by a long name; tap it to call, WhatsApp or copy. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <PhoneMenu orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind={view === 'web' ? 'WEB_ORDER' : 'APPROVED_ORDER'} className="py-1 text-sm" />
+        <span className="text-muted-foreground">{o.shipping_district || <span className="text-amber-600 dark:text-amber-400">District needed</span>}</span>
+      </div>
       <p className="truncate text-xs text-muted-foreground">
-        {o.shipping_district || <span className="text-amber-600 dark:text-amber-400">District needed</span>}
-        {o.items_preview ? ` · ${o.items_preview}` : ` · ${o.item_count} item${o.item_count === 1 ? '' : 's'}`}
+        {o.items_preview ? o.items_preview : `${o.item_count} item${o.item_count === 1 ? '' : 's'}`}
       </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs">
         <span className="inline-flex items-center gap-1.5 font-medium"><span className={cn('size-2 rounded-full', dot)} />{label}{detail && <span className="font-normal text-muted-foreground">· {detail}</span>}</span>
@@ -1061,51 +1064,57 @@ function StoreBadge({ o }: { o: OrderListItem }) {
   )
 }
 
-function InvoiceCell({ o }: { o: OrderListItem }) {
+/** The order: its number, when it was made, label printed, who handled it, and any flags. */
+function InvoiceCell({ o, tags }: { o: OrderListItem; tags?: ReactNode }) {
   return (
-    <div className="flex max-w-40 flex-wrap items-center gap-1">
+    <div className="flex max-w-40 flex-wrap items-center gap-1 [&_[data-slot=badge]]:max-w-full">
       {/* Opens the order (details and activity log); the row's own click would open it a second time. */}
       <Link to={`/admin/orders/${o.id}`} onClick={(e) => e.stopPropagation()} title="Open order"
         className="w-full font-medium underline-offset-2 hover:text-sky-600 hover:underline">{o.order_number}</Link>
+      <span className="w-full text-xs whitespace-nowrap text-muted-foreground" title={o.updated_at ? `Updated ${timeAgo(o.updated_at)}` : undefined}>
+        {formatDateTime(o.created_at)}
+      </span>
+      {o.handled_by && <span className="w-full truncate text-xs text-muted-foreground">by {o.handled_by}</span>}
+      {o.label_printed_at && (
+        <Badge variant="success" className="gap-0.5 text-[10px]" title={`Label printed ${o.label_print_count}× · last ${formatDateTime(o.label_printed_at)}`}>
+          <Check className="size-3" /> Printed{o.label_print_count > 1 ? ` ${o.label_print_count}×` : ''}
+        </Badge>
+      )}
       {o.source === 'ADMIN' && <Badge variant="outline" className="text-[10px]">Manual</Badge>}
       <StoreBadge o={o} />
       <DuplicateBadge o={o} />
       {o.status === 'PENDING_CANCEL' && <Badge variant="warning" className="text-[10px]" title="Cancel asked for, waiting on the courier to confirm">Cancelling</Badge>}
       {o.merged_count > 0 && <Badge variant="info" className="gap-0.5 text-[10px]" title={`${o.merged_count} order(s) merged into this one`}><Layers className="size-3" /> Merged +{o.merged_count}</Badge>}
+      {tags && <div className="w-full pt-0.5">{tags}</div>}
     </div>
   )
 }
 
-/** Name, phone with the delivery success rate, quick call / WhatsApp and the address. */
+/** Name, the phone (tap: call, WhatsApp, copy) with the delivery success rate, and the address. */
 function CustomerCell({ o }: { o: OrderListItem }) {
   const h = o.courier_history
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
   const tone = rate !== null && h && (h.total ?? h.completed) > 0 ? rateTone(rate, h.tier) : null
-  const wa = waNumber(o.customer_phone)
   return (
-    <div className="max-w-60 space-y-0.5 text-xs" onClick={(e) => e.stopPropagation()}>
+    <div className="max-w-56 space-y-0.5 text-xs" onClick={(e) => e.stopPropagation()}>
       <p className="flex items-center gap-1 text-sm font-medium">
-        <span className="truncate">{o.customer_name}</span>
+        <span className="truncate" title={o.customer_name}>{o.customer_name}</span>
         <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Copy name"
-          onClick={() => { void navigator.clipboard.writeText(o.customer_name); toast.success('Name copied') }}><Copy className="size-3" /></button>
+          onClick={() => void copyText(o.customer_name, 'Name')}><Copy className="size-3" /></button>
       </p>
-      <p className="flex items-center gap-1.5">
-        <span className="tabular-nums">{o.customer_phone}</span>
+      <p className="flex flex-wrap items-center gap-1.5">
+        <PhoneMenu orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind="APPROVED_ORDER" />
         {tone && rate !== null && <SuccessRateButton orderId={o.id} phone={o.customer_phone} rate={rate} />}
-        <OrderCallLink orderId={o.id} phone={o.customer_phone} name={o.customer_name} kind="APPROVED_ORDER" className="text-sky-600 hover:opacity-80" />
-        {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="text-emerald-600 hover:opacity-80" aria-label={`WhatsApp ${o.customer_name}`}><MessageCircle className="size-3.5" /></a>}
       </p>
       <OrderCallBadge orderId={o.id} />
       <p className="line-clamp-2 text-muted-foreground" title={o.shipping_address}>{o.shipping_address ?? o.shipping_district}{o.shipping_address && !o.shipping_address.includes(o.shipping_district) ? `, ${o.shipping_district}` : ''}</p>
+      {(o.customer_note || o.review_note) && (
+        <p className="line-clamp-2 rounded bg-amber-50 px-1 text-amber-900" title={o.customer_note || o.review_note || ''}>
+          Note: {o.customer_note || o.review_note}
+        </p>
+      )}
     </div>
   )
-}
-
-function NoteCell({ o }: { o: OrderListItem }) {
-  const note = o.customer_note || o.review_note
-  return note
-    ? <p className="line-clamp-3 max-w-40 text-xs" title={note}>{note}</p>
-    : <span className="text-xs text-muted-foreground">—</span>
 }
 
 const STAGE_DOT: Record<string, string> = {
@@ -1122,9 +1131,9 @@ function ProductsCell({ o, showStage }: { o: OrderListItem; showStage: boolean }
   const stage = o.stage !== 'WEB' ? STAGE[o.stage as OrderStage] : null
   const lines = o.lines ?? []
   // On a stage tab the stage is already known; only the finer status (e.g. "In transit") is worth a line.
-  const detail = stage && o.stage !== 'PENDING' && ORDER_STATUS[o.status].label !== stage.label ? ORDER_STATUS[o.status].label : null
+  const detail = stage && o.stage !== 'PENDING' ? statusBeyondStage(o.stage as OrderStage, o.status) : null
   return (
-    <div className="max-w-64 space-y-1.5">
+    <div className="max-w-52 space-y-1.5">
       {stage && showStage && (
         <p className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase">
           <span className={cn('size-1.5 rounded-full', STAGE_DOT[stage.variant] ?? STAGE_DOT.neutral)} />{stage.label}

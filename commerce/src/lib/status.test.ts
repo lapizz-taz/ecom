@@ -34,3 +34,16 @@ describe('Super Edit places', () => {
     expect(placeTarget('SHIPPED', 'READY_TO_SHIP')).toBe('SHIPPED')
   })
 })
+
+describe('the status next to the stage', () => {
+  it('is left out when the stage already says it, kept when it says more', async () => {
+    const { statusBeyondStage } = await import('./status')
+    expect(statusBeyondStage('RTS', 'READY_TO_SHIP')).toBeNull()
+    expect(statusBeyondStage('RETURN_PENDING', 'RETURNING')).toBeNull()
+    expect(statusBeyondStage('PARTIAL', 'PARTIALLY_DELIVERED')).toBeNull()
+    expect(statusBeyondStage('SHIPPED', 'SHIPPED')).toBeNull()
+    expect(statusBeyondStage('RETURN_PENDING', 'FAILED_DELIVERY')).toBe('Failed delivery')
+    expect(statusBeyondStage('PENDING', 'PACKING')).toBe('Packing')
+    expect(statusBeyondStage('WEB', 'PROCESSING')).toBe('Processing')
+  })
+})

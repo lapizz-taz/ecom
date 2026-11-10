@@ -214,6 +214,16 @@ export const STAGE: Record<OrderStage | 'WEB', Meta> = {
 
 export const EDITABLE = CANCELLABLE
 
+/** Stages whose name already says the status: "RTS" is Ready to ship, "Return pending" is on its way back. */
+const SAME_AS_STAGE: Partial<Record<OrderStage, OrderStatus>> = { RTS: 'READY_TO_SHIP', PARTIAL: 'PARTIALLY_DELIVERED', RETURN_PENDING: 'RETURNING' }
+
+/** The status's own name when it says more than the stage (Pending · Packing, Return pending · Delivery failed); null when it repeats it. */
+export function statusBeyondStage(stage: OrderStage | 'WEB', status: OrderStatus): string | null {
+  const label = ORDER_STATUS[status].label
+  if (stage === 'WEB') return label
+  return STAGE[stage]?.label === label || SAME_AS_STAGE[stage] === status ? null : label
+}
+
 /** Same rule as the database's order_stage(). */
 export function stageOf(status: OrderStatus, confirmedAt: string | null | undefined): OrderStage | 'WEB' {
   if (!confirmedAt) return 'WEB'
