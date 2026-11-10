@@ -41,7 +41,7 @@ import { useUrlState } from '@/hooks/use-url-state'
 import { downloadCsv } from '@/lib/csv'
 import { formatDateTime, timeAgo, titleCase } from '@/lib/format'
 import {
-  NEEDS_REASON, ORDER_STAGES, ORDER_STATUS, type OrderStage, PAYMENT_METHOD, PAYMENT_STATUS, RISK_LEVEL, STAGE,
+  NEEDS_REASON, ORDER_STAGES, ORDER_STATUS, type OrderStage, PAYMENT_METHOD, PAYMENT_STATUS, RISK_LEVEL, STAGE, statusBeyondStage,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import {
@@ -730,7 +730,7 @@ function CallCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefine
 function ApprovedCell({ o }: { o: OrderListItem }) {
   const stage = STAGE[o.stage as OrderStage]
   // The finer status adds something only past "Approved" itself (e.g. Pending · Packing).
-  const detail = o.status === 'CONFIRMED' ? null : ORDER_STATUS[o.status].label
+  const detail = o.status === 'CONFIRMED' ? null : stage ? statusBeyondStage(o.stage as OrderStage, o.status) : ORDER_STATUS[o.status].label
   return (
     <div className="max-w-48 space-y-0.5">
       <Badge variant="success" className="gap-1"><Check className="size-3" /> Approved</Badge>
@@ -751,11 +751,11 @@ function StageCell({ o, meta }: { o: OrderListItem; meta: ReviewStatus | undefin
     )
   }
   const stage = STAGE[o.stage as OrderStage]
-  const detail = ORDER_STATUS[o.status].label
+  const detail = statusBeyondStage(o.stage as OrderStage, o.status)
   return (
     <div className="space-y-0.5">
       <Badge variant={stage.variant}>{stage.label}</Badge>
-      {detail !== stage.label && <p className="text-xs text-muted-foreground">{detail}</p>}
+      {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
     </div>
   )
 }
@@ -811,7 +811,7 @@ function OrderMobileRow({ o, view, meta, actions }: { o: OrderListItem; view: Vi
   const label = web ? meta?.label ?? titleCase(o.review_status) : view === 'web' ? `Approved · ${now}` : now
   const dot = web ? DOT[meta?.color ?? 'neutral'] ?? DOT.neutral : STAGE_DOT[stage?.variant ?? 'neutral'] ?? STAGE_DOT.neutral
   // On Web Orders the label already says Approved, so "Approved" (CONFIRMED) is not repeated after it.
-  const detail = !web && stage && ORDER_STATUS[o.status].label !== stage.label && !(view === 'web' && o.status === 'CONFIRMED') ? ORDER_STATUS[o.status].label : null
+  const detail = !web && stage && !(view === 'web' && o.status === 'CONFIRMED') ? statusBeyondStage(o.stage as OrderStage, o.status) : null
   const h = o.courier_history
   const counted = h ? h.total ?? h.completed : 0
   const rate = h ? h.rate ?? h.score ?? (h.completed > 0 ? (100 * h.delivered) / h.completed : null) : null
@@ -1131,7 +1131,7 @@ function ProductsCell({ o, showStage }: { o: OrderListItem; showStage: boolean }
   const stage = o.stage !== 'WEB' ? STAGE[o.stage as OrderStage] : null
   const lines = o.lines ?? []
   // On a stage tab the stage is already known; only the finer status (e.g. "In transit") is worth a line.
-  const detail = stage && o.stage !== 'PENDING' && ORDER_STATUS[o.status].label !== stage.label ? ORDER_STATUS[o.status].label : null
+  const detail = stage && o.stage !== 'PENDING' ? statusBeyondStage(o.stage as OrderStage, o.status) : null
   return (
     <div className="max-w-52 space-y-1.5">
       {stage && showStage && (

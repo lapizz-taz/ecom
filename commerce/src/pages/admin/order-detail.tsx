@@ -42,7 +42,7 @@ import { formatDateTime, formatMoney, formatNumber, formatPercent, titleCase, to
 import {
   ADVANCE_TYPE, CANCEL_VIA_COURIER, CANCELLABLE, CHARGE_KIND, CHARGE_SOURCE, EDITABLE, FRAUD_DECISION, FRAUD_STATUS, LOSABLE, MESSAGE_STATUS, NEEDS_REASON,
   NEXT_ACTIONS, ORDER_STATUS,
-  PAYMENT_CHANNEL, PAYMENT_METHOD, PAYMENT_STATUS, PRODUCTION_STATUS, RECEIVABLE, RISK_LEVEL, SEGMENT, SHIPMENT_STATUS, STAGE, stageOf,
+  PAYMENT_CHANNEL, PAYMENT_METHOD, PAYMENT_STATUS, PRODUCTION_STATUS, RECEIVABLE, RISK_LEVEL, SEGMENT, SHIPMENT_STATUS, STAGE, stageOf, statusBeyondStage,
 } from '@/lib/status'
 import { cn } from '@/lib/utils'
 import { imageUrl } from '@/services/catalog'
@@ -193,7 +193,7 @@ export default function OrderDetailPage() {
             <h1 className="text-2xl font-semibold">{o.order_number}</h1>
             {isWeb ? <Badge variant="outline">Web order</Badge> : <StatusBadge value={stage} map={STAGE} />}
             {/* The status only when it says more than the stage ("RTS" already means Ready to ship). */}
-            {(isWeb || (STAGE[stage].label !== ORDER_STATUS[status].label && SAME_AS_STAGE[stage] !== status)) && <StatusBadge value={status} map={ORDER_STATUS} />}
+            {statusBeyondStage(stage, status) && <StatusBadge value={status} map={ORDER_STATUS} />}
             <StatusBadge value={o.payment_status} map={PAYMENT_STATUS} />
             <StatusBadge value={o.fraud_status} map={FRAUD_STATUS} />
             {o.source === 'ADMIN' && <Badge variant="outline">Manual order</Badge>}
@@ -721,9 +721,6 @@ function localInput(d: Date) {
 }
 
 /** Web orders: what happened on the call, and approval. */
-/** A stage whose name already says its status: the status badge is not repeated next to it. */
-const SAME_AS_STAGE: Partial<Record<string, OrderStatus>> = { RTS: 'READY_TO_SHIP', PARTIAL: 'PARTIALLY_DELIVERED' }
-
 const CANCEL_REASONS = ['Customer request', 'Out of stock', 'Duplicate order', 'Wrong number', 'Phone off', 'No answer', 'Fraudulent order', 'Price issue', 'Advance payment issue', 'Other']
 
 function CallOutcomeCard({ order, onChanged, onApprove, approving, onSaved }: {
