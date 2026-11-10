@@ -54,6 +54,9 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - Partly delivered parcels (since 8 Nov 2026): scanning one in Scan parcels → Returned opens a popup listing the items with their
   size; staff tick what came back (Restock or Damaged) and only that goes back to stock. "Partial delivery…" on the order fills it in,
   and Pathao's return label finds the order too. A fully delivered parcel is still final.
+- Approved Orders list (since 10 Nov 2026): the phone number is one button, always in full; tapping it gives Call (Cloud
+  Calling or the phone, recorded for call tracking), WhatsApp and Copy number. Six columns on a computer: Order (date, who
+  handled it, Printed, flags, tags), Customer (note under the address), Products, Total, Courier, and Open with a ⋯ menu.
 - Super Edit, merge, duplicate detection and smart auto-merge.
 - Incomplete orders and abandoned carts. A Shopify or WooCommerce abandoned checkout has an Order button (since 8 Nov 2026): New order opens
   with the customer, address, district and products (matched by the store's variant link, then SKU); once created, the checkout counts as recovered.

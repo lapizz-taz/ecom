@@ -4,6 +4,8 @@ export type ReleaseTag = 'New' | 'Improved' | 'Fixed'
 export interface Release { date: string; title: string; body: string; tag: ReleaseTag; area: string; to?: string; major?: boolean }
 
 export const RELEASES: Release[] = [
+  { date: '2026-11-10', tag: 'Improved', area: 'Orders', title: 'Approved Orders: the phone number always in full, one tap for Call, WhatsApp or Copy',
+    body: 'Each order\'s phone number is now one button, shown in full on a computer and on a phone, also next to a long name. Tap it for Call, WhatsApp or Copy number; the order does not open by mistake. The list is tidier on a computer and fits without scrolling sideways: the date, who handled it, Printed and the tags sit under the order number, the note under the customer\'s address, and Edit, Super Edit, Copy order number and Copy phone number are in the ⋯ menu next to Open (the eye).', to: '/admin/orders/approved' },
   { date: '2026-11-09', tag: 'New', area: 'Messaging', title: 'Bring old chats from Facebook and Instagram',
     body: 'Messaging → Channels has a Bring old chats button on each connected Facebook Page and Instagram account. Choose how far back (30 days, 90 days or a year) and Fullfilio copies those chats from Meta into the inbox, with the last 25 messages of each: handy after connecting a Page, or if one was removed by mistake. It only runs when you press it, nobody is messaged, chats already in the inbox are not doubled, and they come in as read. WhatsApp does not let apps read old chats.', to: '/admin/inbox/channels' },
   { date: '2026-11-09', tag: 'Improved', area: 'Orders', title: 'Print opens the print window straight away',
