@@ -54,10 +54,10 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 - Partly delivered parcels (since 8 Nov 2026): scanning one in Scan parcels → Returned opens a popup listing the items with their
   size; staff tick what came back (Restock or Damaged) and only that goes back to stock. "Partial delivery…" on the order fills it in,
   and Pathao's return label finds the order too. A fully delivered parcel is still final.
-- Approved Orders list (since 10 Nov 2026): the phone number is plain text, always in full; tapping it gives Call (Cloud
-  Calling or the phone, recorded for call tracking), WhatsApp and Copy number. Six columns on a computer: Order (date, who
-  handled it, Printed, flags, tags), Customer (note under the address), Products, Total, Courier, and Open with a ⋯ menu.
-  On a phone the page top is compact (title and buttons on one line; Filters, sort and Actions in one row).
+- Approved Orders list on a phone (since 10 Nov 2026): the phone number in full as plain text; tapping it gives Call (Cloud
+  Calling or the phone, recorded for call tracking), WhatsApp and Copy number; a compact page top (title and buttons on one
+  line; Filters, sort and Actions in one row). On a computer the list keeps its columns (Date, Invoice, Customer, Note,
+  Products, Tags, Print, Total, Upload, User); the number there also offers Copy number.
 - The order page on a phone (since 10 Nov 2026): the main action full width, the number next to the name (Call / WhatsApp /
   Copy), the Delivery record as one line per courier (no-parcel couriers on one line), then products, address and customer,
   and the activity log last. The computer layout is unchanged.
