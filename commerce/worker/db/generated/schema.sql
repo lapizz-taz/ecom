@@ -71,6 +71,7 @@ INSERT INTO _sequences (name, value) VALUES
   ('subscription_events_id_seq', 0),
   ('support_ticket_events_id_seq', 0),
   ('support_tickets_number_seq', 1000),
+  ('system_log_samples_id_seq', 0),
   ('system_logs_id_seq', 0);
 
 CREATE TABLE account_removals (
@@ -5005,6 +5006,30 @@ CREATE TABLE support_tickets (
 CREATE TRIGGER support_tickets_updated_at AFTER UPDATE ON support_tickets FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
 BEGIN UPDATE support_tickets SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rowid = NEW.rowid; END;
 
+CREATE TABLE system_log_daily (
+  log_id INTEGER NOT NULL,
+  day TEXT NOT NULL CHECK (date(day) = day),
+  n INTEGER DEFAULT 0 NOT NULL,
+  merchant_id TEXT CHECK (merchant_id IS NULL OR length(merchant_id) = 36),
+  PRIMARY KEY (log_id, day),
+  CONSTRAINT system_log_daily_n_check CHECK (n >= 0),
+  CONSTRAINT system_log_daily_log_id_fkey FOREIGN KEY (log_id) REFERENCES system_logs (id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE system_log_samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  log_id INTEGER NOT NULL,
+  merchant_id TEXT CHECK (merchant_id IS NULL OR length(merchant_id) = 36),
+  at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', at) = at),
+  message TEXT NOT NULL,
+  "release" TEXT,
+  old_version INTEGER DEFAULT 0 NOT NULL CHECK (old_version IN (0, 1)),
+  context TEXT DEFAULT '{}' NOT NULL CHECK (json_valid(context)),
+  CONSTRAINT system_log_samples_message_check CHECK (length(message) <= 2000),
+  CONSTRAINT system_log_samples_release_check CHECK (length("release") <= 60),
+  CONSTRAINT system_log_samples_log_id_fkey FOREIGN KEY (log_id) REFERENCES system_logs (id) ON DELETE CASCADE
+) STRICT;
+
 CREATE TABLE system_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   level TEXT NOT NULL,
@@ -5019,11 +5044,27 @@ CREATE TABLE system_logs (
   resolved_by TEXT CHECK (resolved_by IS NULL OR length(resolved_by) = 36),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at) = created_at),
   merchant_id TEXT CHECK (merchant_id IS NULL OR length(merchant_id) = 36),
+  status TEXT DEFAULT 'NEW' NOT NULL,
+  note TEXT,
+  fixed_in TEXT,
+  fixed_release TEXT,
+  status_changed_at TEXT CHECK (status_changed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', status_changed_at) = status_changed_at),
+  status_by TEXT CHECK (status_by IS NULL OR length(status_by) = 36),
+  regressed_at TEXT CHECK (regressed_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', regressed_at) = regressed_at),
+  regressions INTEGER DEFAULT 0 NOT NULL,
+  last_release TEXT,
+  old_version_hits INTEGER DEFAULT 0 NOT NULL,
+  old_version_seen_at TEXT CHECK (old_version_seen_at IS NULL OR strftime('%Y-%m-%dT%H:%M:%fZ', old_version_seen_at) = old_version_seen_at),
   CONSTRAINT system_logs_category_check CHECK (category IN ('FRONTEND', 'FUNCTION', 'WEBHOOK', 'PAYMENT', 'COURIER', 'SMS', 'META', 'AUTH', 'FRAUD', 'JOB', 'OTHER')),
+  CONSTRAINT system_logs_fixed_in_check CHECK (length(fixed_in) <= 120),
+  CONSTRAINT system_logs_fixed_release_check CHECK (length(fixed_release) <= 60),
+  CONSTRAINT system_logs_last_release_check CHECK (length(last_release) <= 60),
   CONSTRAINT system_logs_level_check CHECK (level IN ('INFO', 'WARN', 'ERROR')),
   CONSTRAINT system_logs_message_check CHECK (length(message) >= 1 AND length(message) <= 2000),
+  CONSTRAINT system_logs_note_check CHECK (length(note) <= 2000),
   CONSTRAINT system_logs_occurrences_check CHECK (occurrences > 0),
   CONSTRAINT system_logs_source_check CHECK (length(source) >= 1 AND length(source) <= 80),
+  CONSTRAINT system_logs_status_check CHECK (status IN ('NEW', 'INVESTIGATING', 'FIXED', 'IGNORED')),
   CONSTRAINT system_logs_merchant_id_fkey FOREIGN KEY (merchant_id) REFERENCES merchants (id)
 ) STRICT;
 
@@ -5858,12 +5899,22 @@ CREATE INDEX support_tickets_queue_idx ON support_tickets (status, due_at) WHERE
 
 CREATE INDEX support_tickets_status_idx ON support_tickets (status, created_at desc);
 
+CREATE INDEX system_log_daily_merchant_idx ON system_log_daily (merchant_id);
+
+CREATE INDEX system_log_samples_log_idx ON system_log_samples (log_id, id desc);
+
+CREATE INDEX system_log_samples_merchant_idx ON system_log_samples (merchant_id);
+
 CREATE INDEX system_logs_created_idx ON system_logs (created_at desc);
+
+CREATE INDEX system_logs_fingerprint_idx ON system_logs (fingerprint);
 
 CREATE INDEX system_logs_merchant_idx ON system_logs (merchant_id);
 
 CREATE UNIQUE INDEX system_logs_open_fingerprint_idx ON system_logs (merchant_id, fingerprint) WHERE ((resolved_at is null) and (fingerprint is not null));
 
 CREATE INDEX system_logs_open_idx ON system_logs (level, last_seen_at desc) WHERE (resolved_at is null);
+
+CREATE INDEX system_logs_status_idx ON system_logs (status, last_seen_at desc);
 
 CREATE INDEX user_presence_seen_idx ON user_presence (last_seen_at desc);

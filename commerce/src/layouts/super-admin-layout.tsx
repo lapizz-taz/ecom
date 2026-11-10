@@ -93,7 +93,7 @@ function GlobalSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (op
     { title: 'Stores', items: r.stores.map((s) => ({ key: s.id, label: s.shop_domain, hint: `${s.platform.toLowerCase()} · ${s.merchant}`, to: `/super-admin/merchants/${s.merchant_id}?tab=stores` })) },
     { title: 'Employees', items: r.employees.map((e) => ({ key: e.id, label: e.name, hint: e.email, to: `/super-admin/employees?focus=${e.id}` })) },
     { title: 'Support tickets', items: r.tickets.map((t) => ({ key: t.id, label: `#${t.number} ${t.subject}`, hint: t.merchant, to: `/super-admin/support?ticket=${t.id}` })) },
-    { title: 'Errors', items: r.errors.map((e) => ({ key: String(e.id), label: e.message, hint: `${e.category.toLowerCase()} · ${timeAgo(e.last_seen_at)}`, to: `/super-admin/health?log=${e.id}` })) },
+    { title: 'Errors', items: r.errors.map((e) => ({ key: String(e.id), label: e.message, hint: `${e.category.toLowerCase()} · ${timeAgo(e.last_seen_at)}`, to: `/super-admin/errors?view=all&id=${e.id}` })) },
     { title: 'Audit log', items: r.audit.map((a) => ({ key: String(a.id), label: a.action, hint: a.actor_email ?? '', to: `/super-admin/audit?q=${encodeURIComponent(a.entity_id ?? a.action)}` })) },
   ].filter((g) => g.items.length) : []
   return (

@@ -85,6 +85,7 @@ const shared: RouteObject[] = [
       platform('usage', 'usage', () => import('@/pages/super-admin/usage')),
       platform('automation', 'automation', () => import('@/pages/super-admin/automation')),
       platform('health', 'health', () => import('@/pages/super-admin/health')),
+      platform('errors', 'health', () => import('@/pages/super-admin/errors')),
       platform('incidents', 'incidents', () => import('@/pages/super-admin/incidents')),
       platform('notifications', 'notifications', () => import('@/pages/super-admin/notifications')),
       platform('audit', 'audit', () => import('@/pages/super-admin/audit')),

@@ -1,7 +1,7 @@
 # Fullfilio: business memory
 
 The one page to read before any product, pricing, marketing or sales decision.
-Last updated: 8 Nov 2026.
+Last updated: 10 Nov 2026.
 
 ## What Fullfilio is
 
@@ -142,6 +142,12 @@ All prices are in BDT, per month. Checked against the live plans on 26 Oct 2026.
 **Platform (Super Admin)**
 - Merchants, plans and billing, credits, Fullfilio Payments, domains, support, health, incidents, finance.
 - Two-person approval to delete a merchant.
+- Error tracker (since 10 Nov 2026; Super Admin → Error Tracker, permission health): every error from the admin, the panel,
+  server functions, webhooks and jobs, one entry per error across businesses. Status New → Investigating → Fixed or Ignored,
+  a note and "fixed in"; a fixed error that happens again reopens as "came back" (not when it comes from a tab older than the
+  fix). Each entry keeps its last 20 occurrences with the steps the person took before it (pages, buttons, API calls), the
+  page and the app version, a count per day, the server side of a browser error (same request id), a likely cause, and a
+  "Copy for Claude" report. Uncaught browser errors and "Something went wrong" messages are reported too.
 
 **Coming soon / in progress**
 - Cloud Calling (the built-in phone system; called VoiceDrive PBX in the code and database) is shown as "coming soon".

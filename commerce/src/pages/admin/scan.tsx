@@ -456,7 +456,7 @@ function PartialReturnDialog({ result, onClose, onDone }: { result: ScanResult; 
           const max = i.quantity - i.returned_quantity - i.damaged_quantity
           const on = r.restock + r.damaged > 0
           return (
-            <li key={i.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 p-3 transition-colors', on && 'bg-emerald-50 dark:bg-emerald-950/40')}>
+            <li key={i.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 p-3 transition-colors', on && 'bg-emerald-50')}>
               <button type="button" className="flex min-w-44 flex-1 items-center gap-3 text-left" onClick={() => set(i, on ? { restock: 0, damaged: 0 } : { restock: max, damaged: 0 })}
                 aria-pressed={on} title={on ? 'Not in the parcel' : 'In the parcel, back to stock'}>
                 <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-full border-2', on ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/40')}>

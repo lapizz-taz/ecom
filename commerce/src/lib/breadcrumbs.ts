@@ -29,7 +29,11 @@ export function crumb(c: New, at = Date.now()) {
     return
   }
   crumbs.push({ ...c, at } as Crumb)
-  if (crumbs.length > MAX) crumbs.splice(0, crumbs.length - MAX)
+  // Full: a routine successful call goes first, so pages, presses, failures and messages stay longest.
+  while (crumbs.length > MAX) {
+    const routine = crumbs.findIndex((x) => x.t === 'call' && typeof x.status === 'number' && x.status < 400)
+    crumbs.splice(routine >= 0 ? routine : 0, 1)
+  }
 }
 
 /** The steps so far, oldest first, with clock times (to line up with server errors). */

@@ -28,6 +28,18 @@ describe('the steps before an error', () => {
     expect(trail().at(-1)).toMatchObject({ label: 'Button 39' })
   })
 
+  it('when full, routine successful calls make room first', () => {
+    crumb({ t: 'nav', to: '/admin/orders' })
+    crumb({ t: 'click', label: 'Create order' })
+    crumb({ t: 'call', name: 'rpc save_order', status: 500, ms: 90 })
+    for (let i = 0; i < 40; i++) crumb({ t: 'call', name: `rpc read_${i}`, status: 200, ms: 10 })
+    const t = trail()
+    expect(t).toHaveLength(30)
+    expect(t.slice(0, 3).map((c) => c.t)).toEqual(['nav', 'click', 'call'])
+    expect(t[2]).toMatchObject({ name: 'rpc save_order', status: 500 })
+    expect(t.at(-1)).toMatchObject({ name: 'rpc read_39' })
+  })
+
   it('finds the call a "Something went wrong" was about, and its request id', () => {
     crumb({ t: 'call', name: 'fn inbox/history_import', status: 500, ms: 900 })
     crumb({ t: 'click', label: 'Bring old chats' })

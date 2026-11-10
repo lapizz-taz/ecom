@@ -1,5 +1,5 @@
 {
-  "migrations": 208,
-  "last": "20261214000200_abandoned_checkout_order.sql",
-  "sha256": "23a180062aaedb75b145e32602d5129ba4733ce1fac74c4776a53d0db56640a3"
+  "migrations": 209,
+  "last": "20261215000100_error_tracker.sql",
+  "sha256": "5ff546b34b3f507287c672d44271197f3d0aaf5bea68235f050d18b251b979ea"
 }

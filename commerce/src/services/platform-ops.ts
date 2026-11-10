@@ -28,6 +28,54 @@ export const platformHealth = () => platformRpc<PlatformHealth>('platform_health
 export const systemLogs = (filters: Record<string, unknown>, limit: number, offset: number) =>
   platformRpc<{ total: number; rows: SystemLog[]; by_category: Record<string, number> }>('platform_system_logs', { p: filters, p_limit: limit, p_offset: offset })
 export const resolveLogs = (ids: number[], note?: string) => platformRpc<number>('platform_system_logs_resolve', { p_ids: ids, p_note: note ?? null })
+
+// ------------------------------------------------------------------ error tracker
+
+export type ErrorStatus = 'NEW' | 'INVESTIGATING' | 'FIXED' | 'IGNORED'
+export type ErrorView = 'open' | 'new' | 'investigating' | 'came_back' | 'fixed' | 'ignored' | 'all'
+/** One error (the same error in several businesses is one entry; `ids` are all of them). */
+export interface TrackedError {
+  id: number; ids: number[]; level: 'ERROR' | 'WARN' | 'INFO'; category: string; source: string; message: string; status: ErrorStatus
+  occurrences: number; first_seen_at: string; last_seen_at: string; regressed_at: string | null; regressions: number
+  note: string | null; fixed_in: string | null; last_release: string | null; businesses: number; platform: boolean; old_version_hits: number
+  merchant: MerchantRef | null
+  /** Occurrences per day, the last 14 days (Bangladesh time), oldest first. */
+  trend: number[]
+}
+export interface ErrorList {
+  total: number; rows: TrackedError[]; by_category: Record<string, number>
+  stats: { open: number; new_24h: number; came_back: number; investigating: number; fixed_7d: number; businesses: number; today: number }
+  can: { manage: boolean }
+}
+export interface ErrorSample {
+  id: number; log_id: number; at: string; message: string; release: string | null; old_version: boolean
+  context: Record<string, unknown>; merchant: MerchantRef | null; user: { id: string; name: string | null } | null
+}
+export interface ErrorRef { id: number; category: string; source: string; message: string; status: ErrorStatus }
+export interface ErrorDetail {
+  error: {
+    id: number; level: string; category: string; source: string; message: string; status: ErrorStatus; context: Record<string, unknown>
+    fingerprint: string | null; occurrences: number; first_seen_at: string; last_seen_at: string; resolved_at: string | null
+    note: string | null; fixed_in: string | null; fixed_release: string | null; status_changed_at: string | null; status_by_email: string | null
+    regressed_at: string | null; regressions: number; last_release: string | null; old_version_hits: number; old_version_seen_at: string | null
+    merchant: MerchantRef | null
+  }
+  siblings: Array<{ id: number; status: ErrorStatus; occurrences: number; first_seen_at: string; last_seen_at: string; regressed_at: string | null; last_release: string | null; merchant: MerchantRef | null }>
+  samples: ErrorSample[]
+  daily: Array<{ day: string; n: number }>
+  /** Errors from the same request (the server side of a browser error, or the other way round). */
+  linked: Array<ErrorRef & { at: string; request_id: string; context: Record<string, unknown> }>
+  /** Other errors the same person hit within 2 minutes. */
+  nearby: Array<ErrorRef & { seconds_apart: number; before: boolean }>
+  history: Array<{ at: string; by: string | null; action: string; note: string | null; before: Record<string, unknown> | null; after: Record<string, unknown> | null }>
+  can: { manage: boolean }
+}
+
+export const listErrors = (filters: Record<string, unknown>, limit: number, offset: number) =>
+  platformRpc<ErrorList>('platform_errors', { p: filters, p_limit: limit, p_offset: offset })
+export const getError = (id: number) => platformRpc<ErrorDetail>('platform_error_get', { p_id: id })
+export const updateErrors = (ids: number[], p: { status?: ErrorStatus; note?: string; fixed_in?: string; release?: string }) =>
+  platformRpc<number>('platform_error_update', { p_ids: ids, p })
 export const healthRetry = (kind: string, preview: boolean, reason?: string) =>
   platformRpc<RetryResult>('platform_health_retry', { p_kind: kind, p_preview: preview, p_reason: reason ?? null })
 
